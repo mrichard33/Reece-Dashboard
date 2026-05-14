@@ -25,11 +25,20 @@ export class McpClient {
 
   async call<T>(toolName: string, opts: CallOpts = {}): Promise<T> {
     if (!this.baseUrl) {
-      throw new McpError(
-        `${this.label.toUpperCase()} MCP base URL missing. Set ${this.label.toUpperCase()}_MCP_URL in env.`,
-        0,
-        toolName,
+      const msg = `${this.label.toUpperCase()} MCP base URL missing. Set ${this.label.toUpperCase()}_MCP_URL in env.`;
+      console.error(
+        "[mcp]",
+        JSON.stringify({
+          label: this.label,
+          tool: toolName,
+          url: null,
+          method: opts.method ?? "GET",
+          status: 0,
+          durationMs: 0,
+          error: msg,
+        }),
       );
+      throw new McpError(msg, 0, toolName);
     }
     const url = new URL(`/tools/${toolName}`, this.baseUrl);
     if (opts.query) {
@@ -41,7 +50,9 @@ export class McpClient {
     const headers: Record<string, string> = {
       Accept: "application/json",
     };
-    if (this.authToken) headers.Authorization = `Bearer ${this.authToken}`;
+    if (typeof this.authToken === "string" && this.authToken.trim().length > 0) {
+      headers.Authorization = `Bearer ${this.authToken.trim()}`;
+    }
     if (opts.body !== undefined) headers["Content-Type"] = "application/json";
 
     const init: RequestInit & { next?: { revalidate?: number } } = {
@@ -52,9 +63,47 @@ export class McpClient {
     if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
     if (opts.revalidate !== undefined) init.next = { revalidate: opts.revalidate };
 
-    const res = await fetch(url.toString(), init);
+    const urlStr = url.toString();
+    const startedAt = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(urlStr, init);
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      console.error(
+        "[mcp]",
+        JSON.stringify({
+          label: this.label,
+          tool: toolName,
+          url: urlStr,
+          method: init.method,
+          status: 0,
+          durationMs: Date.now() - startedAt,
+          error,
+        }),
+      );
+      throw new McpError(
+        `${this.label.toUpperCase()} MCP ${toolName} fetch failed: ${error}`,
+        0,
+        toolName,
+      );
+    }
+
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      console.error(
+        "[mcp]",
+        JSON.stringify({
+          label: this.label,
+          tool: toolName,
+          url: urlStr,
+          method: init.method,
+          status: res.status,
+          durationMs: Date.now() - startedAt,
+          error: `HTTP ${res.status}`,
+          bodyPreview: text.slice(0, 200),
+        }),
+      );
       throw new McpError(
         `${this.label.toUpperCase()} MCP ${toolName} failed (${res.status}): ${text.slice(0, 200)}`,
         res.status,
