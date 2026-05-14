@@ -67,8 +67,8 @@ export default async function IssuesPage() {
                         {i.description}
                       </p>
                       <p className="mt-0.5 text-[11px] text-slate-500">
-                        Opened {relTime(i.opened_at)}
-                        {i.owner ? ` · ${i.owner}` : ""}
+                        Reported {relTime(i.reported_date)}
+                        {i.category ? ` · ${i.category}` : ""}
                       </p>
                     </div>
                   </li>
