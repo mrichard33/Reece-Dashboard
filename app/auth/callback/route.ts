@@ -8,13 +8,24 @@ import { cookies } from "next/headers";
  * then routes the user to the right next page.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = request.nextUrl;
+  const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
   const type = searchParams.get("type");
   const next = searchParams.get("next") ?? "/overview";
 
+  // Always use the public app URL, not request.nextUrl.origin.
+  // On Railway, the container's internal origin is 0.0.0.0:PORT — using it
+  // produces redirects to restricted/unreachable ports.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) {
+    return new NextResponse(
+      "Server misconfigured: NEXT_PUBLIC_APP_URL is not set.",
+      { status: 500 },
+    );
+  }
+
   if (!code) {
-    return NextResponse.redirect(`${origin}/login?error=missing_code`);
+    return NextResponse.redirect(`${appUrl}/login?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -36,13 +47,13 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent(error.message)}`,
+      `${appUrl}/login?error=${encodeURIComponent(error.message)}`,
     );
   }
 
   if (type === "recovery") {
-    return NextResponse.redirect(`${origin}/auth/reset-password`);
+    return NextResponse.redirect(`${appUrl}/auth/reset-password`);
   }
 
-  return NextResponse.redirect(`${origin}${next}`);
+  return NextResponse.redirect(`${appUrl}${next}`);
 }
