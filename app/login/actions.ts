@@ -55,7 +55,7 @@ export async function requestPasswordReset(
 
   // Always return success to avoid leaking which emails exist.
   await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${appUrl}/auth/callback?type=recovery`,
+    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?type=recovery`,
   });
 
   return { success: true };
