@@ -38,8 +38,10 @@ Every tile has a small `(i)` button → opens a popover with `{ what, where, fix
 │   │   ├── pipelines/page.tsx
 │   │   ├── workflows/page.tsx
 │   │   └── issues/page.tsx
-│   ├── login/page.tsx              # Magic-link auth
-│   ├── auth/callback/route.ts      # Supabase code exchange
+│   ├── login/page.tsx              # Email + password sign in
+│   ├── login/actions.ts            # Server actions (signIn, requestReset, updatePassword)
+│   ├── auth/callback/route.ts      # Supabase code exchange (recovery + future OAuth)
+│   ├── auth/reset-password/page.tsx# Set / reset password after email link
 │   ├── api/sync/{lp,hl}/route.ts   # Manual sync triggers
 │   ├── page.tsx                    # Redirects → /overview
 │   └── layout.tsx                  # Root (fonts, theme script)
@@ -90,9 +92,39 @@ npm run dev
 # http://localhost:3000 — bounces to /login on first visit
 ```
 
+## Authentication
+
+Sign-in is **email + password** via Supabase Auth, gated by the `dashboard_users`
+allowlist. Self-signup is disabled; accounts are provisioned out-of-band.
+
+### Adding a new user
+
+1. In **LP Supabase → Authentication → Users → Add user**: enter the user's
+   email and toggle **Send password reset email** ON. (Or supply a temporary
+   password if email delivery is unreliable.)
+2. Add the email to the allowlist by running this SQL in the LP Supabase
+   SQL editor:
+
+   ```sql
+   INSERT INTO dashboard_users (email, role)
+   VALUES ('new-user@example.com', 'team')
+   ON CONFLICT (email) DO UPDATE SET role = 'team';
+   ```
+
+   Use role `operator` for full backend access or `team` for the trimmed
+   pipeline view.
+3. The user clicks the email link, lands on `/auth/reset-password`, sets
+   their password, and is redirected to `/overview`.
+
+### Existing users migrating from magic-link
+
+Existing Supabase Auth records still work — they just need to set a password
+once. On `/login`, click **First time here? Set a password**, enter the email,
+and follow the link in the resulting email.
+
 ## Acceptance criteria — Phase 1
 
-- [ ] Magic-link login works, allowlist gates non-listed emails
+- [ ] Email + password login works, allowlist gates non-listed emails
 - [ ] `/overview` renders 4 health tiles + 5 stat tiles + activity feed + alerts with real data from both Supabase instances
 - [ ] Heartbeat tile flips yellow when latest `agent_events.heartbeat.tick` is > 6 min old
 - [ ] `/pipelines` shows P1 / P2 / P3 with correct open opp counts and stage aging

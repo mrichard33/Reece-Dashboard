@@ -3,13 +3,14 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 /**
- * Magic-link callback. Supabase redirects here with ?code=... after the user
- * clicks the email link. We exchange the code for a session, then bounce to
- * the originally-requested page (or /overview).
+ * Supabase auth callback. Handles password-reset (recovery) emails and any
+ * future OAuth flows. Exchanges the `code` query param for a session cookie,
+ * then routes the user to the right next page.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
+  const type = searchParams.get("type");
   const next = searchParams.get("next") ?? "/overview";
 
   if (!code) {
@@ -37,6 +38,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(
       `${origin}/login?error=${encodeURIComponent(error.message)}`,
     );
+  }
+
+  if (type === "recovery") {
+    return NextResponse.redirect(`${origin}/auth/reset-password`);
   }
 
   return NextResponse.redirect(`${origin}${next}`);
