@@ -52,7 +52,7 @@ Open the LP Supabase project SQL editor and run [db/migrations/0001_dashboard_us
 1. Railway → service → **Settings** → **Networking** → **Generate Domain**.
 2. You get something like `antifragile-mission-control-production.up.railway.app`.
 3. Set this as `NEXT_PUBLIC_APP_URL` in the service Variables tab and trigger a redeploy (Railway picks up env changes on next deploy).
-4. Test the magic-link login flow end-to-end at this URL before adding a custom domain.
+4. Test the email + password login flow (including the password-reset email) end-to-end at this URL before adding a custom domain.
 
 ### 5. Update Supabase Auth redirect URLs
 
@@ -65,7 +65,7 @@ https://dashboard.reecewindows.com/auth/callback
 http://localhost:3000/auth/callback
 ```
 
-Without these entries, magic links bounce with a `redirect_uri_mismatch` error.
+Without these entries, password-reset links bounce with a `redirect_uri_mismatch` error.
 
 ### 6. Custom domain (optional, do after smoke test)
 

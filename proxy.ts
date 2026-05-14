@@ -35,9 +35,10 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isLogin = pathname === "/login" || pathname.startsWith("/login/");
   const isAuthCallback = pathname.startsWith("/auth/callback");
+  const isResetPassword = pathname.startsWith("/auth/reset-password");
 
   // Unauthenticated users are bounced to /login (except for the login flow itself).
-  if (!user && !isLogin && !isAuthCallback) {
+  if (!user && !isLogin && !isAuthCallback && !isResetPassword) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("from", pathname);
