@@ -56,20 +56,10 @@ export function Sidebar({
         {visible.map(({ href, label, Icon, phase }) => {
           const active = currentPath === href || currentPath.startsWith(href + "/");
           const stub = phase !== undefined;
-          return (
-            <Link
-              key={href}
-              href={stub ? "#" : (href as never)}
-              aria-disabled={stub}
-              onClick={stub ? (e) => e.preventDefault() : undefined}
-              className={[
-                "flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 transition",
-                active
-                  ? "bg-navy-700 text-white"
-                  : "text-slate-300 hover:bg-navy-800 hover:text-white",
-                stub ? "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-slate-300" : "",
-              ].join(" ")}
-            >
+          const baseClass =
+            "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 transition text-left";
+          const inner = (
+            <>
               <span className="flex items-center gap-2">
                 <Icon className="h-4 w-4" />
                 <span>{label}</span>
@@ -79,6 +69,37 @@ export function Sidebar({
                   P{phase}
                 </span>
               )}
+            </>
+          );
+
+          if (stub) {
+            return (
+              <button
+                key={href}
+                type="button"
+                disabled
+                className={[
+                  baseClass,
+                  "cursor-not-allowed opacity-60 text-slate-300",
+                ].join(" ")}
+              >
+                {inner}
+              </button>
+            );
+          }
+
+          return (
+            <Link
+              key={href}
+              href={href as never}
+              className={[
+                baseClass,
+                active
+                  ? "bg-navy-700 text-white"
+                  : "text-slate-300 hover:bg-navy-800 hover:text-white",
+              ].join(" ")}
+            >
+              {inner}
             </Link>
           );
         })}
