@@ -50,12 +50,15 @@ export async function requestPasswordReset(
     return { error: "Email is required." };
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) {
+    return { error: "Server misconfigured. Contact the system administrator." };
+  }
   const supabase = await lpServer();
 
   // Always return success to avoid leaking which emails exist.
   await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?type=recovery`,
+    redirectTo: `${appUrl}/auth/callback?type=recovery`,
   });
 
   return { success: true };
