@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Antifragile Mission Control — Reece Windows &amp; Doors</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          display: ['Montserrat', 'Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          // Reece brand
+          navy: {
+            DEFAULT: '#122739',
+            900: '#0C2340',
+            800: '#122739',
+            700: '#1B3349',
+            600: '#274560',
+          },
+          brick: { DEFAULT: '#ED1E24', dark: '#C5141A' },
+        },
+      },
+    },
+  };
+</script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/recharts@2.13.0/umd/Recharts.min.js"></script>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.js"></script>
+
+<style>
+  html, body, #root { height: 100%; }
+  body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #f8fafc; }
+  .dark body { background: #020617; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  /* loading shimmer */
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  .shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(148,163,184,0.18) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2.4s ease-in-out infinite;
+  }
+  /* scrollbar nicety */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+  .dark ::-webkit-scrollbar-thumb { background: #334155; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  /* anchor focus rings off by default for cleaner demo */
+  button:focus { outline: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react" src="src/icons.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/data.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/ui.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/pages-overview.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/pages-pipelines.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/pages-workflows.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/pages-agents.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/pages-leads.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/pages-appts.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/pages-ops.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/app.jsx"></script>
+</body>
+</html>

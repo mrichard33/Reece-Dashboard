@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@theme {
+  /* Reece brand — navy chrome */
+  --color-navy: #122739;
+  --color-navy-50: #f0f4f9;
+  --color-navy-100: #d6e0ec;
+  --color-navy-200: #adc1d9;
+  --color-navy-300: #7d9bbf;
+  --color-navy-400: #4c6f9c;
+  --color-navy-500: #274560;
+  --color-navy-600: #1B3349;
+  --color-navy-700: #152a3d;
+  --color-navy-800: #122739;
+  --color-navy-900: #0C2340;
+  --color-navy-950: #060f1c;
+
+  /* Reece brand — brick accent */
+  --color-brick: #ED1E24;
+  --color-brick-dark: #C5141A;
+  --color-brick-50: #fef2f2;
+  --color-brick-100: #fde6e7;
+  --color-brick-500: #ED1E24;
+  --color-brick-600: #C5141A;
+  --color-brick-700: #9c1015;
+
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Montserrat", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  :root {
+    --background: #f8fafc;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --border: #e2e8f0;
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    --accent: #f1f5f9;
+    --ring: #122739;
+  }
+
+  .dark {
+    --background: #020617;
+    --foreground: #f8fafc;
+    --card: #0f172a;
+    --card-foreground: #f8fafc;
+    --border: #1e293b;
+    --muted: #1e293b;
+    --muted-foreground: #94a3b8;
+    --accent: #1e293b;
+    --ring: #4c6f9c;
+  }
+
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body {
+    height: 100%;
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(148, 163, 184, 0.18) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.4s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+}
+
+/* Scrollbar nicety */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 6px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
