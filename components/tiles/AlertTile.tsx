@@ -21,15 +21,15 @@ export function AlertTile({ issue }: { issue: ClaudeKnownIssue }) {
           <Badge tone={tone} dot>
             {issue.severity ?? "unknown"}
           </Badge>
-          {issue.owner && (
-            <span className="text-[11px] text-slate-500">{issue.owner}</span>
+          {issue.category && (
+            <span className="text-[11px] text-slate-500">{issue.category}</span>
           )}
         </div>
         <p className="mt-1 truncate text-sm text-navy-900 dark:text-slate-100">
           {issue.description}
         </p>
         <p className="mt-0.5 text-[11px] text-slate-500">
-          Opened {relTime(issue.opened_at)}
+          Reported {relTime(issue.reported_date)}
         </p>
       </div>
     </div>

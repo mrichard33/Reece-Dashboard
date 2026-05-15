@@ -6,19 +6,12 @@
  * Phase 1 pages and queries touch.
  */
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────
 // LP Supabase (lp_*, agent_*, claude_*, system_events, groupme_approval_requests)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export type AgentEvent = {
-  id: string;
-  event_type: string;
-  payload: Record<string, unknown> | null;
-  created_at: string;
-};
+// ──────────────────────────────────────────────────────────────────────
 
 export type SystemEvent = {
-  id: string;
+  id: number;
   event_type: string;
   entity_type: string | null;
   entity_id: string | null;
@@ -29,28 +22,37 @@ export type SystemEvent = {
 
 export type LpLead = {
   id: string;
-  created_at: string;
-  source: string | null;
-  disposition: string | null;
-  rep: string | null;
+  lp_lead_id: string;
+  lead_source: string | null;
+  disposition_code: string | null;
+  disposition_label: string | null;
+  rep_id: string | null;
+  rep_name: string | null;
+  created_at_lp: string | null;
+  updated_at_lp: string | null;
+  synced_at: string | null;
 };
 
 export type GroupmeApprovalRequest = {
-  id: string;
+  id: number;
   status: "pending" | "approved" | "rejected" | "expired";
-  action_type: string;
-  contact_id: string | null;
-  payload: Record<string, unknown> | null;
+  short_ref: string;
+  contact_name: string | null;
+  rule_applied: string | null;
   created_at: string;
 };
 
 export type ClaudeKnownIssue = {
-  id: string;
+  id: number;
   severity: "low" | "medium" | "high" | "critical" | null;
+  category: string | null;
   description: string;
-  owner: string | null;
-  opened_at: string;
-  resolved_at: string | null;
+  status: "open" | "closed" | "in_progress" | string;
+  reported_date: string;
+  resolved_date: string | null;
+  workflow_id: string | null;
+  workflow_name: string | null;
+  impact: string | null;
 };
 
 export type DashboardUser = {
@@ -59,9 +61,9 @@ export type DashboardUser = {
   created_at: string;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────
 // HL Supabase (contacts, opportunities, workflows)
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────
 
 export type Pipeline = {
   id: string;
@@ -108,14 +110,69 @@ export type WorkflowRegistry = {
   message_pressure_level: string | null;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MCP response shapes (HTTP-passthrough, not Supabase rows)
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────
+// MCP response shapes
+// ──────────────────────────────────────────────────────────────────────
+//
+// Raw shapes match what LP-MCP and HL-MCP `get_sync_health` /
+// `get_railway_service_status` actually return. Flat shapes are the adapted
+// view consumed by the overview tiles / sync banner via lib/queries/health.ts.
+
+export type SyncEntityStatus = {
+  id: string;
+  entity_type: string;
+  sync_type: string;
+  status: "running" | "completed" | "failed" | string;
+  records_synced: number;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
+export type SyncHealthRaw = {
+  last_sync_by_entity?: Record<string, SyncEntityStatus | null>;
+  currently_running?: Array<{
+    entity_type: string;
+    sync_type: string;
+    records_synced: number;
+    started_at: string;
+  }>;
+  last_24h?: {
+    syncs_run: number;
+    records_synced: number;
+    failed_syncs: number;
+  };
+  unmapped_sources?: number;
+  unfired_milestone_triggers?: number;
+  day15_untriggered_leads?: number;
+  circuit_breaker?: { consecutiveFailures: number; circuitOpen: boolean };
+};
 
 export type SyncHealth = {
   last_sync_at: string | null;
   status: "healthy" | "stale" | "error" | "unknown";
   details?: Record<string, unknown>;
+};
+
+export type RailwayDeploymentNode = {
+  id: string;
+  status:
+    | "SUCCESS"
+    | "FAILED"
+    | "BUILDING"
+    | "DEPLOYING"
+    | "INITIALIZING"
+    | "CRASHED"
+    | "REMOVED"
+    | string;
+  createdAt: string;
+};
+
+export type RailwayStatusRaw = {
+  name?: string;
+  icon?: string | null;
+  updatedAt?: string;
+  deployments?: { edges?: Array<{ node?: RailwayDeploymentNode }> };
 };
 
 export type RailwayServiceStatus = {

@@ -20,9 +20,11 @@ export async function getActiveAlerts(limit = 10): Promise<ClaudeKnownIssue[]> {
     const sb = lpService();
     const { data } = await sb
       .from("claude_known_issues")
-      .select("id, severity, description, owner, opened_at, resolved_at")
-      .is("resolved_at", null)
-      .order("opened_at", { ascending: false })
+      .select(
+        "id, severity, category, description, status, reported_date, resolved_date, workflow_id, workflow_name, impact",
+      )
+      .eq("status", "open")
+      .order("reported_date", { ascending: false })
       .limit(limit);
     return (data ?? []) as ClaudeKnownIssue[];
   } catch {

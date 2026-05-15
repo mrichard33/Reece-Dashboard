@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { McpClient } from "./client";
-import type { SyncHealth, RailwayServiceStatus } from "@/lib/supabase/types";
+import type { SyncHealthRaw, RailwayStatusRaw } from "@/lib/supabase/types";
 
 const rawToken = process.env.HL_MCP_AUTH_TOKEN;
 const authToken =
@@ -26,16 +26,16 @@ export type NamespaceViolation = {
 };
 
 export const hlMcp = {
-  /** Sync health for the HL cache. Drives the freshness banner on every HL-backed page. */
+  /** Sync health for the HL cache (raw nested MCP response). */
   getSyncHealth: unstable_cache(
-    () => client.call<SyncHealth>("get_sync_health"),
+    () => client.call<SyncHealthRaw>("get_sync_health"),
     ["hl-mcp", "get_sync_health"],
     { revalidate: 60, tags: ["hl-mcp"] },
   ),
 
-  /** Railway deployment status for the HL MCP service itself. */
+  /** Railway deployment status for the HL MCP service (raw `deployments.edges` shape). */
   getRailwayServiceStatus: unstable_cache(
-    () => client.call<RailwayServiceStatus>("get_railway_service_status"),
+    () => client.call<RailwayStatusRaw>("get_railway_service_status"),
     ["hl-mcp", "get_railway_service_status"],
     { revalidate: 60, tags: ["hl-mcp"] },
   ),

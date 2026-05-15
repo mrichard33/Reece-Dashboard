@@ -15,8 +15,8 @@ async function countLeadsBetween(start: Date, end: Date): Promise<number> {
   const { count } = await sb
     .from("lp_leads")
     .select("id", { count: "exact", head: true })
-    .gte("created_at", start.toISOString())
-    .lt("created_at", end.toISOString());
+    .gte("created_at_lp", start.toISOString())
+    .lt("created_at_lp", end.toISOString());
   return count ?? 0;
 }
 
@@ -43,7 +43,7 @@ async function countOpenIssues(): Promise<number> {
   const { count } = await sb
     .from("claude_known_issues")
     .select("id", { count: "exact", head: true })
-    .is("resolved_at", null);
+    .eq("status", "open");
   return count ?? 0;
 }
 
