@@ -3,8 +3,9 @@ import { lpMcp } from "@/lib/mcp/lpClient";
 import { hlMcp } from "@/lib/mcp/hlClient";
 import type {
   RailwayServiceStatus,
+  RailwayStatusRaw,
   SyncHealth,
-  AgentEvent,
+  SyncHealthRaw,
 } from "@/lib/supabase/types";
 import { minutesSince } from "@/lib/utils";
 
@@ -16,51 +17,112 @@ export type HealthSnapshot = {
   hlSync: SyncHealth | { status: "unknown"; error: string };
 };
 
-async function safe<T>(p: Promise<T>): Promise<T | { status: "unknown"; error: string }> {
+type Adapted<T> = T | { status: "unknown"; error: string };
+
+async function safeAdapt<R, T>(
+  p: Promise<R>,
+  adapt: (raw: R) => T,
+): Promise<Adapted<T>> {
   try {
-    return await p;
+    return adapt(await p);
   } catch (e) {
     return { status: "unknown", error: e instanceof Error ? e.message : "unknown" };
   }
 }
 
+function adaptSyncHealth(raw: SyncHealthRaw): SyncHealth {
+  const entities = Object.values(raw.last_sync_by_entity ?? {});
+  const completedTimes = entities
+    .map((e) => e?.completed_at)
+    .filter((x): x is string => typeof x === "string");
+  completedTimes.sort();
+  const last_sync_at = completedTimes.at(-1) ?? null;
+
+  let status: SyncHealth["status"] = "unknown";
+  if (raw.circuit_breaker?.circuitOpen) {
+    status = "error";
+  } else if (last_sync_at === null) {
+    status = "unknown";
+  } else {
+    const mins = minutesSince(last_sync_at);
+    if (mins === null) status = "unknown";
+    else if (mins > 120) status = "stale";
+    else status = "healthy";
+  }
+
+  return {
+    last_sync_at,
+    status,
+    details: raw as unknown as Record<string, unknown>,
+  };
+}
+
+function adaptRailwayStatus(
+  raw: RailwayStatusRaw,
+  fallbackName: string,
+): RailwayServiceStatus {
+  const node = raw.deployments?.edges?.[0]?.node ?? null;
+  let status: RailwayServiceStatus["status"] = "unknown";
+  if (node) {
+    const s = node.status;
+    if (s === "SUCCESS") status = "running";
+    else if (s === "BUILDING" || s === "DEPLOYING" || s === "INITIALIZING")
+      status = "running";
+    else if (s === "FAILED" || s === "CRASHED") status = "error";
+    else if (s === "REMOVED") status = "stopped";
+  }
+  return {
+    service: raw.name ?? fallbackName,
+    status,
+    last_deploy_at: node?.createdAt ?? null,
+    details: raw as unknown as Record<string, unknown>,
+  };
+}
+
 export async function getHealthSnapshot(): Promise<HealthSnapshot> {
-  const [hlStatus, hlSync, lpSync, heartbeat] = await Promise.all([
-    safe(hlMcp.getRailwayServiceStatus()),
-    safe(hlMcp.getSyncHealth()),
-    safe(lpMcp.getSyncHealth()),
+  const [hlMcpStatus, hlSync, lpSync, heartbeat] = await Promise.all([
+    safeAdapt(hlMcp.getRailwayServiceStatus(), (r) => adaptRailwayStatus(r, "hl-mcp")),
+    safeAdapt(hlMcp.getSyncHealth(), adaptSyncHealth),
+    safeAdapt(lpMcp.getSyncHealth(), adaptSyncHealth),
     getHeartbeat(),
   ]);
 
-  // LP MCP doesn't expose railway status directly via MCP — infer from sync health.
+  // LP MCP doesn't expose Railway status directly — synthesize one from the
+  // adapted LP sync health so the tile shows something meaningful.
   const lpMcpStatus: HealthSnapshot["lpMcp"] =
     "error" in lpSync
       ? lpSync
       : {
           service: "lp-mcp",
           status: lpSync.status === "error" ? "error" : "running",
-          last_deploy_at: null,
+          last_deploy_at: lpSync.last_sync_at,
         };
 
   return {
     lpMcp: lpMcpStatus,
-    hlMcp: hlStatus,
+    hlMcp: hlMcpStatus,
     heartbeat,
     lpSync,
     hlSync,
   };
 }
 
+/**
+ * The original heartbeat lived in an `agent_events` table that doesn't exist
+ * in LP Supabase. Until a dedicated heartbeat table ships, use the most recent
+ * `system_events` row as a system-liveness proxy — the agent system writes to
+ * it continuously (hundreds of events per day), so absence of writes is a
+ * meaningful "engine stalled" signal.
+ */
 async function getHeartbeat() {
   try {
     const sb = lpService();
     const { data } = await sb
-      .from("agent_events")
+      .from("system_events")
       .select("created_at")
-      .eq("event_type", "heartbeat.tick")
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle<Pick<AgentEvent, "created_at">>();
+      .maybeSingle<{ created_at: string }>();
 
     const lastTickAt = data?.created_at ?? null;
     return { lastTickAt, minutesAgo: minutesSince(lastTickAt) };

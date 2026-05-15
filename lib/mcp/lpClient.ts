@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { McpClient } from "./client";
-import type { SyncHealth } from "@/lib/supabase/types";
+import type { SyncHealthRaw } from "@/lib/supabase/types";
 
 const rawToken = process.env.LP_MCP_AUTH_TOKEN;
 const authToken =
@@ -20,9 +20,9 @@ export type DriftCandidate = {
 };
 
 export const lpMcp = {
-  /** Sync health for the LP cache. */
+  /** Sync health for the LP cache. Returns the raw nested MCP response. */
   getSyncHealth: unstable_cache(
-    () => client.call<SyncHealth>("get_sync_health"),
+    () => client.call<SyncHealthRaw>("get_sync_health"),
     ["lp-mcp", "get_sync_health"],
     { revalidate: 60, tags: ["lp-mcp"] },
   ),
