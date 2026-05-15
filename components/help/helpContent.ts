@@ -18,7 +18,7 @@ export type HelpEntry = {
 };
 
 export const helpContent: Record<string, HelpEntry> = {
-  // ── /overview · Row 1: service health ──────────────────────────────────
+  // ── /overview · Row 1: service health ───────────────────────────────
   "overview.lpMcp": {
     title: "LP MCP",
     what: "Status of the Lead Perfection MCP service on Railway. Healthy means the service is running and has deployed within the last 24 hours.",
@@ -48,7 +48,7 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "Click the tile to trigger a manual sync. If sync fails repeatedly, check Railway logs for whichever MCP is stale — the error will be in the most recent failed sync event.",
   },
 
-  // ── /overview · Row 2: headline stats ──────────────────────────────────
+  // ── /overview · Row 2: headline stats ───────────────────────────────
   "overview.leadsToday": {
     title: "Leads Today",
     what: "Count of new LP leads created since midnight (America/New_York). Includes every source.",
@@ -84,7 +84,7 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "Open `/issues` to triage. Issues are added during sessions and should be resolved (resolved_at set) once fixed.",
   },
 
-  // ── /overview · Row 3: activity + alerts ───────────────────────────────
+  // ── /overview · Row 3: activity + alerts ─────────────────────────────
   "overview.activity": {
     title: "Recent Activity",
     what: "Last 20 system events across LP and HL. Color-coded by priority (low/normal/high/critical).",
@@ -98,7 +98,7 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "Click an alert to open `/issues`. Resolve by setting `resolved_at = now()` on the row once addressed.",
   },
 
-  // ── /pipelines ────────────────────────────────────────────────────────
+  // ── /pipelines ─────────────────────────────────────────────
   "pipelines.stageBars": {
     title: "Stage Aging",
     what: "How long opportunities have been sitting in each stage on average. Green = healthy flow (<7d). Yellow = some attention (7–14d). Red = systemic stall (>14d).",
@@ -112,8 +112,15 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "`opportunities` filtered to this pipeline_id with `status = 'open'`.",
     fix: "If the total value seems off, check whether monetary_value is being set on opp creation. Some sources don't populate it until a later stage.",
   },
+  "pipelines.dataLineage": {
+    title: "Opp data lineage",
+    what: "Each opp row shows the contact's display name and their LP prospect ID. The display name is derived from the HL `contacts` cache; the LP prospect ID is read from the GHL custom field `ZRQAVrzhtzApzLlHmT87` stored on that contact.",
+    where:
+      "HL Supabase `opportunities` joined in code to HL Supabase `contacts` (no SQL join because they live in the same instance but are queried in parallel and merged). LP prospect ID comes from `custom_fields` JSONB on the HL contact — first object with id = `ZRQAVrzhtzApzLlHmT87`.",
+    fix: "If a row shows `—` for LP prospect ID, the GHL contact is missing the custom field. Set it in GHL and trigger a sync. If a whole pipeline shows `(name unavailable)`, the HL contacts cache failed to load — check Railway logs for the dashboard and the HL Supabase schema for the `contacts` table.",
+  },
 
-  // ── /workflows ────────────────────────────────────────────────────────
+  // ── /workflows ─────────────────────────────────────────────
   "workflows.total": {
     title: "Total Workflows",
     what: "Every non-deleted workflow in GHL, including drafts. The canonical_code column comes from the workflow_registry table.",
@@ -135,7 +142,7 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "Click a flagged workflow to open its detail page (Phase 2). For systematic remediation, use `/workflows/diagnostics` (Phase 2).",
   },
 
-  // ── /issues ───────────────────────────────────────────────────────────
+  // ── /issues ─────────────────────────────────────────────────
   "issues.openIssues": {
     title: "Open Issues",
     what: "Every unresolved issue Claude or the team has logged. Severity ordered. Includes data drift, automation breakage, architectural concerns.",
@@ -168,7 +175,7 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "Click into each opp to investigate (Phase 2). If the rep is dormant, route via the manager workflow. If the workflow expected to advance them is broken, that's a separate fix.",
   },
 
-  // ── shell · global ────────────────────────────────────────────────────
+  // ── shell · global ───────────────────────────────────────────────
   "shell.syncNow": {
     title: "Sync Now",
     what: "Manually triggers a sync from GHL and LP into their respective Supabase caches. Use when a freshness banner is yellow/red, or when you've just made a change in GHL and want it reflected here.",

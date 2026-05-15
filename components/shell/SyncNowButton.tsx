@@ -5,6 +5,8 @@ import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 
+type SyncResult = { ok: boolean; error?: string };
+
 export function SyncNowButton() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -16,12 +18,32 @@ export function SyncNowButton() {
     setErr(null);
     try {
       const [lp, hl] = await Promise.all([
-        fetch("/api/sync/lp", { method: "POST" }).then((r) => r.json()),
-        fetch("/api/sync/hl", { method: "POST" }).then((r) => r.json()),
+        fetch("/api/sync/lp", { method: "POST" })
+          .then((r) => r.json() as Promise<SyncResult>)
+          .catch((e: unknown) => ({
+            ok: false,
+            error: e instanceof Error ? e.message : "LP request failed",
+          })),
+        fetch("/api/sync/hl", { method: "POST" })
+          .then((r) => r.json() as Promise<SyncResult>)
+          .catch((e: unknown) => ({
+            ok: false,
+            error: e instanceof Error ? e.message : "HL request failed",
+          })),
       ]);
+
       if (!lp.ok && !hl.ok) {
-        setErr("Both syncs failed.");
+        const parts = [
+          lp.error ? `LP: ${lp.error}` : null,
+          hl.error ? `HL: ${hl.error}` : null,
+        ].filter(Boolean);
+        setErr(parts.length > 0 ? parts.join(" · ") : "Both syncs failed.");
         return;
+      }
+      if (!lp.ok) {
+        setErr(`LP sync failed${lp.error ? `: ${lp.error}` : ""}`);
+      } else if (!hl.ok) {
+        setErr(`HL sync failed${hl.error ? `: ${hl.error}` : ""}`);
       }
       startTransition(() => router.refresh());
     } catch (e) {
@@ -42,7 +64,14 @@ export function SyncNowButton() {
         <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
         {busy ? "Syncing…" : "Sync now"}
       </Button>
-      {err && <span className="text-xs text-rose-600">{err}</span>}
+      {err && (
+        <span
+          className="max-w-[24rem] truncate text-xs text-rose-600 dark:text-rose-400"
+          title={err}
+        >
+          {err}
+        </span>
+      )}
     </div>
   );
 }

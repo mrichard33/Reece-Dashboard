@@ -61,6 +61,7 @@ export default async function OverviewPage() {
                   : `${health.lpMcp.service ?? "lp-mcp"} · ${health.lpMcp.status}`
               }
               lastActivity={"error" in health.lpMcp ? null : health.lpMcp.last_deploy_at}
+              lastError={"error" in health.lpMcp ? health.lpMcp.error : null}
               helpKey="overview.lpMcp"
             />
             <HealthTile
@@ -72,6 +73,7 @@ export default async function OverviewPage() {
                   : `${health.hlMcp.service ?? "hl-mcp"} · ${health.hlMcp.status}`
               }
               lastActivity={"error" in health.hlMcp ? null : health.hlMcp.last_deploy_at}
+              lastError={"error" in health.hlMcp ? health.hlMcp.error : null}
               helpKey="overview.hlMcp"
             />
             <HealthTile
@@ -92,6 +94,7 @@ export default async function OverviewPage() {
               }
               detail={`LP: ${"error" in health.lpSync ? "—" : health.lpSync.status} · HL: ${"error" in health.hlSync ? "—" : health.hlSync.status}`}
               lastActivity={mostRecent(lpSyncLast, hlSyncLast)}
+              lastError={syncTileError(health)}
               helpKey="overview.syncHealth"
             />
           </div>
@@ -226,6 +229,21 @@ function mostRecent(a: string | null, b: string | null): string | null {
   if (!a) return b;
   if (!b) return a;
   return new Date(a).getTime() > new Date(b).getTime() ? a : b;
+}
+
+function syncTileError(health: { lpSync: unknown; hlSync: unknown }): string | null {
+  const lpErr =
+    health.lpSync && typeof health.lpSync === "object" && "error" in health.lpSync
+      ? (health.lpSync as { error: string }).error
+      : null;
+  const hlErr =
+    health.hlSync && typeof health.hlSync === "object" && "error" in health.hlSync
+      ? (health.hlSync as { error: string }).error
+      : null;
+  if (lpErr && hlErr) return `LP: ${lpErr} · HL: ${hlErr}`;
+  if (lpErr) return `LP: ${lpErr}`;
+  if (hlErr) return `HL: ${hlErr}`;
+  return null;
 }
 
 function priorityTone(
