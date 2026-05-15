@@ -9,14 +9,19 @@ export function HealthTile({
   status,
   detail,
   lastActivity,
+  lastError,
   helpKey,
 }: {
   label: string;
   status: DotStatus;
   detail?: string;
   lastActivity?: Date | string | null;
+  /** When the underlying MCP/Supabase call failed, render the error in place
+   * of "Status unavailable" so operators have a real diagnosis. */
+  lastError?: string | null;
   helpKey: string;
 }) {
+  const hasError = typeof lastError === "string" && lastError.length > 0;
   return (
     <Card>
       <CardHeader>
@@ -32,6 +37,11 @@ export function HealthTile({
         <p className="text-sm font-medium text-navy-900 dark:text-white">
           {detail ?? "—"}
         </p>
+        {hasError && (
+          <p className="mt-1 break-words text-[11px] text-rose-600 dark:text-rose-400">
+            {lastError}
+          </p>
+        )}
         {lastActivity !== undefined && (
           <Tooltip label={absTime(lastActivity)}>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

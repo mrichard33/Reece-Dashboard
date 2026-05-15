@@ -6,9 +6,9 @@
  * Phase 1 pages and queries touch.
  */
 
-// ──────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 // LP Supabase (lp_*, agent_*, claude_*, system_events, groupme_approval_requests)
-// ──────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 
 export type SystemEvent = {
   id: number;
@@ -61,9 +61,9 @@ export type DashboardUser = {
   created_at: string;
 };
 
-// ──────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 // HL Supabase (contacts, opportunities, workflows)
-// ──────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 
 export type Pipeline = {
   id: string;
@@ -91,6 +91,21 @@ export type Opportunity = {
   created_at: string;
 };
 
+/**
+ * Cached GHL contact in HL Supabase. `custom_fields` is the JSONB array of
+ * `{id, value}` objects that mirrors GHL's custom-field model. Typed as
+ * `unknown` because the array's value column is genuinely heterogeneous —
+ * extract typed values via helpers in lib/queries/pipelines.ts.
+ */
+export type HlContact = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  custom_fields: unknown;
+};
+
 export type Workflow = {
   id: string;
   ghl_workflow_id: string;
@@ -110,9 +125,9 @@ export type WorkflowRegistry = {
   message_pressure_level: string | null;
 };
 
-// ──────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 // MCP response shapes
-// ──────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 //
 // Raw shapes match what LP-MCP and HL-MCP `get_sync_health` /
 // `get_railway_service_status` actually return. Flat shapes are the adapted
