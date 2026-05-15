@@ -5,7 +5,10 @@
  *   GET  /tools/<name>?<query>   for read tools
  *   POST /tools/<name>           with JSON body for write/action tools
  *
- * Authentication is via Bearer token in the Authorization header.
+ * Authentication is via Bearer token in the Authorization header (only sent
+ * when the configured token is a non-empty string).
+ *
+ * Every call has a 10s timeout so a hung MCP never blocks an RSC render.
  */
 
 type CallOpts = {
@@ -15,6 +18,8 @@ type CallOpts = {
   revalidate?: number; // seconds; passed to fetch cache
   signal?: AbortSignal;
 };
+
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 export class McpClient {
   constructor(
@@ -55,10 +60,18 @@ export class McpClient {
     }
     if (opts.body !== undefined) headers["Content-Type"] = "application/json";
 
+    // Internal 10s timeout, optionally combined with a caller-provided signal.
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT_MS);
+    if (opts.signal) {
+      if (opts.signal.aborted) ctrl.abort();
+      else opts.signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+    }
+
     const init: RequestInit & { next?: { revalidate?: number } } = {
       method: opts.method ?? "GET",
       headers,
-      signal: opts.signal,
+      signal: ctrl.signal,
     };
     if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
     if (opts.revalidate !== undefined) init.next = { revalidate: opts.revalidate };
@@ -69,7 +82,12 @@ export class McpClient {
     try {
       res = await fetch(urlStr, init);
     } catch (e) {
-      const error = e instanceof Error ? e.message : String(e);
+      const isTimeout = ctrl.signal.aborted && !(opts.signal?.aborted ?? false);
+      const error = isTimeout
+        ? `Timed out after ${DEFAULT_TIMEOUT_MS}ms`
+        : e instanceof Error
+          ? e.message
+          : String(e);
       console.error(
         "[mcp]",
         JSON.stringify({
@@ -87,6 +105,8 @@ export class McpClient {
         0,
         toolName,
       );
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (!res.ok) {

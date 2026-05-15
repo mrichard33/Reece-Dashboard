@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { requireUser } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
@@ -59,7 +58,10 @@ export default async function PipelinesPage() {
                   open opps · {usd(p.totalValue)}
                 </span>
               </div>
-              <InfoPopover helpKey="pipelines.total" />
+              <div className="flex items-center gap-1">
+                <InfoPopover helpKey="pipelines.dataLineage" />
+                <InfoPopover helpKey="pipelines.total" />
+              </div>
             </CardHeader>
             <CardContent>
               {p.stages.length === 0 ? (
@@ -70,19 +72,49 @@ export default async function PipelinesPage() {
                 <StageBars stages={p.stages} />
               )}
 
+              {p.recentOpps.length > 0 && (
+                <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Recent open opps
+                  </h4>
+                  <ul className="divide-y divide-slate-50 dark:divide-slate-800/60">
+                    {p.recentOpps.map((o) => (
+                      <li
+                        key={o.id}
+                        className="flex items-baseline justify-between gap-3 py-1.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-slate-900 dark:text-slate-100">
+                            {o.contact_name}
+                          </p>
+                          <p className="truncate text-xs font-mono text-slate-500">
+                            LP {o.lp_prospect_id ?? "—"}
+                          </p>
+                        </div>
+                        <span className="font-mono tabular text-xs text-slate-500 dark:text-slate-400">
+                          {usd(o.monetary_value)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
                 <p className="text-[11px] text-slate-500">
-                  Click into stages for drill-down detail (Phase 2).
+                  {p.contactsFallback
+                    ? "Contact enrichment unavailable — see info popover."
+                    : "Click into stages for drill-down detail (Phase 2)."}
                 </p>
-                <Link
-                  href="#"
-                  aria-disabled
-                  onClick={(e) => e.preventDefault()}
+                <button
+                  type="button"
+                  disabled
+                  aria-label="Drill down (Phase 2)"
                   className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-slate-400"
                 >
                   Drill down
                   <ChevronRight className="h-3 w-3" />
-                </Link>
+                </button>
               </div>
             </CardContent>
           </Card>
