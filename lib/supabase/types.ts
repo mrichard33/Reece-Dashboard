@@ -268,6 +268,27 @@ export type SyncHealthRaw = {
   circuit_breaker?: { consecutiveFailures: number; circuitOpen: boolean };
 };
 
+/**
+ * HL MCP's get_sync_health returns a different shape than LP's: a `sync_state`
+ * array (one row per entity) plus a 24h failure-rate summary, rather than
+ * LP's `last_sync_by_entity` map + circuit breaker. Adapted by adaptHlSyncHealth.
+ */
+export type HlSyncStateRow = {
+  entity_name: string;
+  last_synced_at: string | null;
+  updated_at?: string | null;
+};
+
+export type HlSyncHealthRaw = {
+  sync_state?: HlSyncStateRow[];
+  failure_rate_24h?: {
+    total_syncs?: number;
+    failed_syncs?: number;
+    failure_rate?: string;
+  };
+  cache_counts?: Record<string, number>;
+};
+
 export type SyncHealth = {
   last_sync_at: string | null;
   status: "healthy" | "stale" | "error" | "unknown";
@@ -290,6 +311,8 @@ export type RailwayDeploymentNode = {
 
 export type RailwayStatusRaw = {
   name?: string;
+  /** The get_railway_service_status tool nests the service name here. */
+  service?: { name?: string };
   icon?: string | null;
   updatedAt?: string;
   deployments?: { edges?: Array<{ node?: RailwayDeploymentNode }> };
