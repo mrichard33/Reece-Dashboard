@@ -2,6 +2,7 @@ import { lpService } from "@/lib/supabase/lp";
 import { lpMcp } from "@/lib/mcp/lpClient";
 import { hlMcp } from "@/lib/mcp/hlClient";
 import type {
+  HlSyncHealthRaw,
   RailwayServiceStatus,
   RailwayStatusRaw,
   SyncHealth,
@@ -57,6 +58,33 @@ function adaptSyncHealth(raw: SyncHealthRaw): SyncHealth {
   };
 }
 
+/**
+ * HL MCP reports sync health as a `sync_state` array (one row per entity).
+ * Derive last_sync_at from the most recent row; status mirrors the LP
+ * thresholds (>2h since last sync = stale).
+ */
+function adaptHlSyncHealth(raw: HlSyncHealthRaw): SyncHealth {
+  const times = (raw.sync_state ?? [])
+    .map((s) => s.last_synced_at)
+    .filter((x): x is string => typeof x === "string");
+  times.sort();
+  const last_sync_at = times.at(-1) ?? null;
+
+  let status: SyncHealth["status"] = "unknown";
+  if (last_sync_at !== null) {
+    const mins = minutesSince(last_sync_at);
+    if (mins === null) status = "unknown";
+    else if (mins > 120) status = "stale";
+    else status = "healthy";
+  }
+
+  return {
+    last_sync_at,
+    status,
+    details: raw as unknown as Record<string, unknown>,
+  };
+}
+
 function adaptRailwayStatus(
   raw: RailwayStatusRaw,
   fallbackName: string,
@@ -72,7 +100,7 @@ function adaptRailwayStatus(
     else if (s === "REMOVED") status = "stopped";
   }
   return {
-    service: raw.name ?? fallbackName,
+    service: raw.service?.name ?? raw.name ?? fallbackName,
     status,
     last_deploy_at: node?.createdAt ?? null,
     details: raw as unknown as Record<string, unknown>,
@@ -82,7 +110,7 @@ function adaptRailwayStatus(
 export async function getHealthSnapshot(): Promise<HealthSnapshot> {
   const [hlMcpStatus, hlSync, lpSync, heartbeat] = await Promise.all([
     safeAdapt(hlMcp.getRailwayServiceStatus(), (r) => adaptRailwayStatus(r, "hl-mcp")),
-    safeAdapt(hlMcp.getSyncHealth(), adaptSyncHealth),
+    safeAdapt(hlMcp.getSyncHealth(), adaptHlSyncHealth),
     safeAdapt(lpMcp.getSyncHealth(), adaptSyncHealth),
     getHeartbeat(),
   ]);

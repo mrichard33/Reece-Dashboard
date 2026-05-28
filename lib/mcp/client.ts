@@ -1,22 +1,24 @@
 /**
- * Generic MCP-over-HTTP client.
+ * MCP client over Streamable HTTP.
  *
- * Both LP and HL MCP services expose tool endpoints at:
- *   GET  /tools/<name>?<query>   for read tools
- *   POST /tools/<name>           with JSON body for write/action tools
+ * The LP and HL services expose their tools via the MCP protocol at
+ *   POST <baseUrl>/mcp
+ * (StreamableHTTP transport — JSON-RPC with an `initialize` handshake and an
+ * `mcp-session-id`). They do NOT expose a REST `/tools/<name>` surface, so we
+ * speak MCP directly with the official SDK rather than plain fetch.
  *
- * Authentication is via Bearer token in the Authorization header (only sent
- * when the configured token is a non-empty string).
- *
- * Every call has a 10s timeout so a hung MCP never blocks an RSC render.
+ * A static Bearer token is sent when configured (it must match each server's
+ * MCP_AUTH_TOKEN). Every call is bounded by a 10s timeout so a hung or
+ * unreachable MCP never blocks an RSC render — failures surface as McpError,
+ * which callers degrade into a "status unavailable" tile.
  */
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
 type CallOpts = {
-  method?: "GET" | "POST";
-  query?: Record<string, string | number | boolean | undefined>;
-  body?: unknown;
-  revalidate?: number; // seconds; passed to fetch cache
-  signal?: AbortSignal;
+  /** Tool arguments. Defaults to `{}` (most dashboard tools take none). */
+  args?: Record<string, unknown>;
 };
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -31,107 +33,102 @@ export class McpClient {
   async call<T>(toolName: string, opts: CallOpts = {}): Promise<T> {
     if (!this.baseUrl) {
       const msg = `${this.label.toUpperCase()} MCP base URL missing. Set ${this.label.toUpperCase()}_MCP_URL in env.`;
-      console.error(
-        "[mcp]",
-        JSON.stringify({
-          label: this.label,
-          tool: toolName,
-          url: null,
-          method: opts.method ?? "GET",
-          status: 0,
-          durationMs: 0,
-          error: msg,
-        }),
-      );
+      this.logError(toolName, null, 0, msg);
       throw new McpError(msg, 0, toolName);
     }
-    const url = new URL(`/tools/${toolName}`, this.baseUrl);
-    if (opts.query) {
-      for (const [k, v] of Object.entries(opts.query)) {
-        if (v !== undefined) url.searchParams.set(k, String(v));
-      }
-    }
 
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-    };
+    const endpoint = new URL("/mcp", this.baseUrl);
+    const headers: Record<string, string> = {};
     if (typeof this.authToken === "string" && this.authToken.trim().length > 0) {
       headers.Authorization = `Bearer ${this.authToken.trim()}`;
     }
-    if (opts.body !== undefined) headers["Content-Type"] = "application/json";
 
-    // Internal 10s timeout, optionally combined with a caller-provided signal.
-    const ctrl = new AbortController();
-    const timeoutId = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT_MS);
-    if (opts.signal) {
-      if (opts.signal.aborted) ctrl.abort();
-      else opts.signal.addEventListener("abort", () => ctrl.abort(), { once: true });
-    }
+    const transport = new StreamableHTTPClientTransport(endpoint, {
+      requestInit: { headers },
+    });
+    const client = new Client(
+      { name: "antifragile-mission-control", version: "0.1.0" },
+      { capabilities: {} },
+    );
 
-    const init: RequestInit & { next?: { revalidate?: number } } = {
-      method: opts.method ?? "GET",
-      headers,
-      signal: ctrl.signal,
-    };
-    if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
-    if (opts.revalidate !== undefined) init.next = { revalidate: opts.revalidate };
-
-    const urlStr = url.toString();
     const startedAt = Date.now();
-    let res: Response;
     try {
-      res = await fetch(urlStr, init);
-    } catch (e) {
-      const isTimeout = ctrl.signal.aborted && !(opts.signal?.aborted ?? false);
-      const error = isTimeout
-        ? `Timed out after ${DEFAULT_TIMEOUT_MS}ms`
-        : e instanceof Error
-          ? e.message
-          : String(e);
-      console.error(
-        "[mcp]",
-        JSON.stringify({
-          label: this.label,
-          tool: toolName,
-          url: urlStr,
-          method: init.method,
-          status: 0,
-          durationMs: Date.now() - startedAt,
-          error,
-        }),
+      await client.connect(transport);
+      const res = await client.callTool(
+        { name: toolName, arguments: opts.args ?? {} },
+        undefined,
+        { timeout: DEFAULT_TIMEOUT_MS },
       );
+
+      const text = firstText(res.content);
+
+      if (res.isError) {
+        throw new McpError(
+          `${this.label.toUpperCase()} MCP ${toolName} returned an error: ${(text ?? "isError").slice(0, 200)}`,
+          0,
+          toolName,
+        );
+      }
+      if (text === null) {
+        throw new McpError(
+          `${this.label.toUpperCase()} MCP ${toolName} returned no text content`,
+          0,
+          toolName,
+        );
+      }
+
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        throw new McpError(
+          `${this.label.toUpperCase()} MCP ${toolName} returned non-JSON content: ${text.slice(0, 200)}`,
+          0,
+          toolName,
+        );
+      }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      this.logError(toolName, endpoint.toString(), Date.now() - startedAt, error);
+      if (e instanceof McpError) throw e;
       throw new McpError(
-        `${this.label.toUpperCase()} MCP ${toolName} fetch failed: ${error}`,
+        `${this.label.toUpperCase()} MCP ${toolName} call failed: ${error}`,
         0,
         toolName,
       );
     } finally {
-      clearTimeout(timeoutId);
+      await client.close().catch(() => {});
     }
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error(
-        "[mcp]",
-        JSON.stringify({
-          label: this.label,
-          tool: toolName,
-          url: urlStr,
-          method: init.method,
-          status: res.status,
-          durationMs: Date.now() - startedAt,
-          error: `HTTP ${res.status}`,
-          bodyPreview: text.slice(0, 200),
-        }),
-      );
-      throw new McpError(
-        `${this.label.toUpperCase()} MCP ${toolName} failed (${res.status}): ${text.slice(0, 200)}`,
-        res.status,
-        toolName,
-      );
-    }
-    return (await res.json()) as T;
   }
+
+  private logError(tool: string, url: string | null, durationMs: number, error: string) {
+    console.error(
+      "[mcp]",
+      JSON.stringify({
+        label: this.label,
+        tool,
+        url,
+        transport: "streamable-http",
+        durationMs,
+        error,
+      }),
+    );
+  }
+}
+
+/** Pull the first text block out of an MCP tool result's content array. */
+function firstText(content: unknown): string | null {
+  if (!Array.isArray(content)) return null;
+  for (const item of content) {
+    if (
+      item &&
+      typeof item === "object" &&
+      (item as { type?: unknown }).type === "text" &&
+      typeof (item as { text?: unknown }).text === "string"
+    ) {
+      return (item as { text: string }).text;
+    }
+  }
+  return null;
 }
 
 export class McpError extends Error {
