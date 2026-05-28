@@ -62,6 +62,111 @@ export type DashboardUser = {
 };
 
 // ─────────────────────────────────────────────────────────────────
+// Executive Review & Showcase (LP Supabase — see db/migrations/0002)
+// ─────────────────────────────────────────────────────────────────
+
+export type Executive = {
+  id: string;
+  user_id: string | null;
+  name: string;
+  email: string;
+  is_admin: boolean;
+  active: boolean;
+  created_at: string;
+};
+
+export type AssetType =
+  | "script"
+  | "audio"
+  | "video"
+  | "framework"
+  | "transcript"
+  | "system_change"
+  | "other";
+
+export type AssetStatus = "draft" | "in_review" | "approved" | "changes_requested";
+
+export type Asset = {
+  id: string;
+  title: string;
+  asset_type: AssetType;
+  description: string | null;
+  status: AssetStatus;
+  created_by: string;
+  submitted_at: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AttachmentKind = "file" | "link" | "text";
+export type MediaType = "audio" | "video" | "pdf" | "doc" | "other";
+
+export type AssetAttachment = {
+  id: string;
+  asset_id: string;
+  kind: AttachmentKind;
+  label: string;
+  storage_path: string | null;
+  external_url: string | null;
+  inline_text: string | null;
+  media_type: MediaType | null;
+  sort_order: number;
+  created_at: string;
+};
+
+export type ApprovalDecision = "pending" | "approved" | "rejected";
+
+export type AssetApproval = {
+  id: string;
+  asset_id: string;
+  executive_id: string;
+  required: boolean;
+  decision: ApprovalDecision;
+  reason: string | null;
+  decided_at: string | null;
+};
+
+export type ActivityEvent = {
+  id: string;
+  event_type: string;
+  actor_id: string | null;
+  asset_id: string | null;
+  summary: string;
+  created_at: string;
+};
+
+export type ActivityCategory = "content" | "automation" | "funnel" | "other";
+
+export type ActivityPost = {
+  id: string;
+  author_id: string;
+  body: string;
+  category: ActivityCategory | null;
+  created_at: string;
+};
+
+export type FeedItem = {
+  source: "event" | "post";
+  id: string;
+  body: string;
+  actor_id: string | null;
+  asset_id: string | null;
+  category: ActivityCategory | null;
+  created_at: string;
+};
+
+export type AppNotification = {
+  id: string;
+  recipient_id: string;
+  type: string;
+  asset_id: string | null;
+  body: string;
+  read: boolean;
+  created_at: string;
+};
+
+// ─────────────────────────────────────────────────────────────────
 // HL Supabase (contacts, opportunities, workflows)
 // ─────────────────────────────────────────────────────────────────
 

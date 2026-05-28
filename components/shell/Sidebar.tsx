@@ -8,14 +8,16 @@ import {
   Calendar,
   AlertTriangle,
   Cog,
+  ShieldCheck,
 } from "lucide-react";
+import { NotificationBell } from "@/components/approvals/NotificationBell";
 
 type NavItem = {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
-  /** "team" sees these even without operator role. */
-  audience: "all" | "operator";
+  /** "all" = any role; "operator" = operators; "executive" = Exec-Review members. */
+  audience: "all" | "operator" | "executive";
   /** Phase 2+ — link is rendered as a stub. */
   phase?: 2 | 3;
 };
@@ -28,28 +30,41 @@ const items: NavItem[] = [
   { href: "/leads", label: "Leads", Icon: Users, audience: "all", phase: 2 },
   { href: "/appointments", label: "Appointments", Icon: Calendar, audience: "all", phase: 3 },
   { href: "/issues", label: "Issues", Icon: AlertTriangle, audience: "operator" },
+  { href: "/approvals", label: "Executive Review", Icon: ShieldCheck, audience: "executive" },
   { href: "/ops/events", label: "Ops Logs", Icon: Cog, audience: "operator", phase: 3 },
 ];
 
 export function Sidebar({
   role,
+  isExecutive,
+  isExecOnly,
   currentPath,
 }: {
   role: "operator" | "team";
+  isExecutive: boolean;
+  isExecOnly: boolean;
   currentPath: string;
 }) {
-  const visible = items.filter((i) => i.audience === "all" || role === "operator");
+  const visible = items.filter((i) => {
+    if (i.audience === "executive") return isExecutive;
+    // Approver-only executives see nothing but the Executive Review tab.
+    if (isExecOnly) return false;
+    return i.audience === "all" || role === "operator";
+  });
 
   return (
     <aside className="flex w-56 flex-col border-r border-navy-700 bg-navy-900 text-slate-200">
-      <div className="flex items-center gap-2 px-4 py-4 border-b border-navy-700">
-        <div className="h-7 w-7 rounded-md bg-brick" />
-        <div className="leading-tight">
-          <p className="font-display text-sm font-semibold text-white">Mission Control</p>
-          <p className="text-[10px] uppercase tracking-wider text-navy-300">
-            Reece W&amp;D
-          </p>
+      <div className="flex items-center justify-between gap-2 px-4 py-4 border-b border-navy-700">
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-md bg-brick" />
+          <div className="leading-tight">
+            <p className="font-display text-sm font-semibold text-white">Mission Control</p>
+            <p className="text-[10px] uppercase tracking-wider text-navy-300">
+              Reece W&amp;D
+            </p>
+          </div>
         </div>
+        {isExecutive && <NotificationBell />}
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-3 text-sm">
@@ -106,7 +121,9 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-navy-700 px-4 py-3 text-[11px] text-navy-300">
-        <p className="font-medium">{role === "operator" ? "Operator" : "Team"} view</p>
+        <p className="font-medium">
+          {isExecOnly ? "Executive" : role === "operator" ? "Operator" : "Team"} view
+        </p>
         <p className="mt-0.5">Phase 1 build</p>
       </div>
     </aside>

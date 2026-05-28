@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, getAccessContext, type ExecutiveContext } from "@/lib/auth";
 
 /**
  * Server-side gate. Use at the top of an operator-only page:
@@ -30,4 +30,22 @@ export async function requireUser(): Promise<{
   const user = await getSessionUser();
   if (!user) redirect("/login");
   return { email: user.email, role: user.role };
+}
+
+/**
+ * Gate for the Executive Review surface. Sends signed-out users to /login and
+ * non-executives to /overview. Returns the full access context.
+ */
+export async function requireExecutive(): Promise<ExecutiveContext> {
+  const ctx = await getAccessContext();
+  if (!ctx) redirect("/login");
+  if (!ctx.isExecutive) redirect("/overview");
+  return ctx;
+}
+
+/** Gate for Exec-Review admin pages (asset create/edit). Admin = Mark only. */
+export async function requireExecAdmin(): Promise<ExecutiveContext> {
+  const ctx = await requireExecutive();
+  if (!ctx.isAdmin) redirect("/approvals");
+  return ctx;
 }
