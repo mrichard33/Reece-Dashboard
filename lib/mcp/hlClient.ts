@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { McpClient } from "./client";
-import type { SyncHealthRaw, RailwayStatusRaw } from "@/lib/supabase/types";
+import type { HlSyncHealthRaw, RailwayStatusRaw } from "@/lib/supabase/types";
 
 const rawToken = process.env.HL_MCP_AUTH_TOKEN;
 const authToken =
@@ -28,7 +28,7 @@ export type NamespaceViolation = {
 export const hlMcp = {
   /** Sync health for the HL cache (raw nested MCP response). */
   getSyncHealth: unstable_cache(
-    () => client.call<SyncHealthRaw>("get_sync_health"),
+    () => client.call<HlSyncHealthRaw>("get_sync_health"),
     ["hl-mcp", "get_sync_health"],
     { revalidate: 60, tags: ["hl-mcp"] },
   ),
@@ -57,7 +57,5 @@ export const hlMcp = {
 
   /** Manual sync trigger. */
   triggerSync: () =>
-    client.call<{ ok: boolean; jobId?: string }>("sync_all_entities", {
-      method: "POST",
-    }),
+    client.call<{ ok: boolean; jobId?: string }>("sync_all_entities"),
 };
