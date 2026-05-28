@@ -138,13 +138,20 @@ export function AssetForm({
     fd.set("newAttachments", JSON.stringify(manifest));
 
     startTransition(async () => {
-      const res = await saveAsset(fd);
-      if (!res.ok) {
-        setError(res.error ?? "Save failed.");
-        return;
+      try {
+        const res = await saveAsset(fd);
+        if (!res.ok) {
+          setError(res.error ?? "Save failed.");
+          return;
+        }
+        router.push(res.assetId ? `/approvals/${res.assetId}` : "/approvals");
+        router.refresh();
+      } catch {
+        setError(
+          "Save failed — a file may be too large to upload. Keep files under " +
+            `${MAX_UPLOAD_MB}MB, or add large video as a link instead.`,
+        );
       }
-      router.push(res.assetId ? `/approvals/${res.assetId}` : "/approvals");
-      router.refresh();
     });
   }
 
