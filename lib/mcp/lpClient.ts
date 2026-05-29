@@ -36,5 +36,8 @@ export const lpMcp = {
 
   /** Manual sync trigger — wired to the "Sync now" button. */
   triggerSync: () =>
-    client.call<{ ok: boolean; jobId?: string }>("sync_all_entities"),
+    client.call<{ ok?: boolean; status?: string; message?: string }>(
+      "sync_all_entities",
+      { timeoutMs: 30_000 },
+    ),
 };

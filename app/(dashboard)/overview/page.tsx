@@ -6,8 +6,7 @@ import { AlertTile } from "@/components/tiles/AlertTile";
 import { SyncFreshnessBanner } from "@/components/tiles/SyncFreshnessBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
-import { Badge } from "@/components/ui/Badge";
-import { Tooltip } from "@/components/ui/Tooltip";
+import { ActivityList } from "@/components/activity/ActivityList";
 import {
   getHealthSnapshot,
   heartbeatStatus,
@@ -16,7 +15,7 @@ import {
 } from "@/lib/queries/health";
 import { getHeadlineStats, deltaText } from "@/lib/queries/headlineStats";
 import { getRecentActivity, getActiveAlerts } from "@/lib/queries/activity";
-import { absTime, num, relTime } from "@/lib/utils";
+import { num } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -148,43 +147,7 @@ export default async function OverviewPage() {
               <InfoPopover helpKey="overview.activity" />
             </CardHeader>
             <CardContent>
-              {activity.length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-500">
-                  No recent system events.
-                </p>
-              ) : (
-                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {activity.map((e) => (
-                    <li key={e.id} className="flex items-start gap-3 py-2">
-                      <Badge
-                        tone={priorityTone(e.priority)}
-                        dot
-                        className="mt-0.5 flex-shrink-0"
-                      >
-                        {e.priority ?? "normal"}
-                      </Badge>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-navy-900 dark:text-slate-100">
-                          <span className="font-mono text-[11px] text-slate-500">
-                            {e.event_type}
-                          </span>{" "}
-                          {e.entity_type && (
-                            <span className="text-slate-700 dark:text-slate-300">
-                              {e.entity_type}
-                              {e.entity_id ? ` · ${e.entity_id.slice(0, 8)}` : ""}
-                            </span>
-                          )}
-                        </p>
-                        <Tooltip label={absTime(e.created_at)}>
-                          <p className="text-[11px] text-slate-500">
-                            {relTime(e.created_at)}
-                          </p>
-                        </Tooltip>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <ActivityList items={activity} />
             </CardContent>
           </Card>
 
@@ -244,19 +207,4 @@ function syncTileError(health: { lpSync: unknown; hlSync: unknown }): string | n
   if (lpErr) return `LP: ${lpErr}`;
   if (hlErr) return `HL: ${hlErr}`;
   return null;
-}
-
-function priorityTone(
-  p: "low" | "normal" | "high" | "critical" | null,
-): "slate" | "sky" | "amber" | "rose" {
-  switch (p) {
-    case "critical":
-      return "rose";
-    case "high":
-      return "amber";
-    case "low":
-      return "slate";
-    default:
-      return "sky";
-  }
 }
