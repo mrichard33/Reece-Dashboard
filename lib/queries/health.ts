@@ -176,6 +176,24 @@ export function syncStatus(snapshot: HealthSnapshot["lpSync"]) {
   return "critical" as const;
 }
 
+/**
+ * Freshness label for the Supabase Sync tile, derived from the SAME thresholds
+ * as `syncStatus()` (the source of the tile's dot color) so the label never
+ * contradicts the color — a yellow dot reads "aging", not "healthy".
+ */
+export function syncFreshnessLabel(snapshot: HealthSnapshot["lpSync"]): string {
+  switch (syncStatus(snapshot)) {
+    case "healthy":
+      return "current";
+    case "warning":
+      return "aging";
+    case "critical":
+      return "stale";
+    default:
+      return "unknown";
+  }
+}
+
 export function railwayStatus(s: HealthSnapshot["lpMcp"]) {
   if ("error" in s) return "neutral" as const;
   if (s.status === "running") {
