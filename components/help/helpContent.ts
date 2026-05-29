@@ -87,15 +87,17 @@ export const helpContent: Record<string, HelpEntry> = {
   // ── /overview · Row 3: activity + alerts ─────────────────────────────
   "overview.activity": {
     title: "Recent Activity",
-    what: "Last 20 system events across LP and HL. Color-coded by priority (low/normal/high/critical).",
-    where: "`select … from system_events order by created_at desc limit 20` (LP Supabase).",
-    fix: "If the feed is empty or stale, the event bus isn't firing. Check `/ops/events` (Phase 3) for the raw feed, or run the LP MCP heartbeat manually.",
+    what: "Last 20 system events. Contact-linked events (new lead, appointment, status change …) show as cards with the contact name, prospect #, LP source and subsource; system events (heartbeat, sync) appear compact below. Click any entry for full details.",
+    where:
+      "`system_events` (LP Supabase) joined in code to `lp_leads` on `lp_lead_id` for the contact name / prospect # / source / subsource.",
+    fix: "If the feed is empty or stale, the event bus isn't firing. Check the Decision Engine heartbeat tile, or run the LP MCP heartbeat manually.",
   },
   "overview.alerts": {
     title: "Active Alerts",
-    what: "Open issues sorted by severity. Anything here is something Claude or the system has flagged for attention.",
-    where: "`claude_known_issues` where `resolved_at is null`, ordered by severity (LP Supabase).",
-    fix: "Click an alert to open `/issues`. Resolve by setting `resolved_at = now()` on the row once addressed.",
+    what: "Open issues, most recent first, written in plain language with a severity label. Click an alert for what happened, who's affected, how important it is, and the recommended next steps.",
+    where:
+      "`claude_known_issues` where `status = 'open'` (LP Supabase). Plain-language titles and actions are mapped from the issue category.",
+    fix: "Use “View details” for recommended actions, or open `/issues` to triage. Resolve by setting `resolved_date` and `status = 'closed'` on the row once addressed.",
   },
 
   // ── /pipelines ─────────────────────────────────────────────
