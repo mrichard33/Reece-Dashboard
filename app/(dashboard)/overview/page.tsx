@@ -11,6 +11,7 @@ import {
   getHealthSnapshot,
   heartbeatStatus,
   syncStatus,
+  syncFreshnessLabel,
   railwayStatus,
 } from "@/lib/queries/health";
 import { getHeadlineStats, deltaText } from "@/lib/queries/headlineStats";
@@ -91,7 +92,7 @@ export default async function OverviewPage() {
               status={
                 worstStatus(syncStatus(health.lpSync), syncStatus(health.hlSync))
               }
-              detail={`LP: ${"error" in health.lpSync ? "—" : health.lpSync.status} · HL: ${"error" in health.hlSync ? "—" : health.hlSync.status}`}
+              detail={`LP: ${"error" in health.lpSync ? "—" : syncFreshnessLabel(health.lpSync)} · HL: ${"error" in health.hlSync ? "—" : syncFreshnessLabel(health.hlSync)}`}
               lastActivity={mostRecent(lpSyncLast, hlSyncLast)}
               lastError={syncTileError(health)}
               helpKey="overview.syncHealth"
