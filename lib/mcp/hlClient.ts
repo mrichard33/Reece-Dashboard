@@ -55,7 +55,12 @@ export const hlMcp = {
     { revalidate: 300, tags: ["hl-mcp"] },
   ),
 
-  /** Manual sync trigger. */
+  /**
+   * Manual sync trigger. HL's sync_all_entities awaits the full per-entity sync
+   * inline and returns a per-entity results record, so it gets a longer ceiling.
+   */
   triggerSync: () =>
-    client.call<{ ok: boolean; jobId?: string }>("sync_all_entities"),
+    client.call<Record<string, unknown>>("sync_all_entities", {
+      timeoutMs: 60_000,
+    }),
 };

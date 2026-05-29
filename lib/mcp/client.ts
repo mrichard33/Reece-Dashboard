@@ -19,6 +19,11 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 type CallOpts = {
   /** Tool arguments. Defaults to `{}` (most dashboard tools take none). */
   args?: Record<string, unknown>;
+  /**
+   * Per-call timeout override. Defaults to DEFAULT_TIMEOUT_MS. Sync triggers
+   * pass a higher ceiling since kicking off a sync can take longer than a read.
+   */
+  timeoutMs?: number;
 };
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -57,7 +62,7 @@ export class McpClient {
       const res = await client.callTool(
         { name: toolName, arguments: opts.args ?? {} },
         undefined,
-        { timeout: DEFAULT_TIMEOUT_MS },
+        { timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS },
       );
 
       const text = firstText(res.content);

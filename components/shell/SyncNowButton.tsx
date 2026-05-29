@@ -1,21 +1,29 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 
 type SyncResult = { ok: boolean; error?: string };
+
+// One message per service so partial outcomes read clearly ("HL synced · LP
+// failed: …") instead of a single blended string.
+function describe(label: string, res: SyncResult): string {
+  return res.ok ? `${label} synced` : `${label} failed${res.error ? `: ${res.error}` : ""}`;
+}
 
 export function SyncNowButton() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
 
   async function sync() {
     setBusy(true);
     setErr(null);
+    setOkMsg(null);
     try {
       const [lp, hl] = await Promise.all([
         fetch("/api/sync/lp", { method: "POST" })
@@ -32,18 +40,13 @@ export function SyncNowButton() {
           })),
       ]);
 
-      if (!lp.ok && !hl.ok) {
-        const parts = [
-          lp.error ? `LP: ${lp.error}` : null,
-          hl.error ? `HL: ${hl.error}` : null,
-        ].filter(Boolean);
-        setErr(parts.length > 0 ? parts.join(" · ") : "Both syncs failed.");
-        return;
-      }
-      if (!lp.ok) {
-        setErr(`LP sync failed${lp.error ? `: ${lp.error}` : ""}`);
-      } else if (!hl.ok) {
-        setErr(`HL sync failed${hl.error ? `: ${hl.error}` : ""}`);
+      if (lp.ok && hl.ok) {
+        setOkMsg("Sync started for LP and HL");
+      } else if (!lp.ok && !hl.ok) {
+        setErr(`${describe("LP", lp)} · ${describe("HL", hl)}`);
+      } else {
+        // Partial: name the one that worked and the one that didn't.
+        setErr(`${describe("HL", hl)} · ${describe("LP", lp)}`);
       }
       startTransition(() => router.refresh());
     } catch (e) {
@@ -64,14 +67,19 @@ export function SyncNowButton() {
         <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
         {busy ? "Syncing…" : "Sync now"}
       </Button>
-      {err && (
+      {err ? (
         <span
           className="max-w-[24rem] truncate text-xs text-rose-600 dark:text-rose-400"
           title={err}
         >
           {err}
         </span>
-      )}
+      ) : okMsg ? (
+        <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {okMsg}
+        </span>
+      ) : null}
     </div>
   );
 }

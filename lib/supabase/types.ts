@@ -13,12 +13,44 @@
 export type SystemEvent = {
   id: number;
   event_type: string;
+  event_subtype: string | null;
+  source: string | null;
   entity_type: string | null;
   entity_id: string | null;
+  ghl_contact_id: string | null;
+  lp_lead_id: string | null;
+  lp_prospect_id: string | null;
   priority: "low" | "normal" | "high" | "critical" | null;
   payload: Record<string, unknown> | null;
+  previous_state: Record<string, unknown> | null;
+  new_state: Record<string, unknown> | null;
   created_at: string;
 };
+
+/**
+ * Trimmed lp_leads projection used to enrich an activity event with its
+ * contact. Joined in JS on `lp_lead_id` (system_events and lp_leads both live
+ * in LP Supabase, but we query in parallel and merge rather than SQL-join).
+ */
+export type LeadLite = {
+  lp_lead_id: string;
+  lp_prospect_id: string | null;
+  ghl_contact_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  lead_source: string | null;
+  lead_source_detail: string | null;
+  rep_name: string | null;
+  disposition_label: string | null;
+  appointment_set: boolean | null;
+  demo_completed: boolean | null;
+  job_value: number | null;
+};
+
+/** A system event with its contact attached (null for system-level events). */
+export type ActivityItem = SystemEvent & { lead: LeadLite | null };
 
 export type LpLead = {
   id: string;
