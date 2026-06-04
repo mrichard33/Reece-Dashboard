@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Activity, ChevronRight, User } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
@@ -155,6 +156,7 @@ function ActivityDetail({
   const meta = eventMeta(item.event_type);
   const lead = item.lead;
   const name = contactName(lead);
+  const leadId = lead?.lp_lead_id ?? item.lp_lead_id;
 
   return (
     <Drawer
@@ -192,6 +194,15 @@ function ActivityDetail({
               />
             </dl>
           </section>
+        )}
+
+        {leadId && (
+          <Link
+            href={`/leads/${leadId}` as never}
+            className="inline-flex items-center gap-1 text-sm font-medium text-sky-600 hover:underline dark:text-sky-400"
+          >
+            View full lead timeline <ChevronRight className="h-4 w-4" />
+          </Link>
         )}
 
         <section>

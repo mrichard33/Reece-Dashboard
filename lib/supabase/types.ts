@@ -94,6 +94,71 @@ export type DashboardUser = {
 };
 
 // ─────────────────────────────────────────────────────────────────
+// Per-lead feeds (lp_call_logs / lp_notes / lp_activities)
+// ─────────────────────────────────────────────────────────────────
+//
+// Every column EXCEPT the `raw_lp_data` jsonb blob, which lives in TOAST,
+// is never rendered, and would be fetched on every row by `select('*')`.
+// Projecting these columns is fix #4 of the LP read-I/O work.
+
+export type LpCallLog = {
+  id: string;
+  lp_call_id: string;
+  lp_lead_id: string | null;
+  ghl_contact_id: string | null;
+  call_date: string | null;
+  call_duration_sec: number | null;
+  call_result: string | null;
+  call_direction: string | null;
+  rep_id: string | null;
+  rep_name: string | null;
+  call_notes: string | null;
+  recording_url: string | null;
+  synced_at: string | null;
+  agent_id: string | null;
+  agent_name: string | null;
+};
+
+export type LpNote = {
+  id: string;
+  lp_note_id: string;
+  lp_lead_id: string | null;
+  ghl_contact_id: string | null;
+  note_body: string | null;
+  note_type: string | null;
+  created_by_rep_id: string | null;
+  created_by_rep_name: string | null;
+  created_at_lp: string | null;
+  synced_at: string | null;
+  note_category: string | null;
+  ghl_note_pushed: boolean | null;
+};
+
+export type LpActivity = {
+  id: string;
+  lp_activity_id: string;
+  lp_lead_id: string | null;
+  activity_type: string | null;
+  activity_detail: string | null;
+  rep_id: string | null;
+  rep_name: string | null;
+  activity_date: string | null;
+  synced_at: string | null;
+};
+
+/**
+ * Keyset (cursor) pagination primitives. The cursor is the last row's
+ * `(sort_timestamp, id)`; `lastDate` is always a UTC `Z` ISO string so it is
+ * safe to embed in a supabase-js `.or()` filter (which is NOT url-encoded — a
+ * `+00:00` offset would otherwise have its `+` decoded to a space). See
+ * lib/queries/leads.ts.
+ */
+export type Cursor = { lastDate: string; lastId: string } | null;
+
+/** One page of a feed plus the cursor for the next page (null = no more). */
+export type FeedPage<T> = { rows: T[]; nextCursor: Cursor };
+
+// ─────────────────────────────────────────────────────────────────
 // Executive Review & Showcase (LP Supabase — see db/migrations/0002)
 // ─────────────────────────────────────────────────────────────────
 
