@@ -49,3 +49,15 @@ export async function requireExecAdmin(): Promise<ExecutiveContext> {
   if (!ctx.isAdmin) redirect("/approvals");
   return ctx;
 }
+
+/**
+ * Gate for the Content (FB post engine) surface. Operators and executives may
+ * view it; approve/reject is further gated to executives in the actions/RLS.
+ * Sends signed-out users to /login and everyone else to /overview.
+ */
+export async function requireContentAccess(): Promise<ExecutiveContext> {
+  const ctx = await getAccessContext();
+  if (!ctx) redirect("/login");
+  if (ctx.role !== "operator" && !ctx.isExecutive) redirect("/overview");
+  return ctx;
+}

@@ -421,3 +421,143 @@ export type RailwayServiceStatus = {
   last_deploy_at: string | null;
   details?: Record<string, unknown>;
 };
+
+// ─────────────────────────────────────────────────────────────────
+// Facebook Content Engine (LP Supabase — see db/migrations/0003, 0004)
+// ─────────────────────────────────────────────────────────────────
+
+export type FbPillar =
+  | "storm"
+  | "noise"
+  | "energy"
+  | "security"
+  | "comfort"
+  | "insurance"
+  | "uv"
+  | "value";
+
+export type FbArchetype =
+  | "myth-bust"
+  | "secret-reveal"
+  | "story"
+  | "mistake-expose"
+  | "seasonal"
+  | "thought-leadership"
+  | "community-cause"
+  | "social-proof";
+
+export type FbTarget = "group" | "page" | "both";
+export type FbComponentStatus = "pending" | "approved" | "rejected";
+export type FbPostStatus = "draft" | "approved" | "posted" | "skipped";
+export type FbSubtopicStatus = "proposed" | "active" | "inactive" | "rejected";
+export type FbComponent = "copy" | "image" | "both";
+export type FbReasonCode =
+  | "off-brand"
+  | "weak-hook"
+  | "wrong-pillar-fit"
+  | "compliance-risk"
+  | "too-salesy"
+  | "inaccurate"
+  | "image-mismatch"
+  | "image-quality"
+  | "other";
+
+export type FbPost = {
+  id: string;
+  scheduled_date: string;
+  target: FbTarget;
+  pillar: string | null;
+  archetype: string | null;
+  post_body: string | null;
+  first_comment: string | null;
+  image_concept: string | null;
+  image_url: string | null;
+  subtopic_id: string | null;
+  copy_status: FbComponentStatus;
+  image_status: FbComponentStatus;
+  status: FbPostStatus;
+  revision: number;
+  needs_manual: boolean;
+  approved_by: string | null;
+  posted_by: string | null;
+  posted_at: string | null;
+  fb_permalink: string | null;
+  created_at: string;
+};
+
+export type FbSubtopic = {
+  id: string;
+  subtopic: string;
+  pillar: string;
+  buyer_stage: string | null;
+  source: string;
+  answers_question: string | null;
+  source_evidence: string | null;
+  status: FbSubtopicStatus;
+  last_used_at: string | null;
+  times_used: number;
+  created_at: string;
+};
+
+export type FbMessagingPrompt = {
+  id: string;
+  name: string;
+  body: string;
+  version: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type FbMessageBank = {
+  id: string;
+  variables: Record<string, unknown>;
+  version: number;
+  segment: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type FbPostFeedback = {
+  id: string;
+  post_id: string;
+  component: FbComponent;
+  reason_code: FbReasonCode;
+  reason_text: string | null;
+  rejected_snapshot: string | null;
+  rejected_by: string;
+  created_at: string;
+};
+
+export type FbPostMetric = {
+  id: string;
+  post_id: string;
+  source: "page" | "group";
+  reactions: number | null;
+  comments: number | null;
+  shares: number | null;
+  impressions: number | null;
+  reach: number | null;
+  link_clicks: number | null;
+  pulled_at: string;
+};
+
+/** Row of v_fb_post_engagement: a post joined to its latest metrics + rate. */
+export type FbPostEngagement = {
+  id: string;
+  scheduled_date: string;
+  pillar: string | null;
+  archetype: string | null;
+  target: FbTarget;
+  status: FbPostStatus;
+  post_body: string | null;
+  posted_at: string | null;
+  metric_source: "page" | "group" | null;
+  reactions: number | null;
+  comments: number | null;
+  shares: number | null;
+  impressions: number | null;
+  reach: number | null;
+  link_clicks: number | null;
+  pulled_at: string | null;
+  engagement_rate: number | null;
+};
