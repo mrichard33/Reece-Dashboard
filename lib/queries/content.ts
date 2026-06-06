@@ -16,6 +16,19 @@ const POST_COLUMNS =
 const SUBTOPIC_COLUMNS =
   "id, subtopic, pillar, buyer_stage, source, answers_question, source_evidence, status, last_used_at, times_used, created_at";
 
+/**
+ * Cheap probe: are the content-engine tables present? Lets pages show a setup
+ * banner instead of silently-empty UI when migrations 0003/0004 aren't applied.
+ */
+export async function contentEngineReady(): Promise<boolean> {
+  const supabase = await lpServer();
+  const { error } = await supabase
+    .from("fb_posts")
+    .select("id", { head: true, count: "exact" })
+    .limit(1);
+  return !error;
+}
+
 // ── Calendar ──────────────────────────────────────────────────────
 
 /** Posts whose scheduled_date falls in [startDate, endDate] (ISO yyyy-MM-dd). */
@@ -31,7 +44,10 @@ export async function listPostsForRange(
     .lte("scheduled_date", endDate)
     .order("scheduled_date", { ascending: true })
     .order("created_at", { ascending: true });
-  if (error) throw new Error(`Failed to load posts: ${error.message}`);
+  if (error) {
+    console.error("[content] listPostsForRange:", error.message);
+    return [];
+  }
   return (data ?? []) as unknown as FbPost[];
 }
 
@@ -42,7 +58,10 @@ export async function getPost(id: string): Promise<FbPost | null> {
     .select(POST_COLUMNS)
     .eq("id", id)
     .maybeSingle();
-  if (error) throw new Error(`Failed to load post: ${error.message}`);
+  if (error) {
+    console.error("[content] getPost:", error.message);
+    return null;
+  }
   return (data as unknown as FbPost) ?? null;
 }
 
@@ -55,7 +74,10 @@ export async function getPostFeedback(postId: string): Promise<FbPostFeedback[]>
     )
     .eq("post_id", postId)
     .order("created_at", { ascending: false });
-  if (error) throw new Error(`Failed to load feedback: ${error.message}`);
+  if (error) {
+    console.error("[content] getPostFeedback:", error.message);
+    return [];
+  }
   return (data ?? []) as unknown as FbPostFeedback[];
 }
 
@@ -79,7 +101,10 @@ export async function listProposals(): Promise<FbSubtopic[]> {
     .select(SUBTOPIC_COLUMNS)
     .eq("status", "proposed")
     .order("created_at", { ascending: false });
-  if (error) throw new Error(`Failed to load proposals: ${error.message}`);
+  if (error) {
+    console.error("[content] listProposals:", error.message);
+    return [];
+  }
   return (data ?? []) as unknown as FbSubtopic[];
 }
 
@@ -91,7 +116,10 @@ export async function listSubtopics(): Promise<FbSubtopic[]> {
     .neq("status", "proposed")
     .order("pillar", { ascending: true })
     .order("times_used", { ascending: true });
-  if (error) throw new Error(`Failed to load subtopics: ${error.message}`);
+  if (error) {
+    console.error("[content] listSubtopics:", error.message);
+    return [];
+  }
   return (data ?? []) as unknown as FbSubtopic[];
 }
 
@@ -121,7 +149,10 @@ export async function getMessageBank(): Promise<FbMessageBank | null> {
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw new Error(`Failed to load message bank: ${error.message}`);
+  if (error) {
+    console.error("[content] getMessageBank:", error.message);
+    return null;
+  }
   return (data as unknown as FbMessageBank) ?? null;
 }
 
@@ -132,7 +163,10 @@ export async function getPrompts(): Promise<FbMessagingPrompt[]> {
     .select("id, name, body, version, is_active, created_at")
     .eq("is_active", true)
     .order("name", { ascending: true });
-  if (error) throw new Error(`Failed to load prompts: ${error.message}`);
+  if (error) {
+    console.error("[content] getPrompts:", error.message);
+    return [];
+  }
   return (data ?? []) as unknown as FbMessagingPrompt[];
 }
 
