@@ -1,0 +1,82 @@
+{
+  "name": "FB · Queue Health (WF6)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 18 * * *" } ] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 200],
+      "id": "wf6-schedule-001",
+      "name": "Daily 18:00 ET"
+    },
+    {
+      "parameters": {
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?scheduled_date=eq.{{ $today.plus({ days: 1 }).toFormat('yyyy-LL-dd') }}&status=eq.approved&select=id",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [240, 200],
+      "id": "wf6-get-tomorrow-002",
+      "name": "Get Tomorrow Approved"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose" },
+          "conditions": [ { "id": "empty", "leftValue": "={{ $input.all().length }}", "rightValue": 0, "operator": { "type": "number", "operation": "equals" } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 200],
+      "id": "wf6-empty-003",
+      "name": "None Approved?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groupme.com/v3/bots/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '🚨 No approved Facebook post for tomorrow — approvers please review (Mark, Edwin, Ryan).' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [680, 120],
+      "id": "wf6-escalate-004",
+      "name": "GroupMe Escalation"
+    },
+    {
+      "parameters": {
+        "content": "## WF6 — Queue Health\nDaily 18:00 ET. If tomorrow has no `approved` post, escalate on GroupMe tagging the\napprovers. Keeps the daily cadence from silently lapsing.",
+        "height": 160, "width": 380
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -80],
+      "id": "wf6-note-005",
+      "name": "About WF6"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily 18:00 ET": { "main": [ [ { "node": "Get Tomorrow Approved", "type": "main", "index": 0 } ] ] },
+    "Get Tomorrow Approved": { "main": [ [ { "node": "None Approved?", "type": "main", "index": 0 } ] ] },
+    "None Approved?": { "main": [ [ { "node": "GroupMe Escalation", "type": "main", "index": 0 } ], [] ] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/New_York" },
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": [ { "id": "fb-content-engine", "name": "FB Content Engine" } ]
+}
