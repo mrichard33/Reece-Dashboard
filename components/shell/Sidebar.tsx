@@ -6,6 +6,7 @@ import {
   Bot,
   Users,
   Calendar,
+  CalendarRange,
   AlertTriangle,
   Cog,
   ShieldCheck,
@@ -31,6 +32,7 @@ const items: NavItem[] = [
   { href: "/appointments", label: "Appointments", Icon: Calendar, audience: "all", phase: 3 },
   { href: "/issues", label: "Issues", Icon: AlertTriangle, audience: "operator" },
   { href: "/approvals", label: "Executive Review", Icon: ShieldCheck, audience: "executive" },
+  { href: "/content", label: "Content", Icon: CalendarRange, audience: "all" },
   { href: "/ops/events", label: "Ops Logs", Icon: Cog, audience: "operator", phase: 3 },
 ];
 
@@ -46,6 +48,9 @@ export function Sidebar({
   currentPath: string;
 }) {
   const visible = items.filter((i) => {
+    // Content (FB engine) is open to operators AND executives — including
+    // approver-only execs, who would otherwise be filtered out below.
+    if (i.href === "/content") return isExecutive || role === "operator";
     if (i.audience === "executive") return isExecutive;
     // Approver-only executives see nothing but the Executive Review tab.
     if (isExecOnly) return false;

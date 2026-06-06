@@ -1,0 +1,109 @@
+import type { BadgeTone } from "@/components/ui/Badge";
+import type {
+  FbPostStatus,
+  FbComponentStatus,
+  FbPillar,
+  FbTarget,
+  FbArchetype,
+  FbReasonCode,
+} from "@/lib/supabase/types";
+
+/** Calendar status colours (shared legend). */
+export const FB_STATUS_META: Record<FbPostStatus, { label: string; tone: BadgeTone }> = {
+  draft: { label: "Draft", tone: "navy" },
+  approved: { label: "Approved", tone: "emerald" },
+  posted: { label: "Posted", tone: "slate" },
+  skipped: { label: "Skipped", tone: "slate" },
+};
+
+export const COMPONENT_STATUS_META: Record<FbComponentStatus, { label: string; tone: BadgeTone }> = {
+  pending: { label: "Pending", tone: "amber" },
+  approved: { label: "Approved", tone: "emerald" },
+  rejected: { label: "Rejected", tone: "rose" },
+};
+
+/** The 8 content pillars (rotation axis 1). Order is the canonical list. */
+export const PILLARS: FbPillar[] = [
+  "storm",
+  "noise",
+  "energy",
+  "security",
+  "comfort",
+  "insurance",
+  "uv",
+  "value",
+];
+
+export const PILLAR_META: Record<FbPillar, { label: string; tone: BadgeTone }> = {
+  storm: { label: "Storm", tone: "navy" },
+  noise: { label: "Noise", tone: "sky" },
+  energy: { label: "Energy", tone: "amber" },
+  security: { label: "Security", tone: "rose" },
+  comfort: { label: "Comfort", tone: "emerald" },
+  insurance: { label: "Insurance", tone: "brick" },
+  uv: { label: "UV", tone: "amber" },
+  value: { label: "Value", tone: "slate" },
+};
+
+/** The 8 archetypes (rotation axis 2). */
+export const ARCHETYPES: FbArchetype[] = [
+  "myth-bust",
+  "secret-reveal",
+  "story",
+  "mistake-expose",
+  "seasonal",
+  "thought-leadership",
+  "community-cause",
+  "social-proof",
+];
+
+export const ARCHETYPE_LABEL: Record<FbArchetype, string> = {
+  "myth-bust": "Myth-bust",
+  "secret-reveal": "Secret reveal",
+  story: "Story",
+  "mistake-expose": "Mistake expose",
+  seasonal: "Seasonal",
+  "thought-leadership": "Thought leadership",
+  "community-cause": "Community cause",
+  "social-proof": "Social proof",
+};
+
+export const TARGET_META: Record<FbTarget, { label: string; tone: BadgeTone }> = {
+  group: { label: "Group", tone: "sky" },
+  page: { label: "Page", tone: "navy" },
+  both: { label: "Page + Group", tone: "slate" },
+};
+
+/** Rejection reason codes (matches the fb_post_feedback CHECK constraint). */
+export const REASON_CODES: { value: FbReasonCode; label: string }[] = [
+  { value: "off-brand", label: "Off-brand" },
+  { value: "weak-hook", label: "Weak hook" },
+  { value: "wrong-pillar-fit", label: "Wrong pillar fit" },
+  { value: "compliance-risk", label: "Compliance risk" },
+  { value: "too-salesy", label: "Too salesy" },
+  { value: "inaccurate", label: "Inaccurate" },
+  { value: "image-mismatch", label: "Image mismatch" },
+  { value: "image-quality", label: "Image quality" },
+  { value: "other", label: "Other" },
+];
+
+export const REASON_LABEL: Record<FbReasonCode, string> = REASON_CODES.reduce(
+  (acc, r) => ({ ...acc, [r.value]: r.label }),
+  {} as Record<FbReasonCode, string>,
+);
+
+/** Tolerant lookups (DB columns are free-text, so guard unknown values). */
+export function pillarLabel(p: string | null | undefined): string {
+  if (!p) return "—";
+  return (PILLAR_META as Record<string, { label: string }>)[p]?.label ?? p;
+}
+
+export function pillarTone(p: string | null | undefined): BadgeTone {
+  if (!p) return "slate";
+  return (PILLAR_META as Record<string, { tone: BadgeTone }>)[p]?.tone ?? "slate";
+}
+
+export function archetypeLabel(a: string | null | undefined): string {
+  if (!a) return "—";
+  return (ARCHETYPE_LABEL as Record<string, string>)[a] ?? a;
+}

@@ -1,0 +1,130 @@
+{
+  "name": "FB · Page Publish (WF4)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "*/2 * * * *" } ] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 200],
+      "id": "wf4-schedule-000000001",
+      "name": "Every 2 min"
+    },
+    {
+      "parameters": {
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?status=eq.approved&target=in.(page,both)&posted_at=is.null&select=*",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [240, 200],
+      "id": "wf4-get-approved-002",
+      "name": "Get Approved (page/both)"
+    },
+    {
+      "parameters": { "batchSize": 1, "options": {} },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [460, 200],
+      "id": "wf4-loop-00000000003",
+      "name": "Loop Posts"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/__FB_GRAPH_VERSION__/__FB_PAGE_ID__/photos",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.image_url, caption: $json.post_body, published: true, access_token: '__FB_PAGE_ACCESS_TOKEN__' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [680, 200],
+      "id": "wf4-publish-0000004",
+      "name": "Publish Photo to Page"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/__FB_GRAPH_VERSION__/{{ $json.id }}/comments",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $('Loop Posts').item.json.first_comment, access_token: '__FB_PAGE_ACCESS_TOKEN__' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [900, 200],
+      "id": "wf4-comment-000005",
+      "name": "Post First Comment"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?id=eq.{{ $('Loop Posts').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'posted', posted_by: 'system:page', posted_at: new Date().toISOString(), fb_permalink: 'https://facebook.com/' + ($json.post_id || $json.id || '') }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1120, 200],
+      "id": "wf4-mark-000006",
+      "name": "Mark Posted"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groupme.com/v3/bots/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '✅ Posted to Page for ' + $('Loop Posts').item.json.scheduled_date + '.' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1340, 200],
+      "id": "wf4-groupme-0007",
+      "name": "GroupMe Notify"
+    },
+    {
+      "parameters": {
+        "content": "## 🔁 REVISIT WHEN WIRED LIVE — target='both' publish state\n\nFor `target='both'`, this workflow sets `status='posted'` as soon as the PAGE leg\npublishes. But the GROUP leg is a HUMAN copy/post action in the Dashboard\n('Copy + Open Group' → 'Mark Posted'), tracked separately — there is no Group API\n(deprecated April 2024).\n\nDECISION TO REVISIT: should a 'both' post stay 'approved' (or gain a separate\n`page_posted_at` column) until the Group leg is recorded, so the calendar doesn't\nshow a both-post as fully 'posted' before the Group leg happens? Today the Page leg\nflips the whole row to 'posted', and `lib/actions/content.ts → markPosted()` would\nalso set 'posted' for the Group leg — align the two when this goes live.\n\nSpec §8 WF4 step 3 flags this. NOTHING here posts to a Facebook GROUP via API.",
+        "height": 320, "width": 520
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -340],
+      "id": "wf4-note-0008",
+      "name": "FOLLOW-UP — both-leg state"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 2 min": { "main": [ [ { "node": "Get Approved (page/both)", "type": "main", "index": 0 } ] ] },
+    "Get Approved (page/both)": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] },
+    "Loop Posts": { "main": [ [ { "node": "Publish Photo to Page", "type": "main", "index": 0 } ] ] },
+    "Publish Photo to Page": { "main": [ [ { "node": "Post First Comment", "type": "main", "index": 0 } ] ] },
+    "Post First Comment": { "main": [ [ { "node": "Mark Posted", "type": "main", "index": 0 } ] ] },
+    "Mark Posted": { "main": [ [ { "node": "GroupMe Notify", "type": "main", "index": 0 } ] ] },
+    "GroupMe Notify": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/New_York" },
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": [ { "id": "fb-content-engine", "name": "FB Content Engine" } ]
+}

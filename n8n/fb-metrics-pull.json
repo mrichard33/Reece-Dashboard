@@ -1,0 +1,106 @@
+{
+  "name": "FB · Metrics Pull (WF5)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 9 * * *" } ] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 200],
+      "id": "wf5-schedule-001",
+      "name": "Daily 09:00 ET"
+    },
+    {
+      "parameters": {
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?status=eq.posted&target=in.(page,both)&fb_permalink=not.is.null&select=id,fb_permalink,scheduled_date",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [240, 200],
+      "id": "wf5-get-posts-002",
+      "name": "Get Posted (last 30d)"
+    },
+    {
+      "parameters": { "batchSize": 1, "options": {} },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [460, 200],
+      "id": "wf5-loop-003",
+      "name": "Loop Posts"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/__FB_GRAPH_VERSION__/{{ $json.fb_permalink.split('/').pop() }}/insights?metric=post_impressions,post_impressions_unique,post_clicks&access_token=__FB_PAGE_ACCESS_TOKEN__",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [680, 200],
+      "id": "wf5-insights-004",
+      "name": "Get Page Insights"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map the Graph insights payload to the fb_post_metrics columns. Reactions/comments/\n// shares come from the post's summary fields; impressions/reach/clicks from insights.\nconst v = (name) => { const m = ($json.data||[]).find(d => d.name===name); return m?.values?.[0]?.value ?? 0; };\nreturn [{ json: {\n  post_id: $('Loop Posts').item.json.id,\n  source: 'page',\n  impressions: v('post_impressions'),\n  reach: v('post_impressions_unique'),\n  link_clicks: v('post_clicks'),\n  reactions: 0, comments: 0, shares: 0\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 200],
+      "id": "wf5-map-005",
+      "name": "Map Metrics"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_post_metrics?on_conflict=post_id,source,pulled_at",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Content-Type", "value": "application/json" },
+          { "name": "Prefer", "value": "resolution=merge-duplicates,return=minimal" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1120, 200],
+      "id": "wf5-upsert-006",
+      "name": "Upsert fb_post_metrics"
+    },
+    {
+      "parameters": {
+        "content": "## WF5 — Metrics Pull\nDaily 09:00 ET. For Page posts in the last 30 days, pull Graph insights and upsert a\ndaily snapshot into `fb_post_metrics` (source='page'). GROUP metrics are entered by\nhand in the Dashboard (Insights → Group metrics). The Insights view reads the\n`v_fb_post_engagement` view (latest metrics per post + engagement_rate).",
+        "height": 200, "width": 420
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -120],
+      "id": "wf5-note-007",
+      "name": "About WF5"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily 09:00 ET": { "main": [ [ { "node": "Get Posted (last 30d)", "type": "main", "index": 0 } ] ] },
+    "Get Posted (last 30d)": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] },
+    "Loop Posts": { "main": [ [ { "node": "Get Page Insights", "type": "main", "index": 0 } ] ] },
+    "Get Page Insights": { "main": [ [ { "node": "Map Metrics", "type": "main", "index": 0 } ] ] },
+    "Map Metrics": { "main": [ [ { "node": "Upsert fb_post_metrics", "type": "main", "index": 0 } ] ] },
+    "Upsert fb_post_metrics": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/New_York" },
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": [ { "id": "fb-content-engine", "name": "FB Content Engine" } ]
+}

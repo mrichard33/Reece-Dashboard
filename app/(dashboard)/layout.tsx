@@ -14,8 +14,13 @@ export default async function DashboardLayout({
   const hdrs = await headers();
   const pathname = hdrs.get("x-pathname") ?? "/";
 
-  // Approver-only executives (e.g. Chris, Randy) live entirely on /approvals.
-  if (ctx.isExecOnly && !pathname.startsWith("/approvals")) {
+  // Approver-only executives (e.g. Chris, Randy) live on /approvals and /content
+  // (the Facebook post review surface) — everything else redirects them home.
+  if (
+    ctx.isExecOnly &&
+    !pathname.startsWith("/approvals") &&
+    !pathname.startsWith("/content")
+  ) {
     redirect("/approvals");
   }
 
