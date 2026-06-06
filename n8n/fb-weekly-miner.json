@@ -1,0 +1,173 @@
+{
+  "name": "FB · Weekly Idea Miner (WF2)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 7 * * 1" } ] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 120],
+      "id": "wf2-schedule-000000000001",
+      "name": "Monday 07:00 ET"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fb-run-miner",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 320],
+      "id": "wf2-webhook-0000000000002",
+      "name": "On-demand (fb-run-miner)",
+      "webhookId": "fb-run-miner"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [ { "id": "secret", "leftValue": "={{ $json.headers.authorization }}", "rightValue": "=Bearer __N8N_WEBHOOK_SECRET__", "operator": { "type": "string", "operation": "equals" } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [220, 320],
+      "id": "wf2-verify-00000000000003",
+      "name": "Verify Secret"
+    },
+    {
+      "parameters": {
+        "url": "=__HL_SUPABASE_URL__/rest/v1/messages?direction=eq.inbound&order=sent_at.desc&limit=50&select=body,sent_at",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_HL_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_HL_SUPABASE_SERVICE_ROLE_KEY" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [460, 200],
+      "id": "wf2-get-inbound-0000000004",
+      "name": "Get Recent Inbound (GHL/HL)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the `miner` prompt: fill {{ghl_faq_sample}} (the inbound snippets),\n// {{date_context}} (today + season), {{pillar_list}} (the 8 keys),\n// {{recently_used}} (subtopics used in the last 30 days). Returns { system, user }.\nconst snippets = $input.all().map(i => i.json.body).filter(Boolean).slice(0,50).join('\\n- ');\nreturn [{ json: { ghl_faq_sample: '- ' + snippets } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 200],
+      "id": "wf2-build-prompt-000000005",
+      "name": "Build Miner Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "x-api-key", "value": "__ANTHROPIC_API_KEY__" },
+          { "name": "anthropic-version", "value": "2023-06-01" },
+          { "name": "content-type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: '__ANTHROPIC_MODEL__', max_tokens: 1200, messages: [ { role: 'user', content: $json.user } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [900, 200],
+      "id": "wf2-anthropic-0000000006",
+      "name": "Anthropic: Miner"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tolerant parse → array of { subtopic, pillar, answers_question }. Emit one item each\n// so the next node inserts each as a 'proposed' subtopic with source='miner'.\nlet t = $json.content?.[0]?.text || '';\nt = t.replace(/```json|```/g, '').trim();\nlet arr; try { arr = JSON.parse(t); } catch (e) { const m = t.match(/\\[[\\s\\S]*\\]/); arr = m ? JSON.parse(m[0]) : []; }\nreturn arr.map(p => ({ json: p }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200],
+      "id": "wf2-parse-000000000007",
+      "name": "Parse Proposals"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_subtopics?on_conflict=subtopic,pillar",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Content-Type", "value": "application/json" },
+          { "name": "Prefer", "value": "resolution=merge-duplicates,return=minimal" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ subtopic: $json.subtopic, pillar: $json.pillar, answers_question: $json.answers_question, source: 'miner', status: 'proposed', source_evidence: $json.source_evidence || null }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1340, 200],
+      "id": "wf2-insert-000000000008",
+      "name": "Insert Proposed Subtopics"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groupme.com/v3/bots/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '💡 New subtopic proposals to review in Idea Miner.' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1560, 200],
+      "id": "wf2-groupme-00000000009",
+      "name": "GroupMe Notify"
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { ok: true } }}", "options": {} },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1780, 320],
+      "id": "wf2-respond-0000000010",
+      "name": "Respond"
+    },
+    {
+      "parameters": {
+        "content": "## WF2 — Weekly Idea Miner\nMonday 07:00 ET, plus the `fb-run-miner` webhook (verify `Authorization: Bearer __N8N_WEBHOOK_SECRET__`) the Dashboard 'Run miner now' button calls.\n\nPulls ~50 recent INBOUND customer messages (from the HL Supabase `messages` cache — or swap to the GHL Conversations API), asks Anthropic for 8 fresh subtopics mapped to a pillar, and inserts them as `status='proposed'` with `source_evidence`. Approvers promote them to `active` in the Idea Miner panel.",
+        "height": 240, "width": 420
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -160],
+      "id": "wf2-note-00000000011",
+      "name": "About WF2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Monday 07:00 ET": { "main": [ [ { "node": "Get Recent Inbound (GHL/HL)", "type": "main", "index": 0 } ] ] },
+    "On-demand (fb-run-miner)": { "main": [ [ { "node": "Verify Secret", "type": "main", "index": 0 } ] ] },
+    "Verify Secret": { "main": [ [ { "node": "Get Recent Inbound (GHL/HL)", "type": "main", "index": 0 } ], [ { "node": "Respond", "type": "main", "index": 0 } ] ] },
+    "Get Recent Inbound (GHL/HL)": { "main": [ [ { "node": "Build Miner Prompt", "type": "main", "index": 0 } ] ] },
+    "Build Miner Prompt": { "main": [ [ { "node": "Anthropic: Miner", "type": "main", "index": 0 } ] ] },
+    "Anthropic: Miner": { "main": [ [ { "node": "Parse Proposals", "type": "main", "index": 0 } ] ] },
+    "Parse Proposals": { "main": [ [ { "node": "Insert Proposed Subtopics", "type": "main", "index": 0 } ] ] },
+    "Insert Proposed Subtopics": { "main": [ [ { "node": "GroupMe Notify", "type": "main", "index": 0 } ] ] },
+    "GroupMe Notify": { "main": [ [ { "node": "Respond", "type": "main", "index": 0 } ] ] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/New_York" },
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": [ { "id": "fb-content-engine", "name": "FB Content Engine" } ]
+}
