@@ -1,0 +1,184 @@
+{
+  "name": "FB · Strategic Refresh (WF7)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 8 1 */3 *" } ] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 120],
+      "id": "wf7-schedule-000000000001",
+      "name": "Quarterly 08:00 ET"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fb-strategic-refresh",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 320],
+      "id": "wf7-webhook-0000000000002",
+      "name": "On-demand (fb-strategic-refresh)",
+      "webhookId": "fb-strategic-refresh"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [ { "id": "secret", "leftValue": "={{ $json.headers.authorization }}", "rightValue": "=Bearer __N8N_WEBHOOK_SECRET__", "operator": { "type": "string", "operation": "equals" } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [220, 320],
+      "id": "wf7-verify-00000000000003",
+      "name": "Verify Secret"
+    },
+    {
+      "parameters": {
+        "url": "=__SUPABASE_URL__/rest/v1/fb_message_bank?is_active=eq.true&order=version.desc&limit=1&select=variables",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [460, 200],
+      "id": "wf7-get-bank-00000000004",
+      "name": "Get Message Bank"
+    },
+    {
+      "parameters": {
+        "url": "=__SUPABASE_URL__/rest/v1/fb_post_feedback?select=reason_code,component&order=created_at.desc&limit=500",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [680, 200],
+      "id": "wf7-get-rej-000000000005",
+      "name": "Get Rejections"
+    },
+    {
+      "parameters": {
+        "url": "=__SUPABASE_URL__/rest/v1/v_fb_post_engagement?select=pillar,archetype,engagement_rate",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [900, 200],
+      "id": "wf7-get-eng-000000000006",
+      "name": "Get Engagement"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assemble the §6.6 strategic_refresh prompt from the three fetched inputs.\n// Canonical prompt body also lives in fb_messaging_prompts(name='strategic_refresh');\n// swap this inline copy for a fetch of that row if you edit the prompt in the DB.\nconst bank = $('Get Message Bank').first()?.json?.variables ?? {};\nconst rej = $('Get Rejections').all().map(i => i.json);\nconst eng = $('Get Engagement').all().map(i => i.json);\nconst rejCounts = {};\nfor (const r of rej) { if (!r || !r.reason_code) continue; rejCounts[r.reason_code] = (rejCounts[r.reason_code] || 0) + 1; }\nconst rejection_summary = Object.entries(rejCounts).map(([k, v]) => k + ': ' + v).join(', ') || 'none';\nfunction avgBy(key) { const m = {}; for (const e of eng) { if (e == null || e.engagement_rate == null) continue; (m[e[key]] = m[e[key]] || []).push(Number(e.engagement_rate)); } return Object.entries(m).map(([k, a]) => k + ': ' + (a.reduce((x, y) => x + y, 0) / a.length * 100).toFixed(1) + '%').join(', ') || 'no data'; }\nconst engagement_summary = 'by pillar — ' + avgBy('pillar') + '; by archetype — ' + avgBy('archetype');\nconst now = new Date();\nconst mo = now.getMonth();\nconst season = (mo >= 5 && mo <= 10) ? 'Atlantic hurricane season (Jun-Nov) — storm/insurance/security focus' : 'off-season (Dec-May) — comfort/energy/value focus and pre-season planning';\nconst season_context = now.toISOString().slice(0, 10) + '; ' + season;\nconst user = [\n  \"Act as Reece's strategic planning lead. Inputs:\",\n  '- current message bank: ' + JSON.stringify(bank),\n  \"- last quarter's rejection reasons (aggregated): \" + rejection_summary,\n  '- engagement by pillar and by archetype: ' + engagement_summary,\n  '- season ahead: ' + season_context,\n  'Do a brief SWOT + scenario pass for the next quarter of Florida impact-window content. Then propose: (a) specific message-bank edits, (b) which pillars to emphasize/de-emphasize and why, (c) prompt/style-guide tweaks that would reduce the most common rejection reasons. These are PROPOSALS for human approval.',\n  'Return ONLY valid JSON:',\n  '{\"swot\":{\"strengths\":[],\"weaknesses\":[],\"opportunities\":[],\"threats\":[]},\"message_bank_edits\":[],\"pillar_emphasis\":[],\"prompt_tweaks\":[]}'\n].join('\\n');\nreturn [{ json: { user } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200],
+      "id": "wf7-build-000000000007",
+      "name": "Build Refresh Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "x-api-key", "value": "__ANTHROPIC_API_KEY__" },
+          { "name": "anthropic-version", "value": "2023-06-01" },
+          { "name": "content-type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: '__ANTHROPIC_MODEL__', max_tokens: 1500, messages: [ { role: 'user', content: $json.user } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1340, 200],
+      "id": "wf7-anthropic-000000008",
+      "name": "Anthropic: Strategic Refresh"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tolerant parse → the proposals object. Surfaced for human apply (no DB write).\nlet t = $json.content?.[0]?.text || '';\nt = t.replace(/```json|```/g, '').trim();\nlet obj; try { obj = JSON.parse(t); } catch (e) { const m = t.match(/\\{[\\s\\S]*\\}/); obj = m ? JSON.parse(m[0]) : {}; }\nreturn [{ json: obj }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 200],
+      "id": "wf7-parse-0000000000009",
+      "name": "Parse Proposals"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groupme.com/v3/bots/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '🧭 Quarterly strategic refresh ready: ' + (($json.message_bank_edits||[]).length) + ' message-bank edits, ' + (($json.pillar_emphasis||[]).length) + ' pillar moves, ' + (($json.prompt_tweaks||[]).length) + ' prompt tweaks proposed — review in Message Bank.' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1780, 200],
+      "id": "wf7-groupme-0000000010",
+      "name": "GroupMe Notify"
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": {} },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2000, 320],
+      "id": "wf7-respond-000000011",
+      "name": "Respond"
+    },
+    {
+      "parameters": {
+        "content": "## WF7 — Strategic Refresh (§6.6)\nQuarterly (1st of Jan/Apr/Jul/Oct, 08:00 ET) plus the `fb-strategic-refresh` webhook (verify `Authorization: Bearer __N8N_WEBHOOK_SECRET__`) that the Message Bank 'Run Strategic Refresh' button (admin) calls.\n\nReads the active message bank + aggregated `fb_post_feedback` rejections + `v_fb_post_engagement`, builds the §6.6 SWOT/scenario prompt, asks Anthropic for message-bank edits / pillar emphasis / prompt tweaks, posts a GroupMe summary, and returns the proposals JSON to the caller. **Proposals are surfaced for human apply — no DB write** (a dedicated proposals table/UI is a future enhancement).",
+        "height": 260, "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -200],
+      "id": "wf7-note-00000000012",
+      "name": "About WF7"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Quarterly 08:00 ET": { "main": [ [ { "node": "Get Message Bank", "type": "main", "index": 0 } ] ] },
+    "On-demand (fb-strategic-refresh)": { "main": [ [ { "node": "Verify Secret", "type": "main", "index": 0 } ] ] },
+    "Verify Secret": { "main": [ [ { "node": "Get Message Bank", "type": "main", "index": 0 } ], [ { "node": "Respond", "type": "main", "index": 0 } ] ] },
+    "Get Message Bank": { "main": [ [ { "node": "Get Rejections", "type": "main", "index": 0 } ] ] },
+    "Get Rejections": { "main": [ [ { "node": "Get Engagement", "type": "main", "index": 0 } ] ] },
+    "Get Engagement": { "main": [ [ { "node": "Build Refresh Prompt", "type": "main", "index": 0 } ] ] },
+    "Build Refresh Prompt": { "main": [ [ { "node": "Anthropic: Strategic Refresh", "type": "main", "index": 0 } ] ] },
+    "Anthropic: Strategic Refresh": { "main": [ [ { "node": "Parse Proposals", "type": "main", "index": 0 } ] ] },
+    "Parse Proposals": { "main": [ [ { "node": "GroupMe Notify", "type": "main", "index": 0 } ] ] },
+    "GroupMe Notify": { "main": [ [ { "node": "Respond", "type": "main", "index": 0 } ] ] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/New_York" },
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": [ { "id": "fb-content-engine", "name": "FB Content Engine" } ]
+}

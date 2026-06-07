@@ -89,3 +89,23 @@ export const getAccessContext = cache(async (): Promise<ExecutiveContext | null>
     isExecOnly: isExecutive && user.role !== "operator",
   };
 });
+
+/**
+ * Approver allowlist for content approve/reject/publish (spec §1, §9).
+ * Comma-separated `APPROVER_EMAILS`. This is an app-layer gate layered ON TOP of
+ * the executive-based RLS that the DB still enforces — so an approver must also be
+ * an executive for the write to land. If the env is unset/empty we fall back to
+ * executive-only gating (don't break a working deploy with an empty list).
+ */
+export function approverEmails(): string[] {
+  return (process.env.APPROVER_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isApprover(email: string | null | undefined): boolean {
+  const list = approverEmails();
+  if (list.length === 0) return true; // unset → defer to the executive gate
+  return !!email && list.includes(email.toLowerCase());
+}

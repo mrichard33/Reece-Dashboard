@@ -1,4 +1,5 @@
 import { listExecutives } from "@/lib/queries/approvals";
+import { approverEmails } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 
@@ -6,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ContentSettingsPage() {
   const execs = await listExecutives();
+  const approverList = approverEmails();
   const n8nConfigured = !!process.env.N8N_BASE_URL && !!process.env.N8N_WEBHOOK_SECRET;
   const groupUrl =
     process.env.FB_GROUP_URL ?? process.env.NEXT_PUBLIC_FB_GROUP_URL ?? null;
@@ -18,8 +20,11 @@ export default async function ContentSettingsPage() {
         </CardHeader>
         <CardContent>
           <p className="mb-3 text-xs text-slate-500">
-            Anyone on the Executive Review roster can approve or reject Facebook posts.
-            Manage the roster in the LP Supabase `executives` table.
+            Approve / reject / mark-posted is limited to{" "}
+            {approverList.length > 0
+              ? "executives whose email is also in APPROVER_EMAILS"
+              : "anyone on the Executive Review roster (APPROVER_EMAILS unset)"}
+            . Manage the roster in the LP Supabase `executives` table.
           </p>
           <ul className="space-y-1.5 text-sm">
             {execs.map((e) => (
@@ -32,6 +37,12 @@ export default async function ContentSettingsPage() {
             ))}
             {execs.length === 0 && <li className="text-slate-400">No executives configured.</li>}
           </ul>
+          <p className="mt-3 text-xs text-slate-400">
+            APPROVER_EMAILS:{" "}
+            {approverList.length > 0
+              ? `${approverList.length} listed`
+              : "unset (executive-only gating)"}
+          </p>
         </CardContent>
       </Card>
 

@@ -6,6 +6,7 @@ import {
   getTopBottomPosts,
   getRejectionsByReason,
   getOpsHealth,
+  getFunnelKpis,
   type RankedPost,
 } from "@/lib/queries/content";
 import { InsightsCharts } from "@/components/content/InsightsCharts";
@@ -15,12 +16,13 @@ import { num, relTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <Card>
       <CardContent>
         <p className="text-2xl font-semibold text-navy-900 dark:text-white">{value}</p>
         <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">{label}</p>
+        {sub && <p className="mt-0.5 text-xs text-emerald-600 dark:text-emerald-400">{sub}</p>}
       </CardContent>
     </Card>
   );
@@ -31,15 +33,17 @@ function pct(rate: number | null): string {
 }
 
 export default async function InsightsPage() {
-  const [topline, byPillar, byArchetype, trend, topBottom, rejections, ops] = await Promise.all([
-    getInsightsTopline(),
-    getEngagementByPillar(),
-    getEngagementByArchetype(),
-    getEngagementTrend(),
-    getTopBottomPosts(),
-    getRejectionsByReason(),
-    getOpsHealth(),
-  ]);
+  const [topline, byPillar, byArchetype, trend, topBottom, rejections, ops, funnel] =
+    await Promise.all([
+      getInsightsTopline(),
+      getEngagementByPillar(),
+      getEngagementByArchetype(),
+      getEngagementTrend(),
+      getTopBottomPosts(),
+      getRejectionsByReason(),
+      getOpsHealth(),
+      getFunnelKpis(),
+    ]);
 
   return (
     <div className="space-y-6 p-6">
@@ -49,7 +53,13 @@ export default async function InsightsPage() {
         <StatCard label="Total reach" value={num(topline.totalReach)} />
         <StatCard label="Impressions" value={num(topline.totalImpressions)} />
         <StatCard label="Reactions" value={num(topline.totalReactions)} />
-        <StatCard label="Approved ahead" value={num(ops.draftsAhead)} />
+        <StatCard
+          label="Group members"
+          value={funnel.available ? num(funnel.groupMembers) : "—"}
+          sub={
+            funnel.available && funnel.newLast30 > 0 ? `+${num(funnel.newLast30)} in 30d` : undefined
+          }
+        />
       </div>
 
       <InsightsCharts
@@ -57,6 +67,7 @@ export default async function InsightsPage() {
         byArchetype={byArchetype}
         trend={trend}
         rejections={rejections}
+        growth={funnel.growth}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -76,6 +87,25 @@ export default async function InsightsPage() {
             <Stat label="Last generated" value={ops.lastGeneratedAt ? relTime(ops.lastGeneratedAt) : "—"} />
             <Stat label="Last posted" value={ops.lastPostedAt ? relTime(ops.lastPostedAt) : "—"} />
           </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Funnel snapshot</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+            <Stat label="Group opt-ins" value={funnel.available ? num(funnel.groupMembers) : "—"} />
+            <Stat label="New (30d)" value={funnel.available ? num(funnel.newLast30) : "—"} />
+            <Stat label="Landing views" value="not tracked" />
+            <Stat label="Opt-in rate" value="not tracked" />
+          </dl>
+          <p className="mt-3 text-xs text-slate-400">
+            Opt-ins come from the GHL <code className="font-mono">{funnel.optInTag}</code> tag
+            (Mark&apos;s §11 funnel). Landing-page views aren&apos;t synced, so opt-in rate isn&apos;t
+            computed yet.
+          </p>
         </CardContent>
       </Card>
     </div>

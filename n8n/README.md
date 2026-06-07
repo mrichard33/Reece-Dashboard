@@ -1,6 +1,6 @@
 # n8n workflows — Reece Automated Facebook Post Engine
 
-Six importable workflow definitions for the content engine's orchestration layer.
+Seven importable workflow definitions for the content engine's orchestration layer.
 They are committed as **artifacts**: import each JSON into n8n, attach credentials,
 replace the placeholder tokens, then activate. They are inert until then — the
 Dashboard's Content area runs fully without them (the webhook triggers no-op when
@@ -21,6 +21,7 @@ Dashboard's Content area runs fully without them (the webhook triggers no-op whe
 | `fb-page-publish.json` | FB · Page Publish (WF4) | schedule | `*/2 * * * *` |
 | `fb-metrics-pull.json` | FB · Metrics Pull (WF5) | schedule | `0 9 * * *` |
 | `fb-queue-health.json` | FB · Queue Health (WF6) | schedule | `0 18 * * *` |
+| `fb-strategic-refresh.json` | FB · Strategic Refresh (WF7) | schedule + webhook `fb-strategic-refresh` | `0 8 1 */3 *` |
 
 ## Import & setup
 
@@ -56,7 +57,7 @@ via `lib/n8n.ts → postWebhook(path, body)` to `${N8N_BASE_URL}/webhook/${path}
 | `fb-regenerate` | `rejectComponent()` | `{post_id, component, reason_code, reason_text, rejected_by}` | WF3 |
 | `fb-generate-now` | `generateNow()` | `{scheduled_date}` | WF1 |
 | `fb-run-miner` | `runMiner()` | `{}` | WF2 |
-| `fb-strategic-refresh` | `runStrategicRefresh()` | `{}` | **future stub** — no workflow in this batch yet; the §6.6 quarterly refresh lands here. The button no-ops gracefully until it exists. |
+| `fb-strategic-refresh` | `runStrategicRefresh()` | `{}` | WF7 — §6.6 quarterly refresh (also runs on a quarterly schedule). Returns the proposals JSON; surfaced for human apply (no DB write). |
 
 ## System of record (WF3)
 
