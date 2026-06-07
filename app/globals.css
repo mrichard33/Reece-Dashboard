@@ -27,6 +27,8 @@
   --font-sans: "Inter", system-ui, sans-serif;
   --font-display: "Montserrat", "Inter", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* Content area brand typeface (spec §9); resolves to the next/font face on <html>. */
+  --font-nunito: var(--font-nunito-sans), "Inter", system-ui, sans-serif;
 }
 
 @layer base {

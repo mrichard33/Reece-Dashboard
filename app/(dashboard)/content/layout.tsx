@@ -12,7 +12,7 @@ export default async function ContentLayout({
   const ctx = await requireContentAccess();
   const ready = await contentEngineReady();
   return (
-    <>
+    <div className="font-nunito">
       <TopBar
         email={ctx.email}
         role={ctx.role}
@@ -30,6 +30,6 @@ export default async function ContentLayout({
         </div>
       )}
       {children}
-    </>
+    </div>
   );
 }
