@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { lpServer } from "@/lib/supabase/lp";
-import { getAccessContext } from "@/lib/auth";
+import { getAccessContext, isApprover } from "@/lib/auth";
 import { pingGroupMe } from "@/lib/notify/groupme";
 import { postWebhook } from "@/lib/n8n";
 import { REASON_CODES } from "@/components/content/meta";
@@ -26,6 +26,8 @@ async function approveComponent(
 ): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Approvals are limited to executives." };
+  if (!isApprover(ctx.email))
+    return { ok: false, error: "You are not on the approver list (APPROVER_EMAILS)." };
 
   const supabase = await lpServer();
   const { data: post, error: readErr } = await supabase
@@ -85,6 +87,8 @@ export async function rejectComponent(
 ): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Rejections are limited to executives." };
+  if (!isApprover(ctx.email))
+    return { ok: false, error: "You are not on the approver list (APPROVER_EMAILS)." };
 
   if (!REASON_CODES.some((r) => r.value === reasonCode)) {
     return { ok: false, error: "Pick a valid reason code." };
@@ -185,6 +189,8 @@ export async function markPosted(
 ): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  if (!isApprover(ctx.email))
+    return { ok: false, error: "You are not on the approver list (APPROVER_EMAILS)." };
   const supabase = await lpServer();
   const { error } = await supabase
     .from("fb_posts")

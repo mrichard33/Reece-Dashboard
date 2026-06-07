@@ -1,4 +1,4 @@
-import { lpServer } from "@/lib/supabase/lp";
+import { lpServer, lpService } from "@/lib/supabase/lp";
 import { PILLARS, ARCHETYPES } from "@/components/content/meta";
 import type {
   FbPost,
@@ -342,5 +342,62 @@ export async function getOpsHealth(): Promise<OpsHealth> {
     needsManual: rows.filter((r) => r.needs_manual).length,
     lastGeneratedAt: created.length ? (created[created.length - 1] ?? null) : null,
     lastPostedAt: posted.length ? (posted[posted.length - 1] ?? null) : null,
+  };
+}
+
+// ── Funnel / group growth (GHL) ───────────────────────────────────
+// Reads the GHL contact-tag snapshot (a cross-feature table) via the service role.
+// Populated by Mark's §11 opt-in funnel; until that tags contacts, the opt-in tag
+// has 0 members. Landing-page views are NOT synced anywhere, so the opt-in RATE
+// and the full landing→opt-in→join funnel can't be computed — the UI marks those
+// "not tracked yet" rather than invent a source. Empty-safe.
+
+export type FunnelKpis = {
+  optInTag: string;
+  available: boolean; // false if the snapshot table can't be read
+  groupMembers: number; // contacts carrying the opt-in tag
+  newLast30: number; // tagged/updated within the last 30 days (proxy via updated_at)
+  growth: { date: string; total: number }[]; // cumulative members over time
+};
+
+export async function getFunnelKpis(): Promise<FunnelKpis> {
+  const optInTag = process.env.FB_GROUP_OPTIN_TAG ?? "fb-group-optin";
+  const empty: FunnelKpis = { optInTag, available: false, groupMembers: 0, newLast30: 0, growth: [] };
+
+  let svc: ReturnType<typeof lpService>;
+  try {
+    svc = lpService();
+  } catch {
+    return empty; // service env unset — degrade quietly
+  }
+
+  const { data, error } = await svc
+    .from("contact_tag_snapshot")
+    .select("updated_at")
+    .contains("tags", [optInTag]);
+  if (error) {
+    console.error("[content] getFunnelKpis:", error.message);
+    return empty;
+  }
+
+  const rows = (data ?? []) as { updated_at: string | null }[];
+  const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const perDay = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.updated_at) continue;
+    const day = r.updated_at.slice(0, 10);
+    perDay.set(day, (perDay.get(day) ?? 0) + 1);
+  }
+  let running = 0;
+  const growth = [...perDay.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, n]) => ({ date, total: (running += n) }));
+
+  return {
+    optInTag,
+    available: true,
+    groupMembers: rows.length,
+    newLast30: rows.filter((r) => r.updated_at && r.updated_at >= cutoff).length,
+    growth,
   };
 }

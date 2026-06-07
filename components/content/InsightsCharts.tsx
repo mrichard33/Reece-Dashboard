@@ -39,11 +39,13 @@ export function InsightsCharts({
   byArchetype,
   trend,
   rejections,
+  growth,
 }: {
   byPillar: { pillar: string; engagementRate: number | null; posts: number }[];
   byArchetype: { archetype: string; engagementRate: number | null; posts: number }[];
   trend: { date: string; engagementRate: number }[];
   rejections: { reason_code: string; copy: number; image: number }[];
+  growth: { date: string; total: number }[];
 }) {
   const pillarData = byPillar.map((d) => ({
     name: pillarLabel(d.pillar),
@@ -59,6 +61,7 @@ export function InsightsCharts({
     copy: d.copy,
     image: d.image,
   }));
+  const growthData = growth.map((d) => ({ name: d.date, total: d.total }));
 
   const hasEngagement = pillarData.some((d) => d.rate > 0);
 
@@ -139,6 +142,29 @@ export function InsightsCharts({
               </BarChart>
             </ResponsiveContainer>
           </EmptyOr>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Group growth (opt-ins)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {growthData.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-400">
+              No opt-ins yet — populates once the GHL group opt-in funnel tags contacts.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={growthData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip />
+                <Line type="monotone" dataKey="total" stroke={BRICK} strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
     </div>

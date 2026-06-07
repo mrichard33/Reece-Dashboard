@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Montserrat, JetBrains_Mono } from "next/font/google";
+import { Inter, Montserrat, JetBrains_Mono, Nunito_Sans } from "next/font/google";
 import { ThemeScript } from "@/components/shell/ThemeScript";
 import "./globals.css";
 
@@ -22,6 +22,13 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+// Content area brand typeface (spec §9). Loaded globally; applied in the Content layout.
+const nunitoSans = Nunito_Sans({
+  subsets: ["latin"],
+  variable: "--font-nunito-sans",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Antifragile Mission Control — Reece Windows & Doors",
   description:
@@ -34,7 +41,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${montserrat.variable} ${jetbrainsMono.variable}`}
+      className={`${inter.variable} ${montserrat.variable} ${jetbrainsMono.variable} ${nunitoSans.variable}`}
       suppressHydrationWarning
     >
       <head>

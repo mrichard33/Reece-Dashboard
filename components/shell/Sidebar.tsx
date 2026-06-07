@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   LayoutDashboard,
   GitBranch,
@@ -61,7 +62,14 @@ export function Sidebar({
     <aside className="flex w-56 flex-col border-r border-navy-700 bg-navy-900 text-slate-200">
       <div className="flex items-center justify-between gap-2 px-4 py-4 border-b border-navy-700">
         <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-md bg-brick" />
+          <Image
+            src="/reece-logo.png"
+            alt="Reece Windows & Doors"
+            width={28}
+            height={28}
+            className="h-7 w-7 rounded-md object-contain"
+            priority
+          />
           <div className="leading-tight">
             <p className="font-display text-sm font-semibold text-white">Mission Control</p>
             <p className="text-[10px] uppercase tracking-wider text-navy-300">
