@@ -29,7 +29,7 @@
       "parameters": {
         "conditions": {
           "options": { "caseSensitive": true, "typeValidation": "strict" },
-          "conditions": [ { "id": "secret", "leftValue": "={{ $json.headers.authorization }}", "rightValue": "=Bearer __N8N_WEBHOOK_SECRET__", "operator": { "type": "string", "operation": "equals" } } ],
+          "conditions": [ { "id": "secret", "leftValue": "={{ $json.headers['x-webhook-secret'] }}", "rightValue": "=__N8N_WEBHOOK_SECRET__", "operator": { "type": "string", "operation": "equals" } } ],
           "combinator": "and"
         },
         "options": {}
@@ -154,7 +154,7 @@
     },
     {
       "parameters": {
-        "content": "## WF7 — Strategic Refresh (§6.6)\nQuarterly (1st of Jan/Apr/Jul/Oct, 08:00 ET) plus the `fb-strategic-refresh` webhook (verify `Authorization: Bearer __N8N_WEBHOOK_SECRET__`) that the Message Bank 'Run Strategic Refresh' button (admin) calls.\n\nReads the active message bank + aggregated `fb_post_feedback` rejections + `v_fb_post_engagement`, builds the §6.6 SWOT/scenario prompt, asks Anthropic for message-bank edits / pillar emphasis / prompt tweaks, posts a GroupMe summary, and returns the proposals JSON to the caller. **Proposals are surfaced for human apply — no DB write** (a dedicated proposals table/UI is a future enhancement).",
+        "content": "## WF7 — Strategic Refresh (§6.6)\nQuarterly (1st of Jan/Apr/Jul/Oct, 08:00 ET) plus the `fb-strategic-refresh` webhook (verify the `x-webhook-secret: __N8N_WEBHOOK_SECRET__` header — n8n redacts Authorization) that the Message Bank 'Run Strategic Refresh' button (admin) calls.\n\nReads the active message bank + aggregated `fb_post_feedback` rejections + `v_fb_post_engagement`, builds the §6.6 SWOT/scenario prompt, asks Anthropic for message-bank edits / pillar emphasis / prompt tweaks, posts a GroupMe summary, and returns the proposals JSON to the caller. **Proposals are surfaced for human apply — no DB write** (a dedicated proposals table/UI is a future enhancement).",
         "height": 260, "width": 460
       },
       "type": "n8n-nodes-base.stickyNote",

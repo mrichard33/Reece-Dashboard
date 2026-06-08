@@ -28,8 +28,8 @@
           "conditions": [
             {
               "id": "secret",
-              "leftValue": "={{ $json.headers.authorization }}",
-              "rightValue": "=Bearer __N8N_WEBHOOK_SECRET__",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "=__N8N_WEBHOOK_SECRET__",
               "operator": {
                 "type": "string",
                 "operation": "equals"

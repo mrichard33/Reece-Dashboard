@@ -48,8 +48,8 @@
           "conditions": [
             {
               "id": "secret",
-              "leftValue": "={{ $json.headers.authorization }}",
-              "rightValue": "=Bearer __N8N_WEBHOOK_SECRET__",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "=__N8N_WEBHOOK_SECRET__",
               "operator": {
                 "type": "string",
                 "operation": "equals"
@@ -488,7 +488,7 @@
     },
     {
       "parameters": {
-        "content": "## WF1 — Nightly Generator (logic complete)\nRuns at 06:00 in TZ America/New_York. Also exposes the `fb-generate-now` webhook (verify `Authorization: Bearer __N8N_WEBHOOK_SECRET__`) that the Dashboard 'Generate Now' button calls with { scheduled_date }.\n\nPipeline: nightly path picks the next uncovered date within a 5-day horizon (duplicate guard); on-demand path uses the body's scheduled_date. Then: least-recently-used active subtopic (its pillar) → message bank + prompts → archetype → Anthropic generator → tolerant JSON parse → image prompt → Generate Image (OpenAI gpt-image-1, swappable) → decode → PUT upload to the PUBLIC fb-images bucket → set public image_url → insert fb_posts (copy_status/image_status='pending') → bump subtopic last_used_at/times_used → GroupMe.\n\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders with credentials/values on import. Keep `active:false` in the committed copy.",
+        "content": "## WF1 — Nightly Generator (logic complete)\nRuns at 06:00 in TZ America/New_York. Also exposes the `fb-generate-now` webhook (verify the `x-webhook-secret: __N8N_WEBHOOK_SECRET__` header — n8n redacts Authorization) that the Dashboard 'Generate Now' button calls with { scheduled_date }.\n\nPipeline: nightly path picks the next uncovered date within a 5-day horizon (duplicate guard); on-demand path uses the body's scheduled_date. Then: least-recently-used active subtopic (its pillar) → message bank + prompts → archetype → Anthropic generator → tolerant JSON parse → image prompt → Generate Image (OpenAI gpt-image-1, swappable) → decode → PUT upload to the PUBLIC fb-images bucket → set public image_url → insert fb_posts (copy_status/image_status='pending') → bump subtopic last_used_at/times_used → GroupMe.\n\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders with credentials/values on import. Keep `active:false` in the committed copy.",
         "height": 340,
         "width": 460
       },
