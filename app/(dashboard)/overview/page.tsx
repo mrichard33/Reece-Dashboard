@@ -119,7 +119,7 @@ export default async function OverviewPage() {
               helpKey="overview.appointmentsToday"
             />
             <StatTile
-              label="Opps in flight"
+              label="Opps in flight (30d)"
               value={num(stats.oppsInFlight)}
               helpKey="overview.oppsInFlight"
             />
