@@ -30,7 +30,7 @@ const nunitoSans = Nunito_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Antifragile Mission Control — Reece Windows & Doors",
+  title: "Reece Dashboard - Mission Control",
   description:
     "Operations dashboard for the Reece Windows & Doors antifragile sales system.",
 };
