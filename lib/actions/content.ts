@@ -211,6 +211,45 @@ export async function markPosted(
   return { ok: true };
 }
 
+// ── Reschedule ───────────────────────────────────────────────────
+//
+// Moves a post to another day by updating fb_posts.scheduled_date. scheduled_date
+// is not unique, so multiple posts can share a day without erroring — but the
+// nightly generator assumes ~one/day, so we surface a non-blocking warning when
+// the target already has a post (ok:true + error message, mirroring generateNow)
+// and still move it.
+export async function reschedulePost(
+  postId: string,
+  newDate: string,
+): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+    return { ok: false, error: "Pick a valid date." };
+  }
+
+  const supabase = await lpServer();
+
+  // Collision check (excludes the post being moved) — informational only.
+  const { count } = await supabase
+    .from("fb_posts")
+    .select("id", { count: "exact", head: true })
+    .eq("scheduled_date", newDate)
+    .neq("id", postId);
+
+  const { error } = await supabase
+    .from("fb_posts")
+    .update({ scheduled_date: newDate })
+    .eq("id", postId);
+  if (error) return { ok: false, error: error.message };
+
+  refresh();
+  return {
+    ok: true,
+    error: (count ?? 0) > 0 ? `Moved — heads up, ${newDate} already has a post.` : undefined,
+  };
+}
+
 // ── n8n triggers (no-op offline) ─────────────────────────────────
 
 export async function generateNow(scheduledDate: string): Promise<ActionResult> {

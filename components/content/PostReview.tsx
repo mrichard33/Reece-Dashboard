@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Send,
   RefreshCw,
+  CalendarClock,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -32,6 +33,7 @@ import {
   skipPost,
   markPosted,
   generateNow,
+  reschedulePost,
 } from "@/lib/actions/content";
 import type { FbPost, FbComponent, FbReasonCode } from "@/lib/supabase/types";
 
@@ -50,6 +52,7 @@ export function PostReview({
   const [body, setBody] = useState(post.post_body ?? "");
   const [firstComment, setFirstComment] = useState(post.first_comment ?? "");
   const [permalink, setPermalink] = useState("");
+  const [moveDate, setMoveDate] = useState(post.scheduled_date);
 
   const groupUrl = process.env.NEXT_PUBLIC_FB_GROUP_URL;
 
@@ -229,6 +232,33 @@ export function PostReview({
           </Button>
         )}
       </div>
+
+      {isExecutive && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+            <CalendarClock className="h-3.5 w-3.5" /> Move to date
+          </label>
+          <input
+            type="date"
+            value={moveDate}
+            onChange={(e) => setMoveDate(e.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={pending || moveDate === post.scheduled_date}
+            onClick={() => run("reschedule", () => reschedulePost(post.id, moveDate))}
+          >
+            {busy("reschedule") ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CalendarClock className="h-3.5 w-3.5" />
+            )}{" "}
+            Move
+          </Button>
+        </div>
+      )}
 
       {isExecutive && (
         <div className="flex flex-wrap items-center gap-2">
