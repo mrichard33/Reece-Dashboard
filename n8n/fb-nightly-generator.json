@@ -368,7 +368,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Public read URL for the uploaded image (note the /public/ segment).\nreturn [{ json: { image_url: `${$env.SUPABASE_URL || '__SUPABASE_URL__'}/storage/v1/object/public/fb-images/${$('Decode Image').first().json.path}` } }];"
+        "jsCode": "// Public read URL for the uploaded image (note the /public/ segment).\nreturn [{ json: { image_url: `__SUPABASE_URL__/storage/v1/object/public/fb-images/${$('Decode Image').first().json.path}` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
