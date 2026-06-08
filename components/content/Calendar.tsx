@@ -14,9 +14,11 @@ import {
 } from "date-fns";
 import { Drawer } from "@/components/ui/Drawer";
 import { PostReview } from "@/components/content/PostReview";
+import { PlanReview } from "@/components/content/PlanReview";
+import { PlanControls } from "@/components/content/PlanControls";
 import { pillarLabel } from "@/components/content/meta";
 import { cn } from "@/lib/utils";
-import type { FbPost, FbPostStatus } from "@/lib/supabase/types";
+import type { FbPost, FbContentPlan, FbPostStatus } from "@/lib/supabase/types";
 
 const DOT: Record<FbPostStatus, string> = {
   draft: "bg-navy-600",
@@ -27,25 +29,35 @@ const DOT: Record<FbPostStatus, string> = {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+type Selection = { kind: "post" | "plan"; id: string };
+
 export function Calendar({
   posts,
+  plan,
   year,
   monthIndex,
   isExecutive,
   initialNeedsOnly,
+  planHorizonDays,
+  maxPerGeneration,
 }: {
   posts: FbPost[];
+  plan: FbContentPlan[];
   year: number;
   monthIndex: number;
   isExecutive: boolean;
   initialNeedsOnly: boolean;
+  planHorizonDays: number;
+  maxPerGeneration: number;
 }) {
   const [needsOnly, setNeedsOnly] = useState(initialNeedsOnly);
-  // Track the selection by id (not a post snapshot) so the drawer re-derives from
-  // the freshly-refetched `posts` after a server action + router.refresh(). Holding
-  // the whole object would keep rendering stale data and make actions look dead.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = selectedId ? posts.find((p) => p.id === selectedId) ?? null : null;
+  // Track the selection by id (not a snapshot) so the drawer re-derives from the
+  // freshly-refetched props after a server action + router.refresh(). Holding the
+  // whole object would keep rendering stale data and make actions look dead.
+  const [sel, setSel] = useState<Selection | null>(null);
+  const selectedPost = sel?.kind === "post" ? posts.find((p) => p.id === sel.id) ?? null : null;
+  const selectedPlan = sel?.kind === "plan" ? plan.find((p) => p.id === sel.id) ?? null : null;
+  const drawerOpen = selectedPost !== null || selectedPlan !== null;
 
   const first = new Date(year, monthIndex, 1);
   const gridStart = startOfWeek(startOfMonth(first), { weekStartsOn: 0 });
@@ -53,11 +65,23 @@ export function Calendar({
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   const byDate = new Map<string, FbPost[]>();
+  const postDates = new Set<string>();
   for (const p of posts) {
+    postDates.add(p.scheduled_date);
     if (needsOnly && p.status !== "draft") continue;
     const arr = byDate.get(p.scheduled_date) ?? [];
     arr.push(p);
     byDate.set(p.scheduled_date, arr);
+  }
+
+  // Planned slots: only surface ones still 'planned' with no post on that day (a
+  // 'generated' slot already shows as its post). Hidden under the needs-approval filter.
+  const planByDate = new Map<string, FbContentPlan>();
+  if (!needsOnly) {
+    for (const s of plan) {
+      if (s.status !== "planned" || postDates.has(s.plan_date)) continue;
+      planByDate.set(s.plan_date, s);
+    }
   }
 
   const prev = format(addMonths(first, -1), "yyyy-MM");
@@ -88,6 +112,9 @@ export function Calendar({
         </div>
 
         <div className="flex items-center gap-3">
+          {isExecutive && (
+            <PlanControls planHorizonDays={planHorizonDays} maxPerGeneration={maxPerGeneration} />
+          )}
           <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
@@ -113,6 +140,7 @@ export function Calendar({
           const key = format(d, "yyyy-MM-dd");
           const inMonth = d.getMonth() === monthIndex;
           const cellPosts = byDate.get(key) ?? [];
+          const planSlot = planByDate.get(key);
           return (
             <div
               key={key}
@@ -137,7 +165,7 @@ export function Calendar({
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setSelectedId(p.id)}
+                    onClick={() => setSel({ kind: "post", id: p.id })}
                     className={cn(
                       "flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] hover:ring-1 hover:ring-navy-300",
                       p.needs_manual
@@ -150,6 +178,17 @@ export function Calendar({
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
                   </button>
                 ))}
+                {planSlot && (
+                  <button
+                    type="button"
+                    onClick={() => setSel({ kind: "plan", id: planSlot.id })}
+                    className="flex w-full items-center gap-1 truncate rounded border border-dashed border-sky-300 px-1 py-0.5 text-left text-[11px] text-slate-500 hover:ring-1 hover:ring-sky-300 dark:border-sky-800"
+                    title={`Planned · ${pillarLabel(planSlot.pillar)}`}
+                  >
+                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-sky-400" />
+                    <span className="truncate">{pillarLabel(planSlot.pillar)}</span>
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -157,12 +196,19 @@ export function Calendar({
       </div>
 
       <Drawer
-        open={selected !== null}
-        onClose={() => setSelectedId(null)}
-        title={selected ? `Post · ${format(new Date(selected.scheduled_date + "T00:00:00"), "EEE, MMM d")}` : ""}
-        subtitle="Review copy and image independently"
+        open={drawerOpen}
+        onClose={() => setSel(null)}
+        title={
+          selectedPost
+            ? `Post · ${format(new Date(selectedPost.scheduled_date + "T00:00:00"), "EEE, MMM d")}`
+            : selectedPlan
+              ? `Planned · ${format(new Date(selectedPlan.plan_date + "T00:00:00"), "EEE, MMM d")}`
+              : ""
+        }
+        subtitle={selectedPost ? "Review copy and image independently" : "Planned slot — not generated yet"}
       >
-        {selected && <PostReview post={selected} isExecutive={isExecutive} />}
+        {selectedPost && <PostReview post={selectedPost} isExecutive={isExecutive} />}
+        {selectedPlan && <PlanReview slot={selectedPlan} isExecutive={isExecutive} />}
       </Drawer>
     </div>
   );
@@ -176,6 +222,9 @@ function Legend() {
           <span className={cn("h-2 w-2 rounded-full", DOT[s])} /> {s}
         </span>
       ))}
+      <span className="flex items-center gap-1">
+        <span className="h-2 w-2 rounded-full bg-sky-400" /> planned
+      </span>
     </div>
   );
 }
