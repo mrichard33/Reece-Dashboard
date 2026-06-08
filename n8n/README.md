@@ -22,6 +22,8 @@ Dashboard's Content area runs fully without them (the webhook triggers no-op whe
 | `fb-metrics-pull.json` | FB · Metrics Pull (WF5) | schedule | `0 9 * * *` |
 | `fb-queue-health.json` | FB · Queue Health (WF6) | schedule | `0 18 * * *` |
 | `fb-strategic-refresh.json` | FB · Strategic Refresh (WF7) | schedule + webhook `fb-strategic-refresh` | `0 8 1 */3 *` |
+| `fb-plan-period.json` | FB · Plan Period (WF-Plan) | webhook `fb-plan-period` | — |
+| `fb-generate-batch.json` | FB · Generate Batch (WF-Batch) | webhook `fb-generate-batch` | — |
 
 ## Status
 
