@@ -2,6 +2,7 @@ import { lpServer, lpService } from "@/lib/supabase/lp";
 import { PILLARS, ARCHETYPES } from "@/components/content/meta";
 import type {
   FbPost,
+  FbContentPlan,
   FbSubtopic,
   FbMessagingPrompt,
   FbMessageBank,
@@ -12,6 +13,9 @@ import type {
 
 const POST_COLUMNS =
   "id, scheduled_date, target, pillar, archetype, post_body, first_comment, image_concept, image_url, subtopic_id, copy_status, image_status, status, revision, needs_manual, approved_by, posted_by, posted_at, fb_permalink, created_at";
+
+const PLAN_COLUMNS =
+  "id, plan_date, pillar, archetype, subtopic_id, campaign, status, created_at";
 
 const SUBTOPIC_COLUMNS =
   "id, subtopic, pillar, buyer_stage, source, answers_question, source_evidence, status, last_used_at, times_used, created_at";
@@ -49,6 +53,29 @@ export async function listPostsForRange(
     return [];
   }
   return (data ?? []) as unknown as FbPost[];
+}
+
+/**
+ * Planned slots whose plan_date falls in [startDate, endDate] (ISO yyyy-MM-dd).
+ * Empty-safe (the table arrives with migration 0005). 'generated' slots already
+ * have an fb_posts row, so the calendar only surfaces 'planned'/'skipped' from here.
+ */
+export async function listPlanForRange(
+  startDate: string,
+  endDate: string,
+): Promise<FbContentPlan[]> {
+  const supabase = await lpServer();
+  const { data, error } = await supabase
+    .from("fb_content_plan")
+    .select(PLAN_COLUMNS)
+    .gte("plan_date", startDate)
+    .lte("plan_date", endDate)
+    .order("plan_date", { ascending: true });
+  if (error) {
+    console.error("[content] listPlanForRange:", error.message);
+    return [];
+  }
+  return (data ?? []) as unknown as FbContentPlan[];
 }
 
 export async function getPost(id: string): Promise<FbPost | null> {

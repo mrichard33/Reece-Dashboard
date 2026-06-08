@@ -1,0 +1,708 @@
+{
+  "name": "FB · Generate Batch (WF-Batch)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fb-generate-batch",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -220,
+        320
+      ],
+      "id": "wfb-webhook-00000001",
+      "name": "Webhook (fb-generate-batch)",
+      "webhookId": "fb-generate-batch"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "secret",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "=__N8N_WEBHOOK_SECRET__",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        320
+      ],
+      "id": "wfb-verify-00000002",
+      "name": "Verify Secret"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Capped batch fill. Pick up to \\`max\\` planned slots (plan_date >= today, no fb_posts\n// row yet), oldest first, and pre-build each slot's generator prompt. All Supabase reads\n// happen here (this.helpers.httpRequest) so PostgREST arrays don't fan out. Emits ONE item\n// per chosen slot for the loop below; emits nothing when there is nothing to fill.\nconst body = $('Webhook (fb-generate-batch)').first().json.body || {};\nconst MAX_HARD = Number($env.MAX_PER_GENERATION || 7);\nlet max = Number(body.max || MAX_HARD);\nif (!(max > 0)) max = MAX_HARD;\nmax = Math.min(max, MAX_HARD);\nconst today = $now.toFormat('yyyy-LL-dd');\nconst SB = '__SUPABASE_URL__';\nconst KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY';\nconst h = { apikey: KEY, Authorization: 'Bearer ' + KEY };\nconst planned = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_content_plan?status=eq.planned&plan_date=gte.' + today + '&select=id,plan_date,pillar,archetype,subtopic_id&order=plan_date.asc', headers: h, json: true });\nconst posts = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_posts?select=scheduled_date&scheduled_date=gte.' + today, headers: h, json: true });\nconst taken = new Set((posts || []).map(p => p.scheduled_date));\nconst subs = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_subtopics?select=id,subtopic,pillar,times_used', headers: h, json: true });\nconst subById = Object.fromEntries((subs || []).map(s => [s.id, s]));\nconst prompts = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_messaging_prompts?is_active=eq.true&select=name,body', headers: h, json: true });\nconst byName = Object.fromEntries((prompts || []).map(p => [p.name, p.body]));\nconst bankArr = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_message_bank?is_active=eq.true&select=variables&limit=1', headers: h, json: true });\nconst bank = (bankArr && bankArr[0] && bankArr[0].variables) || {};\nconst system = byName['style_guide'] || '';\nconst chosen = (planned || []).filter(s => !taken.has(s.plan_date)).slice(0, max);\nconst slots = chosen.map(s => {\n  const st = subById[s.subtopic_id] || {};\n  const user = (byName['generator'] || '')\n    .replaceAll('{{style_guide}}', system)\n    .replaceAll('{{message_bank}}', JSON.stringify(bank))\n    .replaceAll('{{pillar}}', s.pillar || st.pillar || '')\n    .replaceAll('{{archetype}}', s.archetype || '')\n    .replaceAll('{{subtopic}}', st.subtopic || '');\n  return { plan_id: s.id, plan_date: s.plan_date, pillar: s.pillar || st.pillar || '', archetype: s.archetype, subtopic_id: s.subtopic_id || null, times_used: st.times_used || 0, system, user };\n});\n// Always emit exactly one control item so the empty case still routes & responds.\nreturn [{ json: { slots } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "id": "wfb-select-0000003",
+      "name": "Select Slots"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "any",
+              "leftValue": "={{ $json.slots.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        200
+      ],
+      "id": "wfb-hasslots-0019",
+      "name": "Has Slots?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split the chosen slots into one item each for the generation loop.\nreturn ($json.slots || []).map(s => ({ json: s }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        280
+      ],
+      "id": "wfb-fanout-0020",
+      "name": "Fan Out Slots"
+    },
+    {
+      "parameters": {
+        "options": {},
+        "batchSize": 1
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        880,
+        280
+      ],
+      "id": "wfb-loop-000000004",
+      "name": "Loop Over Slots"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "__ANTHROPIC_API_KEY__"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: '__ANTHROPIC_MODEL__', max_tokens: 1200, system: $json.system, messages: [ { role: 'user', content: $json.user } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        660,
+        320
+      ],
+      "id": "wfb-anthropic-gen05",
+      "name": "Anthropic: Generator"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tolerant JSON parse of the generator object { post_body, first_comment, image_concept, ... }.\nlet t = $json.content?.[0]?.text || '';\nt = t.replace(/\\`\\`\\`json|\\`\\`\\`/g, '').trim();\nlet out;\ntry { out = JSON.parse(t); } catch (e) { const m = t.match(/\\{[\\s\\S]*\\}/); out = m ? JSON.parse(m[0]) : {}; }\nreturn [{ json: out }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        320
+      ],
+      "id": "wfb-parse-00000006",
+      "name": "Parse JSON (tolerant)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "__ANTHROPIC_API_KEY__"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: '__ANTHROPIC_MODEL__', max_tokens: 400, messages: [ { role: 'user', content: 'Image prompt for: ' + $json.image_concept } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1100,
+        320
+      ],
+      "id": "wfb-anthropic-img07",
+      "name": "Anthropic: Image Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/generations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer __IMAGE_API_KEY__"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.content?.[0]?.text || '', size: '1024x1024', n: 1 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1320,
+        320
+      ],
+      "id": "wfb-genimg-000008",
+      "name": "Generate Image (swappable)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decode the base64 image and prepare it as binary for upload.\nconst b64 = $json.data?.[0]?.b64_json;\nif (!b64) throw new Error('No image returned');\nconst path = `${$now.toFormat('yyyy-LL-dd')}-${Math.random().toString(36).slice(2,10)}.png`;\nreturn [{ json: { path }, binary: { data: await this.helpers.prepareBinaryData(Buffer.from(b64, 'base64'), path, 'image/png') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        320
+      ],
+      "id": "wfb-decode-00009",
+      "name": "Decode Image"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=__SUPABASE_URL__/storage/v1/object/fb-images/{{ $json.path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            },
+            {
+              "name": "Content-Type",
+              "value": "image/png"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1760,
+        320
+      ],
+      "id": "wfb-upload-0010",
+      "name": "Upload to fb-images"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Public read URL for the uploaded image (note the /public/ segment).\nreturn [{ json: { image_url: `${$env.SUPABASE_URL || '__SUPABASE_URL__'}/storage/v1/object/public/fb-images/${$('Decode Image').item.json.path}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        320
+      ],
+      "id": "wfb-seturl-0011",
+      "name": "Set image_url"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+              },
+              {
+                "name": "Authorization",
+                "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=representation"
+              }
+            ]
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ scheduled_date: $('Loop Over Slots').item.json.plan_date, target: 'both', pillar: $('Loop Over Slots').item.json.pillar, archetype: $('Loop Over Slots').item.json.archetype, subtopic_id: $('Loop Over Slots').item.json.subtopic_id, post_body: $('Parse JSON (tolerant)').item.json.post_body, first_comment: $('Parse JSON (tolerant)').item.json.first_comment, image_concept: $('Parse JSON (tolerant)').item.json.image_concept, image_url: $('Set image_url').item.json.image_url, copy_status: 'pending', image_status: 'pending', revision: 0 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2200,
+        320
+      ],
+      "id": "wfb-insert-0012",
+      "name": "Insert fb_posts (public image URL)"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_content_plan?id=eq.{{ $('Loop Over Slots').item.json.plan_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+              },
+              {
+                "name": "Authorization",
+                "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'generated' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2420,
+        320
+      ],
+      "id": "wfb-markplan-013",
+      "name": "Mark Plan Generated"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_subtopics?id=eq.{{ $('Loop Over Slots').item.json.subtopic_id || '00000000-0000-0000-0000-000000000000' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+              },
+              {
+                "name": "Authorization",
+                "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ last_used_at: new Date().toISOString(), times_used: ($('Loop Over Slots').item.json.times_used || 0) + 1 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2640,
+        320
+      ],
+      "id": "wfb-bump-00014",
+      "name": "Bump Subtopic"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Throttle ~3s between slots so Anthropic / image / GroupMe don't rate-limit (recall the\n// GroupMe 429s from rapid runs). Passes the current item through to loop back.\nawait new Promise(r => setTimeout(r, 3000));\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        320
+      ],
+      "id": "wfb-throttle015",
+      "name": "Throttle 3s"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groupme.com/v3/bots/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '✅ Generated ' + $('Select Slots').first().json.slots.length + ' planned post(s) — review in the Dashboard.' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        660,
+        120
+      ],
+      "id": "wfb-groupme-016",
+      "name": "GroupMe Summary",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        120
+      ],
+      "id": "wfb-respond-017",
+      "name": "Respond"
+    },
+    {
+      "parameters": {
+        "content": "## WF-Batch — Generate Batch (fb-generate-batch)\\nOn-demand only. The Dashboard 'Generate up to N' button (executive-gated, N capped at MAX_PER_GENERATION) POSTs { max } with the `x-webhook-secret: __N8N_WEBHOOK_SECRET__` header.\\n\\nSelect Slots picks up to `max` fb_content_plan rows (status='planned', plan_date>=today, no fb_posts row for that date), oldest first, and pre-builds each slot's generator prompt (all reads via this.helpers.httpRequest — no fan-out). Loop Over Slots then runs WF1's generation per slot (Anthropic → image prompt → image → decode → upload → public URL → insert fb_posts draft → mark plan row 'generated' → bump subtopic), with a ~3s throttle between slots and a hard cap at `max`. One GroupMe summary at the end (Execute Once).\\n\\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders on import. Keep `active:false` in the committed copy.",
+        "height": 360,
+        "width": 520
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        -160
+      ],
+      "id": "wfb-note-00018",
+      "name": "About WF-Batch"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (fb-generate-batch)": {
+      "main": [
+        [
+          {
+            "node": "Verify Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Secret": {
+      "main": [
+        [
+          {
+            "node": "Select Slots",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Slots": {
+      "main": [
+        [
+          {
+            "node": "Has Slots?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Slots?": {
+      "main": [
+        [
+          {
+            "node": "Fan Out Slots",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GroupMe Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fan Out Slots": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Slots": {
+      "main": [
+        [
+          {
+            "node": "GroupMe Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anthropic: Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic: Generator": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON (tolerant)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON (tolerant)": {
+      "main": [
+        [
+          {
+            "node": "Anthropic: Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic: Image Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Image (swappable)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image (swappable)": {
+      "main": [
+        [
+          {
+            "node": "Decode Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decode Image": {
+      "main": [
+        [
+          {
+            "node": "Upload to fb-images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to fb-images": {
+      "main": [
+        [
+          {
+            "node": "Set image_url",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set image_url": {
+      "main": [
+        [
+          {
+            "node": "Insert fb_posts (public image URL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert fb_posts (public image URL)": {
+      "main": [
+        [
+          {
+            "node": "Mark Plan Generated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Plan Generated": {
+      "main": [
+        [
+          {
+            "node": "Bump Subtopic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bump Subtopic": {
+      "main": [
+        [
+          {
+            "node": "Throttle 3s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Throttle 3s": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GroupMe Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "id": "fb-content-engine",
+      "name": "FB Content Engine"
+    }
+  ]
+}

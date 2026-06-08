@@ -1,6 +1,7 @@
 import type { BadgeTone } from "@/components/ui/Badge";
 import type {
   FbPostStatus,
+  FbPlanStatus,
   FbComponentStatus,
   FbPillar,
   FbTarget,
@@ -13,6 +14,13 @@ export const FB_STATUS_META: Record<FbPostStatus, { label: string; tone: BadgeTo
   draft: { label: "Draft", tone: "navy" },
   approved: { label: "Approved", tone: "emerald" },
   posted: { label: "Posted", tone: "slate" },
+  skipped: { label: "Skipped", tone: "slate" },
+};
+
+/** Plan-slot statuses (fb_content_plan). 'planned' is the new muted calendar state. */
+export const PLAN_STATUS_META: Record<FbPlanStatus, { label: string; tone: BadgeTone }> = {
+  planned: { label: "Planned", tone: "sky" },
+  generated: { label: "Generated", tone: "navy" },
   skipped: { label: "Skipped", tone: "slate" },
 };
 

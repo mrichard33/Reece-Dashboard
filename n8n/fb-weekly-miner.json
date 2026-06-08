@@ -29,7 +29,7 @@
       "parameters": {
         "conditions": {
           "options": { "caseSensitive": true, "typeValidation": "strict" },
-          "conditions": [ { "id": "secret", "leftValue": "={{ $json.headers.authorization }}", "rightValue": "=Bearer __N8N_WEBHOOK_SECRET__", "operator": { "type": "string", "operation": "equals" } } ],
+          "conditions": [ { "id": "secret", "leftValue": "={{ $json.headers['x-webhook-secret'] }}", "rightValue": "=__N8N_WEBHOOK_SECRET__", "operator": { "type": "string", "operation": "equals" } } ],
           "combinator": "and"
         },
         "options": {}
@@ -144,7 +144,7 @@
     },
     {
       "parameters": {
-        "content": "## WF2 — Weekly Idea Miner\nMonday 07:00 ET, plus the `fb-run-miner` webhook (verify `Authorization: Bearer __N8N_WEBHOOK_SECRET__`) the Dashboard 'Run miner now' button calls.\n\nPulls ~50 recent INBOUND customer messages (from the HL Supabase `messages` cache — or swap to the GHL Conversations API), asks Anthropic for 8 fresh subtopics mapped to a pillar, and inserts them as `status='proposed'` with `source_evidence`. Approvers promote them to `active` in the Idea Miner panel.",
+        "content": "## WF2 — Weekly Idea Miner\nMonday 07:00 ET, plus the `fb-run-miner` webhook (verify the `x-webhook-secret: __N8N_WEBHOOK_SECRET__` header — n8n redacts Authorization) the Dashboard 'Run miner now' button calls.\n\nPulls ~50 recent INBOUND customer messages (from the HL Supabase `messages` cache — or swap to the GHL Conversations API), asks Anthropic for 8 fresh subtopics mapped to a pillar, and inserts them as `status='proposed'` with `source_evidence`. Approvers promote them to `active` in the Idea Miner panel.",
         "height": 240, "width": 420
       },
       "type": "n8n-nodes-base.stickyNote",

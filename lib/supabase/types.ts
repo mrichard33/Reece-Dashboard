@@ -450,6 +450,7 @@ export type FbTarget = "group" | "page" | "both";
 export type FbComponentStatus = "pending" | "approved" | "rejected";
 export type FbPostStatus = "draft" | "approved" | "posted" | "skipped";
 export type FbSubtopicStatus = "proposed" | "active" | "inactive" | "rejected";
+export type FbPlanStatus = "planned" | "generated" | "skipped";
 export type FbComponent = "copy" | "image" | "both";
 export type FbReasonCode =
   | "off-brand"
@@ -496,6 +497,17 @@ export type FbSubtopic = {
   status: FbSubtopicStatus;
   last_used_at: string | null;
   times_used: number;
+  created_at: string;
+};
+
+export type FbContentPlan = {
+  id: string;
+  plan_date: string;
+  pillar: string;
+  archetype: string;
+  subtopic_id: string | null;
+  campaign: string | null;
+  status: FbPlanStatus;
   created_at: string;
 };
 
