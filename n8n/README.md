@@ -23,6 +23,24 @@ Dashboard's Content area runs fully without them (the webhook triggers no-op whe
 | `fb-queue-health.json` | FB · Queue Health (WF6) | schedule | `0 18 * * *` |
 | `fb-strategic-refresh.json` | FB · Strategic Refresh (WF7) | schedule + webhook `fb-strategic-refresh` | `0 8 1 */3 *` |
 
+## Status
+
+**WF1 (Nightly Generator) and WF3 (Regeneration Webhook) logic is now complete** — they are no
+longer skeletons. WF1 picks the next uncovered date (5-day horizon duplicate guard) or uses the
+on-demand `scheduled_date`, merges the LRU subtopic + prompts + message bank, generates copy +
+image, uploads to the public `fb-images` bucket, inserts a real `fb_posts` draft, and bumps the
+subtopic's `last_used_at`/`times_used`. WF3 honors the system-of-record contract below: it reads
+the latest feedback + post (never re-inserts feedback), regenerates the copy and/or image branch,
+reuses a kept image when only copy was rejected, and flips the regenerated component back to
+`pending` (alerting and stopping when `needs_manual` is already set). The other five workflows
+(WF2/WF4/WF5/WF6/WF7) remain scaffolds for later milestones.
+
+Current provider defaults (set as n8n credentials/values on import): **image** = OpenAI
+`gpt-image-1` (endpoint hardcoded to `https://api.openai.com/v1/images/generations`; swap the
+node for another photoreal provider if desired), **model** (`__ANTHROPIC_MODEL__`) =
+`claude-sonnet-4-6`. The committed JSONs keep every secret as a placeholder — real values live
+only in n8n.
+
 ## Import & setup
 
 1. **Apply the migrations** (0003 + 0004) in LP Supabase; confirm the public
@@ -33,7 +51,9 @@ Dashboard's Content area runs fully without them (the webhook triggers no-op whe
      inbound-message source, if you read the HL cache).
    - `YOUR_SUPABASE_SERVICE_ROLE_KEY` — LP service-role key (the `apikey`/Bearer value).
    - `__ANTHROPIC_API_KEY__`, `__ANTHROPIC_MODEL__` — your Claude key + a current model id.
-   - `__IMAGE_API_URL__`, `__IMAGE_API_KEY__` — image provider endpoint + key (swappable).
+   - `__IMAGE_API_KEY__` — image provider key (WF1/WF3 default to OpenAI `gpt-image-1`; the endpoint
+     is hardcoded, so only the key needs setting unless you swap providers). Other workflows may still
+     reference `__IMAGE_API_URL__`.
    - `__FB_GRAPH_VERSION__` (`v21.0`), `__FB_PAGE_ID__`, `__FB_PAGE_ACCESS_TOKEN__`.
    - `__GROUPME_BOT_ID__` — Sales Force bot id.
    - `__N8N_WEBHOOK_SECRET__` — must match the Dashboard's `N8N_WEBHOOK_SECRET`.
