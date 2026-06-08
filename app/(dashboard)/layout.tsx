@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/shell/Sidebar";
+import { MobileNavProvider } from "@/components/shell/MobileNav";
 import { getAccessContext } from "@/lib/auth";
 
 export default async function DashboardLayout({
@@ -25,16 +26,18 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        role={ctx.role}
-        isExecutive={ctx.isExecutive}
-        isExecOnly={ctx.isExecOnly}
-        currentPath={pathname}
-      />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <main className="flex-1 overflow-y-auto">{children}</main>
+    <MobileNavProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar
+          role={ctx.role}
+          isExecutive={ctx.isExecutive}
+          isExecOnly={ctx.isExecOnly}
+          currentPath={pathname}
+        />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <main className="flex-1 overflow-y-auto">{children}</main>
+        </div>
       </div>
-    </div>
+    </MobileNavProvider>
   );
 }
