@@ -1,6 +1,70 @@
 import { lpService } from "@/lib/supabase/lp";
 import { hlService } from "@/lib/supabase/hl";
 
+/**
+ * Headline "Today" cards — definitions (keep these in sync with the card
+ * labels in app/(dashboard)/overview/page.tsx and components/help/helpContent.ts).
+ *
+ *  leadsToday        LP `lp_leads` created today (created_at_lp ≥ ET-midnight).
+ *                    created_at_lp is the true per-lead creation time, not sync time.
+ *  leadsYesterday    Same, for the prior ET calendar day (drives the delta).
+ *  appointmentsToday HL `appointments` whose scheduled start_time falls within
+ *                    today's ET calendar day and that are not soft-deleted. This
+ *                    is a REAL appointment date — not the old proxy that counted
+ *                    opportunities touched by sync today.
+ *  oppsInFlight      HL `opportunities` that are open, not soft-deleted, and were
+ *                    genuinely updated in GHL (date_updated, NOT the sync-time
+ *                    updated_at) within the last 30 days. Card label: "Opps in
+ *                    flight (30d)". Excludes won/lost/abandoned and dormant opps.
+ *  pendingApprovals  LP `groupme_approval_requests` with status='pending'.
+ *  openIssues        LP `claude_known_issues` with status='open'.
+ *
+ * Day boundaries are anchored to America/New_York (Reece's business timezone) so
+ * "today" matches how staff read the calendar, regardless of server timezone.
+ */
+
+const BUSINESS_TZ = "America/New_York";
+const DAY_MS = 24 * 60 * 60 * 1000;
+const OPPS_ACTIVE_WINDOW_DAYS = 30;
+
+/** Minutes that `tz` is offset from UTC at the given instant (e.g. EDT → -240). */
+function tzOffsetMinutes(tz: string, at: Date): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = dtf.formatToParts(at);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const asUTC = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  return (asUTC - at.getTime()) / 60000;
+}
+
+/** UTC instant of midnight (start of the calendar day) in BUSINESS_TZ for `base`. */
+function businessDayStart(base: Date): Date {
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(base); // "YYYY-MM-DD"
+  const utcMidnight = new Date(`${ymd}T00:00:00Z`);
+  const offsetMin = tzOffsetMinutes(BUSINESS_TZ, utcMidnight);
+  return new Date(utcMidnight.getTime() - offsetMin * 60000);
+}
+
 export type HeadlineStats = {
   leadsToday: number;
   leadsYesterday: number;
@@ -20,12 +84,20 @@ async function countLeadsBetween(start: Date, end: Date): Promise<number> {
   return count ?? 0;
 }
 
-async function countOpenOpps(): Promise<number> {
+/**
+ * Open opportunities that are genuinely "in flight": open, not soft-deleted, and
+ * updated in GHL within the last 30 days. Uses `date_updated` (the real GHL
+ * timestamp) rather than `updated_at`, which is sync time and defaults to now().
+ */
+async function countOppsInFlight(): Promise<number> {
   const sb = hlService();
+  const since = new Date(Date.now() - OPPS_ACTIVE_WINDOW_DAYS * DAY_MS);
   const { count } = await sb
     .from("opportunities")
     .select("id", { count: "exact", head: true })
-    .eq("status", "open");
+    .eq("status", "open")
+    .is("deleted_at", null)
+    .gte("date_updated", since.toISOString());
   return count ?? 0;
 }
 
@@ -48,37 +120,33 @@ async function countOpenIssues(): Promise<number> {
 }
 
 /**
- * Appointments today is not a clean SQL query — appointment dates live in
- * GHL custom fields that aren't reliably modeled in the HL cache yet. For
- * Phase 1 we proxy this with "opportunities updated today in an appt stage";
- * a more accurate query lands in Phase 2 with /appointments.
+ * Appointments whose scheduled start falls within today's ET calendar day and
+ * that are not soft-deleted. `appointments.start_time` is the real appointment
+ * timestamp synced from GHL.
  */
-async function countAppointmentsToday(): Promise<number> {
+async function countAppointmentsToday(dayStart: Date, dayEnd: Date): Promise<number> {
   const sb = hlService();
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
   const { count } = await sb
-    .from("opportunities")
+    .from("appointments")
     .select("id", { count: "exact", head: true })
-    .eq("status", "open")
-    .gte("updated_at", todayStart.toISOString());
+    .is("deleted_at", null)
+    .gte("start_time", dayStart.toISOString())
+    .lt("start_time", dayEnd.toISOString());
   return count ?? 0;
 }
 
 export async function getHeadlineStats(): Promise<HeadlineStats> {
   const now = new Date();
-  const startToday = new Date(now);
-  startToday.setHours(0, 0, 0, 0);
-  const startYesterday = new Date(startToday);
-  startYesterday.setDate(startYesterday.getDate() - 1);
+  const startToday = businessDayStart(now);
+  const startTomorrow = new Date(startToday.getTime() + DAY_MS);
+  const startYesterday = new Date(startToday.getTime() - DAY_MS);
 
   const [leadsToday, leadsYesterday, oppsInFlight, appointmentsToday, pendingApprovals, openIssues] =
     await Promise.all([
       countLeadsBetween(startToday, now).catch(() => 0),
       countLeadsBetween(startYesterday, startToday).catch(() => 0),
-      countOpenOpps().catch(() => 0),
-      countAppointmentsToday().catch(() => 0),
+      countOppsInFlight().catch(() => 0),
+      countAppointmentsToday(startToday, startTomorrow).catch(() => 0),
       countPendingApprovals().catch(() => 0),
       countOpenIssues().catch(() => 0),
     ]);

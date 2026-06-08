@@ -57,16 +57,16 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "overview.appointmentsToday": {
     title: "Appointments Today",
-    what: "Count of opportunities currently in an appointment stage with a scheduled date of today.",
+    what: "Count of real appointments scheduled for today (America/New_York), from the synced HL `appointments` calendar. Excludes soft-deleted/cancelled rows.",
     where:
-      "`opportunities` joined to `stages` (HL Supabase), filtered to appointment stages and today's appointment date custom field.",
-    fix: "If too low and recent leads exist, check whether they were enrolled into the booking workflow. If too high vs. calendar, check for duplicate opp creation.",
+      "`select count(*) from appointments where deleted_at is null and start_time >= <ET-midnight> and start_time < <ET-midnight+1d>` (HL Supabase).",
+    fix: "If too low and recent leads exist, check whether they were enrolled into the booking workflow and whether the appointments sync is fresh. If too high vs. the calendar, check for duplicate appointment creation.",
   },
   "overview.oppsInFlight": {
-    title: "Opps in Flight",
-    what: "Total open P1 opportunities across all stages. Excludes won/lost/abandoned.",
+    title: "Opps in Flight (30d)",
+    what: "Open opportunities that are genuinely active — open, not deleted, and updated in GHL within the last 30 days. Excludes won/lost/abandoned and long-dormant opps.",
     where:
-      "`select count(*) from opportunities where pipeline_id = <P1> and status = 'open'` (HL Supabase).",
+      "`select count(*) from opportunities where status = 'open' and deleted_at is null and date_updated >= now() - interval '30 days'` (HL Supabase). Uses `date_updated` (real GHL time), not the sync-time `updated_at`.",
     fix: "If this drops sharply, check `/pipelines` for an unexpected mass-close. If it climbs without close-out, check stage aging on `/pipelines`.",
   },
   "overview.pendingApprovals": {

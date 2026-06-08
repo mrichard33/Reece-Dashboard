@@ -41,14 +41,20 @@ export function DecisionButtons({ assetId }: { assetId: string }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Button onClick={approve} disabled={pending} variant="primary">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Button
+          onClick={approve}
+          disabled={pending}
+          variant="primary"
+          className="w-full justify-center sm:w-auto"
+        >
           <Check className="h-4 w-4" /> Approve
         </Button>
         <Button
           onClick={() => setRejecting((v) => !v)}
           disabled={pending}
           variant="danger"
+          className="w-full justify-center sm:w-auto"
         >
           <X className="h-4 w-4" /> Request changes
         </Button>

@@ -16,6 +16,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { PostReview } from "@/components/content/PostReview";
 import { PlanReview } from "@/components/content/PlanReview";
 import { PlanControls } from "@/components/content/PlanControls";
+import { GeneratePostButton } from "@/components/content/GeneratePostButton";
 import { pillarLabel } from "@/components/content/meta";
 import { cn } from "@/lib/utils";
 import type { FbPost, FbContentPlan, FbPostStatus } from "@/lib/supabase/types";
@@ -87,6 +88,9 @@ export function Calendar({
   const prev = format(addMonths(first, -1), "yyyy-MM");
   const next = format(addMonths(first, 1), "yyyy-MM");
   const todayStr = format(new Date(), "yyyy-MM-dd");
+  const hasUpcomingDraft = posts.some(
+    (p) => p.status === "draft" && p.scheduled_date >= todayStr,
+  );
 
   return (
     <div className="space-y-3">
@@ -111,7 +115,8 @@ export function Calendar({
           </Link>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isExecutive && <GeneratePostButton />}
           {isExecutive && (
             <PlanControls planHorizonDays={planHorizonDays} maxPerGeneration={maxPerGeneration} />
           )}
@@ -127,7 +132,27 @@ export function Calendar({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 text-sm dark:border-slate-800 dark:bg-slate-800">
+      {/* How generation works — one-line model explainer. */}
+      {isExecutive && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          A draft is generated automatically each night. Use{" "}
+          <span className="font-medium text-slate-600 dark:text-slate-300">Generate post</span> to
+          add one on demand for a chosen date.
+        </p>
+      )}
+
+      {/* Empty state — no upcoming drafts to review. */}
+      {!hasUpcomingDraft && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+          No drafts yet — posts generate automatically each night, or
+          {isExecutive ? " click " : " an executive can click "}
+          <span className="font-medium text-slate-600 dark:text-slate-300">Generate post</span> to
+          create one now.
+        </div>
+      )}
+
+      {/* Month grid — md+ only. */}
+      <div className="hidden grid-cols-7 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 text-sm md:grid dark:border-slate-800 dark:bg-slate-800">
         {WEEKDAYS.map((d) => (
           <div
             key={d}
@@ -193,6 +218,75 @@ export function Calendar({
             </div>
           );
         })}
+      </div>
+
+      {/* Agenda — mobile only. Stacks the month's scheduled days as cards. */}
+      <div className="space-y-2 md:hidden">
+        {(() => {
+          const agenda = days
+            .filter((d) => d.getMonth() === monthIndex)
+            .map((d) => {
+              const key = format(d, "yyyy-MM-dd");
+              return { d, key, cellPosts: byDate.get(key) ?? [], planSlot: planByDate.get(key) };
+            })
+            .filter((e) => e.cellPosts.length > 0 || e.planSlot);
+
+          if (agenda.length === 0) {
+            return (
+              <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400 dark:border-slate-700">
+                Nothing scheduled this month.
+              </p>
+            );
+          }
+
+          return agenda.map(({ d, key, cellPosts, planSlot }) => (
+            <div
+              key={key}
+              className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <span
+                  className={cn(
+                    "text-xs font-medium text-slate-600 dark:text-slate-300",
+                    key === todayStr && "rounded bg-brick px-1.5 py-0.5 text-white",
+                  )}
+                >
+                  {format(d, "EEE, MMM d")}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {cellPosts.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSel({ kind: "post", id: p.id })}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:ring-1 hover:ring-navy-300",
+                      p.needs_manual
+                        ? "bg-amber-50 dark:bg-amber-950"
+                        : "bg-slate-50 dark:bg-slate-800",
+                    )}
+                  >
+                    <span className={cn("h-2.5 w-2.5 flex-shrink-0 rounded-full", DOT[p.status])} />
+                    <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
+                    <span className="ml-auto text-xs capitalize text-slate-400">{p.status}</span>
+                  </button>
+                ))}
+                {planSlot && (
+                  <button
+                    type="button"
+                    onClick={() => setSel({ kind: "plan", id: planSlot.id })}
+                    className="flex w-full items-center gap-2 rounded border border-dashed border-sky-300 px-2 py-2 text-left text-sm text-slate-500 hover:ring-1 hover:ring-sky-300 dark:border-sky-800"
+                  >
+                    <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-sky-400" />
+                    <span className="truncate">{pillarLabel(planSlot.pillar)}</span>
+                    <span className="ml-auto text-xs text-slate-400">planned</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ));
+        })()}
       </div>
 
       <Drawer
