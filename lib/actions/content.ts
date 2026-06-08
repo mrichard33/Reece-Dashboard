@@ -13,6 +13,11 @@ export type ActionResult = { ok: boolean; error?: string };
 /** Regeneration cap before a slot is flagged for manual authoring (spec §3). */
 const MAX_REGEN_ATTEMPTS = Number(process.env.MAX_REGEN_ATTEMPTS ?? "3");
 
+/** Hard cap on how many planned slots one batch fill may generate (Part 2 §2.3). */
+const MAX_PER_GENERATION = Number(process.env.MAX_PER_GENERATION ?? "7");
+/** Default planning window for "Plan next N days" (Part 2 §2.2). */
+const PLAN_HORIZON_DAYS = Number(process.env.PLAN_HORIZON_DAYS ?? "30");
+
 function refresh() {
   // Revalidate the whole Content section (calendar, miner, insights, …).
   revalidatePath("/content", "layout");
@@ -227,6 +232,66 @@ export async function runStrategicRefresh(): Promise<ActionResult> {
   if (!ctx?.isAdmin) return { ok: false, error: "Admin only." };
   const res = await postWebhook("fb-strategic-refresh", {});
   return { ok: true, error: res.queued ? undefined : "Queued locally — n8n not connected yet." };
+}
+
+// ── Plan-ahead + capped batch generation (Part 2) ────────────────
+//
+// planPeriod fires the cheap one-LLM-call planner (WF-Plan upserts fb_content_plan).
+// generateBatch fires the capped batch fill (WF-Batch turns planned slots into drafts).
+// Both no-op offline like the other n8n triggers. The plan rows they create/consume are
+// the system of record; skip/edit below are the local executive edits to a planned slot.
+
+export async function planPeriod(
+  startDate: string,
+  days?: number,
+): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  const horizon = Math.max(1, Math.floor(days ?? PLAN_HORIZON_DAYS));
+  const res = await postWebhook("fb-plan-period", { start_date: startDate, days: horizon });
+  return { ok: true, error: res.queued ? undefined : "Queued locally — n8n not connected yet." };
+}
+
+export async function generateBatch(max?: number): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  // Clamp to the hard cap so the UI can never request an unbounded run.
+  const n = Math.min(MAX_PER_GENERATION, Math.max(1, Math.floor(max ?? MAX_PER_GENERATION)));
+  const res = await postWebhook("fb-generate-batch", { max: n });
+  return { ok: true, error: res.queued ? undefined : "Queued locally — n8n not connected yet." };
+}
+
+export async function skipPlanSlot(id: string): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  const supabase = await lpServer();
+  const { error } = await supabase
+    .from("fb_content_plan")
+    .update({ status: "skipped" })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
+}
+
+export async function editPlanSlot(
+  id: string,
+  fields: { pillar?: string; archetype?: string; subtopic_id?: string | null; campaign?: string | null },
+): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  const update: Record<string, unknown> = {};
+  if (fields.pillar !== undefined) update.pillar = fields.pillar.trim();
+  if (fields.archetype !== undefined) update.archetype = fields.archetype.trim();
+  if (fields.subtopic_id !== undefined) update.subtopic_id = fields.subtopic_id || null;
+  if (fields.campaign !== undefined) update.campaign = fields.campaign?.trim() || null;
+  if (Object.keys(update).length === 0) return { ok: true };
+
+  const supabase = await lpServer();
+  const { error } = await supabase.from("fb_content_plan").update(update).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
 }
 
 // ── Subtopics (Idea Miner) ───────────────────────────────────────

@@ -22,6 +22,8 @@ Dashboard's Content area runs fully without them (the webhook triggers no-op whe
 | `fb-metrics-pull.json` | FB · Metrics Pull (WF5) | schedule | `0 9 * * *` |
 | `fb-queue-health.json` | FB · Queue Health (WF6) | schedule | `0 18 * * *` |
 | `fb-strategic-refresh.json` | FB · Strategic Refresh (WF7) | schedule + webhook `fb-strategic-refresh` | `0 8 1 */3 *` |
+| `fb-plan-period.json` | FB · Plan Period (WF-Plan) | webhook `fb-plan-period` | — |
+| `fb-generate-batch.json` | FB · Generate Batch (WF-Batch) | webhook `fb-generate-batch` | — |
 
 ## Status
 
@@ -69,8 +71,11 @@ only in n8n.
 
 ## Dashboard → n8n webhook contract
 
-The Dashboard fires authenticated POSTs (`Authorization: Bearer ${N8N_WEBHOOK_SECRET}`)
-via `lib/n8n.ts → postWebhook(path, body)` to `${N8N_BASE_URL}/webhook/${path}`:
+The Dashboard fires authenticated POSTs (`x-webhook-secret: ${N8N_WEBHOOK_SECRET}`)
+via `lib/n8n.ts → postWebhook(path, body)` to `${N8N_BASE_URL}/webhook/${path}`.
+A custom header is used rather than `Authorization` because n8n redacts the
+Authorization header on inbound webhooks (it arrives as `{__redacted:true}`), so
+each workflow's Verify Secret node matches `$json.headers['x-webhook-secret']`:
 
 | Path | From | Body | Workflow |
 |---|---|---|---|
@@ -78,6 +83,8 @@ via `lib/n8n.ts → postWebhook(path, body)` to `${N8N_BASE_URL}/webhook/${path}
 | `fb-generate-now` | `generateNow()` | `{scheduled_date}` | WF1 |
 | `fb-run-miner` | `runMiner()` | `{}` | WF2 |
 | `fb-strategic-refresh` | `runStrategicRefresh()` | `{}` | WF7 — §6.6 quarterly refresh (also runs on a quarterly schedule). Returns the proposals JSON; surfaced for human apply (no DB write). |
+| `fb-plan-period` | `planPeriod()` | `{start_date, days}` | WF-Plan — one cheap Anthropic call → upserts `fb_content_plan` (`status='planned'`). |
+| `fb-generate-batch` | `generateBatch()` | `{max}` | WF-Batch — fills up to `max` `planned` slots with finished drafts (throttled), flips them to `generated`. |
 
 ## System of record (WF3)
 

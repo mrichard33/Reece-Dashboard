@@ -28,8 +28,8 @@
           "conditions": [
             {
               "id": "secret",
-              "leftValue": "={{ $json.headers.authorization }}",
-              "rightValue": "=Bearer __N8N_WEBHOOK_SECRET__",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "=__N8N_WEBHOOK_SECRET__",
               "operator": {
                 "type": "string",
                 "operation": "equals"
@@ -155,6 +155,38 @@
       "id": "wf3-get-feedback-0000006",
       "name": "Get Feedback",
       "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-feedback",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        770,
+        460
+      ],
+      "id": "wf3-has-feedback-000022",
+      "name": "Has Feedback?"
     },
     {
       "parameters": {
@@ -568,7 +600,7 @@
     },
     {
       "parameters": {
-        "content": "## ⚠️ CONTRACT: WF3 ↔ Dashboard action (SYSTEM OF RECORD)\n\nThe Reece Dashboard is the system of record. `lib/actions/content.ts → rejectComponent()` is the authoritative writer of a rejection. BEFORE this webhook fires, that action has ALREADY:\n  1. inserted the `fb_post_feedback` row (snapshotting the rejected copy/image),\n  2. flipped the rejected component to `status = 'rejected'`,\n  3. incremented `fb_posts.revision`, and\n  4. set `needs_manual = true` once `revision >= MAX_REGEN_ATTEMPTS`.\n\nTHIS workflow CONSUMES that — it must **NOT** insert feedback again. It reads the\nlatest feedback for the post/component (Get Feedback) + the fb_posts row, regenerates\ncopy and/or image (reusing the kept image when only copy was rejected), and sets the\nregenerated component back to `pending`. If `needs_manual` is already set, it alerts on\nGroupMe and stops.\n\nLogic is now COMPLETE: copy branch (Need Copy?) rebuilds the generator prompt in\nregeneration mode and PATCHes post_body/first_comment + copy_status='pending'; image\nbranch (Need Image?) regenerates via decode→PUT→public-URL and PATCHes image_url +\nimage_status='pending'. For component='both' both run.\n\nPayload: { post_id, component, reason_code, reason_text, rejected_by }.\nThe mirror of this note lives in lib/actions/content.ts (rejectComponent).",
+        "content": "## ⚠️ CONTRACT: WF3 ↔ Dashboard action (SYSTEM OF RECORD)\n\nThe Reece Dashboard is the system of record. `lib/actions/content.ts → rejectComponent()` is the authoritative writer of a rejection. BEFORE this webhook fires, that action has ALREADY:\n  1. inserted the `fb_post_feedback` row (snapshotting the rejected copy/image),\n  2. flipped the rejected component to `status = 'rejected'`,\n  3. incremented `fb_posts.revision`, and\n  4. set `needs_manual = true` once `revision >= MAX_REGEN_ATTEMPTS`.\n\nTHIS workflow CONSUMES that — it must **NOT** insert feedback again. It reads the\nlatest feedback for the post/component (Get Feedback) + the fb_posts row, regenerates\ncopy and/or image (reusing the kept image when only copy was rejected), and sets the\nregenerated component back to `pending`. If `needs_manual` is already set, it alerts on\nGroupMe and stops.\n\nIf Get Feedback returns no row (a manual trigger or a race), the Has Feedback? gate\nresponds and stops instead of regenerating against nothing — real Dashboard rejects\nalways write feedback first, so this is just an edge-case safety net.\n\nLogic is now COMPLETE: copy branch (Need Copy?) rebuilds the generator prompt in\nregeneration mode and PATCHes post_body/first_comment + copy_status='pending'; image\nbranch (Need Image?) regenerates via decode→PUT→public-URL and PATCHes image_url +\nimage_status='pending'. For component='both' both run.\n\nPayload: { post_id, component, reason_code, reason_text, rejected_by }.\nThe mirror of this note lives in lib/actions/content.ts (rejectComponent).",
         "height": 420,
         "width": 540
       },
@@ -657,7 +689,25 @@
       "main": [
         [
           {
+            "node": "Has Feedback?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Feedback?": {
+      "main": [
+        [
+          {
             "node": "Get Message Bank",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
             "type": "main",
             "index": 0
           }

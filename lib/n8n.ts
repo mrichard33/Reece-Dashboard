@@ -10,8 +10,11 @@
  *   fb-run-miner         — WF2 on-demand, mine new subtopic proposals
  *   fb-strategic-refresh — future quarterly refresh (stub; documented in README)
  *
- * Every request carries `Authorization: Bearer ${N8N_WEBHOOK_SECRET}`; each n8n
- * webhook verifies it before acting.
+ * Every request carries `x-webhook-secret: ${N8N_WEBHOOK_SECRET}`; each n8n
+ * webhook verifies it before acting. (A custom header is used rather than
+ * `Authorization` because n8n redacts the Authorization header on inbound
+ * webhooks — it arrives as `{__redacted:true}`, so the Verify Secret gate can
+ * never match against it.)
  */
 
 export type N8nResult = { queued: boolean; error?: string };
@@ -32,7 +35,7 @@ export async function postWebhook(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${SECRET}`,
+        "x-webhook-secret": SECRET,
       },
       body: JSON.stringify(body),
       cache: "no-store",

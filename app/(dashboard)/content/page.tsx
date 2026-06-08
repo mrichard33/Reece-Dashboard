@@ -1,6 +1,6 @@
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, format } from "date-fns";
 import { getAccessContext } from "@/lib/auth";
-import { listPostsForRange } from "@/lib/queries/content";
+import { listPostsForRange, listPlanForRange } from "@/lib/queries/content";
 import { Calendar } from "@/components/content/Calendar";
 
 export const dynamic = "force-dynamic";
@@ -30,19 +30,25 @@ export default async function ContentCalendarPage({
   const first = new Date(year, monthIndex, 1);
   const gridStart = startOfWeek(startOfMonth(first), { weekStartsOn: 0 });
   const gridEnd = endOfWeek(endOfMonth(first), { weekStartsOn: 0 });
-  const posts = await listPostsForRange(
-    format(gridStart, "yyyy-MM-dd"),
-    format(gridEnd, "yyyy-MM-dd"),
-  );
+  const [posts, plan] = await Promise.all([
+    listPostsForRange(format(gridStart, "yyyy-MM-dd"), format(gridEnd, "yyyy-MM-dd")),
+    listPlanForRange(format(gridStart, "yyyy-MM-dd"), format(gridEnd, "yyyy-MM-dd")),
+  ]);
+
+  const maxPerGeneration = Number(process.env.MAX_PER_GENERATION ?? "7");
+  const planHorizonDays = Number(process.env.PLAN_HORIZON_DAYS ?? "30");
 
   return (
     <div className="p-6">
       <Calendar
         posts={posts}
+        plan={plan}
         year={year}
         monthIndex={monthIndex}
         isExecutive={isExecutive}
         initialNeedsOnly={sp.filter === "needs"}
+        planHorizonDays={planHorizonDays}
+        maxPerGeneration={maxPerGeneration}
       />
     </div>
   );
