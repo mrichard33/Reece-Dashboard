@@ -41,7 +41,11 @@ export function Calendar({
   initialNeedsOnly: boolean;
 }) {
   const [needsOnly, setNeedsOnly] = useState(initialNeedsOnly);
-  const [selected, setSelected] = useState<FbPost | null>(null);
+  // Track the selection by id (not a post snapshot) so the drawer re-derives from
+  // the freshly-refetched `posts` after a server action + router.refresh(). Holding
+  // the whole object would keep rendering stale data and make actions look dead.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = selectedId ? posts.find((p) => p.id === selectedId) ?? null : null;
 
   const first = new Date(year, monthIndex, 1);
   const gridStart = startOfWeek(startOfMonth(first), { weekStartsOn: 0 });
@@ -133,7 +137,7 @@ export function Calendar({
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setSelected(p)}
+                    onClick={() => setSelectedId(p.id)}
                     className={cn(
                       "flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] hover:ring-1 hover:ring-navy-300",
                       p.needs_manual
@@ -154,7 +158,7 @@ export function Calendar({
 
       <Drawer
         open={selected !== null}
-        onClose={() => setSelected(null)}
+        onClose={() => setSelectedId(null)}
         title={selected ? `Post · ${format(new Date(selected.scheduled_date + "T00:00:00"), "EEE, MMM d")}` : ""}
         subtitle="Review copy and image independently"
       >

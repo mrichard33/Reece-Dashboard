@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Send,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -43,6 +44,7 @@ export function PostReview({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(post.post_body ?? "");
@@ -51,13 +53,18 @@ export function PostReview({
 
   const groupUrl = process.env.NEXT_PUBLIC_FB_GROUP_URL;
 
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
+  // Only the clicked button shows a spinner (pending is component-wide).
+  const busy = (key: string) => pending && activeKey === key;
+
+  function run(key: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
     setMsg(null);
+    setActiveKey(key);
     startTransition(async () => {
       const res = await fn();
       if (!res.ok) setMsg({ tone: "error", text: res.error ?? "Something went wrong." });
       else {
         if (res.error) setMsg({ tone: "info", text: res.error });
+        // The server re-fetch updates the calendar/drawer from fresh props.
         router.refresh();
       }
     });
@@ -95,9 +102,11 @@ export function PostReview({
         title="Copy"
         status={post.copy_status}
         disabled={pending}
+        approving={busy("approve-copy")}
+        rejecting={busy("reject-copy")}
         isExecutive={isExecutive}
-        onApprove={() => run(() => approveCopy(post.id))}
-        onReject={(code, text) => run(() => rejectComponent(post.id, "copy", code, text))}
+        onApprove={() => run("approve-copy", () => approveCopy(post.id))}
+        onReject={(code, text) => run("reject-copy", () => rejectComponent(post.id, "copy", code, text))}
       >
         {editing ? (
           <div className="space-y-2">
@@ -120,7 +129,7 @@ export function PostReview({
                 size="sm"
                 disabled={pending}
                 onClick={() =>
-                  run(async () => {
+                  run("edit", async () => {
                     const res = await editPost(post.id, {
                       post_body: body,
                       first_comment: firstComment,
@@ -130,7 +139,7 @@ export function PostReview({
                   })
                 }
               >
-                Save
+                {busy("edit") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Save
               </Button>
               <Button size="sm" variant="ghost" disabled={pending} onClick={() => setEditing(false)}>
                 Cancel
@@ -156,9 +165,11 @@ export function PostReview({
         title="Image"
         status={post.image_status}
         disabled={pending}
+        approving={busy("approve-image")}
+        rejecting={busy("reject-image")}
         isExecutive={isExecutive}
-        onApprove={() => run(() => approveImage(post.id))}
-        onReject={(code, text) => run(() => rejectComponent(post.id, "image", code, text))}
+        onApprove={() => run("approve-image", () => approveImage(post.id))}
+        onReject={(code, text) => run("reject-image", () => rejectComponent(post.id, "image", code, text))}
       >
         {post.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -184,8 +195,8 @@ export function PostReview({
             <Button size="sm" variant="secondary" disabled={pending} onClick={() => setEditing((v) => !v)}>
               <Pencil className="h-3.5 w-3.5" /> {editing ? "Editing…" : "Edit"}
             </Button>
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => skipPost(post.id))}>
-              <SkipForward className="h-3.5 w-3.5" /> Skip
+            <Button size="sm" variant="ghost" disabled={pending} onClick={() => run("skip", () => skipPost(post.id))}>
+              {busy("skip") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SkipForward className="h-3.5 w-3.5" />} Skip
             </Button>
           </>
         )}
@@ -197,9 +208,24 @@ export function PostReview({
             size="sm"
             variant="ghost"
             disabled={pending}
-            onClick={() => run(() => generateNow(post.scheduled_date))}
+            onClick={() =>
+              run("generate", async () => {
+                const res = await generateNow(post.scheduled_date);
+                if (res.ok && !res.error)
+                  setMsg({
+                    tone: "info",
+                    text: `Generating a fresh draft for ${post.scheduled_date} — it'll appear on the calendar shortly.`,
+                  });
+                return res;
+              })
+            }
           >
-            <RefreshCw className="h-3.5 w-3.5" /> Generate Now
+            {busy("generate") ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}{" "}
+            Generate Now
           </Button>
         )}
       </div>
@@ -215,9 +241,14 @@ export function PostReview({
           <Button
             size="sm"
             disabled={pending}
-            onClick={() => run(() => markPosted(post.id, permalink))}
+            onClick={() => run("markposted", () => markPosted(post.id, permalink))}
           >
-            <Send className="h-3.5 w-3.5" /> Mark Posted
+            {busy("markposted") ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}{" "}
+            Mark Posted
           </Button>
         </div>
       )}
@@ -236,6 +267,8 @@ function ComponentBlock({
   status,
   isExecutive,
   disabled,
+  approving,
+  rejecting: rejectBusy,
   onApprove,
   onReject,
   children,
@@ -244,6 +277,8 @@ function ComponentBlock({
   status: "pending" | "approved" | "rejected";
   isExecutive: boolean;
   disabled: boolean;
+  approving: boolean;
+  rejecting: boolean;
   onApprove: () => void;
   onReject: (code: FbReasonCode, text: string) => void;
   children: React.ReactNode;
@@ -258,7 +293,14 @@ function ComponentBlock({
         <h4 className="font-display text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
           {title}
         </h4>
-        <Badge tone={COMPONENT_STATUS_META[status].tone}>{COMPONENT_STATUS_META[status].label}</Badge>
+        <div className="flex items-center gap-2">
+          {rejectBusy && (
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              <Loader2 className="h-3 w-3 animate-spin" /> regenerating…
+            </span>
+          )}
+          <Badge tone={COMPONENT_STATUS_META[status].tone}>{COMPONENT_STATUS_META[status].label}</Badge>
+        </div>
       </div>
 
       {children}
@@ -267,7 +309,7 @@ function ComponentBlock({
         <div className="mt-3 space-y-2">
           <div className="flex gap-2">
             <Button size="sm" variant="primary" disabled={disabled} onClick={onApprove}>
-              <Check className="h-3.5 w-3.5" /> Approve {title.toLowerCase()}
+              {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Approve {title.toLowerCase()}
             </Button>
             <Button
               size="sm"
@@ -309,7 +351,7 @@ function ComponentBlock({
                   setText("");
                 }}
               >
-                Submit rejection &amp; regenerate
+                {rejectBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Submit rejection &amp; regenerate
               </Button>
             </div>
           )}
