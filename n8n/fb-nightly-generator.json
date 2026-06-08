@@ -3,11 +3,21 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 6 * * *" } ] }
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 120],
+      "position": [
+        -220,
+        120
+      ],
       "id": "wf1-schedule-0000-0000-000000000001",
       "name": "Nightly 06:00 ET"
     },
@@ -20,7 +30,10 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [0, 320],
+      "position": [
+        -220,
+        360
+      ],
       "id": "wf1-webhook-0000-0000-000000000002",
       "name": "On-demand (fb-generate-now)",
       "webhookId": "fb-generate-now"
@@ -28,13 +41,19 @@
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "secret",
               "leftValue": "={{ $json.headers.authorization }}",
               "rightValue": "=Bearer __N8N_WEBHOOK_SECRET__",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -43,49 +62,149 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [220, 320],
+      "position": [
+        0,
+        360
+      ],
       "id": "wf1-verify-0000-0000-000000000003",
       "name": "Verify Secret"
     },
     {
       "parameters": {
-        "url": "=__SUPABASE_URL__/rest/v1/fb_subtopics?status=eq.active&order=last_used_at.asc.nullsfirst,times_used.asc&limit=1",
+        "method": "GET",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?select=scheduled_date&scheduled_date=gte.{{ $now.toFormat('yyyy-LL-dd') }}&order=scheduled_date.asc",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
-        ] },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [460, 200],
+      "position": [
+        0,
+        120
+      ],
+      "id": "wf1-get-dates-00000000016",
+      "name": "Get Existing Dates",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fill the first open date within a 5-day horizon from today (skip dates that already have a row).\n// PostgREST array responses arrive as separate items in this n8n instance, so read them all.\nconst items = $('Get Existing Dates').all();\nconst taken = new Set(items.map(i => i.json && i.json.scheduled_date).filter(Boolean));\nconst d = new Date();\nlet target = null;\nfor (let i = 0; i < 5; i++) {\n  const iso = new Date(d.getTime() + i * 864e5).toISOString().slice(0, 10);\n  if (!taken.has(iso)) { target = iso; break; }\n}\nif (!target) return [];               // horizon full -> emit nothing (no-op night)\nreturn [{ json: { scheduled_date: target } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        120
+      ],
+      "id": "wf1-pick-date-00000000017",
+      "name": "Pick Next Open Date"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_subtopics?status=eq.active&order=last_used_at.asc.nullsfirst,times_used.asc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        440,
+        240
+      ],
       "id": "wf1-get-subtopic-000000000004",
       "name": "Get LRU Subtopic"
     },
     {
       "parameters": {
-        "url": "=__SUPABASE_URL__/rest/v1/fb_messaging_prompts?is_active=eq.true&select=name,body",
+        "method": "GET",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_message_bank?is_active=eq.true&select=variables&limit=1",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
-        ] },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [680, 200],
+      "position": [
+        660,
+        240
+      ],
+      "id": "wf1-get-bank-00000000018",
+      "name": "Get Message Bank"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_messaging_prompts?is_active=eq.true&select=name,body",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        880,
+        240
+      ],
       "id": "wf1-get-prompts-0000000000005",
       "name": "Get Prompts + Bank"
     },
     {
       "parameters": {
-        "jsCode": "// Pick the least-used archetype over the last 14 days (fallback: round-robin).\n// Build the generator prompt by filling {{style_guide}}, {{message_bank}},\n// {{pillar}}, {{archetype}}, {{subtopic}} from the prompts + subtopic + bank.\n// The pillar comes from the selected subtopic. Returns { system, user, subtopic_id, pillar, archetype }.\nconst archetypes = ['myth-bust','secret-reveal','story','mistake-expose','seasonal','thought-leadership','community-cause','social-proof'];\nconst archetype = archetypes[new Date().getDate() % archetypes.length];\nreturn [{ json: { archetype } }];"
+        "jsCode": "// Merge subtopic + prompts + message bank into the generator system/user prompts.\n// Single-row reads (.first().json) and multi-row reads (.all()) per this instance's\n// PostgREST-array-splitting behaviour. Returns { system, user, subtopic_id, pillar,\n// times_used, archetype, scheduled_date }.\nconst subtopic = $('Get LRU Subtopic').first().json;\nconst promptItems = $('Get Prompts + Bank').all();\nconst byName = Object.fromEntries(promptItems.map(i => [i.json.name, i.json.body]));\nconst bank = $('Get Message Bank').first()?.json?.variables ?? {};\n\nconst archetypes = ['myth-bust','secret-reveal','story','mistake-expose','seasonal','thought-leadership','community-cause','social-proof'];\nconst archetype = archetypes[new Date().getDate() % archetypes.length];\n\nconst user = (byName['generator'] || '')\n  .replaceAll('{{style_guide}}', byName['style_guide'] || '')\n  .replaceAll('{{message_bank}}', JSON.stringify(bank))\n  .replaceAll('{{pillar}}', subtopic.pillar || '')\n  .replaceAll('{{archetype}}', archetype)\n  .replaceAll('{{subtopic}}', subtopic.subtopic || '');\n\n// scheduled_date comes from the webhook body (on-demand) or Pick Next Open Date (nightly).\nlet scheduled_date = null;\ntry { scheduled_date = $('On-demand (fb-generate-now)').first().json.body.scheduled_date; } catch (e) {}\nif (!scheduled_date) { try { scheduled_date = $('Pick Next Open Date').first().json.scheduled_date; } catch (e) {} }\n\nreturn [{ json: {\n  system: byName['style_guide'] || '',\n  user,\n  subtopic_id: subtopic.id,\n  pillar: subtopic.pillar,\n  times_used: subtopic.times_used || 0,\n  archetype,\n  scheduled_date\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 200],
+      "position": [
+        1100,
+        240
+      ],
       "id": "wf1-build-prompt-000000000006",
       "name": "Build Generator Prompt"
     },
@@ -94,11 +213,22 @@
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "x-api-key", "value": "__ANTHROPIC_API_KEY__" },
-          { "name": "anthropic-version", "value": "2023-06-01" },
-          { "name": "content-type", "value": "application/json" }
-        ] },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "__ANTHROPIC_API_KEY__"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: '__ANTHROPIC_MODEL__', max_tokens: 1200, system: $json.system, messages: [ { role: 'user', content: $json.user } ] }) }}",
@@ -106,7 +236,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [1120, 200],
+      "position": [
+        1320,
+        240
+      ],
       "id": "wf1-anthropic-gen-00000000007",
       "name": "Anthropic: Generator"
     },
@@ -116,7 +249,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1340, 200],
+      "position": [
+        1540,
+        240
+      ],
       "id": "wf1-parse-gen-000000000008",
       "name": "Parse JSON (tolerant)"
     },
@@ -125,11 +261,22 @@
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "x-api-key", "value": "__ANTHROPIC_API_KEY__" },
-          { "name": "anthropic-version", "value": "2023-06-01" },
-          { "name": "content-type", "value": "application/json" }
-        ] },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "__ANTHROPIC_API_KEY__"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: '__ANTHROPIC_MODEL__', max_tokens: 400, messages: [ { role: 'user', content: 'Image prompt for: ' + $json.image_concept } ] }) }}",
@@ -137,65 +284,174 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [1560, 200],
+      "position": [
+        1760,
+        240
+      ],
       "id": "wf1-anthropic-img-00000000009",
       "name": "Anthropic: Image Prompt"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "__IMAGE_API_URL__",
+        "url": "https://api.openai.com/v1/images/generations",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [ { "name": "Authorization", "value": "Bearer __IMAGE_API_KEY__" } ] },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer __IMAGE_API_KEY__"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ prompt: $json.content?.[0]?.text || '' }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.content?.[0]?.text || '', size: '1024x1024', n: 1 }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [1780, 200],
+      "position": [
+        1980,
+        240
+      ],
       "id": "wf1-gen-image-0000000000010",
       "name": "Generate Image (swappable)"
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=__SUPABASE_URL__/storage/v1/object/fb-images/{{ $now.toFormat('yyyy-LL-dd') }}-{{ $randomString || $workflow.id }}.png",
+        "jsCode": "// Decode the base64 image returned by the provider and prepare it as binary for upload.\nconst b64 = $json.data?.[0]?.b64_json;\nif (!b64) throw new Error('No image returned');\nconst path = `${$now.toFormat('yyyy-LL-dd')}-${Math.random().toString(36).slice(2,10)}.png`;\nreturn [{ json: { path }, binary: { data: await this.helpers.prepareBinaryData(Buffer.from(b64, 'base64'), path, 'image/png') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        240
+      ],
+      "id": "wf1-decode-img-00000000019",
+      "name": "Decode Image"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=__SUPABASE_URL__/storage/v1/object/fb-images/{{ $json.path }}",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Content-Type", "value": "image/png" }
-        ] },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            },
+            {
+              "name": "Content-Type",
+              "value": "image/png"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [2000, 200],
+      "position": [
+        2420,
+        240
+      ],
       "id": "wf1-upload-0000000000011",
       "name": "Upload to fb-images"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Public read URL for the uploaded image (note the /public/ segment).\nreturn [{ json: { image_url: `${$env.SUPABASE_URL || '__SUPABASE_URL__'}/storage/v1/object/public/fb-images/${$('Decode Image').first().json.path}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        240
+      ],
+      "id": "wf1-set-url-00000000020",
+      "name": "Set image_url"
     },
     {
       "parameters": {
         "method": "POST",
         "url": "=__SUPABASE_URL__/rest/v1/fb_posts",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Content-Type", "value": "application/json" },
-          { "name": "Prefer", "value": "return=representation" }
-        ] },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ scheduled_date: $json.scheduled_date, target: 'both', pillar: $json.pillar, archetype: $json.archetype, post_body: $json.post_body, first_comment: $json.first_comment, image_concept: $json.image_concept, image_url: $json.image_url, subtopic_id: $json.subtopic_id, copy_status: 'pending', image_status: 'pending', revision: 0 }) }}",
+        "jsonBody": "={{ JSON.stringify({ scheduled_date: $('Build Generator Prompt').first().json.scheduled_date, target: 'both', pillar: $('Build Generator Prompt').first().json.pillar, archetype: $('Build Generator Prompt').first().json.archetype, subtopic_id: $('Build Generator Prompt').first().json.subtopic_id, post_body: $('Parse JSON (tolerant)').first().json.post_body, first_comment: $('Parse JSON (tolerant)').first().json.first_comment, image_concept: $('Parse JSON (tolerant)').first().json.image_concept, image_url: $('Set image_url').first().json.image_url, copy_status: 'pending', image_status: 'pending', revision: 0 }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [2220, 200],
+      "position": [
+        2860,
+        240
+      ],
       "id": "wf1-insert-post-0000000012",
       "name": "Insert fb_posts (public image URL)"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_subtopics?id=eq.{{ $('Build Generator Prompt').first().json.subtopic_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ last_used_at: new Date().toISOString(), times_used: ($('Build Generator Prompt').first().json.times_used || 0) + 1 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3080,
+        240
+      ],
+      "id": "wf1-bump-subtopic-00000021",
+      "name": "Bump Subtopic"
     },
     {
       "parameters": {
@@ -203,53 +459,280 @@
         "url": "https://api.groupme.com/v3/bots/post",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '📝 New post draft + image ready for ' + $json.scheduled_date + ' — review in the Dashboard.' }) }}",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '📝 New post draft + image ready for ' + $('Build Generator Prompt').first().json.scheduled_date + ' — review in the Dashboard.' }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [2440, 200],
+      "position": [
+        3300,
+        240
+      ],
       "id": "wf1-groupme-00000000000013",
       "name": "GroupMe Notify"
     },
     {
-      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": {} },
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [2660, 320],
+      "position": [
+        3520,
+        360
+      ],
       "id": "wf1-respond-000000000014",
       "name": "Respond"
     },
     {
       "parameters": {
-        "content": "## WF1 — Nightly Generator\nRuns at POST_TIME_LOCAL (06:00) in TZ America/New_York. Also exposes the `fb-generate-now` webhook (verify `Authorization: Bearer __N8N_WEBHOOK_SECRET__`) that the Dashboard 'Generate Now' button calls with { scheduled_date }.\n\nPipeline: next uncovered date → least-recently-used active subtopic (its pillar) → least-used archetype (14d) → prompts + message bank → Anthropic generator → image prompt → Generate Image (swap per IMAGE_PROVIDER) → upload to the PUBLIC fb-images bucket → insert fb_posts (copy_status/image_status='pending') → bump subtopic last_used_at/times_used → GroupMe.\n\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders with credentials/values on import.",
-        "height": 320, "width": 420
+        "content": "## WF1 — Nightly Generator (logic complete)\nRuns at 06:00 in TZ America/New_York. Also exposes the `fb-generate-now` webhook (verify `Authorization: Bearer __N8N_WEBHOOK_SECRET__`) that the Dashboard 'Generate Now' button calls with { scheduled_date }.\n\nPipeline: nightly path picks the next uncovered date within a 5-day horizon (duplicate guard); on-demand path uses the body's scheduled_date. Then: least-recently-used active subtopic (its pillar) → message bank + prompts → archetype → Anthropic generator → tolerant JSON parse → image prompt → Generate Image (OpenAI gpt-image-1, swappable) → decode → PUT upload to the PUBLIC fb-images bucket → set public image_url → insert fb_posts (copy_status/image_status='pending') → bump subtopic last_used_at/times_used → GroupMe.\n\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders with credentials/values on import. Keep `active:false` in the committed copy.",
+        "height": 340,
+        "width": 460
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [0, -220],
+      "position": [
+        -220,
+        -260
+      ],
       "id": "wf1-note-00000000000015",
       "name": "About WF1"
     }
   ],
   "pinData": {},
   "connections": {
-    "Nightly 06:00 ET": { "main": [ [ { "node": "Get LRU Subtopic", "type": "main", "index": 0 } ] ] },
-    "On-demand (fb-generate-now)": { "main": [ [ { "node": "Verify Secret", "type": "main", "index": 0 } ] ] },
-    "Verify Secret": { "main": [ [ { "node": "Get LRU Subtopic", "type": "main", "index": 0 } ], [ { "node": "Respond", "type": "main", "index": 0 } ] ] },
-    "Get LRU Subtopic": { "main": [ [ { "node": "Get Prompts + Bank", "type": "main", "index": 0 } ] ] },
-    "Get Prompts + Bank": { "main": [ [ { "node": "Build Generator Prompt", "type": "main", "index": 0 } ] ] },
-    "Build Generator Prompt": { "main": [ [ { "node": "Anthropic: Generator", "type": "main", "index": 0 } ] ] },
-    "Anthropic: Generator": { "main": [ [ { "node": "Parse JSON (tolerant)", "type": "main", "index": 0 } ] ] },
-    "Parse JSON (tolerant)": { "main": [ [ { "node": "Anthropic: Image Prompt", "type": "main", "index": 0 } ] ] },
-    "Anthropic: Image Prompt": { "main": [ [ { "node": "Generate Image (swappable)", "type": "main", "index": 0 } ] ] },
-    "Generate Image (swappable)": { "main": [ [ { "node": "Upload to fb-images", "type": "main", "index": 0 } ] ] },
-    "Upload to fb-images": { "main": [ [ { "node": "Insert fb_posts (public image URL)", "type": "main", "index": 0 } ] ] },
-    "Insert fb_posts (public image URL)": { "main": [ [ { "node": "GroupMe Notify", "type": "main", "index": 0 } ] ] },
-    "GroupMe Notify": { "main": [ [ { "node": "Respond", "type": "main", "index": 0 } ] ] }
+    "Nightly 06:00 ET": {
+      "main": [
+        [
+          {
+            "node": "Get Existing Dates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing Dates": {
+      "main": [
+        [
+          {
+            "node": "Pick Next Open Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Next Open Date": {
+      "main": [
+        [
+          {
+            "node": "Get LRU Subtopic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On-demand (fb-generate-now)": {
+      "main": [
+        [
+          {
+            "node": "Verify Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Secret": {
+      "main": [
+        [
+          {
+            "node": "Get LRU Subtopic",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get LRU Subtopic": {
+      "main": [
+        [
+          {
+            "node": "Get Message Bank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Message Bank": {
+      "main": [
+        [
+          {
+            "node": "Get Prompts + Bank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Prompts + Bank": {
+      "main": [
+        [
+          {
+            "node": "Build Generator Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Generator Prompt": {
+      "main": [
+        [
+          {
+            "node": "Anthropic: Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic: Generator": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON (tolerant)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON (tolerant)": {
+      "main": [
+        [
+          {
+            "node": "Anthropic: Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic: Image Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Image (swappable)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image (swappable)": {
+      "main": [
+        [
+          {
+            "node": "Decode Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decode Image": {
+      "main": [
+        [
+          {
+            "node": "Upload to fb-images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to fb-images": {
+      "main": [
+        [
+          {
+            "node": "Set image_url",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set image_url": {
+      "main": [
+        [
+          {
+            "node": "Insert fb_posts (public image URL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert fb_posts (public image URL)": {
+      "main": [
+        [
+          {
+            "node": "Bump Subtopic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bump Subtopic": {
+      "main": [
+        [
+          {
+            "node": "GroupMe Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GroupMe Notify": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
-  "settings": { "executionOrder": "v1", "timezone": "America/New_York" },
-  "meta": { "templateCredsSetupCompleted": false },
-  "tags": [ { "id": "fb-content-engine", "name": "FB Content Engine" } ]
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "id": "fb-content-engine",
+      "name": "FB Content Engine"
+    }
+  ]
 }
