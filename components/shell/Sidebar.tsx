@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -11,8 +13,11 @@ import {
   AlertTriangle,
   Cog,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import { NotificationBell } from "@/components/approvals/NotificationBell";
+import { useMobileNav } from "@/components/shell/MobileNav";
+import { cn } from "@/lib/utils";
 
 type NavItem = {
   href: string;
@@ -48,6 +53,8 @@ export function Sidebar({
   isExecOnly: boolean;
   currentPath: string;
 }) {
+  const { open, setOpen } = useMobileNav();
+
   const visible = items.filter((i) => {
     // Content (FB engine) is open to operators AND executives — including
     // approver-only execs, who would otherwise be filtered out below.
@@ -59,26 +66,54 @@ export function Sidebar({
   });
 
   return (
-    <aside className="flex w-56 flex-col border-r border-navy-700 bg-navy-900 text-slate-200">
-      <div className="flex items-center justify-between gap-2 px-4 py-4 border-b border-navy-700">
-        <div className="flex items-center gap-2">
-          <Image
-            src="/reece-logo.png"
-            alt="Reece Windows & Doors"
-            width={28}
-            height={28}
-            className="h-7 w-7 rounded-md object-contain"
-            priority
-          />
-          <div className="leading-tight">
-            <p className="font-display text-sm font-semibold text-white">Mission Control</p>
-            <p className="text-[10px] uppercase tracking-wider text-navy-300">
-              Reece W&amp;D
-            </p>
+    <>
+      {/* Backdrop — mobile only, when the drawer is open. */}
+      {open && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-40 bg-navy-950/50 backdrop-blur-[1px] md:hidden"
+        />
+      )}
+
+      <aside
+        className={cn(
+          // Off-canvas drawer below md; static column at md+.
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-navy-700 bg-navy-900 text-slate-200 transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        <div className="flex items-center justify-between gap-2 px-4 py-4 border-b border-navy-700">
+          <div className="flex items-center gap-2">
+            <Image
+              src="/reece-logo.png"
+              alt="Reece Windows & Doors"
+              width={28}
+              height={28}
+              className="h-7 w-7 rounded-md object-contain"
+              priority
+            />
+            <div className="leading-tight">
+              <p className="font-display text-sm font-semibold text-white">Mission Control</p>
+              <p className="text-[10px] uppercase tracking-wider text-navy-300">
+                Reece W&amp;D
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {isExecutive && <NotificationBell />}
+            {/* Close affordance — mobile only. */}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close navigation"
+              className="rounded-md p-1 text-navy-300 hover:bg-navy-800 hover:text-white md:hidden"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
         </div>
-        {isExecutive && <NotificationBell />}
-      </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-3 text-sm">
         {visible.map(({ href, label, Icon, phase }) => {
@@ -120,6 +155,7 @@ export function Sidebar({
             <Link
               key={href}
               href={href as never}
+              onClick={() => setOpen(false)}
               className={[
                 baseClass,
                 active
@@ -139,6 +175,7 @@ export function Sidebar({
         </p>
         <p className="mt-0.5">Phase 1 build</p>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

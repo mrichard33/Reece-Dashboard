@@ -131,7 +131,8 @@ function RankTable({ title, rows }: { title: string; rows: RankedPost[] }) {
         {rows.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-400">No published posts with metrics yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[28rem] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wider text-slate-500 dark:border-slate-800">
                 <th className="py-2 pr-2">Date</th>
@@ -153,6 +154,7 @@ function RankTable({ title, rows }: { title: string; rows: RankedPost[] }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </CardContent>
     </Card>

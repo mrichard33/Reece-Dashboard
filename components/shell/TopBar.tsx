@@ -1,5 +1,6 @@
 import { ThemeToggle } from "./ThemeToggle";
 import { SyncNowButton } from "./SyncNowButton";
+import { MobileNavToggle } from "./MobileNav";
 
 export function TopBar({
   email,
@@ -15,17 +16,20 @@ export function TopBar({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3 dark:border-slate-800 dark:bg-slate-900">
-      <div>
-        <h1 className="font-display text-lg font-semibold text-navy-900 dark:text-white">
-          {title}
-        </h1>
-        {subtitle && (
-          <p className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
-        )}
+    <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex min-w-0 items-center">
+        <MobileNavToggle />
+        <div className="min-w-0">
+          <h1 className="truncate font-display text-base font-semibold text-navy-900 sm:text-lg dark:text-white">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="truncate text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
         {actions}
         <SyncNowButton />
         <ThemeToggle />
