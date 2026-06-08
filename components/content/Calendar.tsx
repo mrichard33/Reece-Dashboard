@@ -16,6 +16,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { PostReview } from "@/components/content/PostReview";
 import { PlanReview } from "@/components/content/PlanReview";
 import { PlanControls } from "@/components/content/PlanControls";
+import { GeneratePostButton } from "@/components/content/GeneratePostButton";
 import { pillarLabel } from "@/components/content/meta";
 import { cn } from "@/lib/utils";
 import type { FbPost, FbContentPlan, FbPostStatus } from "@/lib/supabase/types";
@@ -87,6 +88,9 @@ export function Calendar({
   const prev = format(addMonths(first, -1), "yyyy-MM");
   const next = format(addMonths(first, 1), "yyyy-MM");
   const todayStr = format(new Date(), "yyyy-MM-dd");
+  const hasUpcomingDraft = posts.some(
+    (p) => p.status === "draft" && p.scheduled_date >= todayStr,
+  );
 
   return (
     <div className="space-y-3">
@@ -111,7 +115,8 @@ export function Calendar({
           </Link>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isExecutive && <GeneratePostButton />}
           {isExecutive && (
             <PlanControls planHorizonDays={planHorizonDays} maxPerGeneration={maxPerGeneration} />
           )}
@@ -126,6 +131,25 @@ export function Calendar({
           <Legend />
         </div>
       </div>
+
+      {/* How generation works — one-line model explainer. */}
+      {isExecutive && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          A draft is generated automatically each night. Use{" "}
+          <span className="font-medium text-slate-600 dark:text-slate-300">Generate post</span> to
+          add one on demand for a chosen date.
+        </p>
+      )}
+
+      {/* Empty state — no upcoming drafts to review. */}
+      {!hasUpcomingDraft && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+          No drafts yet — posts generate automatically each night, or
+          {isExecutive ? " click " : " an executive can click "}
+          <span className="font-medium text-slate-600 dark:text-slate-300">Generate post</span> to
+          create one now.
+        </div>
+      )}
 
       {/* Month grid — md+ only. */}
       <div className="hidden grid-cols-7 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 text-sm md:grid dark:border-slate-800 dark:bg-slate-800">
