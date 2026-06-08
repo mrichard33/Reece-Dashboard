@@ -100,7 +100,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Fill the first open date within a 5-day horizon from today (skip dates that already have a row).\n// PostgREST array responses arrive as separate items in this n8n instance, so read them all.\nconst items = $('Get Existing Dates').all();\nconst taken = new Set(items.map(i => i.json && i.json.scheduled_date).filter(Boolean));\nconst d = new Date();\nlet target = null;\nfor (let i = 0; i < 5; i++) {\n  const iso = new Date(d.getTime() + i * 864e5).toISOString().slice(0, 10);\n  if (!taken.has(iso)) { target = iso; break; }\n}\nif (!target) return [];               // horizon full -> emit nothing (no-op night)\nreturn [{ json: { scheduled_date: target } }];"
+        "jsCode": "// Buffer top-up (Part 2 §2.4): prefer the earliest planned fb_content_plan slot within\n// GENERATION_BUFFER_DAYS that has no post yet; otherwise fall back to the first open date\n// in a 5-day window so it never goes dark. Reads fb_content_plan + the chosen subtopic via\n// httpRequest. The on-demand (fb-generate-now) path skips this node entirely.\nconst taken = new Set($('Get Existing Dates').all().map(i => i.json && i.json.scheduled_date).filter(Boolean));\nconst SB = '__SUPABASE_URL__';\nconst KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY';\nconst h = { apikey: KEY, Authorization: 'Bearer ' + KEY };\nconst buffer = Number($env.GENERATION_BUFFER_DAYS || 7);\nconst today = $now.toFormat('yyyy-LL-dd');\nconst until = $now.plus({ days: buffer }).toFormat('yyyy-LL-dd');\nconst planned = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_content_plan?status=eq.planned&plan_date=gte.' + today + '&plan_date=lte.' + until + '&select=id,plan_date,pillar,archetype,subtopic_id&order=plan_date.asc', headers: h, json: true });\nconst slot = (planned || []).find(s => !taken.has(s.plan_date));\nif (slot) {\n  let subtopic = null;\n  if (slot.subtopic_id) {\n    const rows = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_subtopics?id=eq.' + slot.subtopic_id + '&select=id,subtopic,pillar,times_used', headers: h, json: true });\n    subtopic = (rows && rows[0]) || null;\n  }\n  return [{ json: { scheduled_date: slot.plan_date, follow_plan: true, plan_id: slot.id, plan_pillar: slot.pillar, plan_archetype: slot.archetype, plan_subtopic_id: slot.subtopic_id || null, subtopic } }];\n}\n// Fallback: first open date within a 5-day horizon (original behaviour).\nlet target = null;\nfor (let i = 0; i < 5; i++) { const iso = $now.plus({ days: i }).toFormat('yyyy-LL-dd'); if (!taken.has(iso)) { target = iso; break; } }\nif (!target) return [];               // horizon full -> emit nothing (no-op night)\nreturn [{ json: { scheduled_date: target, follow_plan: false, plan_id: null } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -109,7 +109,7 @@
         120
       ],
       "id": "wf1-pick-date-00000000017",
-      "name": "Pick Next Open Date"
+      "name": "Pick Plan Slot or Date"
     },
     {
       "parameters": {
@@ -197,7 +197,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Merge subtopic + prompts + message bank into the generator system/user prompts.\n// Single-row reads (.first().json) and multi-row reads (.all()) per this instance's\n// PostgREST-array-splitting behaviour. Returns { system, user, subtopic_id, pillar,\n// times_used, archetype, scheduled_date }.\nconst subtopic = $('Get LRU Subtopic').first().json;\nconst promptItems = $('Get Prompts + Bank').all();\nconst byName = Object.fromEntries(promptItems.map(i => [i.json.name, i.json.body]));\nconst bank = $('Get Message Bank').first()?.json?.variables ?? {};\n\nconst archetypes = ['myth-bust','secret-reveal','story','mistake-expose','seasonal','thought-leadership','community-cause','social-proof'];\nconst archetype = archetypes[new Date().getDate() % archetypes.length];\n\nconst user = (byName['generator'] || '')\n  .replaceAll('{{style_guide}}', byName['style_guide'] || '')\n  .replaceAll('{{message_bank}}', JSON.stringify(bank))\n  .replaceAll('{{pillar}}', subtopic.pillar || '')\n  .replaceAll('{{archetype}}', archetype)\n  .replaceAll('{{subtopic}}', subtopic.subtopic || '');\n\n// scheduled_date comes from the webhook body (on-demand) or Pick Next Open Date (nightly).\nlet scheduled_date = null;\ntry { scheduled_date = $('On-demand (fb-generate-now)').first().json.body.scheduled_date; } catch (e) {}\nif (!scheduled_date) { try { scheduled_date = $('Pick Next Open Date').first().json.scheduled_date; } catch (e) {} }\n\nreturn [{ json: {\n  system: byName['style_guide'] || '',\n  user,\n  subtopic_id: subtopic.id,\n  pillar: subtopic.pillar,\n  times_used: subtopic.times_used || 0,\n  archetype,\n  scheduled_date\n} }];"
+        "jsCode": "// Merge subtopic + prompts + message bank into the generator system/user prompts.\n// Prefer the planned slot's pillar/archetype/subtopic (nightly buffer top-up); otherwise the\n// least-recently-used active subtopic + a date-derived archetype (also the on-demand path).\n// Returns { system, user, subtopic_id, pillar, times_used, archetype, scheduled_date, plan_id }.\nlet picked = null; try { picked = $('Pick Plan Slot or Date').first().json; } catch (e) {}\nconst lru = $('Get LRU Subtopic').first().json;\nconst followPlan = !!(picked && picked.follow_plan);\nconst sub = (followPlan && picked.subtopic) ? picked.subtopic : lru;\nconst promptItems = $('Get Prompts + Bank').all();\nconst byName = Object.fromEntries(promptItems.map(i => [i.json.name, i.json.body]));\nconst bank = $('Get Message Bank').first()?.json?.variables ?? {};\n\nconst archetypes = ['myth-bust','secret-reveal','story','mistake-expose','seasonal','thought-leadership','community-cause','social-proof'];\nconst pillar = (followPlan && picked.plan_pillar) ? picked.plan_pillar : (sub.pillar || '');\nconst archetype = (followPlan && picked.plan_archetype) ? picked.plan_archetype : archetypes[new Date().getDate() % archetypes.length];\n\nconst user = (byName['generator'] || '')\n  .replaceAll('{{style_guide}}', byName['style_guide'] || '')\n  .replaceAll('{{message_bank}}', JSON.stringify(bank))\n  .replaceAll('{{pillar}}', pillar)\n  .replaceAll('{{archetype}}', archetype)\n  .replaceAll('{{subtopic}}', sub.subtopic || '');\n\n// scheduled_date comes from the webhook body (on-demand) or the picker (nightly).\nlet scheduled_date = null;\ntry { scheduled_date = $('On-demand (fb-generate-now)').first().json.body.scheduled_date; } catch (e) {}\nif (!scheduled_date) { try { scheduled_date = picked.scheduled_date; } catch (e) {} }\n\nreturn [{ json: {\n  system: byName['style_guide'] || '',\n  user,\n  subtopic_id: sub.id,\n  pillar,\n  times_used: sub.times_used || 0,\n  archetype,\n  scheduled_date,\n  plan_id: followPlan ? picked.plan_id : null\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -488,7 +488,7 @@
     },
     {
       "parameters": {
-        "content": "## WF1 — Nightly Generator (logic complete)\nRuns at 06:00 in TZ America/New_York. Also exposes the `fb-generate-now` webhook (verify the `x-webhook-secret: __N8N_WEBHOOK_SECRET__` header — n8n redacts Authorization) that the Dashboard 'Generate Now' button calls with { scheduled_date }.\n\nPipeline: nightly path picks the next uncovered date within a 5-day horizon (duplicate guard); on-demand path uses the body's scheduled_date. Then: least-recently-used active subtopic (its pillar) → message bank + prompts → archetype → Anthropic generator → tolerant JSON parse → image prompt → Generate Image (OpenAI gpt-image-1, swappable) → decode → PUT upload to the PUBLIC fb-images bucket → set public image_url → insert fb_posts (copy_status/image_status='pending') → bump subtopic last_used_at/times_used → GroupMe.\n\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders with credentials/values on import. Keep `active:false` in the committed copy.",
+        "content": "## WF1 — Nightly Generator (logic complete)\nRuns at 06:00 in TZ America/New_York. Also exposes the `fb-generate-now` webhook (verify the `x-webhook-secret: __N8N_WEBHOOK_SECRET__` header — n8n redacts Authorization) that the Dashboard 'Generate Now' button calls with { scheduled_date }.\n\nPipeline: nightly path now tops up the buffer — it follows the earliest planned fb_content_plan slot within GENERATION_BUFFER_DAYS (using that slot's pillar/archetype/subtopic and marking it 'generated'), falling back to the first uncovered date in a 5-day horizon + LRU subtopic when no plan exists; on-demand path uses the body's scheduled_date + LRU subtopic. Then: least-recently-used active subtopic (its pillar) → message bank + prompts → archetype → Anthropic generator → tolerant JSON parse → image prompt → Generate Image (OpenAI gpt-image-1, swappable) → decode → PUT upload to the PUBLIC fb-images bucket → set public image_url → insert fb_posts (copy_status/image_status='pending') → bump subtopic last_used_at/times_used → GroupMe.\n\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders with credentials/values on import. Keep `active:false` in the committed copy.",
         "height": 340,
         "width": 460
       },
@@ -500,6 +500,41 @@
       ],
       "id": "wf1-note-00000000000015",
       "name": "About WF1"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_content_plan?id=eq.{{ $('Build Generator Prompt').first().json.plan_id || '00000000-0000-0000-0000-000000000000' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'generated' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2860,
+        400
+      ],
+      "id": "wf1-markplan-00000022",
+      "name": "Mark Plan Generated"
     }
   ],
   "pinData": {},
@@ -519,18 +554,7 @@
       "main": [
         [
           {
-            "node": "Pick Next Open Date",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pick Next Open Date": {
-      "main": [
-        [
-          {
-            "node": "Get LRU Subtopic",
+            "node": "Pick Plan Slot or Date",
             "type": "main",
             "index": 0
           }
@@ -691,7 +715,7 @@
       "main": [
         [
           {
-            "node": "Bump Subtopic",
+            "node": "Mark Plan Generated",
             "type": "main",
             "index": 0
           }
@@ -714,6 +738,28 @@
         [
           {
             "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Plan Slot or Date": {
+      "main": [
+        [
+          {
+            "node": "Get LRU Subtopic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Plan Generated": {
+      "main": [
+        [
+          {
+            "node": "Bump Subtopic",
             "type": "main",
             "index": 0
           }
