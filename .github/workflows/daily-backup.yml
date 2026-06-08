@@ -1,0 +1,29 @@
+name: Daily Backup
+# Creates a dated snapshot branch (bk-MM-DD-YYYY) off dev once per day.
+# Runs on GitHub's own infrastructure — no Railway or n8n dependency.
+# NOTE: scheduled workflows only run from the repository's DEFAULT branch.
+# This repo's default is `dev` (there is no `main`), so this starts firing
+# once it is merged to `dev`.
+on:
+  schedule:
+    - cron: '0 7 * * *'      # 07:00 UTC daily (~2-3 AM ET)
+  workflow_dispatch: {}        # allows manual runs from the Actions tab
+permissions:
+  contents: write
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+      - name: Create dated backup branch from dev
+        run: |
+          BR="bk-$(date +'%m-%d-%Y')"
+          if git ls-remote --exit-code --heads origin "$BR" >/dev/null 2>&1; then
+            echo "Backup branch $BR already exists - skipping."
+          else
+            git push origin "dev:refs/heads/$BR"
+            echo "Created backup branch $BR"
+          fi
