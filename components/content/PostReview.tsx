@@ -12,6 +12,7 @@ import {
   Send,
   RefreshCw,
   CalendarClock,
+  Trash2,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -35,6 +36,7 @@ import {
   generateNow,
   reschedulePost,
 } from "@/lib/actions/content";
+import { deletePost } from "@/lib/actions/deletePost";
 import type { FbPost, FbComponent, FbReasonCode } from "@/lib/supabase/types";
 
 export function PostReview({
@@ -53,6 +55,7 @@ export function PostReview({
   const [firstComment, setFirstComment] = useState(post.first_comment ?? "");
   const [permalink, setPermalink] = useState("");
   const [moveDate, setMoveDate] = useState(post.scheduled_date);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const groupUrl = process.env.NEXT_PUBLIC_FB_GROUP_URL;
 
@@ -231,6 +234,48 @@ export function PostReview({
             Generate Now
           </Button>
         )}
+        {isExecutive &&
+          (confirmingDelete ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="text-xs text-rose-600">Delete this draft permanently?</span>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={pending}
+                onClick={() =>
+                  run("delete", async () => {
+                    const res = await deletePost(post.id);
+                    if (res.ok) setConfirmingDelete(false);
+                    return res;
+                  })
+                }
+              >
+                {busy("delete") ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}{" "}
+                Confirm delete
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => setConfirmingDelete(false)}
+              >
+                Cancel
+              </Button>
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={pending}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </Button>
+          ))}
       </div>
 
       {isExecutive && (
