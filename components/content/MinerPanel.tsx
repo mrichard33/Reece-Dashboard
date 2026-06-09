@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition, useOptimistic } from "react";
+import { useState, useTransition, useOptimistic, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Check, X, Pencil, Sparkles, Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { Check, X, Pencil, Sparkles, Plus, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -46,6 +46,67 @@ export function MinerPanel({
   );
   const [, startToggle] = useTransition();
 
+  // "Run miner now" kicks off WF2 in n8n (~a minute). Show progress and poll for
+  // the new proposals so they surface automatically when the run finishes.
+  const [mining, setMining] = useState(false);
+  const baselineRef = useRef(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function stopMining() {
+    setMining(false);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }
+
+  async function startMiner() {
+    setErr(null);
+    baselineRef.current = proposals.length;
+    setMining(true);
+    pollRef.current = setInterval(() => router.refresh(), 5000);
+    timeoutRef.current = setTimeout(() => stopMining(), 150000);
+    try {
+      const res = await runMiner();
+      if (!res.ok) {
+        setErr(res.error ?? "Couldn't start the miner.");
+        stopMining();
+      }
+    } catch {
+      setErr("Couldn't start the miner.");
+      stopMining();
+    }
+  }
+
+  // When new proposals land (count grew past the baseline at click), stop the
+  // progress state and the polling.
+  useEffect(() => {
+    if (mining && proposals.length > baselineRef.current) {
+      setMining(false);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    }
+  }, [proposals.length, mining]);
+
+  // Clear timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
   function run(fn: () => Promise<Result>, after?: () => void) {
     setErr(null);
     startTransition(async () => {
@@ -75,13 +136,24 @@ export function MinerPanel({
           {proposals.length} proposal{proposals.length === 1 ? "" : "s"} awaiting review
         </p>
         {isExecutive && (
-          <Button size="sm" variant="secondary" disabled={pending} onClick={() => run(() => runMiner())}>
-            <Sparkles className="h-3.5 w-3.5" /> Run miner now
+          <Button size="sm" variant="secondary" disabled={mining} onClick={startMiner}>
+            {mining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{" "}
+            {mining ? "Mining…" : "Run miner now"}
           </Button>
         )}
       </div>
 
       {err && <p className="text-xs text-rose-600">{err}</p>}
+
+      {mining && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+          <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
+          <span>
+            Mining customer questions for new ideas… this usually takes about a minute. New proposals
+            will appear here automatically.
+          </span>
+        </div>
+      )}
 
       {/* Proposals */}
       <Card>
@@ -91,7 +163,9 @@ export function MinerPanel({
         <CardContent>
           {proposals.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-500">
-              No proposals right now. Run the miner to mine customer questions for new ideas.
+              {mining
+                ? "Mining… new proposals will appear here in about a minute."
+                : "No proposals right now. Run the miner to mine customer questions for new ideas."}
             </p>
           ) : (
             <ul className="space-y-3">
