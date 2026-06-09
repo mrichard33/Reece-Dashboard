@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, X, Pencil, Sparkles, Plus } from "lucide-react";
+import { Check, X, Pencil, Sparkles, Plus, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -167,6 +167,7 @@ function ProposalRow({
   run: (fn: () => Promise<Result>, after?: () => void) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [subtopic, setSubtopic] = useState(proposal.subtopic);
   const [pillar, setPillar] = useState(proposal.pillar);
 
@@ -195,17 +196,44 @@ function ProposalRow({
             </div>
           ) : (
             <>
-              <p className="text-sm font-medium text-navy-900 dark:text-slate-100">{proposal.subtopic}</p>
-              <div className="mt-1 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
+                className="flex items-start gap-1.5 text-left"
+              >
+                {expanded ? (
+                  <ChevronDown className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                ) : (
+                  <ChevronRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                )}
+                <span className="text-sm font-medium text-navy-900 hover:underline dark:text-slate-100">
+                  {proposal.subtopic}
+                </span>
+              </button>
+              <div className="mt-1 flex flex-wrap items-center gap-2 pl-5">
                 <Badge tone={pillarTone(proposal.pillar)}>{pillarLabel(proposal.pillar)}</Badge>
-                {proposal.answers_question && (
-                  <span className="text-xs text-slate-500">{proposal.answers_question}</span>
+                {proposal.buyer_stage && (
+                  <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                    {proposal.buyer_stage}
+                  </span>
+                )}
+                {!expanded && proposal.answers_question && (
+                  <span className="truncate text-xs text-slate-500">{proposal.answers_question}</span>
                 )}
               </div>
-              {proposal.source_evidence && (
-                <p className="mt-1 border-l-2 border-slate-200 pl-2 text-xs italic text-slate-500 dark:border-slate-700">
-                  {proposal.source_evidence}
-                </p>
+
+              {expanded && (
+                <dl className="mt-2 space-y-1 border-t border-slate-100 pl-5 pt-2 text-xs dark:border-slate-800">
+                  <Detail label="Answers" value={proposal.answers_question ?? "—"} />
+                  <Detail label="Evidence" value={proposal.source_evidence ?? "—"} />
+                  <Detail label="Buyer stage" value={proposal.buyer_stage ?? "—"} />
+                  <Detail label="Source" value={proposal.source} />
+                  <Detail label="Times used" value={String(proposal.times_used)} />
+                  <Detail label="Last used" value={proposal.last_used_at ? relTime(proposal.last_used_at) : "—"} />
+                  <Detail label="Proposed" value={relTime(proposal.created_at)} />
+                  <Detail label="Status" value={proposal.status} />
+                </dl>
               )}
             </>
           )}
@@ -248,6 +276,15 @@ function ProposalRow({
         )}
       </div>
     </li>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="w-24 flex-shrink-0 text-slate-400">{label}</dt>
+      <dd className="whitespace-pre-wrap text-slate-600 dark:text-slate-300">{value}</dd>
+    </div>
   );
 }
 
