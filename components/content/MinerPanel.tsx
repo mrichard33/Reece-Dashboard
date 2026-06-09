@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useOptimistic } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X, Pencil, Sparkles, Plus, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -35,6 +35,17 @@ export function MinerPanel({
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
+  // Bank "active" toggles run on their own optimistic transition so a single
+  // checkbox flips instantly and never disables/locks the rest of the panel.
+  const [optimisticSubs, setActiveOptimistic] = useOptimistic(
+    subtopics,
+    (state, next: { id: string; active: boolean }) =>
+      state.map((s) =>
+        s.id === next.id ? { ...s, status: next.active ? "active" : "inactive" } : s,
+      ),
+  );
+  const [, startToggle] = useTransition();
+
   function run(fn: () => Promise<Result>, after?: () => void) {
     setErr(null);
     startTransition(async () => {
@@ -44,6 +55,16 @@ export function MinerPanel({
         after?.();
         router.refresh();
       }
+    });
+  }
+
+  function toggleActive(id: string, active: boolean) {
+    setErr(null);
+    startToggle(async () => {
+      setActiveOptimistic({ id, active });
+      const res = await toggleSubtopicActive(id, active);
+      if (!res.ok) setErr(res.error ?? "Couldn't update that subtopic.");
+      router.refresh();
     });
   }
 
@@ -125,26 +146,8 @@ export function MinerPanel({
                 </tr>
               </thead>
               <tbody>
-                {subtopics.map((s) => (
-                  <tr key={s.id} className="border-b border-slate-100 dark:border-slate-800">
-                    <td className="py-2 pr-2">{s.subtopic}</td>
-                    <td className="px-2">
-                      <Badge tone={pillarTone(s.pillar)}>{pillarLabel(s.pillar)}</Badge>
-                    </td>
-                    <td className="px-2 text-slate-500">{s.times_used}</td>
-                    <td className="px-2 text-slate-500">{s.last_used_at ? relTime(s.last_used_at) : "—"}</td>
-                    <td className="px-2 text-slate-500">{s.status}</td>
-                    {isExecutive && (
-                      <td className="px-2">
-                        <input
-                          type="checkbox"
-                          checked={s.status === "active"}
-                          disabled={pending}
-                          onChange={(e) => run(() => toggleSubtopicActive(s.id, e.target.checked))}
-                        />
-                      </td>
-                    )}
-                  </tr>
+                {optimisticSubs.map((s) => (
+                  <BankRow key={s.id} s={s} isExecutive={isExecutive} onToggle={toggleActive} />
                 ))}
               </tbody>
             </table>
@@ -276,6 +279,69 @@ function ProposalRow({
         )}
       </div>
     </li>
+  );
+}
+
+function BankRow({
+  s,
+  isExecutive,
+  onToggle,
+}: {
+  s: FbSubtopic;
+  isExecutive: boolean;
+  onToggle: (id: string, active: boolean) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const cols = isExecutive ? 6 : 5;
+
+  return (
+    <>
+      <tr className="border-b border-slate-100 dark:border-slate-800">
+        <td className="py-2 pr-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="flex items-center gap-1.5 text-left"
+          >
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+            )}
+            <span className="font-medium text-navy-900 hover:underline dark:text-slate-100">{s.subtopic}</span>
+          </button>
+        </td>
+        <td className="px-2">
+          <Badge tone={pillarTone(s.pillar)}>{pillarLabel(s.pillar)}</Badge>
+        </td>
+        <td className="px-2 text-slate-500">{s.times_used}</td>
+        <td className="px-2 text-slate-500">{s.last_used_at ? relTime(s.last_used_at) : "—"}</td>
+        <td className="px-2 text-slate-500">{s.status}</td>
+        {isExecutive && (
+          <td className="px-2">
+            <input
+              type="checkbox"
+              checked={s.status === "active"}
+              onChange={(e) => onToggle(s.id, e.target.checked)}
+            />
+          </td>
+        )}
+      </tr>
+      {expanded && (
+        <tr className="border-b border-slate-100 dark:border-slate-800">
+          <td colSpan={cols} className="px-2 pb-3">
+            <dl className="space-y-1 pl-5 text-xs">
+              <Detail label="Answers" value={s.answers_question ?? "—"} />
+              <Detail label="Evidence" value={s.source_evidence ?? "—"} />
+              <Detail label="Buyer stage" value={s.buyer_stage ?? "—"} />
+              <Detail label="Source" value={s.source} />
+              <Detail label="Added" value={relTime(s.created_at)} />
+            </dl>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
