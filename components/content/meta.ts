@@ -1,5 +1,6 @@
 import type { BadgeTone } from "@/components/ui/Badge";
 import type {
+  FbPost,
   FbPostStatus,
   FbPlanStatus,
   FbComponentStatus,
@@ -9,13 +10,32 @@ import type {
   FbReasonCode,
 } from "@/lib/supabase/types";
 
-/** Calendar status colours (shared legend). */
+/**
+ * Calendar status colours (shared legend).
+ * Green progression (Mark's spec): approved = light green (mint) → published to
+ * Facebook = full green (emerald). 'posted' means BOTH legs done for target='both'.
+ */
 export const FB_STATUS_META: Record<FbPostStatus, { label: string; tone: BadgeTone }> = {
   draft: { label: "Draft", tone: "navy" },
-  approved: { label: "Approved", tone: "emerald" },
-  posted: { label: "Posted", tone: "slate" },
+  approved: { label: "Approved", tone: "mint" },
+  posted: { label: "Posted", tone: "emerald" },
   skipped: { label: "Skipped", tone: "slate" },
 };
+
+/**
+ * Effective publish state for a post — the page-leg-aware view of status.
+ * A target='both' post stays status='approved' after the Page leg publishes
+ * (it awaits the human Group leg), but visually it has "gone green":
+ * page_posted_at set ⇒ full emerald.
+ */
+export function postPublishMeta(
+  post: Pick<FbPost, "status" | "page_posted_at">,
+): { label: string; tone: BadgeTone } {
+  if (post.status === "approved" && post.page_posted_at) {
+    return { label: "Posted to Page", tone: "emerald" };
+  }
+  return FB_STATUS_META[post.status];
+}
 
 /** Plan-slot statuses (fb_content_plan). 'planned' is the new muted calendar state. */
 export const PLAN_STATUS_META: Record<FbPlanStatus, { label: string; tone: BadgeTone }> = {
