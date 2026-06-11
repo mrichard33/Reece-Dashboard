@@ -183,11 +183,13 @@ export async function skipPost(postId: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-// Records the GROUP leg (the Page leg auto-publishes via WF4). NOTE: see the
-// matching "target='both' publish-state" follow-up in n8n/fb-page-publish.json —
-// when WF4 is wired live, decide whether a 'both' post should remain 'approved'
-// until this Group leg is recorded rather than being flipped to 'posted' by the
-// Page leg. For now this marks the whole post 'posted'.
+// Records the GROUP leg of a post (the Page leg auto-publishes via WF4). The
+// target='both' two-leg model is now resolved (0006_fb_publish.sql): WF4 only flips
+// status to 'posted' for target='page'; a 'both' post stays 'approved' with
+// page_posted_at set after the Page leg, and THIS action records the human Group leg
+// and flips the whole row to 'posted'. So this writer must NOT stomp the Page leg's
+// permalink — it only sets fb_permalink when a Group permalink is actually provided
+// (the Page permalink lives in page_permalink).
 export async function markPosted(
   postId: string,
   permalink?: string,
@@ -197,14 +199,35 @@ export async function markPosted(
   if (!isApprover(ctx.email))
     return { ok: false, error: "You are not on the approver list (APPROVER_EMAILS)." };
   const supabase = await lpServer();
+  const update: Record<string, unknown> = {
+    status: "posted",
+    posted_by: ctx.executive.name,
+    posted_at: new Date().toISOString(),
+  };
+  const link = permalink?.trim();
+  if (link) update.fb_permalink = link;
+  const { error } = await supabase.from("fb_posts").update(update).eq("id", postId);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
+}
+
+/** Set or clear the Eastern wall-clock publish time for a post.
+ *  time: "HH:MM" (24h) or null = publish on approval. publish_at is derived
+ *  by the DB trigger fb_set_publish_at() — never write it from code. */
+export async function setPostTime(
+  postId: string,
+  time: string | null,
+): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  if (time !== null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    return { ok: false, error: "Pick a valid time (HH:MM)." };
+  }
+  const supabase = await lpServer();
   const { error } = await supabase
     .from("fb_posts")
-    .update({
-      status: "posted",
-      posted_by: ctx.executive.name,
-      posted_at: new Date().toISOString(),
-      fb_permalink: permalink?.trim() || null,
-    })
+    .update({ scheduled_time: time })
     .eq("id", postId);
   if (error) return { ok: false, error: error.message };
   refresh();

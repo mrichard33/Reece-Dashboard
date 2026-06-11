@@ -13,78 +13,234 @@
     },
     {
       "parameters": {
-        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?status=eq.approved&target=in.(page,both)&posted_at=is.null&select=*",
+        "url": "https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_settings?id=eq.1&select=*",
         "sendHeaders": true,
         "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
+          { "name": "apikey", "value": "={{ $env.LP_SUPABASE_SERVICE_KEY }}" },
+          { "name": "Authorization", "value": "=Bearer {{ $env.LP_SUPABASE_SERVICE_KEY }}" }
         ] },
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [240, 200],
-      "id": "wf4-get-approved-002",
-      "name": "Get Approved (page/both)"
+      "position": [220, 120],
+      "id": "wf4-fetch-config-002",
+      "name": "Fetch FB Config"
+    },
+    {
+      "parameters": {
+        "url": "https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_secrets?key=eq.fb_page_access_token&select=value",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.LP_SUPABASE_SERVICE_KEY }}" },
+          { "name": "Authorization", "value": "=Bearer {{ $env.LP_SUPABASE_SERVICE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [440, 120],
+      "id": "wf4-fetch-token-003",
+      "name": "Fetch FB Token"
+    },
+    {
+      "parameters": {
+        "jsCode": "// PostgREST returns arrays; the HTTP node may wrap them in .body. Normalize both\n// fetches into one config item downstream nodes read as $('FB Config').first().json.\nfunction firstRow(resp) {\n  const j = resp;\n  const data = Array.isArray(j) ? j : (j && j.body !== undefined ? j.body : j);\n  return Array.isArray(data) ? (data[0] || {}) : (data || {});\n}\nconst s = firstRow($('Fetch FB Config').first().json);\nconst sec = firstRow($('Fetch FB Token').first().json);\nreturn [{ json: {\n  enabled: s.auto_publish_enabled === true,\n  page_id: s.fb_page_id || '',\n  graph_version: s.fb_graph_version || 'v23.0',\n  token: sec.value || ''\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 120],
+      "id": "wf4-config-0000004",
+      "name": "FB Config"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "wf4-gate-cond-1",
+              "leftValue": "={{ $('FB Config').first().json.enabled && $('FB Config').first().json.page_id !== '' && $('FB Config').first().json.token !== '' }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [880, 120],
+      "id": "wf4-gate-00000005",
+      "name": "Gate (enabled + configured?)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1100, 0],
+      "id": "wf4-disabled-0006",
+      "name": "Disabled — no-op"
+    },
+    {
+      "parameters": {
+        "url": "=https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_posts?status=eq.approved&target=in.(page,both)&page_posted_at=is.null&publish_attempts=lt.3&or=(publish_at.is.null,publish_at.lte.{{ $now.toISO() }})&select=*",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.LP_SUPABASE_SERVICE_KEY }}" },
+          { "name": "Authorization", "value": "=Bearer {{ $env.LP_SUPABASE_SERVICE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1100, 200],
+      "id": "wf4-get-publishable-007",
+      "name": "Get Publishable"
     },
     {
       "parameters": { "batchSize": 1, "options": {} },
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [460, 200],
-      "id": "wf4-loop-00000000003",
+      "position": [1320, 200],
+      "id": "wf4-loop-00000008",
       "name": "Loop Posts"
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=https://graph.facebook.com/__FB_GRAPH_VERSION__/__FB_PAGE_ID__/photos",
+        "method": "PATCH",
+        "url": "=https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_posts?id=eq.{{ $('Loop Posts').item.json.id }}&page_posted_at=is.null",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.LP_SUPABASE_SERVICE_KEY }}" },
+          { "name": "Authorization", "value": "=Bearer {{ $env.LP_SUPABASE_SERVICE_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" },
+          { "name": "Prefer", "value": "return=representation" }
+        ] },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ url: $json.image_url, caption: $json.post_body, published: true, access_token: '__FB_PAGE_ACCESS_TOKEN__' }) }}",
+        "jsonBody": "={{ JSON.stringify({ publish_attempts: ($('Loop Posts').item.json.publish_attempts || 0) + 1 }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [680, 200],
-      "id": "wf4-publish-0000004",
-      "name": "Publish Photo to Page"
+      "position": [1540, 200],
+      "id": "wf4-claim-0000009",
+      "name": "Claim (idempotency guard)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "wf4-hasimage-cond",
+              "leftValue": "={{ $('Loop Posts').item.json.image_url }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1760, 200],
+      "id": "wf4-hasimage-010",
+      "name": "Has image?"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://graph.facebook.com/__FB_GRAPH_VERSION__/{{ $json.id }}/comments",
+        "url": "=https://graph.facebook.com/{{ $('FB Config').first().json.graph_version }}/{{ $('FB Config').first().json.page_id }}/photos",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ message: $('Loop Posts').item.json.first_comment, access_token: '__FB_PAGE_ACCESS_TOKEN__' }) }}",
+        "jsonBody": "={{ JSON.stringify({ url: $('Loop Posts').item.json.image_url, caption: $('Loop Posts').item.json.post_body, published: true, access_token: $('FB Config').first().json.token }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [900, 200],
-      "id": "wf4-comment-000005",
-      "name": "Post First Comment"
+      "position": [1980, 120],
+      "id": "wf4-publish-photo-011",
+      "name": "Publish Photo to Page",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('FB Config').first().json.graph_version }}/{{ $('FB Config').first().json.page_id }}/feed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $('Loop Posts').item.json.post_body, access_token: $('FB Config').first().json.token }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1980, 300],
+      "id": "wf4-publish-feed-012",
+      "name": "Publish to Feed",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "wf4-hascomment-cond",
+              "leftValue": "={{ $('Loop Posts').item.json.first_comment }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2200, 200],
+      "id": "wf4-hascomment-013",
+      "name": "Has first comment?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('FB Config').first().json.graph_version }}/{{ $json.post_id || $json.id }}/comments",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $('Loop Posts').item.json.first_comment, access_token: $('FB Config').first().json.token }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [2420, 120],
+      "id": "wf4-comment-00014",
+      "name": "Post First Comment",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?id=eq.{{ $('Loop Posts').item.json.id }}",
+        "url": "=https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_posts?id=eq.{{ $('Loop Posts').item.json.id }}",
         "sendHeaders": true,
         "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+          { "name": "apikey", "value": "={{ $env.LP_SUPABASE_SERVICE_KEY }}" },
+          { "name": "Authorization", "value": "=Bearer {{ $env.LP_SUPABASE_SERVICE_KEY }}" },
           { "name": "Content-Type", "value": "application/json" }
         ] },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ status: 'posted', posted_by: 'system:page', posted_at: new Date().toISOString(), fb_permalink: 'https://facebook.com/' + ($json.post_id || $json.id || '') }) }}",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ page_posted_at: new Date().toISOString(), page_permalink: 'https://www.facebook.com/' + ($json.post_id || $json.id || $('Loop Posts').item.json.id), last_publish_error: null }, $('Loop Posts').item.json.target === 'page' ? { status: 'posted', posted_by: 'system:page', posted_at: new Date().toISOString() } : {})) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [1120, 200],
-      "id": "wf4-mark-000006",
-      "name": "Mark Posted"
+      "position": [2640, 200],
+      "id": "wf4-mark-pageleg-015",
+      "name": "Mark Page Leg"
     },
     {
       "parameters": {
@@ -92,36 +248,102 @@
         "url": "https://api.groupme.com/v3/bots/post",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '✅ Posted to Page for ' + $('Loop Posts').item.json.scheduled_date + '.' }) }}",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '✅ Posted to Page for ' + $('Loop Posts').item.json.scheduled_date + ' — https://www.facebook.com/' + ($json.post_id || $json.id || $('Loop Posts').item.json.id) }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [1340, 200],
-      "id": "wf4-groupme-0007",
-      "name": "GroupMe Notify"
+      "position": [2860, 200],
+      "id": "wf4-groupme-ok-016",
+      "name": "GroupMe Notify",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "content": "## 🔁 REVISIT WHEN WIRED LIVE — target='both' publish state\n\nFor `target='both'`, this workflow sets `status='posted'` as soon as the PAGE leg\npublishes. But the GROUP leg is a HUMAN copy/post action in the Dashboard\n('Copy + Open Group' → 'Mark Posted'), tracked separately — there is no Group API\n(deprecated April 2024).\n\nDECISION TO REVISIT: should a 'both' post stay 'approved' (or gain a separate\n`page_posted_at` column) until the Group leg is recorded, so the calendar doesn't\nshow a both-post as fully 'posted' before the Group leg happens? Today the Page leg\nflips the whole row to 'posted', and `lib/actions/content.ts → markPosted()` would\nalso set 'posted' for the Group leg — align the two when this goes live.\n\nSpec §8 WF4 step 3 flags this. NOTHING here posts to a Facebook GROUP via API.",
-        "height": 320, "width": 520
+        "method": "PATCH",
+        "url": "=https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_posts?id=eq.{{ $('Loop Posts').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.LP_SUPABASE_SERVICE_KEY }}" },
+          { "name": "Authorization", "value": "=Bearer {{ $env.LP_SUPABASE_SERVICE_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ last_publish_error: (($json.error && ($json.error.message || JSON.stringify($json.error))) || 'Graph publish failed') }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [2200, 380],
+      "id": "wf4-record-error-017",
+      "name": "Record Publish Error"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groupme.com/v3/bots/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '⚠️ FB publish failed for ' + $('Loop Posts').item.json.scheduled_date + ' (attempt ' + ($('Loop Posts').item.json.publish_attempts || 0) + '/3): ' + (($json.error && ($json.error.message || JSON.stringify($json.error))) || 'unknown error') }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [2420, 380],
+      "id": "wf4-groupme-fail-018",
+      "name": "GroupMe Alert (failure)",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## WF4 — runtime-config Page publisher (mirror of the live workflow)\n\nThis JSON is the repo MIRROR; the live WF4 is built/updated via the n8n MCP (P3).\nKeep them in sync.\n\n**No FB credentials live here.** At runtime WF4:\n1. Fetches `fb_settings` (page id, graph version, `auto_publish_enabled`) and the\n   `fb_secrets.fb_page_access_token` from LP Supabase, using\n   `{{ $env.LP_SUPABASE_SERVICE_KEY }}` (the only secret in env).\n2. **Gate:** publishes only when `auto_publish_enabled === true` AND page id + token\n   are present. OFF in /settings ⇒ instant no-op pause.\n3. **Query owns the time + retry gate:** `status=approved & target in (page,both) &\n   page_posted_at is null & publish_attempts<3 & (publish_at is null OR\n   publish_at <= now)`. The DB trigger derives `publish_at` (ET→UTC), so n8n does no\n   timezone math and never sleeps.\n4. **Claim** PATCHes with `page_posted_at=is.null` + `Prefer: return=representation` —\n   if 0 rows come back another run already claimed it (idempotency).\n5. Publishes via `/photos` (image) or `/feed` (text); token in the BODY, never the URL.\n6. **target='both' two-leg model:** always sets `page_posted_at`/`page_permalink`;\n   ONLY `target='page'` also flips `status='posted'`. A 'both' post stays 'approved'\n   until the human Group leg is recorded by `markPosted()` in the Dashboard.\n7. **Failure:** a Graph error writes `last_publish_error`, GroupMe-alerts, and (since\n   `publish_attempts` was incremented at claim) the row drops out at attempt 3.\n\nNothing here posts to a Facebook GROUP (Meta deprecated that API in April 2024).",
+        "height": 460, "width": 560
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [0, -340],
-      "id": "wf4-note-0008",
-      "name": "FOLLOW-UP — both-leg state"
+      "position": [0, -480],
+      "id": "wf4-note-0019",
+      "name": "WF4 model"
     }
   ],
   "pinData": {},
   "connections": {
-    "Every 2 min": { "main": [ [ { "node": "Get Approved (page/both)", "type": "main", "index": 0 } ] ] },
-    "Get Approved (page/both)": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] },
-    "Loop Posts": { "main": [ [ { "node": "Publish Photo to Page", "type": "main", "index": 0 } ] ] },
-    "Publish Photo to Page": { "main": [ [ { "node": "Post First Comment", "type": "main", "index": 0 } ] ] },
-    "Post First Comment": { "main": [ [ { "node": "Mark Posted", "type": "main", "index": 0 } ] ] },
-    "Mark Posted": { "main": [ [ { "node": "GroupMe Notify", "type": "main", "index": 0 } ] ] },
-    "GroupMe Notify": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] }
+    "Every 2 min": { "main": [ [ { "node": "Fetch FB Config", "type": "main", "index": 0 } ] ] },
+    "Fetch FB Config": { "main": [ [ { "node": "Fetch FB Token", "type": "main", "index": 0 } ] ] },
+    "Fetch FB Token": { "main": [ [ { "node": "FB Config", "type": "main", "index": 0 } ] ] },
+    "FB Config": { "main": [ [ { "node": "Gate (enabled + configured?)", "type": "main", "index": 0 } ] ] },
+    "Gate (enabled + configured?)": { "main": [
+      [ { "node": "Get Publishable", "type": "main", "index": 0 } ],
+      [ { "node": "Disabled — no-op", "type": "main", "index": 0 } ]
+    ] },
+    "Get Publishable": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] },
+    "Loop Posts": { "main": [
+      [],
+      [ { "node": "Claim (idempotency guard)", "type": "main", "index": 0 } ]
+    ] },
+    "Claim (idempotency guard)": { "main": [ [ { "node": "Has image?", "type": "main", "index": 0 } ] ] },
+    "Has image?": { "main": [
+      [ { "node": "Publish Photo to Page", "type": "main", "index": 0 } ],
+      [ { "node": "Publish to Feed", "type": "main", "index": 0 } ]
+    ] },
+    "Publish Photo to Page": { "main": [
+      [ { "node": "Has first comment?", "type": "main", "index": 0 } ],
+      [ { "node": "Record Publish Error", "type": "main", "index": 0 } ]
+    ] },
+    "Publish to Feed": { "main": [
+      [ { "node": "Has first comment?", "type": "main", "index": 0 } ],
+      [ { "node": "Record Publish Error", "type": "main", "index": 0 } ]
+    ] },
+    "Has first comment?": { "main": [
+      [ { "node": "Post First Comment", "type": "main", "index": 0 } ],
+      [ { "node": "Mark Page Leg", "type": "main", "index": 0 } ]
+    ] },
+    "Post First Comment": { "main": [ [ { "node": "Mark Page Leg", "type": "main", "index": 0 } ] ] },
+    "Mark Page Leg": { "main": [ [ { "node": "GroupMe Notify", "type": "main", "index": 0 } ] ] },
+    "GroupMe Notify": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] },
+    "Record Publish Error": { "main": [ [ { "node": "GroupMe Alert (failure)", "type": "main", "index": 0 } ] ] },
+    "GroupMe Alert (failure)": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] }
   },
   "active": false,
   "settings": { "executionOrder": "v1", "timezone": "America/New_York" },

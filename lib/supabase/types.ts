@@ -484,6 +484,16 @@ export type FbPost = {
   posted_at: string | null;
   fb_permalink: string | null;
   created_at: string;
+  // ── Page auto-publish (WF4) state — added in 0006_fb_publish.sql ──
+  page_posted_at: string | null;
+  page_permalink: string | null;
+  publish_attempts: number;
+  last_publish_error: string | null;
+  // Time-of-day controller: scheduled_time is the chosen Eastern wall-clock time
+  // ("HH:MM[:SS]"); null = publish on approval. publish_at is the derived UTC instant
+  // (set by the fb_set_publish_at trigger) WF4 gates on.
+  scheduled_time: string | null;
+  publish_at: string | null;
 };
 
 export type FbSubtopic = {

@@ -100,6 +100,18 @@ export const REASON_LABEL: Record<FbReasonCode, string> = REASON_CODES.reduce(
   {} as Record<FbReasonCode, string>,
 );
 
+/** Format a stored Eastern wall-clock time ("HH:MM[:SS]") as "9:00 AM ET". */
+export function formatPostTime(time: string | null | undefined): string | null {
+  if (!time) return null;
+  const [hStr, mStr] = time.split(":");
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period} ET`;
+}
+
 /** Tolerant lookups (DB columns are free-text, so guard unknown values). */
 export function pillarLabel(p: string | null | undefined): string {
   if (!p) return "—";

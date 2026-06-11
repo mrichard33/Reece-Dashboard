@@ -23,8 +23,9 @@ type NavItem = {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
-  /** "all" = any role; "operator" = operators; "executive" = Exec-Review members. */
-  audience: "all" | "operator" | "executive";
+  /** "all" = any role; "operator" = operators; "executive" = Exec-Review members;
+   *  "admin" = admin executives (Mark) only. */
+  audience: "all" | "operator" | "executive" | "admin";
   /** Phase 2+ — link is rendered as a stub. */
   phase?: 2 | 3;
 };
@@ -40,16 +41,19 @@ const items: NavItem[] = [
   { href: "/approvals", label: "Executive Review", Icon: ShieldCheck, audience: "executive" },
   { href: "/content", label: "Content", Icon: CalendarRange, audience: "all" },
   { href: "/ops/events", label: "Ops Logs", Icon: Cog, audience: "operator", phase: 3 },
+  { href: "/settings", label: "Settings", Icon: Cog, audience: "admin" },
 ];
 
 export function Sidebar({
   role,
   isExecutive,
+  isAdmin,
   isExecOnly,
   currentPath,
 }: {
   role: "operator" | "team";
   isExecutive: boolean;
+  isAdmin: boolean;
   isExecOnly: boolean;
   currentPath: string;
 }) {
@@ -59,6 +63,8 @@ export function Sidebar({
     // Content (FB engine) is open to operators AND executives — including
     // approver-only execs, who would otherwise be filtered out below.
     if (i.href === "/content") return isExecutive || role === "operator";
+    // Settings (connection config) is admin-only (Mark).
+    if (i.audience === "admin") return isAdmin;
     if (i.audience === "executive") return isExecutive;
     // Approver-only executives see nothing but the Executive Review tab.
     if (isExecOnly) return false;
