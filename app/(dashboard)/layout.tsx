@@ -31,6 +31,7 @@ export default async function DashboardLayout({
         <Sidebar
           role={ctx.role}
           isExecutive={ctx.isExecutive}
+          isAdmin={ctx.isAdmin}
           isExecOnly={ctx.isExecOnly}
           currentPath={pathname}
         />

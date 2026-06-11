@@ -57,6 +57,8 @@ only in n8n.
      is hardcoded, so only the key needs setting unless you swap providers). Other workflows may still
      reference `__IMAGE_API_URL__`.
    - `__FB_GRAPH_VERSION__` (`v21.0`), `__FB_PAGE_ID__`, `__FB_PAGE_ACCESS_TOKEN__`.
+     **(WF4 no longer uses these — it reads `fb_settings`/`fb_secrets` from LP Supabase at
+     runtime; see the WF4 section below. The only env WF4 needs is `LP_SUPABASE_SERVICE_KEY`.)**
    - `__GROUPME_BOT_ID__` — Sales Force bot id.
    - `__N8N_WEBHOOK_SECRET__` — must match the Dashboard's `N8N_WEBHOOK_SECRET`.
 4. (Optional) Convert the inline service-key headers to proper n8n **credentials**
@@ -102,15 +104,36 @@ rejected), and sets the regenerated component back to `pending`. If `needs_manua
 is set, it alerts on GroupMe and stops. (The mirror of this note lives in
 `fb-regeneration-webhook.json` and in `rejectComponent()`.)
 
-## Known follow-up (WF4) — `target='both'` publish state
+## WF4 — runtime config + `target='both'` two-leg model (resolved)
 
-For `target='both'`, WF4 currently flips the whole row to `status='posted'` as soon
-as the **Page** leg publishes. The **Group** leg is a human copy/post in the Dashboard
-(`markPosted()`), tracked separately — there is no Group API. **Revisit when WF4 goes
-live:** decide whether a `both` post should stay `approved` (or gain a `page_posted_at`
-column) until the Group leg is recorded, so the calendar doesn't show a `both` post as
-fully `posted` before the Group leg happens. (Flagged in `fb-page-publish.json` and in
-`markPosted()`.)
+WF4 no longer carries FB credentials as placeholders. At runtime it fetches its config
+from LP Supabase (added in migration `0006_fb_publish.sql`, managed from the dashboard
+`/settings` page):
+
+- `fb_settings` (single row): `fb_page_id`, `fb_graph_version`, and `auto_publish_enabled`
+  (the master kill switch — flip it OFF in `/settings` to pause publishing instantly
+  without touching n8n).
+- `fb_secrets` (service-role only): the `fb_page_access_token`. The token lives only in
+  Supabase + the dashboard server; it never appears in the workflow JSON or the browser.
+
+Both are read with `{{ $env.LP_SUPABASE_SERVICE_KEY }}`. WF4 gates on
+`auto_publish_enabled === true` plus a present page id + token, then publishes due posts.
+
+**Eligibility / time gate (in the query, not a node):**
+`status=approved & target in (page,both) & page_posted_at is null & publish_attempts<3 &
+(publish_at is null OR publish_at <= now)`. The DB trigger `fb_set_publish_at()` derives
+`publish_at` (Eastern wall-clock → UTC, DST-correct), so n8n never does timezone math —
+approved-but-not-yet-due posts simply don't return.
+
+**`target='both'` two-leg model (the old follow-up, now decided):** WF4 records the Page
+leg in `page_posted_at` / `page_permalink`. For `target='page'` it also flips
+`status='posted'`. For `target='both'` it leaves `status='approved'` — the row only
+becomes `posted` when the human **Group** leg is recorded via `markPosted()` in the
+Dashboard (there is no Group API). So the calendar never shows a `both` post as fully
+`posted` before the Group leg happens; the Content UI shows a "Page leg posted ✓"
+indicator in the interim. A Graph error writes `last_publish_error`, increments
+`publish_attempts`, and alerts on GroupMe; at attempt 3 the post drops out of the query
+(human escalation).
 
 ## Hard constraint
 

@@ -25,6 +25,7 @@ import {
   pillarLabel,
   pillarTone,
   archetypeLabel,
+  formatPostTime,
 } from "@/components/content/meta";
 import {
   approveCopy,
@@ -35,6 +36,7 @@ import {
   markPosted,
   generateNow,
   reschedulePost,
+  setPostTime,
 } from "@/lib/actions/content";
 import { deletePost } from "@/lib/actions/deletePost";
 import type { FbPost, FbComponent, FbReasonCode } from "@/lib/supabase/types";
@@ -55,9 +57,23 @@ export function PostReview({
   const [firstComment, setFirstComment] = useState(post.first_comment ?? "");
   const [permalink, setPermalink] = useState("");
   const [moveDate, setMoveDate] = useState(post.scheduled_date);
+  // scheduled_time is stored "HH:MM[:SS]"; the native time input wants "HH:MM".
+  const currentTime = post.scheduled_time ? post.scheduled_time.slice(0, 5) : "";
+  const [moveTime, setMoveTime] = useState(currentTime);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const groupUrl = process.env.NEXT_PUBLIC_FB_GROUP_URL;
+
+  // Scheduling badge: a set time reads "Posts at 9:00 AM ET", and once the post is
+  // approved but the publish instant is still in the future it doubles as the queue
+  // indicator ("Scheduled — …"); no time means it publishes the moment it's approved.
+  const timeLabel = formatPostTime(post.scheduled_time);
+  const isQueued =
+    post.status === "approved" && !!post.publish_at && new Date(post.publish_at) > new Date();
+  // The Page leg of a target='both' post has gone out, but the human Group leg hasn't —
+  // the row stays 'approved' until "Mark Posted" records the Group leg.
+  const pageLegDone =
+    post.target === "both" && !!post.page_posted_at && post.status === "approved";
 
   // Only the clicked button shows a spinner (pending is component-wide).
   const busy = (key: string) => pending && activeKey === key;
@@ -90,6 +106,14 @@ export function PostReview({
         <Badge tone={TARGET_META[post.target].tone}>{TARGET_META[post.target].label}</Badge>
         {post.pillar && <Badge tone={pillarTone(post.pillar)}>{pillarLabel(post.pillar)}</Badge>}
         {post.archetype && <Badge tone="slate">{archetypeLabel(post.archetype)}</Badge>}
+        {timeLabel ? (
+          <Badge tone={isQueued ? "sky" : "slate"}>
+            {isQueued ? `Scheduled — ${timeLabel}` : `Posts at ${timeLabel}`}
+          </Badge>
+        ) : (
+          <Badge tone="slate">Posts on approval</Badge>
+        )}
+        {pageLegDone && <Badge tone="emerald">Page leg posted ✓</Badge>}
         {post.revision > 0 && (
           <span className="inline-flex items-center gap-1 text-xs text-slate-500">
             <RefreshCw className="h-3 w-3" /> regenerated ×{post.revision}
@@ -279,29 +303,60 @@ export function PostReview({
       </div>
 
       {isExecutive && (
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-            <CalendarClock className="h-3.5 w-3.5" /> Move to date
-          </label>
-          <input
-            type="date"
-            value={moveDate}
-            onChange={(e) => setMoveDate(e.target.value)}
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
-          />
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={pending || moveDate === post.scheduled_date}
-            onClick={() => run("reschedule", () => reschedulePost(post.id, moveDate))}
-          >
-            {busy("reschedule") ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <CalendarClock className="h-3.5 w-3.5" />
-            )}{" "}
-            Move
-          </Button>
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+              <CalendarClock className="h-3.5 w-3.5" /> Date &amp; time
+            </label>
+            <input
+              type="date"
+              value={moveDate}
+              onChange={(e) => setMoveDate(e.target.value)}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+            />
+            <input
+              type="time"
+              value={moveTime}
+              onChange={(e) => setMoveTime(e.target.value)}
+              aria-label="Post time (Eastern)"
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+            />
+            <span className="text-xs text-slate-400">Eastern time</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={pending || (moveDate === post.scheduled_date && moveTime === currentTime)}
+              onClick={() =>
+                run("reschedule", async () => {
+                  // Date and time can change together; the DB trigger recomputes
+                  // publish_at on each write, so write order doesn't matter.
+                  let warning: string | undefined;
+                  if (moveDate !== post.scheduled_date) {
+                    const r = await reschedulePost(post.id, moveDate);
+                    if (!r.ok) return r;
+                    warning = r.error;
+                  }
+                  if (moveTime !== currentTime) {
+                    const r = await setPostTime(post.id, moveTime || null);
+                    if (!r.ok) return r;
+                  }
+                  return { ok: true, error: warning };
+                })
+              }
+            >
+              {busy("reschedule") ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CalendarClock className="h-3.5 w-3.5" />
+              )}{" "}
+              Update schedule
+            </Button>
+          </div>
+          <p className="text-xs text-slate-400">
+            Leave the time blank to publish as soon as the post is approved. A set time publishes
+            within ~2 minutes after it; changing the time on an already-approved post takes effect
+            immediately.
+          </p>
         </div>
       )}
 
