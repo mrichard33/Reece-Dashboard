@@ -3,104 +3,217 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 9 * * *" } ] }
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * *" }] }
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 200],
-      "id": "wf5-schedule-001",
+      "position": [192, 192],
+      "id": "71d48e6b-198e-4b3b-9274-c6acd273c5c8",
       "name": "Daily 09:00 ET"
     },
     {
       "parameters": {
-        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?status=eq.posted&target=in.(page,both)&fb_permalink=not.is.null&select=id,fb_permalink,scheduled_date",
-        "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" }
-        ] },
+        "url": "https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_settings?id=eq.1&select=fb_page_id,fb_graph_version",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [240, 200],
-      "id": "wf5-get-posts-002",
-      "name": "Get Posted (last 30d)"
-    },
-    {
-      "parameters": { "batchSize": 1, "options": {} },
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [460, 200],
-      "id": "wf5-loop-003",
-      "name": "Loop Posts"
+      "position": [400, 192],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000001",
+      "name": "Fetch FB Config",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpMultipleHeadersAuth": { "id": "E0rGNWmOCXvZ4oYb", "name": "LP Supabase Account" }
+      }
     },
     {
       "parameters": {
-        "url": "=https://graph.facebook.com/__FB_GRAPH_VERSION__/{{ $json.fb_permalink.split('/').pop() }}/insights?metric=post_impressions,post_impressions_unique,post_clicks&access_token=__FB_PAGE_ACCESS_TOKEN__",
+        "url": "https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_secrets?key=eq.fb_page_access_token&select=value",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [680, 200],
-      "id": "wf5-insights-004",
-      "name": "Get Page Insights"
+      "position": [608, 192],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000002",
+      "name": "Fetch FB Token",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpMultipleHeadersAuth": { "id": "E0rGNWmOCXvZ4oYb", "name": "LP Supabase Account" }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Map the Graph insights payload to the fb_post_metrics columns. Reactions/comments/\n// shares come from the post's summary fields; impressions/reach/clicks from insights.\nconst v = (name) => { const m = ($json.data||[]).find(d => d.name===name); return m?.values?.[0]?.value ?? 0; };\nreturn [{ json: {\n  post_id: $('Loop Posts').item.json.id,\n  source: 'page',\n  impressions: v('post_impressions'),\n  reach: v('post_impressions_unique'),\n  link_clicks: v('post_clicks'),\n  reactions: 0, comments: 0, shares: 0\n} }];"
+        "jsCode": "// Merge fb_settings + fb_secrets into one config item (same pattern as WF4).\nconst cfgRaw = $('Fetch FB Config').first().json;\nconst tokRaw = $('Fetch FB Token').first().json;\nconst cfg = Array.isArray(cfgRaw) ? cfgRaw[0] : cfgRaw;\nconst tok = Array.isArray(tokRaw) ? tokRaw[0] : tokRaw;\nreturn [{ json: {\n  page_id: (cfg && cfg.fb_page_id) || '',\n  graph: (cfg && cfg.fb_graph_version) || 'v25.0',\n  token: (tok && tok.value) || ''\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 200],
-      "id": "wf5-map-005",
-      "name": "Map Metrics"
+      "position": [816, 192],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000003",
+      "name": "FB Config"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "gate-token",
+              "leftValue": "={{ $json.token }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            },
+            {
+              "id": "gate-page",
+              "leftValue": "={{ $json.page_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1024, 192],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000004",
+      "name": "Gate (token + page)"
+    },
+    {
+      "parameters": {
+        "url": "=https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_posts?page_permalink=not.is.null&page_posted_at=gte.{{ $now.minus({ days: 30 }).toUTC().toFormat(\"yyyy-LL-dd'T'HH:mm:ss\") }}Z&select=id,page_permalink,scheduled_date",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1232, 192],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000005",
+      "name": "Get Page-Posted (30d)",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpMultipleHeadersAuth": { "id": "E0rGNWmOCXvZ4oYb", "name": "LP Supabase Account" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "has-posts",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1440, 192],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000006",
+      "name": "Has Posts?"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/{{ $('FB Config').first().json.graph }}/{{ $('FB Config').first().json.page_id }}/published_posts?fields=id,reactions.summary(total_count),comments.summary(total_count),shares&limit=100&access_token={{ $('FB Config').first().json.token }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1648, 192],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000007",
+      "name": "Fetch Page Engagement",
+      "onError": "continueErrorOutput",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Join Supabase queue rows to Graph engagement by FB post id, emit fb_post_metrics rows.\n// Queue rows carry page_permalink like https://www.facebook.com/{page}_{post}; the tail is\n// the page-scoped post id, which matches published_posts ids.\n// Posts missing from Graph results (e.g. dev-mode ghosts invisible to the API, or >100\n// posts back) are skipped rather than written as zeros.\nconst graphPosts = ($json.data || []);\nconst byId = new Map(graphPosts.map(p => [p.id, p]));\nconst queue = $('Get Page-Posted (30d)').all().map(i => i.json).filter(r => r && r.id);\nconst rows = [];\nfor (const q of queue) {\n  const fbId = String(q.page_permalink || '').split('/').pop();\n  const g = byId.get(fbId);\n  if (!g) continue;\n  rows.push({\n    post_id: q.id,\n    source: 'page',\n    reactions: (g.reactions && g.reactions.summary && g.reactions.summary.total_count) || 0,\n    comments: (g.comments && g.comments.summary && g.comments.summary.total_count) || 0,\n    shares: (g.shares && g.shares.count) || 0,\n    impressions: null,\n    reach: null,\n    link_clicks: null\n  });\n}\nif (rows.length === 0) {\n  return [];\n}\nreturn [{ json: { rows, count: rows.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1856, 96],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000008",
+      "name": "Join + Map Metrics"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=__SUPABASE_URL__/rest/v1/fb_post_metrics?on_conflict=post_id,source,pulled_at",
+        "url": "https://rcjcgjlqzepicbwhnnjl.supabase.co/rest/v1/fb_post_metrics",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
-          { "name": "Content-Type", "value": "application/json" },
-          { "name": "Prefer", "value": "resolution=merge-duplicates,return=minimal" }
-        ] },
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [1120, 200],
-      "id": "wf5-upsert-006",
-      "name": "Upsert fb_post_metrics"
+      "position": [2064, 96],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000009",
+      "name": "Insert fb_post_metrics",
+      "credentials": {
+        "httpMultipleHeadersAuth": { "id": "E0rGNWmOCXvZ4oYb", "name": "LP Supabase Account" }
+      }
     },
     {
       "parameters": {
-        "content": "## WF5 — Metrics Pull\nDaily 09:00 ET. For Page posts in the last 30 days, pull Graph insights and upsert a\ndaily snapshot into `fb_post_metrics` (source='page'). GROUP metrics are entered by\nhand in the Dashboard (Insights → Group metrics). The Insights view reads the\n`v_fb_post_engagement` view (latest metrics per post + engagement_rate).",
-        "height": 200, "width": 420
+        "method": "POST",
+        "url": "https://api.groupme.com/v3/bots/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '75c281957bf9655f47833a5248', text: '⚠️ FB Metrics Pull (WF5): engagement read failed — ' + (($json.error && ($json.error.message || JSON.stringify($json.error))) || 'unknown error') + '. If the Facebook app is still in Development Mode, metrics reads stay blocked until it is switched to Live.' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1856, 320],
+      "id": "a5f1c200-1111-4aaa-8bbb-000000000010",
+      "name": "GroupMe Alert"
+    },
+    {
+      "parameters": {
+        "content": "## WF5 — Metrics Pull (rebuilt 2026-06-11)\nDaily 09:00 ET. Runtime config: fb_settings (page id, graph version) + fb_secrets (Page token) via LP Supabase Account credential — no hardcoded keys, no placeholders.\n\nQueue = fb_posts with page_permalink set and page_posted_at within 30 days (two-leg model: 'both' posts stay status='approved' after the Page leg, so we key on page_posted_at, NOT status='posted').\n\nEngagement comes from ONE Graph call to /{page}/published_posts (per-post object reads are blocked for this app), joined to the queue by page-scoped post id. Inserts a daily snapshot batch into fb_post_metrics (source='page').\n\nimpressions/reach/link_clicks are NULL for now: v25 deprecated the legacy post_impressions metrics (June 2026) and the replacement metric set is a follow-up once the app is Live.\n\nKNOWN GATE: while the FB app is in Development Mode, engagement fields return (#10) and the error branch pings GroupMe daily. Goes green automatically once the app is switched to Live.",
+        "height": 380,
+        "width": 460
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [0, -120],
-      "id": "wf5-note-007",
+      "position": [192, -260],
+      "id": "bfa34db6-8d46-40f5-9c1b-149ddd49e8bb",
       "name": "About WF5"
     }
   ],
   "pinData": {},
   "connections": {
-    "Daily 09:00 ET": { "main": [ [ { "node": "Get Posted (last 30d)", "type": "main", "index": 0 } ] ] },
-    "Get Posted (last 30d)": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] },
-    "Loop Posts": { "main": [ [ { "node": "Get Page Insights", "type": "main", "index": 0 } ] ] },
-    "Get Page Insights": { "main": [ [ { "node": "Map Metrics", "type": "main", "index": 0 } ] ] },
-    "Map Metrics": { "main": [ [ { "node": "Upsert fb_post_metrics", "type": "main", "index": 0 } ] ] },
-    "Upsert fb_post_metrics": { "main": [ [ { "node": "Loop Posts", "type": "main", "index": 0 } ] ] }
+    "Daily 09:00 ET": { "main": [[{ "node": "Fetch FB Config", "type": "main", "index": 0 }]] },
+    "Fetch FB Config": { "main": [[{ "node": "Fetch FB Token", "type": "main", "index": 0 }]] },
+    "Fetch FB Token": { "main": [[{ "node": "FB Config", "type": "main", "index": 0 }]] },
+    "FB Config": { "main": [[{ "node": "Gate (token + page)", "type": "main", "index": 0 }]] },
+    "Gate (token + page)": { "main": [[{ "node": "Get Page-Posted (30d)", "type": "main", "index": 0 }], []] },
+    "Get Page-Posted (30d)": { "main": [[{ "node": "Has Posts?", "type": "main", "index": 0 }]] },
+    "Has Posts?": { "main": [[{ "node": "Fetch Page Engagement", "type": "main", "index": 0 }], []] },
+    "Fetch Page Engagement": { "main": [[{ "node": "Join + Map Metrics", "type": "main", "index": 0 }], [{ "node": "GroupMe Alert", "type": "main", "index": 0 }]] },
+    "Join + Map Metrics": { "main": [[{ "node": "Insert fb_post_metrics", "type": "main", "index": 0 }]] }
   },
-  "active": false,
+  "active": true,
   "settings": { "executionOrder": "v1", "timezone": "America/New_York" },
-  "meta": { "templateCredsSetupCompleted": false },
-  "tags": [ { "id": "fb-content-engine", "name": "FB Content Engine" } ]
+  "meta": null,
+  "tags": [{ "id": "Ob9PTR4MH7QYlDus", "name": "FB Content Engine" }]
 }

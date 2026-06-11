@@ -313,16 +313,25 @@ export async function getPrompts(): Promise<FbMessagingPrompt[]> {
 // ── Insights ──────────────────────────────────────────────────────
 // Read the v_fb_post_engagement view and aggregate in JS (small dataset;
 // supabase-js can't GROUP BY). Every result is empty-safe.
+//
+// Two-leg publish model: WF4 Page publishes set page_posted_at and leave
+// status='approved' (the Group leg is manual). A post counts as PUBLISHED
+// when status='posted' OR page_posted_at is set.
 
-async function loadEngagement(): Promise<FbPostEngagement[]> {
+type EngagementRow = FbPostEngagement & {
+  page_posted_at: string | null;
+  page_permalink: string | null;
+};
+
+async function loadEngagement(): Promise<EngagementRow[]> {
   const supabase = await lpServer();
   const { data, error } = await supabase
     .from("v_fb_post_engagement")
     .select(
-      "id, scheduled_date, pillar, archetype, target, status, post_body, posted_at, metric_source, reactions, comments, shares, impressions, reach, link_clicks, pulled_at, engagement_rate",
+      "id, scheduled_date, pillar, archetype, target, status, post_body, posted_at, metric_source, reactions, comments, shares, impressions, reach, link_clicks, pulled_at, engagement_rate, page_posted_at, page_permalink",
     );
   if (error) return [];
-  return (data ?? []) as unknown as FbPostEngagement[];
+  return (data ?? []) as unknown as EngagementRow[];
 }
 
 function avg(values: number[]): number | null {
@@ -330,7 +339,7 @@ function avg(values: number[]): number | null {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-function withRate(rows: FbPostEngagement[]): FbPostEngagement[] {
+function withRate(rows: EngagementRow[]): EngagementRow[] {
   return rows.filter((r) => r.engagement_rate !== null && (r.reach ?? 0) > 0);
 }
 
@@ -344,10 +353,12 @@ export type InsightsTopline = {
 
 export async function getInsightsTopline(): Promise<InsightsTopline> {
   const rows = await loadEngagement();
-  const posted = rows.filter((r) => r.status === "posted");
+  const published = rows.filter(
+    (r) => r.status === "posted" || r.page_posted_at !== null,
+  );
   const rated = withRate(rows);
   return {
-    postsPublished: posted.length,
+    postsPublished: published.length,
     avgEngagementRate: avg(rated.map((r) => r.engagement_rate as number)),
     totalReach: rows.reduce((a, r) => a + (r.reach ?? 0), 0),
     totalImpressions: rows.reduce((a, r) => a + (r.impressions ?? 0), 0),
@@ -456,7 +467,7 @@ export async function getOpsHealth(): Promise<OpsHealth> {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error } = await supabase
     .from("fb_posts")
-    .select("scheduled_date, status, needs_manual, created_at, posted_at");
+    .select("scheduled_date, status, needs_manual, created_at, posted_at, page_posted_at");
   if (error) {
     return {
       draftsAhead: 0,
@@ -472,10 +483,14 @@ export async function getOpsHealth(): Promise<OpsHealth> {
     needs_manual: boolean;
     created_at: string;
     posted_at: string | null;
+    page_posted_at: string | null;
   }[];
   const drafts = rows.filter((r) => r.status === "draft");
   const created = rows.map((r) => r.created_at).filter(Boolean).sort();
-  const posted = rows.map((r) => r.posted_at).filter((d): d is string => !!d).sort();
+  const posted = rows
+    .flatMap((r) => [r.posted_at, r.page_posted_at])
+    .filter((d): d is string => !!d)
+    .sort();
   return {
     draftsAhead: rows.filter((r) => r.status === "approved" && r.scheduled_date >= today).length,
     pendingApproval: drafts.length,
