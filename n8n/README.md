@@ -108,10 +108,10 @@ is set, it alerts on GroupMe and stops. (The mirror of this note lives in
 
 WF4 no longer carries FB credentials as placeholders. At runtime it fetches its config
 from LP Supabase (added in migration `0006_fb_publish.sql`, managed from the dashboard
-`/settings` page):
+`/content/settings` page):
 
 - `fb_settings` (single row): `fb_page_id`, `fb_graph_version`, and `auto_publish_enabled`
-  (the master kill switch — flip it OFF in `/settings` to pause publishing instantly
+  (the master kill switch — flip it OFF in `/content/settings` to pause publishing instantly
   without touching n8n).
 - `fb_secrets` (service-role only): the `fb_page_access_token`. The token lives only in
   Supabase + the dashboard server; it never appears in the workflow JSON or the browser.
@@ -124,6 +124,21 @@ Both are read with `{{ $env.LP_SUPABASE_SERVICE_KEY }}`. WF4 gates on
 (publish_at is null OR publish_at <= now)`. The DB trigger `fb_set_publish_at()` derives
 `publish_at` (Eastern wall-clock → UTC, DST-correct), so n8n never does timezone math —
 approved-but-not-yet-due posts simply don't return.
+
+### Generation tuning now lives in `fb_settings` (migration `0007_settings_controls.sql`)
+
+The dashboard reads its generation knobs from `fb_settings` first, then env, then a
+built-in default (managed from `/content/settings`). **TODO for the chat/MCP session that
+next touches WF1 / WF-Batch:** read these from `fb_settings` at runtime too, instead of
+env, so a dashboard edit takes effect without an n8n redeploy:
+
+- `generation_buffer_days` — how far ahead WF1 keeps finished drafts (replaces the
+  `GENERATION_BUFFER_DAYS` env knob).
+- `max_per_generation` — batch cap for WF-Batch (replaces `MAX_PER_GENERATION`).
+
+A null column means "fall back to the env var, then the default" — mirror that resolution
+order in the workflow. `default_post_time` (also added in 0007) is consumed by the DB
+trigger, not n8n, so WF1 needs no change for it.
 
 **`target='both'` two-leg model (the old follow-up, now decided):** WF4 records the Page
 leg in `page_posted_at` / `page_permalink`. For `target='page'` it also flips

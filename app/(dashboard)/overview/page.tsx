@@ -2,6 +2,7 @@ import { requireUser } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatTile } from "@/components/tiles/StatTile";
 import { HealthTile } from "@/components/tiles/HealthTile";
+import { McpStatusTile } from "@/components/tiles/McpStatusTile";
 import { AlertTile } from "@/components/tiles/AlertTile";
 import { SyncFreshnessBanner } from "@/components/tiles/SyncFreshnessBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -52,30 +53,28 @@ export default async function OverviewPage() {
             System health
           </h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <HealthTile
-              label="LP MCP"
-              status={railwayStatus(health.lpMcp)}
-              detail={
-                "error" in health.lpMcp
-                  ? "Status unavailable"
-                  : `${health.lpMcp.service ?? "lp-mcp"} · ${health.lpMcp.status}`
-              }
-              lastActivity={"error" in health.lpMcp ? null : health.lpMcp.last_deploy_at}
-              lastError={"error" in health.lpMcp ? health.lpMcp.error : null}
-              helpKey="overview.lpMcp"
-            />
-            <HealthTile
-              label="HL MCP"
-              status={railwayStatus(health.hlMcp)}
-              detail={
-                "error" in health.hlMcp
-                  ? "Status unavailable"
-                  : `${health.hlMcp.service ?? "hl-mcp"} · ${health.hlMcp.status}`
-              }
-              lastActivity={"error" in health.hlMcp ? null : health.hlMcp.last_deploy_at}
-              lastError={"error" in health.hlMcp ? health.hlMcp.error : null}
-              helpKey="overview.hlMcp"
-            />
+            {"error" in health.lpMcp ? (
+              <McpStatusTile label="LP MCP" error={health.lpMcp} helpKey="overview.lpMcp" />
+            ) : (
+              <HealthTile
+                label="LP MCP"
+                status={railwayStatus(health.lpMcp)}
+                detail={`${health.lpMcp.service ?? "lp-mcp"} · ${health.lpMcp.status}`}
+                lastActivity={health.lpMcp.last_deploy_at}
+                helpKey="overview.lpMcp"
+              />
+            )}
+            {"error" in health.hlMcp ? (
+              <McpStatusTile label="HL MCP" error={health.hlMcp} helpKey="overview.hlMcp" />
+            ) : (
+              <HealthTile
+                label="HL MCP"
+                status={railwayStatus(health.hlMcp)}
+                detail={`${health.hlMcp.service ?? "hl-mcp"} · ${health.hlMcp.status}`}
+                lastActivity={health.hlMcp.last_deploy_at}
+                helpKey="overview.hlMcp"
+              />
+            )}
             <HealthTile
               label="Decision Engine"
               status={heartbeatStatus(health.heartbeat.minutesAgo)}

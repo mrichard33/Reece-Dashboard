@@ -41,6 +41,7 @@ export function Calendar({
   initialNeedsOnly,
   planHorizonDays,
   maxPerGeneration,
+  defaultPostTime,
 }: {
   posts: FbPost[];
   plan: FbContentPlan[];
@@ -50,6 +51,8 @@ export function Calendar({
   initialNeedsOnly: boolean;
   planHorizonDays: number;
   maxPerGeneration: number;
+  /** Settings default post time ("HH:MM" Eastern), or null = publish on approval. */
+  defaultPostTime: string | null;
 }) {
   const [needsOnly, setNeedsOnly] = useState(initialNeedsOnly);
   // Track the selection by id (not a snapshot) so the drawer re-derives from the
@@ -301,7 +304,13 @@ export function Calendar({
         }
         subtitle={selectedPost ? "Review copy and image independently" : "Planned slot — not generated yet"}
       >
-        {selectedPost && <PostReview post={selectedPost} isExecutive={isExecutive} />}
+        {selectedPost && (
+          <PostReview
+            post={selectedPost}
+            isExecutive={isExecutive}
+            defaultPostTime={defaultPostTime}
+          />
+        )}
         {selectedPlan && <PlanReview slot={selectedPlan} isExecutive={isExecutive} />}
       </Drawer>
     </div>

@@ -6,6 +6,7 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { getIssuesPageData } from "@/lib/queries/issues";
+import type { McpErrorKind } from "@/lib/mcp/client";
 import { absTime, relTime, usd } from "@/lib/utils";
 import type { ClaudeKnownIssue } from "@/lib/supabase/types";
 
@@ -91,7 +92,11 @@ export default async function IssuesPage() {
           </CardHeader>
           <CardContent>
             {data.errors.contamination && (
-              <ErrBanner label="contamination" msg={data.errors.contamination} />
+              <ErrBanner
+                label="contamination"
+                msg={data.errors.contamination}
+                kind={data.errorKinds.contamination}
+              />
             )}
             {data.contamination.length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-500">
@@ -122,7 +127,11 @@ export default async function IssuesPage() {
           </CardHeader>
           <CardContent>
             {data.errors.namespace && (
-              <ErrBanner label="namespace check" msg={data.errors.namespace} />
+              <ErrBanner
+                label="namespace check"
+                msg={data.errors.namespace}
+                kind={data.errorKinds.namespace}
+              />
             )}
             {data.namespaceViolations.length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-500">
@@ -168,7 +177,11 @@ export default async function IssuesPage() {
           </CardHeader>
           <CardContent>
             {data.errors.drift && (
-              <ErrBanner label="drift check" msg={data.errors.drift} />
+              <ErrBanner
+                label="drift check"
+                msg={data.errors.drift}
+                kind={data.errorKinds.drift}
+              />
             )}
             {data.driftCandidates.length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-500">
@@ -254,12 +267,33 @@ export default async function IssuesPage() {
   );
 }
 
-function ErrBanner({ label, msg }: { label: string; msg: string }) {
+function ErrBanner({
+  label,
+  msg,
+  kind,
+}: {
+  label: string;
+  msg: string;
+  kind?: McpErrorKind;
+}) {
+  // For an MCP auth/reachability failure the message is already actionable
+  // (e.g. "Set HL_MCP_AUTH_TOKEN …") — lead with the diagnosis, not a generic
+  // "check failed". Unreachable/timeout read slate; everything else amber.
+  const heading =
+    kind === "auth"
+      ? "Auth failed:"
+      : kind === "unreachable" || kind === "timeout"
+        ? "MCP unreachable:"
+        : `${label} check failed:`;
+  const slate = kind === "unreachable" || kind === "timeout";
+  const cls = slate
+    ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+    : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100";
   return (
-    <div className="mb-3 flex items-start gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+    <div className={`mb-3 flex items-start gap-2 rounded border px-3 py-2 text-xs ${cls}`}>
       <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
       <div>
-        <strong>{label} check failed:</strong> {msg}
+        <strong>{heading}</strong> {msg}
       </div>
     </div>
   );

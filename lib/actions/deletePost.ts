@@ -21,7 +21,7 @@ type Result = { ok: boolean; error?: string };
 export async function deletePost(postId: string): Promise<Result> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Deleting is limited to executives." };
-  if (!isApprover(ctx.email))
+  if (!(await isApprover(ctx.email)))
     return { ok: false, error: "You are not on the approver list (APPROVER_EMAILS)." };
 
   const svc = lpService();

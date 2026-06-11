@@ -1,30 +1,46 @@
+import Link from "next/link";
 import { listExecutives } from "@/lib/queries/approvals";
-import { approverEmails } from "@/lib/auth";
+import { getFbTuning } from "@/lib/queries/content";
+import { getFbConnection } from "@/lib/actions/settings";
+import { getAccessContext } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { FbConnectionCard } from "@/components/settings/FbConnectionCard";
+import { TuningCard } from "@/components/settings/TuningCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContentSettingsPage() {
-  const execs = await listExecutives();
-  const approverList = approverEmails();
+  const [ctx, connection, tuning, execs] = await Promise.all([
+    getAccessContext(),
+    getFbConnection(),
+    getFbTuning(),
+    listExecutives(),
+  ]);
+  const isAdmin = ctx?.isAdmin ?? false;
+
   const n8nConfigured = !!process.env.N8N_BASE_URL && !!process.env.N8N_WEBHOOK_SECRET;
   const groupUrl =
     process.env.FB_GROUP_URL ?? process.env.NEXT_PUBLIC_FB_GROUP_URL ?? null;
 
   return (
     <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-2">
+      <FbConnectionCard connection={connection} isAdmin={isAdmin} />
+
+      <TuningCard tuning={tuning} isAdmin={isAdmin} />
+
       <Card>
         <CardHeader>
           <CardTitle>Approvers</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="mb-3 text-xs text-slate-500">
-            Approve / reject / mark-posted is limited to{" "}
-            {approverList.length > 0
-              ? "executives whose email is also in APPROVER_EMAILS"
-              : "anyone on the Executive Review roster (APPROVER_EMAILS unset)"}
-            . Manage the roster in the LP Supabase `executives` table.
+            Approve / reject / mark-posted is limited to the people flagged as approvers.
+            Manage <strong>Admin</strong> and <strong>Approver</strong> roles in{" "}
+            <Link href="/settings" className="text-navy-700 hover:underline dark:text-sky-300">
+              General Settings → Team &amp; Approvers
+            </Link>
+            .
           </p>
           <ul className="space-y-1.5 text-sm">
             {execs.map((e) => (
@@ -32,17 +48,14 @@ export default async function ContentSettingsPage() {
                 <span>
                   {e.name} <span className="text-slate-400">· {e.email}</span>
                 </span>
-                {e.is_admin && <Badge tone="navy">Admin</Badge>}
+                <span className="flex gap-1">
+                  {e.is_admin && <Badge tone="navy">Admin</Badge>}
+                  {e.is_approver && <Badge tone="emerald">Approver</Badge>}
+                </span>
               </li>
             ))}
             {execs.length === 0 && <li className="text-slate-400">No executives configured.</li>}
           </ul>
-          <p className="mt-3 text-xs text-slate-400">
-            APPROVER_EMAILS:{" "}
-            {approverList.length > 0
-              ? `${approverList.length} listed`
-              : "unset (executive-only gating)"}
-          </p>
         </CardContent>
       </Card>
 
@@ -82,10 +95,6 @@ export default async function ContentSettingsPage() {
               )}
             </Row>
           </dl>
-          <p className="mt-4 text-xs text-slate-500">
-            Generation cadence, post time, the Anthropic model, the image provider, and the
-            Meta Page token live in n8n (see <code>n8n/README.md</code>), not the dashboard.
-          </p>
         </CardContent>
       </Card>
     </div>

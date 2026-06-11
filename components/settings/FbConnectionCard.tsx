@@ -20,7 +20,14 @@ function statusBadge(c: FbConnectionStatus | null) {
   return <Badge tone="slate" dot>Configured — auto-publish OFF</Badge>;
 }
 
-export function FbConnectionCard({ connection }: { connection: FbConnectionStatus | null }) {
+export function FbConnectionCard({
+  connection,
+  isAdmin = true,
+}: {
+  connection: FbConnectionStatus | null;
+  /** When false, render read-only — content users can see status but not edit. */
+  isAdmin?: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -61,6 +68,11 @@ export function FbConnectionCard({ connection }: { connection: FbConnectionStatu
             Connected to: <span className="font-medium">{connection.pageName}</span>
           </p>
         )}
+        {!isAdmin && (
+          <p className="mb-4 text-xs text-slate-400">
+            Read-only — only an admin can edit the Page connection.
+          </p>
+        )}
 
         <div className="space-y-4">
           {/* Page ID + Graph version */}
@@ -69,6 +81,7 @@ export function FbConnectionCard({ connection }: { connection: FbConnectionStatu
             <input
               value={pageId}
               onChange={(e) => setPageId(e.target.value)}
+              disabled={!isAdmin}
               placeholder="e.g. 1029384756"
               className="block w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
             />
@@ -80,6 +93,7 @@ export function FbConnectionCard({ connection }: { connection: FbConnectionStatu
             <input
               value={graphVersion}
               onChange={(e) => setGraphVersion(e.target.value)}
+              disabled={!isAdmin}
               placeholder="v23.0"
               className="block w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
             />
@@ -87,7 +101,7 @@ export function FbConnectionCard({ connection }: { connection: FbConnectionStatu
           <Button
             size="sm"
             variant="secondary"
-            disabled={pending}
+            disabled={pending || !isAdmin}
             onClick={() =>
               run("save-settings", () => saveFbSettings({ fb_page_id: pageId, fb_graph_version: graphVersion }), "Saved.")
             }
@@ -105,6 +119,7 @@ export function FbConnectionCard({ connection }: { connection: FbConnectionStatu
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
+              disabled={!isAdmin}
               placeholder={tokenPlaceholder}
               autoComplete="off"
               className="block w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
@@ -121,7 +136,7 @@ export function FbConnectionCard({ connection }: { connection: FbConnectionStatu
             <Button
               size="sm"
               variant="secondary"
-              disabled={pending || token.trim().length === 0}
+              disabled={pending || !isAdmin || token.trim().length === 0}
               onClick={() =>
                 run("save-token", async () => {
                   const res = await saveFbToken(token);
@@ -140,7 +155,7 @@ export function FbConnectionCard({ connection }: { connection: FbConnectionStatu
             <Button
               size="sm"
               variant="secondary"
-              disabled={pending}
+              disabled={pending || !isAdmin}
               onClick={() =>
                 run("test", async () => {
                   const res = await testFbConnection();
@@ -162,7 +177,7 @@ export function FbConnectionCard({ connection }: { connection: FbConnectionStatu
               <Button
                 size="sm"
                 variant={connection?.enabled ? "danger" : "primary"}
-                disabled={pending}
+                disabled={pending || !isAdmin}
                 onClick={() =>
                   run("toggle", () => setAutoPublish(!connection?.enabled))
                 }

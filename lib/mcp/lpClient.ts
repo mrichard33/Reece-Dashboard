@@ -10,6 +10,15 @@ const authToken =
 
 const client = new McpClient(process.env.LP_MCP_URL ?? "", authToken, "lp");
 
+/** Whether LP_MCP_URL is set on the dashboard (vs. unconfigured). */
+export const lpUrlConfigured = (process.env.LP_MCP_URL ?? "").trim().length > 0;
+/**
+ * Whether LP_MCP_AUTH_TOKEN is set on the dashboard. Lets the UI distinguish
+ * "no token configured" from "token configured but rejected (stale)" — never
+ * exposes the value itself.
+ */
+export const lpTokenConfigured = authToken !== undefined;
+
 export type DriftCandidate = {
   contact_id: string;
   name: string | null;
@@ -40,4 +49,10 @@ export const lpMcp = {
       "sync_all_entities",
       { timeoutMs: 30_000 },
     ),
+
+  /**
+   * Uncached liveness probe for the Connections panel — the cheapest tool, run
+   * fresh so the operator sees the real current auth/reachability state.
+   */
+  ping: () => client.call<SyncHealthRaw>("get_sync_health"),
 };

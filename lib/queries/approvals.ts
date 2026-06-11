@@ -66,7 +66,7 @@ export async function listExecutives(): Promise<Executive[]> {
   const supabase = await lpServer();
   const { data, error } = await supabase
     .from("executives")
-    .select("id, user_id, name, email, is_admin, active, created_at")
+    .select("id, user_id, name, email, is_admin, is_approver, active, created_at")
     .eq("active", true)
     .order("name");
   if (error) throw new Error(`Failed to load executives: ${error.message}`);

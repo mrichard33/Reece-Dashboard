@@ -20,6 +20,119 @@ const PLAN_COLUMNS =
 const SUBTOPIC_COLUMNS =
   "id, subtopic, pillar, buyer_stage, source, answers_question, source_evidence, status, last_used_at, times_used, created_at";
 
+// ── Generation tuning (fb_settings → env fallback → hardcoded default) ─────────
+
+/** Hardcoded defaults, used when neither the DB column nor the env var is set. */
+const TUNING_DEFAULTS = {
+  max_regen_attempts: 3,
+  max_per_generation: 7,
+  plan_horizon_days: 30,
+  generation_buffer_days: 3,
+} as const;
+
+export type TuningKey = keyof typeof TUNING_DEFAULTS;
+
+const TUNING_ENV: Record<TuningKey, string> = {
+  max_regen_attempts: "MAX_REGEN_ATTEMPTS",
+  max_per_generation: "MAX_PER_GENERATION",
+  plan_horizon_days: "PLAN_HORIZON_DAYS",
+  generation_buffer_days: "GENERATION_BUFFER_DAYS",
+};
+
+export type TuningFieldInfo = {
+  key: TuningKey;
+  /** Effective value (DB ?? env ?? default). */
+  value: number;
+  /** Raw DB column (null = falling back). */
+  dbValue: number | null;
+  /** What `value` would be if the DB column is null (env, else default). */
+  envFallback: number;
+  source: "db" | "env" | "default";
+};
+
+export type FbTuning = {
+  maxRegenAttempts: number;
+  maxPerGeneration: number;
+  planHorizonDays: number;
+  generationBufferDays: number;
+  /** "HH:MM" Eastern, or null = publish on approval (no default post time). */
+  defaultPostTime: string | null;
+  /** Per-field provenance for the Content Settings tuning card. */
+  fields: TuningFieldInfo[];
+};
+
+function parseEnvInt(name: string): number | null {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.floor(n) : null;
+}
+
+function resolveTuningField(key: TuningKey, dbValue: number | null): TuningFieldInfo {
+  const env = parseEnvInt(TUNING_ENV[key]);
+  const envFallback = env ?? TUNING_DEFAULTS[key];
+  if (dbValue !== null) {
+    return { key, value: dbValue, dbValue, envFallback, source: "db" };
+  }
+  return {
+    key,
+    value: envFallback,
+    dbValue: null,
+    envFallback,
+    source: env !== null ? "env" : "default",
+  };
+}
+
+/**
+ * Effective generation tuning, read per-call (not at module load) so a UI save
+ * to fb_settings takes effect on the next action without a redeploy. Resolution
+ * order per field: DB column → env var → hardcoded default. `default_post_time`
+ * has no env fallback (it's a dashboard-only setting).
+ *
+ * Read via lpServer so RLS applies; on any error fall back to env/defaults so the
+ * content engine never hard-fails on a settings read.
+ */
+export async function getFbTuning(): Promise<FbTuning> {
+  let row: Record<string, unknown> | null = null;
+  try {
+    const supabase = await lpServer();
+    const { data } = await supabase
+      .from("fb_settings")
+      .select(
+        "default_post_time, max_regen_attempts, max_per_generation, plan_horizon_days, generation_buffer_days",
+      )
+      .eq("id", 1)
+      .maybeSingle();
+    row = (data as Record<string, unknown> | null) ?? null;
+  } catch {
+    row = null;
+  }
+
+  const dbInt = (key: TuningKey): number | null => {
+    const v = row?.[key];
+    return typeof v === "number" ? v : null;
+  };
+
+  const fields: TuningFieldInfo[] = (
+    Object.keys(TUNING_DEFAULTS) as TuningKey[]
+  ).map((k) => resolveTuningField(k, dbInt(k)));
+
+  const byKey = (k: TuningKey) => fields.find((f) => f.key === k)!.value;
+
+  const rawTime = row?.default_post_time;
+  const defaultPostTime =
+    typeof rawTime === "string" && rawTime.length > 0 ? rawTime.slice(0, 5) : null;
+
+  return {
+    maxRegenAttempts: byKey("max_regen_attempts"),
+    maxPerGeneration: byKey("max_per_generation"),
+    planHorizonDays: byKey("plan_horizon_days"),
+    generationBufferDays: byKey("generation_buffer_days"),
+    defaultPostTime,
+    fields,
+  };
+}
+
 /**
  * Cheap probe: are the content-engine tables present? Lets pages show a setup
  * banner instead of silently-empty UI when migrations 0003/0004 aren't applied.
