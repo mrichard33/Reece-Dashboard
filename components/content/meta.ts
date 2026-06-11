@@ -12,12 +12,13 @@ import type {
 
 /**
  * Calendar status colours (shared legend).
- * Green progression (Mark's spec): approved = light green (mint) → published to
- * Facebook = full green (emerald). 'posted' means BOTH legs done for target='both'.
+ * Status progression (Mark's spec): approved = yellow (queued, waiting) →
+ * published to Facebook = green (emerald). 'posted' means BOTH legs done for
+ * target='both'; the page-leg-only state is derived via postPublishMeta.
  */
 export const FB_STATUS_META: Record<FbPostStatus, { label: string; tone: BadgeTone }> = {
   draft: { label: "Draft", tone: "navy" },
-  approved: { label: "Approved", tone: "mint" },
+  approved: { label: "Approved", tone: "amber" },
   posted: { label: "Posted", tone: "emerald" },
   skipped: { label: "Skipped", tone: "slate" },
 };
