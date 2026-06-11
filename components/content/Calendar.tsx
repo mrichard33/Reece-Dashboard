@@ -22,19 +22,19 @@ import { cn } from "@/lib/utils";
 import type { FbPost, FbContentPlan, FbPostStatus } from "@/lib/supabase/types";
 
 /**
- * Green progression: approved = light green (waiting), published to Facebook =
- * full green. 'posted' (both legs done) shares the full green; a target='both'
+ * Status progression: approved = yellow (queued, waiting), published to
+ * Facebook = green. 'posted' (both legs done) shares the green; a target='both'
  * post whose Page leg is live but Group leg pending is detected via
  * page_posted_at (see dotFor) since its status is still 'approved'.
  */
 const DOT: Record<FbPostStatus, string> = {
   draft: "bg-navy-600",
-  approved: "bg-emerald-300",
+  approved: "bg-amber-400",
   posted: "bg-emerald-500",
   skipped: "bg-slate-300",
 };
 
-/** Page-leg-aware dot: page_posted_at flips an 'approved' post to full green. */
+/** Page-leg-aware dot: page_posted_at flips an 'approved' post to green. */
 function dotFor(p: FbPost): string {
   if (p.status === "approved" && p.page_posted_at) return DOT.posted;
   return DOT[p.status];
