@@ -168,6 +168,8 @@ export type Executive = {
   name: string;
   email: string;
   is_admin: boolean;
+  /** DB-managed approver flag (db/migrations/0007). Authoritative over APPROVER_EMAILS. */
+  is_approver: boolean;
   active: boolean;
   created_at: string;
 };
@@ -494,6 +496,30 @@ export type FbPost = {
   // (set by the fb_set_publish_at trigger) WF4 gates on.
   scheduled_time: string | null;
   publish_at: string | null;
+};
+
+/**
+ * Single-row FB content-engine config (id = 1). Non-secret connection fields
+ * (0006_fb_publish) plus UI-managed generation tuning (0007_settings_controls).
+ * Tuning columns are nullable: null = fall back to the env knob, then a hardcoded
+ * default. The token itself lives in fb_secrets (service-role only), never here.
+ */
+export type FbSettings = {
+  id: number;
+  fb_page_id: string | null;
+  fb_graph_version: string;
+  auto_publish_enabled: boolean;
+  fb_page_name: string | null;
+  token_last4: string | null;
+  token_updated_at: string | null;
+  updated_by: string | null;
+  updated_at: string;
+  // ── Generation tuning (0007) — null = use env fallback / default ──
+  default_post_time: string | null; // "HH:MM[:SS]" Eastern; null = publish on approval
+  max_regen_attempts: number | null;
+  max_per_generation: number | null;
+  plan_horizon_days: number | null;
+  generation_buffer_days: number | null;
 };
 
 export type FbSubtopic = {

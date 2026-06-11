@@ -104,8 +104,41 @@ export function approverEmails(): string[] {
     .filter(Boolean);
 }
 
-export function isApprover(email: string | null | undefined): boolean {
-  const list = approverEmails();
-  if (list.length === 0) return true; // unset → defer to the executive gate
-  return !!email && list.includes(email.toLowerCase());
-}
+/**
+ * Whether an email may approve/reject/publish content. Resolution order
+ * (documented in /settings → Team and .env.example):
+ *   1. If any active executive is flagged is_approver (db/migrations/0007),
+ *      the DB flags are authoritative — only flagged emails approve.
+ *   2. Else APPROVER_EMAILS env (legacy fallback).
+ *   3. Else any executive (defer to the executive-only RLS gate).
+ * Wrapped in React.cache so the roster read is shared within a request. Reads
+ * via service role (no RLS dependency) and degrades to env gating if the
+ * is_approver column doesn't exist yet (pre-0007) or the read fails.
+ */
+export const isApprover = cache(
+  async (email: string | null | undefined): Promise<boolean> => {
+    try {
+      const svc = lpService();
+      const { data, error } = await svc
+        .from("executives")
+        .select("email, is_approver")
+        .eq("active", true);
+      if (!error && data) {
+        const flagged = (data as Array<{ email: string | null; is_approver?: boolean }>).filter(
+          (r) => r.is_approver,
+        );
+        if (flagged.length > 0) {
+          return (
+            !!email &&
+            flagged.some((r) => r.email?.toLowerCase() === email.toLowerCase())
+          );
+        }
+      }
+    } catch {
+      // fall through to env-based gating (pre-0007 schema / read failure)
+    }
+    const list = approverEmails();
+    if (list.length === 0) return true; // unset → defer to the executive gate
+    return !!email && list.includes(email.toLowerCase());
+  },
+);

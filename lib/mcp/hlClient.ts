@@ -10,6 +10,15 @@ const authToken =
 
 const client = new McpClient(process.env.HL_MCP_URL ?? "", authToken, "hl");
 
+/** Whether HL_MCP_URL is set on the dashboard (vs. unconfigured). */
+export const hlUrlConfigured = (process.env.HL_MCP_URL ?? "").trim().length > 0;
+/**
+ * Whether HL_MCP_AUTH_TOKEN is set on the dashboard. Lets the UI distinguish
+ * "no token configured" from "token configured but rejected (stale)" — never
+ * exposes the value itself.
+ */
+export const hlTokenConfigured = authToken !== undefined;
+
 export type ContaminationFinding = {
   workflow_id: string;
   workflow_name: string;
@@ -23,6 +32,15 @@ export type NamespaceViolation = {
   contact_name: string | null;
   namespace: string;
   conflicting_tags: string[];
+};
+
+/** A row from n8n_list_workflows (fields beyond these are ignored). */
+export type N8nWorkflowSummary = {
+  id: string;
+  name: string;
+  active: boolean;
+  nodeCount?: number;
+  nodes?: unknown[];
 };
 
 export const hlMcp = {
@@ -63,4 +81,24 @@ export const hlMcp = {
     client.call<Record<string, unknown>>("sync_all_entities", {
       timeoutMs: 60_000,
     }),
+
+  /**
+   * Uncached liveness probe for the Connections panel — the cheapest tool, run
+   * fresh so the operator sees the real current auth/reachability state.
+   */
+  ping: () => client.call<HlSyncHealthRaw>("get_sync_health"),
+
+  /** All n8n workflows (Automation Controls filters to the `FB ·` ones). Uncached. */
+  listWorkflows: () =>
+    client.call<{ workflows?: N8nWorkflowSummary[] } | N8nWorkflowSummary[]>(
+      "n8n_list_workflows",
+      { timeoutMs: 20_000 },
+    ),
+
+  /** Activate / deactivate a single workflow by id. */
+  setWorkflowActive: (id: string, active: boolean) =>
+    client.call<Record<string, unknown>>(
+      active ? "n8n_activate_workflow" : "n8n_deactivate_workflow",
+      { args: { id }, timeoutMs: 20_000 },
+    ),
 };

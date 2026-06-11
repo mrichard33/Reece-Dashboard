@@ -1,6 +1,6 @@
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, format } from "date-fns";
 import { getAccessContext } from "@/lib/auth";
-import { listPostsForRange, listPlanForRange } from "@/lib/queries/content";
+import { listPostsForRange, listPlanForRange, getFbTuning } from "@/lib/queries/content";
 import { Calendar } from "@/components/content/Calendar";
 
 export const dynamic = "force-dynamic";
@@ -30,13 +30,11 @@ export default async function ContentCalendarPage({
   const first = new Date(year, monthIndex, 1);
   const gridStart = startOfWeek(startOfMonth(first), { weekStartsOn: 0 });
   const gridEnd = endOfWeek(endOfMonth(first), { weekStartsOn: 0 });
-  const [posts, plan] = await Promise.all([
+  const [posts, plan, tuning] = await Promise.all([
     listPostsForRange(format(gridStart, "yyyy-MM-dd"), format(gridEnd, "yyyy-MM-dd")),
     listPlanForRange(format(gridStart, "yyyy-MM-dd"), format(gridEnd, "yyyy-MM-dd")),
+    getFbTuning(),
   ]);
-
-  const maxPerGeneration = Number(process.env.MAX_PER_GENERATION ?? "7");
-  const planHorizonDays = Number(process.env.PLAN_HORIZON_DAYS ?? "30");
 
   return (
     <div className="p-6">
@@ -47,8 +45,9 @@ export default async function ContentCalendarPage({
         monthIndex={monthIndex}
         isExecutive={isExecutive}
         initialNeedsOnly={sp.filter === "needs"}
-        planHorizonDays={planHorizonDays}
-        maxPerGeneration={maxPerGeneration}
+        planHorizonDays={tuning.planHorizonDays}
+        maxPerGeneration={tuning.maxPerGeneration}
+        defaultPostTime={tuning.defaultPostTime}
       />
     </div>
   );

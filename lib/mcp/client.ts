@@ -28,6 +28,40 @@ type CallOpts = {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+/**
+ * How an MCP call failed, so the UI can render an actionable tile instead of a
+ * raw transport dump:
+ *   auth        — the server rejected the Bearer token (401 / unauthorized).
+ *   unreachable — couldn't connect (DNS, ECONN, missing base URL, fetch failure).
+ *   timeout     — the SDK request exceeded its per-call ceiling.
+ *   tool        — the tool ran but returned an error / non-JSON / empty content.
+ *   unknown     — anything else.
+ */
+export type McpErrorKind = "auth" | "unreachable" | "timeout" | "tool" | "unknown";
+
+/** Classify a raw error string into an McpErrorKind (see McpErrorKind doc). */
+export function classifyMcpError(raw: string): McpErrorKind {
+  if (/unauthorized|bearer token|\b401\b|forbidden|\b403\b/i.test(raw)) return "auth";
+  if (/timed out|timeout|etimedout|deadline exceeded/i.test(raw)) return "timeout";
+  if (
+    /econnrefused|econnreset|enotfound|eai_again|getaddrinfo|fetch failed|network|socket hang up|unreachable|base url missing/i.test(
+      raw,
+    )
+  )
+    return "unreachable";
+  return "unknown";
+}
+
+/** Human label per client, used in actionable auth messages. */
+function clientLabel(label: "lp" | "hl"): string {
+  return label === "lp" ? "LP MCP" : "HL MCP";
+}
+
+/** Env var the dashboard must set to authenticate against this MCP service. */
+function clientTokenEnv(label: "lp" | "hl"): string {
+  return label === "lp" ? "LP_MCP_AUTH_TOKEN" : "HL_MCP_AUTH_TOKEN";
+}
+
 export class McpClient {
   constructor(
     private readonly baseUrl: string,
@@ -37,9 +71,9 @@ export class McpClient {
 
   async call<T>(toolName: string, opts: CallOpts = {}): Promise<T> {
     if (!this.baseUrl) {
-      const msg = `${this.label.toUpperCase()} MCP base URL missing. Set ${this.label.toUpperCase()}_MCP_URL in env.`;
+      const msg = `${clientLabel(this.label)} base URL missing. Set ${this.label.toUpperCase()}_MCP_URL on the Dashboard Railway service.`;
       this.logError(toolName, null, 0, msg);
-      throw new McpError(msg, 0, toolName);
+      throw new McpError(msg, 0, toolName, "unreachable");
     }
 
     const endpoint = new URL("/mcp", this.baseUrl);
@@ -68,17 +102,25 @@ export class McpClient {
       const text = firstText(res.content);
 
       if (res.isError) {
+        // A tool that ran but reported failure — but the server may also surface
+        // a 401 as an isError result, so classify the text before labelling.
+        const raw = text ?? "isError";
+        const kind = classifyMcpError(raw);
         throw new McpError(
-          `${this.label.toUpperCase()} MCP ${toolName} returned an error: ${(text ?? "isError").slice(0, 200)}`,
+          kind === "auth"
+            ? this.authMessage()
+            : `${clientLabel(this.label)} ${toolName} returned an error: ${raw.slice(0, 200)}`,
           0,
           toolName,
+          kind === "auth" ? "auth" : "tool",
         );
       }
       if (text === null) {
         throw new McpError(
-          `${this.label.toUpperCase()} MCP ${toolName} returned no text content`,
+          `${clientLabel(this.label)} ${toolName} returned no text content`,
           0,
           toolName,
+          "tool",
         );
       }
 
@@ -86,23 +128,37 @@ export class McpClient {
         return JSON.parse(text) as T;
       } catch {
         throw new McpError(
-          `${this.label.toUpperCase()} MCP ${toolName} returned non-JSON content: ${text.slice(0, 200)}`,
+          `${clientLabel(this.label)} ${toolName} returned non-JSON content: ${text.slice(0, 200)}`,
           0,
           toolName,
+          "tool",
         );
       }
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       this.logError(toolName, endpoint.toString(), Date.now() - startedAt, error);
       if (e instanceof McpError) throw e;
+      const kind = classifyMcpError(error);
       throw new McpError(
-        `${this.label.toUpperCase()} MCP ${toolName} call failed: ${error}`,
+        kind === "auth"
+          ? this.authMessage()
+          : `${clientLabel(this.label)} ${toolName} call failed: ${error}`,
         0,
         toolName,
+        kind,
       );
     } finally {
       await client.close().catch(() => {});
     }
+  }
+
+  /** Actionable message for a rejected Bearer token — points the operator at the fix. */
+  private authMessage(): string {
+    return `${clientLabel(this.label)} rejected the request (401). Set ${clientTokenEnv(
+      this.label,
+    )} on the Dashboard Railway service to match the ${clientLabel(
+      this.label,
+    )} service's MCP_AUTH_TOKEN, then redeploy.`;
   }
 
   private logError(tool: string, url: string | null, durationMs: number, error: string) {
@@ -141,6 +197,7 @@ export class McpError extends Error {
     message: string,
     public readonly status: number,
     public readonly tool: string,
+    public readonly kind: McpErrorKind = "unknown",
   ) {
     super(message);
     this.name = "McpError";

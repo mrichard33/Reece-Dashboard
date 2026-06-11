@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { lpServer, lpService } from "@/lib/supabase/lp";
 import { getAccessContext } from "@/lib/auth";
+import { lpMcp } from "@/lib/mcp/lpClient";
+import { hlMcp, type N8nWorkflowSummary } from "@/lib/mcp/hlClient";
+import { McpError, type McpErrorKind } from "@/lib/mcp/client";
+import { pingGroupMe } from "@/lib/notify/groupme";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -23,10 +27,14 @@ function refresh() {
   revalidatePath("/content", "layout");
 }
 
-/** Read connection state for the Settings page. NEVER returns the token. */
+/**
+ * Read connection state for the settings surfaces. NEVER returns the token.
+ * Available to any authenticated user (Content Settings shows it read-only to
+ * non-admins); edits stay admin-gated in the individual save actions.
+ */
 export async function getFbConnection(): Promise<FbConnectionStatus | null> {
   const ctx = await getAccessContext();
-  if (!ctx?.isAdmin) return null;
+  if (!ctx) return null;
 
   const supabase = await lpServer();
   const { data } = await supabase.from("fb_settings").select("*").eq("id", 1).maybeSingle();
@@ -141,6 +149,65 @@ export async function testFbConnection(): Promise<ActionResult & { pageName?: st
   }
 }
 
+/**
+ * Generation-tuning save (Content Settings). Admin only (RLS also enforces).
+ * Each numeric field accepts a value, or null to clear it back to the env/default
+ * fallback. Ranges mirror the CHECK constraints in 0007_settings_controls.sql.
+ */
+const TUNING_RANGES = {
+  max_regen_attempts: [1, 10],
+  max_per_generation: [1, 20],
+  plan_horizon_days: [1, 90],
+  generation_buffer_days: [1, 30],
+} as const;
+
+export async function saveFbTuning(input: {
+  default_post_time?: string | null;
+  max_regen_attempts?: number | null;
+  max_per_generation?: number | null;
+  plan_horizon_days?: number | null;
+  generation_buffer_days?: number | null;
+}): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.isAdmin) return { ok: false, error: "Admin only." };
+
+  const update: Record<string, unknown> = {
+    updated_by: ctx.executive?.name ?? ctx.email,
+    updated_at: new Date().toISOString(),
+  };
+
+  for (const key of Object.keys(TUNING_RANGES) as (keyof typeof TUNING_RANGES)[]) {
+    if (!(key in input)) continue;
+    const v = input[key];
+    if (v === null || v === undefined) {
+      update[key] = null; // clear → fall back to env/default
+      continue;
+    }
+    const [lo, hi] = TUNING_RANGES[key];
+    if (!Number.isInteger(v) || v < lo || v > hi) {
+      return { ok: false, error: `${key} must be a whole number between ${lo} and ${hi}.` };
+    }
+    update[key] = v;
+  }
+
+  if ("default_post_time" in input) {
+    const t = input.default_post_time;
+    if (t === null || t === undefined || t.trim() === "") {
+      update.default_post_time = null;
+    } else if (!/^\d{2}:\d{2}(:\d{2})?$/.test(t.trim())) {
+      return { ok: false, error: "Default post time must look like 09:00." };
+    } else {
+      update.default_post_time = t.trim();
+    }
+  }
+
+  const supabase = await lpServer();
+  const { error } = await supabase.from("fb_settings").update(update).eq("id", 1);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
+}
+
 /** Master kill switch for WF4. */
 export async function setAutoPublish(enabled: boolean): Promise<ActionResult> {
   const ctx = await getAccessContext();
@@ -163,5 +230,185 @@ export async function setAutoPublish(enabled: boolean): Promise<ActionResult> {
     .eq("id", 1);
   if (error) return { ok: false, error: error.message };
   refresh();
+  return { ok: true };
+}
+
+// ── General Settings: Connections panel ──────────────────────────
+
+export type McpPing =
+  | { ok: true }
+  | { ok: false; kind: McpErrorKind; message: string };
+
+/** Uncached liveness probe for a MCP service (cheapest tool). Admin only. */
+export async function pingMcp(service: "lp" | "hl"): Promise<McpPing> {
+  const ctx = await getAccessContext();
+  if (!ctx?.isAdmin) return { ok: false, kind: "unknown", message: "Admin only." };
+  try {
+    await (service === "lp" ? lpMcp.ping() : hlMcp.ping());
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      kind: e instanceof McpError ? e.kind : "unknown",
+      message: e instanceof Error ? e.message : "Ping failed.",
+    };
+  }
+}
+
+/** Trigger a full sync via the MCP service; returns the per-entity result. */
+export async function triggerMcpSync(
+  service: "lp" | "hl",
+): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+  const ctx = await getAccessContext();
+  if (!ctx?.isAdmin) return { ok: false, error: "Admin only." };
+  try {
+    const result = await (service === "lp" ? lpMcp.triggerSync() : hlMcp.triggerSync());
+    return { ok: true, result };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Sync failed." };
+  }
+}
+
+/**
+ * Ask the LP decision engine to reload its rules. Surfaces the response body
+ * verbatim. If the endpoint rejects unauthenticated POSTs, that surfaces too —
+ * wiring a token for it is a follow-up.
+ */
+export async function reloadDecisionEngine(): Promise<{
+  ok: boolean;
+  status?: number;
+  body?: string;
+  error?: string;
+}> {
+  const ctx = await getAccessContext();
+  if (!ctx?.isAdmin) return { ok: false, error: "Admin only." };
+  const base = process.env.LP_MCP_URL;
+  if (!base) return { ok: false, error: "LP_MCP_URL is not set on the dashboard." };
+  try {
+    const res = await fetch(`${base.replace(/\/$/, "")}/n8n/decision-engine/reload-rules`, {
+      method: "POST",
+      cache: "no-store",
+    });
+    const body = await res.text().catch(() => "");
+    return { ok: res.ok, status: res.status, body };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Request failed." };
+  }
+}
+
+// ── General Settings: Automation Controls (FB · workflows only) ───
+
+/** Only FB-content-engine workflows are exposed here, by name prefix. */
+const FB_WORKFLOW_PREFIX = "FB ·";
+
+export type FbWorkflowRow = {
+  id: string;
+  name: string;
+  active: boolean;
+  nodeCount: number | null;
+};
+
+export type FbWorkflowsResult =
+  | { ok: true; workflows: FbWorkflowRow[] }
+  | { ok: false; kind: McpErrorKind; message: string };
+
+function normalizeWorkflows(
+  raw: { workflows?: N8nWorkflowSummary[] } | N8nWorkflowSummary[],
+): N8nWorkflowSummary[] {
+  return Array.isArray(raw) ? raw : raw.workflows ?? [];
+}
+
+/** List only the `FB ·` workflows (hard filter — GHL/agentic ones are hidden). */
+export async function listFbWorkflows(): Promise<FbWorkflowsResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.isAdmin) return { ok: false, kind: "unknown", message: "Admin only." };
+  try {
+    const all = normalizeWorkflows(await hlMcp.listWorkflows());
+    const workflows = all
+      .filter((w) => typeof w?.name === "string" && w.name.startsWith(FB_WORKFLOW_PREFIX))
+      .map((w) => ({
+        id: String(w.id),
+        name: w.name,
+        active: Boolean(w.active),
+        nodeCount:
+          typeof w.nodeCount === "number"
+            ? w.nodeCount
+            : Array.isArray(w.nodes)
+              ? w.nodes.length
+              : null,
+      }));
+    return { ok: true, workflows };
+  } catch (e) {
+    return {
+      ok: false,
+      kind: e instanceof McpError ? e.kind : "unknown",
+      message: e instanceof Error ? e.message : "Failed to list workflows.",
+    };
+  }
+}
+
+/**
+ * Activate / deactivate a single FB · workflow. Re-fetches the roster to prove
+ * the id maps to an FB · workflow before flipping it — this action must never
+ * touch a GHL/agentic workflow even if handed an arbitrary id. Pings GroupMe
+ * with the acting user (not a hardcoded name) for the audit trail.
+ */
+export async function toggleFbWorkflow(id: string, active: boolean): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.isAdmin) return { ok: false, error: "Admin only." };
+
+  let name: string | null = null;
+  try {
+    const all = normalizeWorkflows(await hlMcp.listWorkflows());
+    const wf = all.find((w) => String(w?.id) === id);
+    name = typeof wf?.name === "string" ? wf.name : null;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not verify workflow." };
+  }
+  if (!name || !name.startsWith(FB_WORKFLOW_PREFIX)) {
+    return { ok: false, error: "Only FB · workflows can be toggled here." };
+  }
+
+  try {
+    await hlMcp.setWorkflowActive(id, active);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Toggle failed." };
+  }
+
+  const actor = ctx.executive?.name ?? ctx.email;
+  await pingGroupMe(
+    `${actor} ${active ? "activated" : "deactivated"} ${name} from the dashboard.`,
+  );
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+// ── General Settings: Team & Approvers ───────────────────────────
+
+/**
+ * Set an executive's Admin / Approver flags. Admin only. An admin cannot strip
+ * their own is_admin (prevents lockout). Writes via service role — the
+ * executives table has no authenticated write policy (0002).
+ */
+export async function setExecutiveRoles(
+  id: string,
+  roles: { is_admin?: boolean; is_approver?: boolean },
+): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.isAdmin) return { ok: false, error: "Admin only." };
+
+  if (roles.is_admin === false && ctx.executive?.id === id) {
+    return { ok: false, error: "You can't remove your own admin role." };
+  }
+
+  const update: Record<string, unknown> = {};
+  if (roles.is_admin !== undefined) update.is_admin = roles.is_admin;
+  if (roles.is_approver !== undefined) update.is_approver = roles.is_approver;
+  if (Object.keys(update).length === 0) return { ok: true };
+
+  const { error } = await lpService().from("executives").update(update).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  revalidatePath("/content", "layout");
   return { ok: true };
 }

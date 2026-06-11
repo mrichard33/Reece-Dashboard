@@ -6,6 +6,7 @@ import {
   type ContaminationFinding,
   type NamespaceViolation,
 } from "@/lib/mcp/hlClient";
+import { McpError, type McpErrorKind } from "@/lib/mcp/client";
 import type { ClaudeKnownIssue, Opportunity } from "@/lib/supabase/types";
 
 export type StuckContact = {
@@ -26,12 +27,15 @@ export type IssuesPageData = {
   driftCandidates: DriftCandidate[];
   stuckContacts: StuckContact[];
   errors: Record<string, string>;
+  /** Per-section MCP failure kind (auth/unreachable/…), keyed like `errors`. */
+  errorKinds: Record<string, McpErrorKind>;
 };
 
 async function safe<T>(label: string, p: Promise<T>): Promise<{
   ok: boolean;
   value: T | null;
   err?: string;
+  kind?: McpErrorKind;
 }> {
   try {
     const value = await p;
@@ -41,6 +45,7 @@ async function safe<T>(label: string, p: Promise<T>): Promise<{
       ok: false,
       value: null,
       err: e instanceof Error ? e.message : `Failed: ${label}`,
+      kind: e instanceof McpError ? e.kind : undefined,
     };
   }
 }
@@ -107,11 +112,19 @@ export async function getIssuesPageData(): Promise<IssuesPageData> {
   ]);
 
   const errors: Record<string, string> = {};
-  if (!issues.ok) errors.openIssues = issues.err!;
-  if (!contamination.ok) errors.contamination = contamination.err!;
-  if (!namespace.ok) errors.namespace = namespace.err!;
-  if (!drift.ok) errors.drift = drift.err!;
-  if (!stuck.ok) errors.stuck = stuck.err!;
+  const errorKinds: Record<string, McpErrorKind> = {};
+  for (const [key, r] of [
+    ["openIssues", issues],
+    ["contamination", contamination],
+    ["namespace", namespace],
+    ["drift", drift],
+    ["stuck", stuck],
+  ] as const) {
+    if (!r.ok) {
+      errors[key] = r.err!;
+      if (r.kind) errorKinds[key] = r.kind;
+    }
+  }
 
   return {
     openIssues: issues.value ?? [],
@@ -120,5 +133,6 @@ export async function getIssuesPageData(): Promise<IssuesPageData> {
     driftCandidates: drift.value?.rows ?? [],
     stuckContacts: stuck.value ?? [],
     errors,
+    errorKinds,
   };
 }

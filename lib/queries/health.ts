@@ -1,6 +1,7 @@
 import { lpService } from "@/lib/supabase/lp";
 import { lpMcp } from "@/lib/mcp/lpClient";
 import { hlMcp } from "@/lib/mcp/hlClient";
+import { McpError, type McpErrorKind } from "@/lib/mcp/client";
 import type {
   HlSyncHealthRaw,
   RailwayServiceStatus,
@@ -10,15 +11,18 @@ import type {
 } from "@/lib/supabase/types";
 import { minutesSince } from "@/lib/utils";
 
+/** Error shape threaded out of a failed MCP call; `kind` drives the UI tile. */
+export type McpFailure = { status: "unknown"; error: string; kind: McpErrorKind };
+
 export type HealthSnapshot = {
-  lpMcp: RailwayServiceStatus | { status: "unknown"; error: string };
-  hlMcp: RailwayServiceStatus | { status: "unknown"; error: string };
+  lpMcp: RailwayServiceStatus | McpFailure;
+  hlMcp: RailwayServiceStatus | McpFailure;
   heartbeat: { lastTickAt: string | null; minutesAgo: number | null };
-  lpSync: SyncHealth | { status: "unknown"; error: string };
-  hlSync: SyncHealth | { status: "unknown"; error: string };
+  lpSync: SyncHealth | McpFailure;
+  hlSync: SyncHealth | McpFailure;
 };
 
-type Adapted<T> = T | { status: "unknown"; error: string };
+type Adapted<T> = T | McpFailure;
 
 async function safeAdapt<R, T>(
   p: Promise<R>,
@@ -27,7 +31,11 @@ async function safeAdapt<R, T>(
   try {
     return adapt(await p);
   } catch (e) {
-    return { status: "unknown", error: e instanceof Error ? e.message : "unknown" };
+    return {
+      status: "unknown",
+      error: e instanceof Error ? e.message : "unknown",
+      kind: e instanceof McpError ? e.kind : "unknown",
+    };
   }
 }
 

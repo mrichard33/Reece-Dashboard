@@ -44,9 +44,13 @@ import type { FbPost, FbComponent, FbReasonCode } from "@/lib/supabase/types";
 export function PostReview({
   post,
   isExecutive,
+  defaultPostTime,
 }: {
   post: FbPost;
   isExecutive: boolean;
+  /** Settings default post time ("HH:MM" Eastern), or null. Drives the badge for
+   * a post with no per-post scheduled_time. */
+  defaultPostTime?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -66,8 +70,10 @@ export function PostReview({
 
   // Scheduling badge: a set time reads "Posts at 9:00 AM ET", and once the post is
   // approved but the publish instant is still in the future it doubles as the queue
-  // indicator ("Scheduled — …"); no time means it publishes the moment it's approved.
+  // indicator ("Scheduled — …"). With no per-post time, the row inherits the settings
+  // default ("Posts at default (9:00 AM ET)") if one exists, else publishes on approval.
   const timeLabel = formatPostTime(post.scheduled_time);
+  const defaultTimeLabel = formatPostTime(defaultPostTime);
   const isQueued =
     post.status === "approved" && !!post.publish_at && new Date(post.publish_at) > new Date();
   // The Page leg of a target='both' post has gone out, but the human Group leg hasn't —
@@ -110,6 +116,8 @@ export function PostReview({
           <Badge tone={isQueued ? "sky" : "slate"}>
             {isQueued ? `Scheduled — ${timeLabel}` : `Posts at ${timeLabel}`}
           </Badge>
+        ) : defaultTimeLabel ? (
+          <Badge tone="slate">Posts at default ({defaultTimeLabel})</Badge>
         ) : (
           <Badge tone="slate">Posts on approval</Badge>
         )}

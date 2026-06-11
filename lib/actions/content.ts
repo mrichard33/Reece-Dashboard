@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { lpServer } from "@/lib/supabase/lp";
 import { getAccessContext, isApprover } from "@/lib/auth";
+import { getFbTuning } from "@/lib/queries/content";
 import { pingGroupMe } from "@/lib/notify/groupme";
 import { postWebhook } from "@/lib/n8n";
 import { REASON_CODES } from "@/components/content/meta";
@@ -10,13 +11,9 @@ import type { FbComponent, FbReasonCode } from "@/lib/supabase/types";
 
 export type ActionResult = { ok: boolean; error?: string };
 
-/** Regeneration cap before a slot is flagged for manual authoring (spec §3). */
-const MAX_REGEN_ATTEMPTS = Number(process.env.MAX_REGEN_ATTEMPTS ?? "3");
-
-/** Hard cap on how many planned slots one batch fill may generate (Part 2 §2.3). */
-const MAX_PER_GENERATION = Number(process.env.MAX_PER_GENERATION ?? "7");
-/** Default planning window for "Plan next N days" (Part 2 §2.2). */
-const PLAN_HORIZON_DAYS = Number(process.env.PLAN_HORIZON_DAYS ?? "30");
+// Generation tuning (regen cap, batch cap, plan horizon) is read per-action via
+// getFbTuning() — fb_settings → env → default — so a UI save takes effect without
+// a redeploy. (Previously these were module-scope process.env reads.)
 
 function refresh() {
   // Revalidate the whole Content section (calendar, miner, insights, …).
@@ -31,7 +28,7 @@ async function approveComponent(
 ): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Approvals are limited to executives." };
-  if (!isApprover(ctx.email))
+  if (!(await isApprover(ctx.email)))
     return { ok: false, error: "You are not on the approver list (APPROVER_EMAILS)." };
 
   const supabase = await lpServer();
@@ -92,7 +89,7 @@ export async function rejectComponent(
 ): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Rejections are limited to executives." };
-  if (!isApprover(ctx.email))
+  if (!(await isApprover(ctx.email)))
     return { ok: false, error: "You are not on the approver list (APPROVER_EMAILS)." };
 
   if (!REASON_CODES.some((r) => r.value === reasonCode)) {
@@ -125,8 +122,9 @@ export async function rejectComponent(
   if (fbErr) return { ok: false, error: fbErr.message };
 
   // 2. Flip the rejected component(s), bump revision, flag manual at the cap.
+  const { maxRegenAttempts } = await getFbTuning();
   const nextRevision = (p.revision ?? 0) + 1;
-  const needsManual = nextRevision >= MAX_REGEN_ATTEMPTS;
+  const needsManual = nextRevision >= maxRegenAttempts;
   const update: Record<string, unknown> = { revision: nextRevision, needs_manual: needsManual };
   if (component === "copy" || component === "both") update.copy_status = "rejected";
   if (component === "image" || component === "both") update.image_status = "rejected";
@@ -196,7 +194,7 @@ export async function markPosted(
 ): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
-  if (!isApprover(ctx.email))
+  if (!(await isApprover(ctx.email)))
     return { ok: false, error: "You are not on the approver list (APPROVER_EMAILS)." };
   const supabase = await lpServer();
   const update: Record<string, unknown> = {
@@ -309,7 +307,8 @@ export async function planPeriod(
 ): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
-  const horizon = Math.max(1, Math.floor(days ?? PLAN_HORIZON_DAYS));
+  const { planHorizonDays } = await getFbTuning();
+  const horizon = Math.max(1, Math.floor(days ?? planHorizonDays));
   const res = await postWebhook("fb-plan-period", { start_date: startDate, days: horizon });
   return { ok: true, error: res.queued ? undefined : "Queued locally — n8n not connected yet." };
 }
@@ -318,7 +317,8 @@ export async function generateBatch(max?: number): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
   // Clamp to the hard cap so the UI can never request an unbounded run.
-  const n = Math.min(MAX_PER_GENERATION, Math.max(1, Math.floor(max ?? MAX_PER_GENERATION)));
+  const { maxPerGeneration } = await getFbTuning();
+  const n = Math.min(maxPerGeneration, Math.max(1, Math.floor(max ?? maxPerGeneration)));
   const res = await postWebhook("fb-generate-batch", { max: n });
   return { ok: true, error: res.queued ? undefined : "Queued locally — n8n not connected yet." };
 }
