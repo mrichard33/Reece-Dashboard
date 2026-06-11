@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 
 export type BadgeTone =
   | "emerald"
+  | "mint"
   | "amber"
   | "rose"
   | "slate"
@@ -12,6 +13,8 @@ export type BadgeTone =
 const toneStyles: Record<BadgeTone, string> = {
   emerald:
     "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-900",
+  mint:
+    "bg-emerald-50/60 text-emerald-600 ring-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-400 dark:ring-emerald-900/60",
   amber:
     "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900",
   rose: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-900",
@@ -47,6 +50,7 @@ export function Badge({
           className={cn(
             "h-1.5 w-1.5 rounded-full",
             tone === "emerald" && "bg-emerald-500",
+            tone === "mint" && "bg-emerald-300",
             tone === "amber" && "bg-amber-500",
             tone === "rose" && "bg-rose-500",
             tone === "slate" && "bg-slate-400",

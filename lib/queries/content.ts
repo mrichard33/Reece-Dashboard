@@ -12,7 +12,7 @@ import type {
 } from "@/lib/supabase/types";
 
 const POST_COLUMNS =
-  "id, scheduled_date, target, pillar, archetype, post_body, first_comment, image_concept, image_url, subtopic_id, copy_status, image_status, status, revision, needs_manual, approved_by, posted_by, posted_at, fb_permalink, created_at";
+  "id, scheduled_date, target, pillar, archetype, post_body, first_comment, image_concept, image_url, subtopic_id, copy_status, image_status, status, revision, needs_manual, approved_by, posted_by, posted_at, fb_permalink, created_at, page_posted_at, page_permalink, publish_attempts, last_publish_error, scheduled_time, publish_at";
 
 const PLAN_COLUMNS =
   "id, plan_date, pillar, archetype, subtopic_id, campaign, status, created_at";

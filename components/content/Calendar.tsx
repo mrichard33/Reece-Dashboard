@@ -21,12 +21,30 @@ import { pillarLabel } from "@/components/content/meta";
 import { cn } from "@/lib/utils";
 import type { FbPost, FbContentPlan, FbPostStatus } from "@/lib/supabase/types";
 
+/**
+ * Green progression: approved = light green (waiting), published to Facebook =
+ * full green. 'posted' (both legs done) shares the full green; a target='both'
+ * post whose Page leg is live but Group leg pending is detected via
+ * page_posted_at (see dotFor) since its status is still 'approved'.
+ */
 const DOT: Record<FbPostStatus, string> = {
   draft: "bg-navy-600",
-  approved: "bg-emerald-500",
-  posted: "bg-slate-400",
+  approved: "bg-emerald-300",
+  posted: "bg-emerald-500",
   skipped: "bg-slate-300",
 };
+
+/** Page-leg-aware dot: page_posted_at flips an 'approved' post to full green. */
+function dotFor(p: FbPost): string {
+  if (p.status === "approved" && p.page_posted_at) return DOT.posted;
+  return DOT[p.status];
+}
+
+/** Page-leg-aware status text for the mobile agenda. */
+function statusTextFor(p: FbPost): string {
+  if (p.status === "approved" && p.page_posted_at) return "page posted";
+  return p.status;
+}
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -202,7 +220,7 @@ export function Calendar({
                     )}
                     title={p.pillar ? pillarLabel(p.pillar) : "Post"}
                   >
-                    <span className={cn("h-2 w-2 flex-shrink-0 rounded-full", DOT[p.status])} />
+                    <span className={cn("h-2 w-2 flex-shrink-0 rounded-full", dotFor(p))} />
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
                   </button>
                 ))}
@@ -270,9 +288,11 @@ export function Calendar({
                         : "bg-slate-50 dark:bg-slate-800",
                     )}
                   >
-                    <span className={cn("h-2.5 w-2.5 flex-shrink-0 rounded-full", DOT[p.status])} />
+                    <span className={cn("h-2.5 w-2.5 flex-shrink-0 rounded-full", dotFor(p))} />
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
-                    <span className="ml-auto text-xs capitalize text-slate-400">{p.status}</span>
+                    <span className="ml-auto text-xs capitalize text-slate-400">
+                      {statusTextFor(p)}
+                    </span>
                   </button>
                 ))}
                 {planSlot && (
