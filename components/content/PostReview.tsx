@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Check,
@@ -82,6 +82,26 @@ export function PostReview({
   const pageLegDone =
     post.target === "both" && !!post.page_posted_at && post.status === "approved";
 
+  // Regen in flight: rejectComponent fires WF3 and returns immediately (WF3 responds
+  // right after its secret check, then regenerates in the background — ~10s for copy,
+  // ~60–90s when an image renders at quality:high). The component sits at 'rejected'
+  // until WF3 flips it back to 'pending' with the new draft, so while either component
+  // is 'rejected' (and we're not at the manual cap) poll the server for fresh props.
+  // Without this the page refreshes BEFORE the regen finishes and the old draft just
+  // sits there looking broken. 5-minute safety cutoff in case WF3 dies mid-run.
+  const regenInFlight =
+    !post.needs_manual &&
+    (post.copy_status === "rejected" || post.image_status === "rejected");
+  useEffect(() => {
+    if (!regenInFlight) return;
+    const interval = setInterval(() => router.refresh(), 8_000);
+    const cutoff = setTimeout(() => clearInterval(interval), 5 * 60_000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(cutoff);
+    };
+  }, [regenInFlight, router]);
+
   // Only the clicked button shows a spinner (pending is component-wide).
   const busy = (key: string) => pending && activeKey === key;
 
@@ -136,6 +156,13 @@ export function PostReview({
         </div>
       )}
 
+      {regenInFlight && (
+        <div className="rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
+          Regenerating in the background — the new draft appears here automatically
+          (~10s for copy, ~1–2 min when an image is rendering).
+        </div>
+      )}
+
       {/* COPY */}
       <ComponentBlock
         title="Copy"
@@ -144,6 +171,7 @@ export function PostReview({
         disabled={pending}
         approving={busy("approve-copy")}
         rejecting={busy("reject-copy")}
+        regenInFlight={post.copy_status === "rejected" && !post.needs_manual}
         isExecutive={isExecutive}
         onApprove={() => run("approve-copy", () => approveCopy(post.id))}
         onReject={(code, text) => run("reject-copy", () => rejectComponent(post.id, "copy", code, text))}
@@ -208,6 +236,7 @@ export function PostReview({
         disabled={pending}
         approving={busy("approve-image")}
         rejecting={busy("reject-image")}
+        regenInFlight={post.image_status === "rejected" && !post.needs_manual}
         isExecutive={isExecutive}
         onApprove={() => run("approve-image", () => approveImage(post.id))}
         onReject={(code, text) => run("reject-image", () => rejectComponent(post.id, "image", code, text))}
@@ -411,6 +440,7 @@ function ComponentBlock({
   disabled,
   approving,
   rejecting: rejectBusy,
+  regenInFlight = false,
   onApprove,
   onReject,
   children,
@@ -423,6 +453,10 @@ function ComponentBlock({
   disabled: boolean;
   approving: boolean;
   rejecting: boolean;
+  /** True while WF3 is regenerating this component in the background (status is
+   * 'rejected' and the manual cap hasn't been hit). Keeps the regenerating
+   * indicator visible after the reject action itself has already returned. */
+  regenInFlight?: boolean;
   onApprove: () => void;
   onReject: (code: FbReasonCode, text: string) => void;
   children: React.ReactNode;
@@ -438,7 +472,7 @@ function ComponentBlock({
           {title}
         </h4>
         <div className="flex items-center gap-2">
-          {rejectBusy && (
+          {(rejectBusy || regenInFlight) && (
             <span className="inline-flex items-center gap-1 text-xs text-slate-500">
               <Loader2 className="h-3 w-3 animate-spin" /> regenerating…
             </span>
