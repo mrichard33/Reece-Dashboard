@@ -103,23 +103,61 @@ export const TARGET_META: Record<FbTarget, { label: string; tone: BadgeTone }> =
   both: { label: "Page + Group", tone: "slate" },
 };
 
-/** Rejection reason codes (matches the fb_post_feedback CHECK constraint). */
-export const REASON_CODES: { value: FbReasonCode; label: string }[] = [
-  { value: "off-brand", label: "Off-brand" },
-  { value: "weak-hook", label: "Weak hook" },
-  { value: "wrong-pillar-fit", label: "Wrong pillar fit" },
-  { value: "compliance-risk", label: "Compliance risk" },
-  { value: "too-salesy", label: "Too salesy" },
-  { value: "inaccurate", label: "Inaccurate" },
-  { value: "image-mismatch", label: "Image mismatch" },
-  { value: "image-quality", label: "Image quality" },
-  { value: "other", label: "Other" },
+/**
+ * Rejection reason codes — component-specific so the dropdown is always
+ * relevant to what's being rejected. The union of both lists matches the
+ * fb_post_feedback CHECK constraint. The chosen code + note flow into WF3's
+ * regeneration prompt as feedback, so a specific reason directly improves
+ * the regenerated copy or image.
+ */
+export const COPY_REASON_CODES: { value: FbReasonCode; label: string }[] = [
+  { value: "weak-hook", label: "Weak hook — wouldn't stop the scroll" },
+  { value: "off-brand", label: "Off-brand — doesn't sound like us" },
+  { value: "inaccurate", label: "Inaccurate — factual or product error" },
+  { value: "canon-violation", label: "Canon violation — timeline, names, or claims" },
+  { value: "compliance-risk", label: "Compliance risk — insurance, scarcity, or pricing" },
+  { value: "too-salesy", label: "Too salesy — pitches instead of teaching" },
+  { value: "wrong-pillar-fit", label: "Wrong fit — misses the pillar or archetype" },
+  { value: "weak-cta", label: "Weak CTA — ask or first comment is off" },
+  { value: "other", label: "Other (describe below)" },
 ];
 
-export const REASON_LABEL: Record<FbReasonCode, string> = REASON_CODES.reduce(
-  (acc, r) => ({ ...acc, [r.value]: r.label }),
-  {} as Record<FbReasonCode, string>,
-);
+export const IMAGE_REASON_CODES: { value: FbReasonCode; label: string }[] = [
+  { value: "image-mismatch", label: "Doesn't match the copy — wrong subject or story" },
+  { value: "wrong-scene", label: "Wrong scene — setting or subject is off-concept" },
+  { value: "looks-ai", label: "Looks AI / cartoonish — not photoreal" },
+  { value: "wrong-mood", label: "Wrong mood — lighting or tone misses the message" },
+  { value: "bad-composition", label: "Bad composition — framing, crop, or focal point" },
+  { value: "image-artifacts", label: "Artifacts — warped details, glitches, or text in image" },
+  { value: "image-quality", label: "Low quality — blurry, dull, or flat" },
+  { value: "other", label: "Other (describe below)" },
+];
+
+/** Union list (back-compat for non-component contexts). */
+export const REASON_CODES: { value: FbReasonCode; label: string }[] = [
+  ...COPY_REASON_CODES.filter((r) => r.value !== "other"),
+  ...IMAGE_REASON_CODES,
+];
+
+/** Short labels for chart axes and compact UI (covers every code). */
+export const REASON_LABEL: Record<FbReasonCode, string> = {
+  "weak-hook": "Weak hook",
+  "off-brand": "Off-brand",
+  inaccurate: "Inaccurate",
+  "canon-violation": "Canon violation",
+  "compliance-risk": "Compliance risk",
+  "too-salesy": "Too salesy",
+  "wrong-pillar-fit": "Wrong pillar fit",
+  "weak-cta": "Weak CTA",
+  "image-mismatch": "Image mismatch",
+  "wrong-scene": "Wrong scene",
+  "looks-ai": "Looks AI",
+  "wrong-mood": "Wrong mood",
+  "bad-composition": "Bad composition",
+  "image-artifacts": "Artifacts",
+  "image-quality": "Image quality",
+  other: "Other",
+};
 
 /** Format a stored Eastern wall-clock time ("HH:MM[:SS]") as "9:00 AM ET". */
 export function formatPostTime(time: string | null | undefined): string | null {
