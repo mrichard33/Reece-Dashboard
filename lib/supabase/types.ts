@@ -454,15 +454,32 @@ export type FbPostStatus = "draft" | "approved" | "posted" | "skipped";
 export type FbSubtopicStatus = "proposed" | "active" | "inactive" | "rejected";
 export type FbPlanStatus = "planned" | "generated" | "skipped";
 export type FbComponent = "copy" | "image" | "both";
+
+/**
+ * Rejection reason codes. Component-specific sets live in
+ * components/content/meta.ts (COPY_REASON_CODES / IMAGE_REASON_CODES); this
+ * union matches the fb_post_feedback CHECK constraint, which is the union of
+ * both sets.
+ */
 export type FbReasonCode =
-  | "off-brand"
+  // copy
   | "weak-hook"
-  | "wrong-pillar-fit"
+  | "off-brand"
+  | "inaccurate"
+  | "canon-violation"
   | "compliance-risk"
   | "too-salesy"
-  | "inaccurate"
+  | "wrong-pillar-fit"
+  | "weak-cta"
+  // image
   | "image-mismatch"
+  | "wrong-scene"
+  | "looks-ai"
+  | "wrong-mood"
+  | "bad-composition"
+  | "image-artifacts"
   | "image-quality"
+  // shared
   | "other";
 
 export type FbPost = {
