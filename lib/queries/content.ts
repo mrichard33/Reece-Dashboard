@@ -500,6 +500,32 @@ export async function getOpsHealth(): Promise<OpsHealth> {
   };
 }
 
+// ── Page-level views (fb_page_metrics, written by WF5 branch 2) ───
+// One row per day from Meta's page_media_view metric — the v25 replacement
+// for page impressions ("the number of times any content from your Page was
+// displayed on a person's screen"). Upserted daily by the 9 AM WF5 run.
+
+export type PageViewsPoint = { date: string; views: number };
+
+/** Daily Facebook Page views, last 90 days, oldest first. Empty-safe. */
+export async function getPageViewsTrend(): Promise<PageViewsPoint[]> {
+  const supabase = await lpServer();
+  const cutoff = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from("fb_page_metrics")
+    .select("metric_date, views")
+    .gte("metric_date", cutoff)
+    .order("metric_date", { ascending: true });
+  if (error) {
+    console.error("[content] getPageViewsTrend:", error.message);
+    return [];
+  }
+  return ((data ?? []) as { metric_date: string; views: number | null }[]).map((r) => ({
+    date: r.metric_date,
+    views: r.views ?? 0,
+  }));
+}
+
 // ── Funnel / group growth (GHL) ───────────────────────────────────
 // Reads the GHL contact-tag snapshot (a cross-feature table) via the service role.
 // Populated by Mark's §11 opt-in funnel; until that tags contacts, the opt-in tag
