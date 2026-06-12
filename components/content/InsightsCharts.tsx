@@ -40,12 +40,14 @@ export function InsightsCharts({
   trend,
   rejections,
   growth,
+  pageViews,
 }: {
   byPillar: { pillar: string; engagementRate: number | null; posts: number }[];
   byArchetype: { archetype: string; engagementRate: number | null; posts: number }[];
   trend: { date: string; engagementRate: number }[];
   rejections: { reason_code: string; copy: number; image: number }[];
   growth: { date: string; total: number }[];
+  pageViews: { date: string; views: number }[];
 }) {
   const pillarData = byPillar.map((d) => ({
     name: pillarLabel(d.pillar),
@@ -62,6 +64,7 @@ export function InsightsCharts({
     image: d.image,
   }));
   const growthData = growth.map((d) => ({ name: d.date, total: d.total }));
+  const pageViewsData = pageViews.map((d) => ({ name: d.date, views: d.views }));
 
   const hasEngagement = pillarData.some((d) => d.rate > 0);
 
@@ -121,6 +124,29 @@ export function InsightsCharts({
               </LineChart>
             </ResponsiveContainer>
           </EmptyOr>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Page views (daily)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {pageViewsData.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-400">
+              No page views yet — WF5 pulls Facebook Page views daily at 9 AM ET.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={pageViewsData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip />
+                <Line type="monotone" dataKey="views" stroke={NAVY} strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
