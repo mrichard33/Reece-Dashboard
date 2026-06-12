@@ -7,6 +7,7 @@ import {
   getRejectionsByReason,
   getOpsHealth,
   getFunnelKpis,
+  getPageViewsTrend,
   type RankedPost,
 } from "@/lib/queries/content";
 import { InsightsCharts } from "@/components/content/InsightsCharts";
@@ -33,7 +34,7 @@ function pct(rate: number | null): string {
 }
 
 export default async function InsightsPage() {
-  const [topline, byPillar, byArchetype, trend, topBottom, rejections, ops, funnel] =
+  const [topline, byPillar, byArchetype, trend, topBottom, rejections, ops, funnel, pageViews] =
     await Promise.all([
       getInsightsTopline(),
       getEngagementByPillar(),
@@ -43,6 +44,7 @@ export default async function InsightsPage() {
       getRejectionsByReason(),
       getOpsHealth(),
       getFunnelKpis(),
+      getPageViewsTrend(),
     ]);
 
   return (
@@ -68,6 +70,7 @@ export default async function InsightsPage() {
         trend={trend}
         rejections={rejections}
         growth={funnel.growth}
+        pageViews={pageViews}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
