@@ -21,7 +21,8 @@ import {
   FB_STATUS_META,
   COMPONENT_STATUS_META,
   TARGET_META,
-  REASON_CODES,
+  COPY_REASON_CODES,
+  IMAGE_REASON_CODES,
   pillarLabel,
   pillarTone,
   archetypeLabel,
@@ -139,6 +140,7 @@ export function PostReview({
       <ComponentBlock
         title="Copy"
         status={post.copy_status}
+        reasonCodes={COPY_REASON_CODES}
         disabled={pending}
         approving={busy("approve-copy")}
         rejecting={busy("reject-copy")}
@@ -202,6 +204,7 @@ export function PostReview({
       <ComponentBlock
         title="Image"
         status={post.image_status}
+        reasonCodes={IMAGE_REASON_CODES}
         disabled={pending}
         approving={busy("approve-image")}
         rejecting={busy("reject-image")}
@@ -403,6 +406,7 @@ export function PostReview({
 function ComponentBlock({
   title,
   status,
+  reasonCodes,
   isExecutive,
   disabled,
   approving,
@@ -413,6 +417,8 @@ function ComponentBlock({
 }: {
   title: string;
   status: "pending" | "approved" | "rejected";
+  /** Component-specific rejection reasons (COPY_REASON_CODES or IMAGE_REASON_CODES). */
+  reasonCodes: { value: FbReasonCode; label: string }[];
   isExecutive: boolean;
   disabled: boolean;
   approving: boolean;
@@ -422,7 +428,7 @@ function ComponentBlock({
   children: React.ReactNode;
 }) {
   const [rejecting, setRejecting] = useState(false);
-  const [code, setCode] = useState<FbReasonCode>("off-brand");
+  const [code, setCode] = useState<FbReasonCode>(reasonCodes[0]?.value ?? "other");
   const [text, setText] = useState("");
 
   return (
@@ -466,7 +472,7 @@ function ComponentBlock({
                 onChange={(e) => setCode(e.target.value as FbReasonCode)}
                 className="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
               >
-                {REASON_CODES.map((r) => (
+                {reasonCodes.map((r) => (
                   <option key={r.value} value={r.value}>
                     {r.label}
                   </option>
@@ -476,7 +482,7 @@ function ComponentBlock({
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={2}
-                placeholder="Note (required for 'other')"
+                placeholder="Add specifics — this note goes straight into the regeneration prompt"
                 className="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
               />
               <Button
