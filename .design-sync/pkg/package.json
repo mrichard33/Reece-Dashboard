@@ -1,0 +1,8 @@
+{
+  "name": "reece-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reece Antifragile Mission Control — design-system scratch package (re-exports the dashboard's reusable UI for claude.ai/design). Not published; built only by /design-sync.",
+  "module": "./index.tsx",
+  "types": "./index.d.ts"
+}

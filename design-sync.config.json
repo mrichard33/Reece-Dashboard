@@ -1,0 +1,27 @@
+{
+  "pkg": "reece-dashboard",
+  "globalName": "ReeceUI",
+  "shape": "package",
+  "entry": "./.design-sync/pkg/index.tsx",
+  "tsconfig": "../../tsconfig.json",
+  "srcDir": "../../components",
+  "cssEntry": "styles.css",
+  "runtimeFontPrefixes": ["Inter", "Montserrat", "JetBrains Mono"],
+  "dtsPropsFor": {
+    "Button": "  variant?: \"primary\" | \"secondary\" | \"ghost\" | \"danger\";\n  size?: \"sm\" | \"md\" | \"lg\";\n  children?: React.ReactNode;\n  className?: string;\n  disabled?: boolean;\n  type?: \"button\" | \"submit\" | \"reset\";\n  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;",
+    "Badge": "  tone?: \"emerald\" | \"amber\" | \"rose\" | \"slate\" | \"navy\" | \"brick\" | \"sky\";\n  dot?: boolean;\n  className?: string;\n  children: React.ReactNode;",
+    "Card": "  className?: string;\n  children?: React.ReactNode;",
+    "CardHeader": "  className?: string;\n  children?: React.ReactNode;",
+    "CardTitle": "  className?: string;\n  children?: React.ReactNode;",
+    "CardContent": "  className?: string;\n  children?: React.ReactNode;",
+    "Skeleton": "  className?: string;",
+    "StatusDot": "  status: \"healthy\" | \"warning\" | \"critical\" | \"neutral\";\n  className?: string;\n  animate?: boolean;",
+    "Tooltip": "  label: string;\n  children: React.ReactNode;\n  className?: string;",
+    "InfoPopover": "  helpKey: string;\n  className?: string;\n  align?: \"left\" | \"right\";",
+    "StatTile": "  label: string;\n  value: string | number;\n  delta?: string;\n  deltaTone?: \"emerald\" | \"rose\" | \"amber\" | \"slate\";\n  suffix?: string;\n  helpKey: string;",
+    "HealthTile": "  label: string;\n  status: \"healthy\" | \"warning\" | \"critical\" | \"neutral\";\n  detail?: string;\n  lastActivity?: string | Date | null;\n  helpKey: string;",
+    "AlertTile": "  issue: {\n    severity?: \"low\" | \"medium\" | \"high\" | \"critical\" | null;\n    owner?: string | null;\n    description: string;\n    opened_at?: string | null;\n  };",
+    "SyncFreshnessBanner": "  lpLastSync: string | Date | null;\n  hlLastSync: string | Date | null;",
+    "StageBars": "  stages: { name: string; count: number; avgAgeDays: number }[];"
+  }
+}
