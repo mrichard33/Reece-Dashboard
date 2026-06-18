@@ -190,6 +190,75 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "Computed from `get_sync_health` calls on each render.",
     fix: "Click 'Sync now' in the topbar. If that fails, the relevant MCP is down — check `/overview` Row 1.",
   },
+
+  // ── /overview · Paid Media (Lead Gurus) ──────────────────────────
+  "paidMedia.section": {
+    title: "Paid Media (Lead Gurus)",
+    what: "FB ad performance from Lead Gurus (the paid-media agency, client id 91): spend, leads, self-books, demos, and attributed gross/net revenue for the most recent pulled day, plus a 30-day trend and a per-territory breakdown.",
+    where:
+      "`ft_daily_summary` + `ft_summary_territory` (LP Supabase), fed daily ~06:00 ET by the n8n workflow 'I.LG — Lead Gurus Daily Pull' → LP-MCP `/n8n/leadgurus/daily-pull`.",
+    fix: "If empty or stale, check the I.LG workflow's last execution in n8n and confirm `LEAD_GURUS_API_KEY` is set on LP-MCP. Backfill history via `POST /n8n/leadgurus/backfill`.",
+  },
+  "paidMedia.spend": {
+    title: "Ad Spend",
+    what: "Total Lead Gurus ad spend for the most recent pulled day.",
+    where: "`ft_daily_summary.total_spend` for the latest date.",
+    fix: "If $0 with leads present, Lead Gurus may not have reported spend yet for the day — verify on their platform.",
+  },
+  "paidMedia.leads": {
+    title: "Leads",
+    what: "Leads delivered by Lead Gurus for the most recent pulled day.",
+    where: "`ft_daily_summary.total_leads` for the latest date.",
+    fix: "Cross-check against `ft_leads` row count for the same date if the number looks off.",
+  },
+  "paidMedia.cpl": {
+    title: "Cost Per Lead",
+    what: "Spend divided by leads for the most recent pulled day, as reported by Lead Gurus.",
+    where: "`ft_daily_summary.cost_per_lead` for the latest date.",
+    fix: "If blank, either spend or leads is missing for the day — see the Spend and Leads tiles.",
+  },
+  "paidMedia.selfBooks": {
+    title: "Self-Books",
+    what: "Leads who self-booked an appointment for the most recent pulled day.",
+    where: "`ft_daily_summary.self_book_count` for the latest date.",
+    fix: "Self-book detail per lead lives in `ft_leads.self_book_appointment_datetime`.",
+  },
+  "paidMedia.costPerSelfBook": {
+    title: "Cost / Self-Book",
+    what: "Spend divided by self-booked appointments for the most recent pulled day.",
+    where: "`ft_daily_summary.cost_per_self_book` for the latest date.",
+    fix: "If blank, no self-books were recorded for the day.",
+  },
+  "paidMedia.demos": {
+    title: "Demos",
+    what: "Demos attributed to Lead Gurus for the most recent pulled day.",
+    where: "`ft_daily_summary.demos` for the latest date.",
+    fix: "Demo/sale attribution is fed by Lead Gurus' summary feed — confirm with them how closed-deal data flows in.",
+  },
+  "paidMedia.grossRevenue": {
+    title: "Gross Revenue",
+    what: "Gross revenue attributed to Lead Gurus for the most recent pulled day.",
+    where: "`ft_daily_summary.gross_amount` for the latest date.",
+    fix: "Revenue is reported by Lead Gurus' daily summary. Confirm their closed-deal feed before treating as authoritative.",
+  },
+  "paidMedia.netRevenue": {
+    title: "Net Revenue",
+    what: "Net revenue attributed to Lead Gurus for the most recent pulled day.",
+    where: "`ft_daily_summary.net_amount` for the latest date.",
+    fix: "Same source as Gross Revenue — `ft_daily_summary`.",
+  },
+  "paidMedia.trend": {
+    title: "Spend vs Revenue (30d)",
+    what: "Daily ad spend versus attributed gross revenue over the last 30 pulled days.",
+    where: "`ft_daily_summary.total_spend` and `gross_amount`, ordered by date.",
+    fix: "Gaps in the line mean a day wasn't pulled — run a backfill for the missing window.",
+  },
+  "paidMedia.territory": {
+    title: "Territory Breakdown",
+    what: "Per-territory spend, leads, CPL, self-books, demos, and gross revenue for the most recent pulled day.",
+    where: "`ft_summary_territory` for the latest date, ordered by spend.",
+    fix: "Territories come straight from Lead Gurus' `/summary/territory/` feed.",
+  },
 };
 
 export function getHelp(key: string): HelpEntry | null {

@@ -17,6 +17,7 @@ import {
 } from "@/lib/queries/health";
 import { getHeadlineStats, deltaText } from "@/lib/queries/headlineStats";
 import { getRecentActivity, getActiveAlerts } from "@/lib/queries/activity";
+import { PaidMediaSection } from "@/components/leadgurus/PaidMediaSection";
 import { num } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -139,7 +140,10 @@ export default async function OverviewPage() {
           </div>
         </section>
 
-        {/* Row 3 — Activity + Alerts */}
+        {/* Row 3 — Paid Media (Lead Gurus) */}
+        <PaidMediaSection />
+
+        {/* Row 4 — Activity + Alerts */}
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
