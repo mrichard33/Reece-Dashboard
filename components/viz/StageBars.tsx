@@ -45,19 +45,21 @@ export function StageBars({ stages }: { stages: StageDatum[] }) {
           const pct = (s.count / total) * 100;
           const tone = ageTone(s.avgAgeDays);
           if (s.count === 0) return null;
+          // Width lives on the direct flex child so each segment sizes
+          // proportionally; the Tooltip (inline-flex) fills it.
           return (
-            <Tooltip
-              key={s.name}
-              label={`${s.name}: ${num(s.count)} opps · avg ${s.avgAgeDays}d (${tone.label})`}
-              className="h-full"
-            >
-              <div
-                style={{ width: `${pct}%` }}
-                className={`flex h-full items-center justify-center text-[10px] font-semibold ${tone.bg} ${tone.text} transition`}
+            <div key={s.name} style={{ width: `${pct}%` }} className="h-full">
+              <Tooltip
+                label={`${s.name}: ${num(s.count)} opps · avg ${s.avgAgeDays}d (${tone.label})`}
+                className="h-full w-full"
               >
-                {pct >= 8 ? num(s.count) : ""}
-              </div>
-            </Tooltip>
+                <div
+                  className={`flex h-full w-full items-center justify-center text-[10px] font-semibold ${tone.bg} ${tone.text} transition`}
+                >
+                  {pct >= 8 ? num(s.count) : ""}
+                </div>
+              </Tooltip>
+            </div>
           );
         })}
       </div>
