@@ -1,6 +1,7 @@
 import { ThemeToggle } from "./ThemeToggle";
 import { SyncNowButton } from "./SyncNowButton";
 import { MobileNavToggle } from "./MobileNav";
+import { OpenIssuesChip } from "@/components/issues/OpenIssuesChip";
 
 export function TopBar({
   email,
@@ -31,6 +32,7 @@ export function TopBar({
 
       <div className="flex items-center gap-2 sm:gap-4">
         {actions}
+        <OpenIssuesChip />
         <SyncNowButton />
         <ThemeToggle />
         <div className="flex items-center gap-2 border-l border-slate-200 pl-4 dark:border-slate-700">

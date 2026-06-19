@@ -1,23 +1,21 @@
 import { AlertCircle } from "lucide-react";
 import { requireRole } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { InfoPopover } from "@/components/help/InfoPopover";
-import { Tooltip } from "@/components/ui/Tooltip";
+import { FileIssueButton } from "@/components/issues/FileIssueButton";
 import { getIssuesPageData } from "@/lib/queries/issues";
 import type { McpErrorKind } from "@/lib/mcp/client";
-import { absTime, relTime, usd } from "@/lib/utils";
+import { relTime } from "@/lib/utils";
 import type { ClaudeKnownIssue } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 
-const severityTone: Record<NonNullable<ClaudeKnownIssue["severity"]>, BadgeTone> = {
-  low: "slate",
-  medium: "amber",
-  high: "rose",
-  critical: "brick",
-};
+// Severity → Badge tone. Faithful to the design (high→rose, med→amber, else
+// slate) but keeps `critical` from dimming to slate by folding it into rose.
+const sevTone = (s: ClaudeKnownIssue["severity"]): BadgeTone =>
+  s === "high" || s === "critical" ? "rose" : s === "medium" ? "amber" : "slate";
 
 export default async function IssuesPage() {
   const user = await requireRole("operator");
@@ -28,242 +26,275 @@ export default async function IssuesPage() {
       <TopBar
         email={user.email}
         role={user.role}
-        title="Issues & Anomalies"
-        subtitle="Open issues, contamination, namespace conflicts, drift, stuck contacts"
+        title="Issues"
+        subtitle="Open issues, contamination violations, data drift, and stuck contacts."
+        actions={<FileIssueButton />}
       />
 
       <div className="space-y-6 p-6">
         {/* 1. Open issues */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Open issues</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge tone={data.openIssues.length > 0 ? "rose" : "emerald"}>
-                {data.openIssues.length}
-              </Badge>
-              <InfoPopover helpKey="issues.openIssues" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {data.errors.openIssues && (
+        <IssueTableCard
+          title="Open issues"
+          helpKey="issues.openIssues"
+          badge={{ tone: "rose", label: `${data.openIssues.length} open` }}
+          error={
+            data.errors.openIssues ? (
               <ErrBanner label="open issues" msg={data.errors.openIssues} />
-            )}
-            {data.openIssues.length === 0 ? (
-              <p className="py-4 text-center text-sm text-slate-500">
-                No open issues. Nice.
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {data.openIssues.map((i) => (
-                  <li key={i.id} className="flex items-start gap-3 py-2">
-                    <Badge
-                      tone={i.severity ? severityTone[i.severity] : "slate"}
-                      dot
-                      className="mt-0.5"
-                    >
+            ) : undefined
+          }
+        >
+          {data.openIssues.length === 0 ? (
+            <Empty>No open issues. Nice.</Empty>
+          ) : (
+            <Table head={["Severity", "Issue", "Opened", "Workflow"]}>
+              {data.openIssues.map((i) => (
+                <tr key={i.id} className={rowClass}>
+                  <td className={cellClass}>
+                    <Badge tone={sevTone(i.severity)}>
                       {i.severity ?? "unknown"}
                     </Badge>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-navy-900 dark:text-slate-100">
-                        {i.description}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-slate-500">
-                        Reported {relTime(i.reported_date)}
-                        {i.category ? ` · ${i.category}` : ""}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+                  </td>
+                  <td className={`${cellClass} text-slate-800 dark:text-slate-200`}>
+                    {i.description}
+                  </td>
+                  <td className={`${cellClass} text-slate-500 tabular`}>
+                    {relTime(i.reported_date)}
+                  </td>
+                  <td className={`${cellClass} font-mono text-slate-500`}>
+                    {i.workflow_name ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </IssueTableCard>
 
-        {/* 2. Contamination */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Contamination violations</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge tone={data.contamination.length > 0 ? "rose" : "emerald"}>
-                {data.contamination.length}
-              </Badge>
-              <InfoPopover helpKey="issues.contamination" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {data.errors.contamination && (
+        {/* 2. Contamination violations */}
+        <IssueTableCard
+          title="Contamination violations"
+          helpKey="issues.contamination"
+          error={
+            data.errors.contamination ? (
               <ErrBanner
                 label="contamination"
                 msg={data.errors.contamination}
                 kind={data.errorKinds.contamination}
               />
-            )}
-            {data.contamination.length === 0 ? (
-              <p className="py-4 text-center text-sm text-slate-500">
-                No contamination violations detected.
-              </p>
-            ) : (
-              <SimpleList
-                items={data.contamination.map((c) => ({
-                  title: c.workflow_name,
-                  code: c.canonical_code,
-                  body: `${c.violation} — ${c.detail}`,
-                }))}
-              />
-            )}
-          </CardContent>
-        </Card>
+            ) : undefined
+          }
+        >
+          {data.contamination.length === 0 ? (
+            <Empty>No contamination violations detected.</Empty>
+          ) : (
+            <Table head={["Workflow", "Violation", "Recommended fix"]}>
+              {data.contamination.map((c, idx) => (
+                <tr key={`${c.workflow_name}:${idx}`} className={rowClass}>
+                  <td className={`${cellClass} font-mono text-slate-700 dark:text-slate-200`}>
+                    {c.canonical_code ?? c.workflow_name}
+                  </td>
+                  <td className={`${cellClass} text-slate-700 dark:text-slate-300`}>
+                    {c.violation}
+                  </td>
+                  <td className={`${cellClass} text-slate-500`}>{c.detail}</td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </IssueTableCard>
 
         {/* 3. Namespace violations */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Namespace violations</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge tone={data.namespaceViolations.length > 0 ? "rose" : "emerald"}>
-                {data.namespaceViolations.length}
-              </Badge>
-              <InfoPopover helpKey="issues.namespace" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {data.errors.namespace && (
+        <IssueTableCard
+          title="Namespace violations"
+          helpKey="issues.namespace"
+          badge={{
+            tone: "amber",
+            label: `${data.namespaceViolations.length} contacts`,
+          }}
+          error={
+            data.errors.namespace ? (
               <ErrBanner
                 label="namespace check"
                 msg={data.errors.namespace}
                 kind={data.errorKinds.namespace}
               />
-            )}
-            {data.namespaceViolations.length === 0 ? (
-              <p className="py-4 text-center text-sm text-slate-500">
-                No namespace conflicts detected.
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {data.namespaceViolations.map((v) => (
-                  <li key={`${v.contact_id}:${v.namespace}`} className="py-2">
-                    <div className="flex items-center gap-2">
-                      <Badge tone="amber">{v.namespace}</Badge>
-                      <span className="text-sm font-medium text-navy-900 dark:text-slate-100">
-                        {v.contact_name ?? v.contact_id.slice(0, 8)}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {v.conflicting_tags.map((t) => (
-                        <span
-                          key={t}
-                          className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+            ) : undefined
+          }
+        >
+          {data.namespaceViolations.length === 0 ? (
+            <Empty>No namespace conflicts detected.</Empty>
+          ) : (
+            <Table head={["Contact", "Conflicting tags"]}>
+              {data.namespaceViolations.map((v) => (
+                <tr key={`${v.contact_id}:${v.namespace}`} className={rowClass}>
+                  <td className={`${cellClass} font-mono text-slate-700 dark:text-slate-200`}>
+                    {v.contact_name ?? v.contact_id}
+                  </td>
+                  <td className={`${cellClass} text-slate-700 dark:text-slate-300`}>
+                    {v.conflicting_tags.join(" ⨯ ")}
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </IssueTableCard>
 
-        {/* 4. Drift */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Drift candidates</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge tone={data.driftCandidates.length > 0 ? "amber" : "emerald"}>
-                {data.driftCandidates.length}
-              </Badge>
-              <InfoPopover helpKey="issues.drift" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {data.errors.drift && (
+        {/* 4. Drift candidates */}
+        <IssueTableCard
+          title="Drift candidates"
+          helpKey="issues.drift"
+          error={
+            data.errors.drift ? (
               <ErrBanner
                 label="drift check"
                 msg={data.errors.drift}
                 kind={data.errorKinds.drift}
               />
-            )}
-            {data.driftCandidates.length === 0 ? (
-              <p className="py-4 text-center text-sm text-slate-500">
-                No drift candidates. LP and HL are in sync.
-              </p>
-            ) : (
-              <SimpleList
-                items={data.driftCandidates.map((d) => ({
-                  title: d.name ?? d.contact_id.slice(0, 8),
-                  code: d.reason,
-                  body: `GHL: ${d.ghl_status ?? "—"} · LP: ${d.lp_status ?? "—"} · last LP activity ${relTime(d.last_lp_activity_at)}`,
-                }))}
-              />
-            )}
-          </CardContent>
-        </Card>
+            ) : undefined
+          }
+        >
+          {data.driftCandidates.length === 0 ? (
+            <Empty>No drift candidates. LP and HL are in sync.</Empty>
+          ) : (
+            <Table head={["Name", "GHL state", "LP state"]}>
+              {data.driftCandidates.map((d) => (
+                <tr key={d.contact_id} className={rowClass}>
+                  <td className={`${cellClass} text-slate-800 dark:text-slate-200`}>
+                    {d.name ?? d.contact_id}
+                  </td>
+                  <td className={cellClass}>
+                    <Badge tone="slate">{d.ghl_status ?? "—"}</Badge>
+                  </td>
+                  <td className={cellClass}>
+                    <Badge tone="amber">{d.lp_status ?? "—"}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </IssueTableCard>
 
         {/* 5. Stuck contacts */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Stuck contacts</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge tone={data.stuckContacts.length > 0 ? "amber" : "emerald"}>
-                {data.stuckContacts.length}
-              </Badge>
-              <InfoPopover helpKey="issues.stuck" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {data.errors.stuck && (
+        <IssueTableCard
+          title="Stuck contacts"
+          helpKey="issues.stuck"
+          badge={{ tone: "rose", label: `${data.stuckContacts.length} stuck` }}
+          error={
+            data.errors.stuck ? (
               <ErrBanner label="stuck contacts" msg={data.errors.stuck} />
-            )}
-            {data.stuckContacts.length === 0 ? (
-              <p className="py-4 text-center text-sm text-slate-500">
-                No contacts stuck longer than 14 days.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <tr className="border-b border-slate-200 dark:border-slate-800">
-                      <th className="py-2 pr-3">Opp</th>
-                      <th className="py-2 pr-3">Source</th>
-                      <th className="py-2 pr-3">Value</th>
-                      <th className="py-2 pr-3">Last update</th>
-                      <th className="py-2 pr-3">Days stuck</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {data.stuckContacts.map((c) => (
-                      <tr key={c.id}>
-                        <td className="py-2 pr-3 text-navy-900 dark:text-slate-100">
-                          {c.name ?? c.id.slice(0, 8)}
-                        </td>
-                        <td className="py-2 pr-3 text-slate-500">
-                          {c.source ?? "—"}
-                        </td>
-                        <td className="py-2 pr-3 font-mono tabular text-slate-600">
-                          {usd(c.monetaryValue)}
-                        </td>
-                        <td className="py-2 pr-3 text-xs">
-                          <Tooltip label={absTime(c.updatedAt)}>
-                            <span className="text-slate-500">
-                              {relTime(c.updatedAt)}
-                            </span>
-                          </Tooltip>
-                        </td>
-                        <td className="py-2 pr-3 font-semibold">
-                          <Badge
-                            tone={c.daysStuck > 30 ? "rose" : "amber"}
-                          >{`${c.daysStuck}d`}</Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            ) : undefined
+          }
+        >
+          {data.stuckContacts.length === 0 ? (
+            <Empty>No contacts stuck longer than 14 days.</Empty>
+          ) : (
+            <Table head={["Name", "Stage", "Days in stage", "Last activity"]}>
+              {data.stuckContacts.map((c) => (
+                <tr key={c.id} className={rowClass}>
+                  <td className={`${cellClass} text-slate-800 dark:text-slate-200`}>
+                    {c.name ?? c.id}
+                  </td>
+                  <td className={cellClass}>
+                    <Badge tone="slate">{c.stageName ?? c.stageId ?? "—"}</Badge>
+                  </td>
+                  <td className={`${cellClass} tabular`}>
+                    <span
+                      className={`font-mono ${
+                        c.daysStuck > 30
+                          ? "text-rose-600 font-semibold"
+                          : c.daysStuck > 14
+                            ? "text-amber-600"
+                            : "text-slate-600"
+                      }`}
+                    >
+                      {c.daysStuck}d
+                    </span>
+                  </td>
+                  <td className={`${cellClass} text-slate-500`}>
+                    {relTime(c.updatedAt)}
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </IssueTableCard>
       </div>
     </>
+  );
+}
+
+// ── Shared table-card presentation ───────────────────────────────────────────
+
+const rowClass = "hover:bg-slate-50 dark:hover:bg-slate-800/50";
+const cellClass = "py-2 pr-3";
+
+/** A Card wrapping one full-width table: 13px title + InfoPopover, optional
+ *  right-aligned count Badge, per-section error banner, then the table body. */
+function IssueTableCard({
+  title,
+  helpKey,
+  badge,
+  error,
+  children,
+}: {
+  title: string;
+  helpKey: string;
+  badge?: { tone: BadgeTone; label: string } | null;
+  error?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader className="items-center">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h3 className="text-[13px] font-semibold text-slate-800 dark:text-slate-200">
+            {title}
+          </h3>
+          <InfoPopover helpKey={helpKey} align="left" />
+        </div>
+        {badge && (
+          <div className="shrink-0">
+            <Badge tone={badge.tone}>{badge.label}</Badge>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        {error}
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Table({
+  head,
+  children,
+}: {
+  head: string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr className="text-left text-slate-500 dark:text-slate-400">
+            {head.map((h) => (
+              <th key={h} className="pb-2 pr-3 font-medium">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          {children}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="py-4 text-center text-sm text-slate-500">{children}</p>
   );
 }
 
@@ -296,31 +327,5 @@ function ErrBanner({
         <strong>{heading}</strong> {msg}
       </div>
     </div>
-  );
-}
-
-function SimpleList({
-  items,
-}: {
-  items: Array<{ title: string; code: string | null; body: string }>;
-}) {
-  return (
-    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-      {items.map((i, idx) => (
-        <li key={idx} className="py-2">
-          <div className="flex items-center gap-2">
-            {i.code && (
-              <Badge tone="navy">
-                <span className="font-mono">{i.code}</span>
-              </Badge>
-            )}
-            <span className="text-sm font-medium text-navy-900 dark:text-slate-100">
-              {i.title}
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500">{i.body}</p>
-        </li>
-      ))}
-    </ul>
   );
 }

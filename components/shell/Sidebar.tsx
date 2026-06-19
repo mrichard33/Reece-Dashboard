@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { NotificationBell } from "@/components/approvals/NotificationBell";
+import { IssuesNavBadge } from "@/components/issues/IssuesNavBadge";
 import { useMobileNav } from "@/components/shell/MobileNav";
 import { cn } from "@/lib/utils";
 
@@ -138,6 +139,7 @@ export function Sidebar({
                   P{phase}
                 </span>
               )}
+              {href === "/issues" && <IssuesNavBadge />}
             </>
           );
 

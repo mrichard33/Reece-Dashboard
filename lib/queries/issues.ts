@@ -1,4 +1,4 @@
-import { lpService } from "@/lib/supabase/lp";
+import { lpServer, lpService } from "@/lib/supabase/lp";
 import { hlService } from "@/lib/supabase/hl";
 import { lpMcp, type DriftCandidate } from "@/lib/mcp/lpClient";
 import {
@@ -14,6 +14,8 @@ export type StuckContact = {
   name: string | null;
   pipelineId: string;
   stageId: string;
+  /** Friendly stage name resolved from pipelines.stages; null when unmapped. */
+  stageName: string | null;
   daysStuck: number;
   source: string | null;
   monetaryValue: number | null;
@@ -81,6 +83,26 @@ async function getStuckContacts(): Promise<StuckContact[]> {
     .order("date_updated", { ascending: true })
     .limit(100);
 
+  // Resolve a friendly stage name from pipelines.stages (ghl_stage_id → name).
+  // Best-effort: if this read fails we degrade to the raw stage id rather than
+  // blanking the whole table.
+  const stageNames = new Map<string, string>();
+  try {
+    const { data: pipes } = await sb
+      .from("pipelines")
+      .select("stages")
+      .is("deleted_at", null);
+    for (const p of (pipes ?? []) as Array<{
+      stages: Array<{ id: string; name: string }> | null;
+    }>) {
+      for (const s of p.stages ?? []) {
+        if (s?.id) stageNames.set(s.id, s.name);
+      }
+    }
+  } catch {
+    /* leave stageNames empty — rows fall back to the raw stage id */
+  }
+
   const now = Date.now();
   return ((data ?? []) as Array<
     Pick<
@@ -100,6 +122,7 @@ async function getStuckContacts(): Promise<StuckContact[]> {
       name: o.name,
       pipelineId: o.ghl_pipeline_id,
       stageId: o.ghl_stage_id ?? "",
+      stageName: stageNames.get(o.ghl_stage_id ?? "") ?? null,
       monetaryValue: o.monetary_value,
       source: o.source,
       updatedAt: o.date_updated!,
@@ -142,4 +165,23 @@ export async function getIssuesPageData(): Promise<IssuesPageData> {
     errors,
     errorKinds,
   };
+}
+
+/**
+ * Count of open issues — the single source of truth behind the left-nav badge
+ * and the top-bar attention chip. Mirrors `needsApprovalCount()` in
+ * `lib/queries/content.ts`. Returns 0 on error so the badge degrades quietly.
+ */
+export async function openIssuesCount(): Promise<number> {
+  try {
+    const sb = await lpServer();
+    const { count, error } = await sb
+      .from("claude_known_issues")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "open");
+    if (error) return 0;
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
 }
