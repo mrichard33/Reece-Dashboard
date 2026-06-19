@@ -68,14 +68,17 @@ async function getStuckContacts(): Promise<StuckContact[]> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 14);
 
+  // Age by date_updated (GHL-native last change), NOT the cache-side updated_at
+  // (defaults to now() on every sync, so it never registers as stuck).
   const { data } = await sb
     .from("opportunities")
     .select(
-      "id, name, pipeline_id, pipeline_stage_id, monetary_value, source, updated_at",
+      "id, name, ghl_pipeline_id, ghl_stage_id, monetary_value, source, date_updated",
     )
     .eq("status", "open")
-    .lt("updated_at", cutoff.toISOString())
-    .order("updated_at", { ascending: true })
+    .is("deleted_at", null)
+    .lt("date_updated", cutoff.toISOString())
+    .order("date_updated", { ascending: true })
     .limit(100);
 
   const now = Date.now();
@@ -84,22 +87,26 @@ async function getStuckContacts(): Promise<StuckContact[]> {
       Opportunity,
       | "id"
       | "name"
-      | "pipeline_id"
-      | "pipeline_stage_id"
+      | "ghl_pipeline_id"
+      | "ghl_stage_id"
       | "monetary_value"
       | "source"
-      | "updated_at"
+      | "date_updated"
     >
-  >).map((o) => ({
-    id: o.id,
-    name: o.name,
-    pipelineId: o.pipeline_id,
-    stageId: o.pipeline_stage_id,
-    monetaryValue: o.monetary_value,
-    source: o.source,
-    updatedAt: o.updated_at,
-    daysStuck: Math.floor((now - new Date(o.updated_at).getTime()) / 86400000),
-  }));
+  >)
+    .filter((o) => o.date_updated !== null)
+    .map((o) => ({
+      id: o.id,
+      name: o.name,
+      pipelineId: o.ghl_pipeline_id,
+      stageId: o.ghl_stage_id ?? "",
+      monetaryValue: o.monetary_value,
+      source: o.source,
+      updatedAt: o.date_updated!,
+      daysStuck: Math.floor(
+        (now - new Date(o.date_updated!).getTime()) / 86400000,
+      ),
+    }));
 }
 
 export async function getIssuesPageData(): Promise<IssuesPageData> {

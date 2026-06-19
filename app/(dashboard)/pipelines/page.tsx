@@ -4,10 +4,12 @@ import { TopBar } from "@/components/shell/TopBar";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { StageBars } from "@/components/viz/StageBars";
+import { AgingLegend } from "@/components/viz/AgingLegend";
+import { PipelineSyncButton } from "@/components/pipelines/PipelineSyncButton";
 import { SyncFreshnessBanner } from "@/components/tiles/SyncFreshnessBanner";
 import { getPipelineCards } from "@/lib/queries/pipelines";
 import { getHealthSnapshot } from "@/lib/queries/health";
-import { num, usd } from "@/lib/utils";
+import { num, usd, relTime, absTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -27,18 +29,21 @@ export default async function PipelinesPage() {
         email={user.email}
         role={user.role}
         title="Pipelines"
-        subtitle="Open opportunities by pipeline and stage"
+        subtitle="Stage distributions across all pipelines. Color = aging in stage."
       />
 
       <div className="space-y-6 p-6">
-        <SyncFreshnessBanner lpLastSync={lpSync} hlLastSync={hlSync} />
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <SyncFreshnessBanner lpLastSync={lpSync} hlLastSync={hlSync} />
+          <AgingLegend />
+        </div>
 
         {cards.length === 0 && (
           <Card>
             <CardContent>
               <p className="py-8 text-center text-sm text-slate-500">
-                No pipelines found in the HL cache. Trigger a sync from the
-                topbar, or verify pipeline data exists in GHL.
+                No pipelines found in the HL cache. Trigger a sync, or verify
+                pipeline data exists in GHL.
               </p>
             </CardContent>
           </Card>
@@ -47,20 +52,23 @@ export default async function PipelinesPage() {
         {cards.map((p) => (
           <Card key={p.id}>
             <CardHeader>
-              <div className="flex flex-1 items-baseline gap-3">
+              <div className="flex flex-1 items-center gap-3">
+                <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-navy-900 px-2 text-[11px] font-bold text-white dark:bg-white dark:text-navy-900">
+                  {p.badge}
+                </span>
                 <h3 className="font-display text-base font-semibold text-navy-900 dark:text-white">
                   {p.name}
                 </h3>
+                <InfoPopover helpKey="pipelines.dataLineage" />
+              </div>
+              <div className="flex items-center gap-4">
                 <span className="text-xs text-slate-500">
                   <span className="font-mono tabular text-slate-800 dark:text-slate-200">
                     {num(p.count)}
                   </span>{" "}
-                  open opps · {usd(p.totalValue)}
+                  opps · {usd(p.totalValue)} total
                 </span>
-              </div>
-              <div className="flex items-center gap-1">
-                <InfoPopover helpKey="pipelines.dataLineage" />
-                <InfoPopover helpKey="pipelines.total" />
+                <PipelineSyncButton />
               </div>
             </CardHeader>
             <CardContent>
@@ -72,47 +80,40 @@ export default async function PipelinesPage() {
                 <StageBars stages={p.stages} />
               )}
 
-              {p.recentOpps.length > 0 && (
-                <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Recent open opps
-                  </h4>
-                  <ul className="divide-y divide-slate-50 dark:divide-slate-800/60">
-                    {p.recentOpps.map((o) => (
-                      <li
-                        key={o.id}
-                        className="flex items-baseline justify-between gap-3 py-1.5"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium text-slate-900 dark:text-slate-100">
-                            {o.contact_name}
-                          </p>
-                          <p className="truncate text-xs font-mono text-slate-500">
-                            LP {o.lp_prospect_id ?? "—"}
-                          </p>
-                        </div>
-                        <span className="font-mono tabular text-xs text-slate-500 dark:text-slate-400">
-                          {usd(o.monetary_value)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                  <span>
+                    Avg cycle{" "}
+                    <span className="font-mono tabular text-slate-800 dark:text-slate-200">
+                      {p.avgCycleDays}d
+                    </span>
+                  </span>
+                  <span>
+                    Stuck (&gt;14d){" "}
+                    <span
+                      className={`font-mono tabular ${p.stuckCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-slate-200"}`}
+                    >
+                      {num(p.stuckCount)}
+                    </span>
+                  </span>
+                  <span>
+                    Last advance{" "}
+                    <span
+                      className="font-mono tabular text-slate-800 dark:text-slate-200"
+                      title={absTime(p.lastAdvanceAt)}
+                    >
+                      {relTime(p.lastAdvanceAt)}
+                    </span>
+                  </span>
                 </div>
-              )}
-
-              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
-                <p className="text-[11px] text-slate-500">
-                  {p.contactsFallback
-                    ? "Contact enrichment unavailable — see info popover."
-                    : "Click into stages for drill-down detail (Phase 2)."}
-                </p>
                 <button
                   type="button"
                   disabled
-                  aria-label="Drill down (Phase 2)"
-                  className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-slate-400"
+                  aria-label="Open detail (Phase 2)"
+                  title="Stage drill-down — Phase 2"
+                  className="inline-flex cursor-not-allowed items-center gap-1 text-xs font-medium text-slate-400"
                 >
-                  Drill down
+                  Open detail
                   <ChevronRight className="h-3 w-3" />
                 </button>
               </div>
