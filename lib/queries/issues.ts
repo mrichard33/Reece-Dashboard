@@ -168,20 +168,26 @@ export async function getIssuesPageData(): Promise<IssuesPageData> {
 }
 
 /**
- * Count of open issues — the single source of truth behind the left-nav badge
- * and the top-bar attention chip. Mirrors `needsApprovalCount()` in
- * `lib/queries/content.ts`. Returns 0 on error so the badge degrades quietly.
+ * Open-issue counts split into total and "urgent" (high/critical severity) for
+ * the top-bar attention chip ("{open} open issues · {urgent} urgent"). Degrades
+ * to zeros on error.
  */
-export async function openIssuesCount(): Promise<number> {
+export async function openIssuesSummary(): Promise<{
+  open: number;
+  urgent: number;
+}> {
   try {
     const sb = await lpServer();
-    const { count, error } = await sb
+    const { data, error } = await sb
       .from("claude_known_issues")
-      .select("id", { count: "exact", head: true })
+      .select("severity")
       .eq("status", "open");
-    if (error) return 0;
-    return count ?? 0;
+    if (error || !data) return { open: 0, urgent: 0 };
+    const urgent = data.filter(
+      (r) => r.severity === "high" || r.severity === "critical",
+    ).length;
+    return { open: data.length, urgent };
   } catch {
-    return 0;
+    return { open: 0, urgent: 0 };
   }
 }

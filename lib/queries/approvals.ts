@@ -148,3 +148,22 @@ export async function getNotifications(): Promise<{
   const items = (data ?? []) as AppNotification[];
   return { items, unread: items.filter((n) => !n.read).length };
 }
+
+/**
+ * Count of assets awaiting an executive decision (status `in_review`) — drives
+ * the "approvals waiting" top-bar chip and the Executive Review nav badge.
+ * Returns 0 on error so the chip degrades quietly.
+ */
+export async function pendingApprovalsCount(): Promise<number> {
+  try {
+    const supabase = await lpServer();
+    const { count, error } = await supabase
+      .from("assets")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "in_review");
+    if (error) return 0;
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}

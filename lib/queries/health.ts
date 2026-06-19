@@ -202,6 +202,28 @@ export function syncFreshnessLabel(snapshot: HealthSnapshot["lpSync"]): string {
   }
 }
 
+/**
+ * How many monitored services are currently degraded (warning or critical) —
+ * the number behind the "{n} service watching" top-bar chip. Built from the
+ * same per-component status helpers that drive the Overview health tiles, so
+ * the chip never contradicts that page. Returns 0 if the snapshot can't load.
+ */
+export async function servicesWatchingCount(): Promise<number> {
+  try {
+    const snap = await getHealthSnapshot();
+    const statuses = [
+      railwayStatus(snap.lpMcp),
+      railwayStatus(snap.hlMcp),
+      heartbeatStatus(snap.heartbeat.minutesAgo),
+      syncStatus(snap.lpSync),
+      syncStatus(snap.hlSync),
+    ];
+    return statuses.filter((s) => s === "warning" || s === "critical").length;
+  } catch {
+    return 0;
+  }
+}
+
 export function railwayStatus(s: HealthSnapshot["lpMcp"]) {
   if ("error" in s) return "neutral" as const;
   if (s.status === "running") {
