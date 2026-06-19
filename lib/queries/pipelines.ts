@@ -1,196 +1,202 @@
 import { hlService } from "@/lib/supabase/hl";
-import type {
-  HlContact,
-  Opportunity,
-  Pipeline,
-  Stage,
-} from "@/lib/supabase/types";
 
-export type EnrichedOpportunity = {
-  id: string;
-  pipeline_id: string;
-  pipeline_stage_id: string;
-  contact_id: string | null;
-  contact_name: string;
-  lp_prospect_id: string | null;
+// ── Config ───────────────────────────────────────────────────────────────────
+// Statuses to include. Default open-only: in Reece's GHL, opps keep status
+// 'open' as they move through every stage (including terminal ones like
+// Reactivation / Long-Term Hold / Do Not Contact), so open-only still populates
+// every stage while excluding the won/lost/abandoned archive. To show the full
+// archive, add 'won','lost','abandoned'.
+const INCLUDE_STATUSES = ["open"] as const;
+
+// Opps with no GHL update in > STUCK_DAYS are "stuck" and tint red.
+const STUCK_DAYS = 14;
+
+// PostgREST caps one response at 1000 rows. There are ~5.5k open opps, so we
+// MUST paginate or counts silently truncate at 1000.
+const PAGE_SIZE = 1000;
+const DAY_MS = 86_400_000;
+
+// Only the columns the bars + metrics need. Aging uses date_added/date_updated
+// (GHL-native). created_at is a fallback only; never the cache-side updated_at.
+type OppRow = {
+  ghl_pipeline_id: string;
+  ghl_stage_id: string | null;
   monetary_value: number | null;
-  updated_at: string;
+  date_added: string | null;
+  date_updated: string | null;
+  created_at: string | null;
+};
+
+type StageJson = { id: string; name: string; position: number };
+
+type PipelineRow = {
+  id: string;
+  ghl_pipeline_id: string;
+  name: string;
+  stages: StageJson[] | null;
+};
+
+export type PipelineStageDatum = {
+  id: string;
+  name: string;
+  position: number;
+  count: number;
+  value: number;
+  /** avg days since last GHL update — drives the aging tint ("aging in stage"). */
+  avgAgeDays: number;
 };
 
 export type PipelineCard = {
   id: string;
+  ghlPipelineId: string;
+  /** "P1" | "P2" | … by final sort position. */
+  badge: string;
+  order: number;
   name: string;
   count: number;
   totalValue: number;
-  stages: Array<{
-    id: string;
-    name: string;
-    position: number;
-    count: number;
-    avgAgeDays: number;
-  }>;
-  recentOpps: EnrichedOpportunity[];
-  /** True when the HL contacts enrichment query failed and we are falling
-   * back to contact_id-only rendering. Surface this in the UI so operators
-   * know the gap is in the data layer, not the contact set. */
-  contactsFallback: boolean;
+  /** avg days since the opp was created in GHL (date_added) — "cycle time". */
+  avgCycleDays: number;
+  /** # opps with no GHL update in > STUCK_DAYS. */
+  stuckCount: number;
+  /** most recent GHL update across the pipeline's opps (ISO) or null. */
+  lastAdvanceAt: string | null;
+  stages: PipelineStageDatum[];
 };
 
-const LP_PROSPECT_FIELD_ID = "ZRQAVrzhtzApzLlHmT87";
-
-export function extractLpProspectId(customFields: unknown): string | null {
-  if (!Array.isArray(customFields)) return null;
-  for (const f of customFields) {
-    if (
-      f !== null &&
-      typeof f === "object" &&
-      "id" in f &&
-      (f as { id: unknown }).id === LP_PROSPECT_FIELD_ID
-    ) {
-      const value = (f as { value?: unknown }).value;
-      return value === null || value === undefined ? null : String(value);
-    }
-  }
-  return null;
+function tsMs(s: string | null): number | null {
+  if (!s) return null;
+  const t = new Date(s).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+/** Best "last activity" instant: date_updated → date_added → created_at. */
+function idleAnchor(o: OppRow): number | null {
+  return tsMs(o.date_updated) ?? tsMs(o.date_added) ?? tsMs(o.created_at);
+}
+/** Best "created" instant: date_added → created_at. */
+function ageAnchor(o: OppRow): number | null {
+  return tsMs(o.date_added) ?? tsMs(o.created_at);
+}
+/** Leading integer in "1. Antifragile…" → 1; null if none. */
+function leadingOrder(name: string): number | null {
+  const m = name.match(/^\s*(\d+)/);
+  return m ? Number(m[1]) : null;
 }
 
-function contactDisplayName(c: HlContact): string {
-  const parts = [c.first_name, c.last_name].filter(
-    (s): s is string => typeof s === "string" && s.length > 0,
-  );
-  if (parts.length > 0) return parts.join(" ");
-  return c.email ?? c.phone ?? `contact ${c.id.slice(0, 8)}`;
+async function fetchOpenOpps(): Promise<OppRow[]> {
+  const sb = hlService();
+  const rows: OppRow[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await sb
+      .from("opportunities")
+      .select(
+        "ghl_pipeline_id, ghl_stage_id, monetary_value, date_added, date_updated, created_at",
+      )
+      .is("deleted_at", null)
+      .in("status", [...INCLUDE_STATUSES])
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as OppRow[];
+    rows.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
+  return rows;
 }
 
 export async function getPipelineCards(): Promise<PipelineCard[]> {
   const sb = hlService();
 
-  const [pipesRes, stagesRes, oppsRes] = await Promise.all([
-    sb.from("pipelines").select("id, name, ghl_pipeline_id"),
-    sb.from("stages").select("id, pipeline_id, name, position"),
+  const [pipesRes, opps] = await Promise.all([
     sb
-      .from("opportunities")
-      .select(
-        "id, pipeline_id, pipeline_stage_id, contact_id, monetary_value, status, updated_at",
-      )
-      .eq("status", "open"),
+      .from("pipelines")
+      .select("id, ghl_pipeline_id, name, stages")
+      .is("deleted_at", null),
+    fetchOpenOpps(),
   ]);
 
-  const pipelines = (pipesRes.data ?? []) as Pipeline[];
-  const stages = (stagesRes.data ?? []) as Stage[];
-  const opps = (oppsRes.data ?? []) as Pick<
-    Opportunity,
-    | "id"
-    | "pipeline_id"
-    | "pipeline_stage_id"
-    | "contact_id"
-    | "monetary_value"
-    | "updated_at"
-  >[];
+  if (pipesRes.error) throw pipesRes.error;
+  const pipelines = (pipesRes.data ?? []) as PipelineRow[];
 
-  // Fetch HL contacts for every contact_id present on an opp.
-  const contactIds = Array.from(
-    new Set(
-      opps
-        .map((o) => o.contact_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0),
-    ),
-  );
-
-  let contactsById = new Map<string, HlContact>();
-  let contactsFallback = false;
-  if (contactIds.length > 0) {
-    try {
-      const { data, error } = await sb
-        .from("contacts")
-        .select("id, first_name, last_name, phone, email, custom_fields")
-        .in("id", contactIds);
-      if (error) throw error;
-      const rows = (data ?? []) as HlContact[];
-      contactsById = new Map(rows.map((c) => [c.id, c]));
-    } catch (e) {
-      // TODO(schema): HL contacts table or custom_fields column may not exist
-      // in the cache. Surface the gap rather than crashing the page.
-      console.error("[pipelines] contacts enrichment failed:", e);
-      contactsFallback = true;
-    }
+  const byPipeline = new Map<string, OppRow[]>();
+  for (const o of opps) {
+    const arr = byPipeline.get(o.ghl_pipeline_id);
+    if (arr) arr.push(o);
+    else byPipeline.set(o.ghl_pipeline_id, [o]);
   }
 
   const now = Date.now();
 
-  return pipelines
-    .map((p) => {
-      const pipelineStages = stages
-        .filter((s) => s.pipeline_id === p.id)
-        .sort((a, b) => a.position - b.position);
+  const cards: PipelineCard[] = pipelines.map((p) => {
+    const stageDefs = (p.stages ?? [])
+      .slice()
+      .sort((a, b) => a.position - b.position);
+    const stageIds = new Set(stageDefs.map((s) => s.id));
 
-      const pipelineOpps = opps.filter((o) => o.pipeline_id === p.id);
+    // Only opps that map to a known stage, so header count == bar == metrics.
+    const known = (byPipeline.get(p.ghl_pipeline_id) ?? []).filter(
+      (o) => o.ghl_stage_id !== null && stageIds.has(o.ghl_stage_id),
+    );
 
-      const stageData = pipelineStages.map((s) => {
-        const stageOpps = pipelineOpps.filter(
-          (o) => o.pipeline_stage_id === s.id,
-        );
-        const avgAgeDays =
-          stageOpps.length === 0
-            ? 0
-            : Math.round(
-                stageOpps.reduce(
-                  (acc, o) =>
-                    acc + (now - new Date(o.updated_at).getTime()) / 86400000,
-                  0,
-                ) / stageOpps.length,
-              );
-        return {
-          id: s.id,
-          name: s.name,
-          position: s.position,
-          count: stageOpps.length,
-          avgAgeDays,
-        };
-      });
-
-      // Top 5 most-recently-updated open opps, enriched.
-      const recentOpps: EnrichedOpportunity[] = [...pipelineOpps]
-        .sort(
-          (a, b) =>
-            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-        )
-        .slice(0, 5)
-        .map((o) => {
-          const contact = o.contact_id
-            ? contactsById.get(o.contact_id)
-            : undefined;
-          const fallbackName = contactsFallback
-            ? `contact ${o.contact_id?.slice(0, 8) ?? "—"} (name unavailable)`
-            : o.contact_id
-              ? `contact ${o.contact_id.slice(0, 8)}`
-              : "—";
-          return {
-            id: o.id,
-            pipeline_id: o.pipeline_id,
-            pipeline_stage_id: o.pipeline_stage_id,
-            contact_id: o.contact_id ?? null,
-            contact_name: contact ? contactDisplayName(contact) : fallbackName,
-            lp_prospect_id: contact
-              ? extractLpProspectId(contact.custom_fields)
-              : null,
-            monetary_value: o.monetary_value ?? null,
-            updated_at: o.updated_at,
-          };
-        });
-
+    const stages: PipelineStageDatum[] = stageDefs.map((s) => {
+      const sOpps = known.filter((o) => o.ghl_stage_id === s.id);
+      let idleSum = 0;
+      let idleN = 0;
+      for (const o of sOpps) {
+        const a = idleAnchor(o);
+        if (a !== null) {
+          idleSum += (now - a) / DAY_MS;
+          idleN += 1;
+        }
+      }
       return {
-        id: p.id,
-        name: p.name,
-        count: pipelineOpps.length,
-        totalValue: pipelineOpps.reduce(
-          (acc, o) => acc + (o.monetary_value ?? 0),
-          0,
-        ),
-        stages: stageData,
-        recentOpps,
-        contactsFallback,
+        id: s.id,
+        name: s.name,
+        position: s.position,
+        count: sOpps.length,
+        value: sOpps.reduce((acc, o) => acc + (o.monetary_value ?? 0), 0),
+        avgAgeDays: idleN === 0 ? 0 : Math.round(idleSum / idleN),
       };
-    })
-    .sort((a, b) => b.count - a.count);
+    });
+
+    let ageSum = 0;
+    let ageN = 0;
+    let stuckCount = 0;
+    let lastAdvance = 0;
+    for (const o of known) {
+      const age = ageAnchor(o);
+      if (age !== null) {
+        ageSum += (now - age) / DAY_MS;
+        ageN += 1;
+      }
+      const idle = idleAnchor(o);
+      if (idle !== null) {
+        if ((now - idle) / DAY_MS > STUCK_DAYS) stuckCount += 1;
+        if (idle > lastAdvance) lastAdvance = idle;
+      }
+    }
+
+    return {
+      id: p.id,
+      ghlPipelineId: p.ghl_pipeline_id,
+      order: leadingOrder(p.name) ?? Number.MAX_SAFE_INTEGER,
+      badge: "",
+      name: p.name,
+      count: known.length,
+      totalValue: known.reduce((acc, o) => acc + (o.monetary_value ?? 0), 0),
+      avgCycleDays: ageN === 0 ? 0 : Math.round(ageSum / ageN),
+      stuckCount,
+      lastAdvanceAt:
+        lastAdvance === 0 ? null : new Date(lastAdvance).toISOString(),
+      stages,
+    };
+  });
+
+  cards.sort((a, b) =>
+    a.order !== b.order ? a.order - b.order : a.name.localeCompare(b.name),
+  );
+  cards.forEach((c, i) => {
+    c.badge = `P${i + 1}`;
+  });
+
+  return cards;
 }

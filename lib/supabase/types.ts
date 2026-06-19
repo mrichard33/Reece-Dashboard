@@ -269,10 +269,20 @@ export type AppNotification = {
 // HL Supabase (contacts, opportunities, workflows)
 // ─────────────────────────────────────────────────────────────────
 
-export type Pipeline = {
+export type PipelineStage = {
   id: string;
   name: string;
-  ghl_pipeline_id: string | null;
+  position: number;
+  color?: string | null;
+};
+
+export type Pipeline = {
+  id: string;
+  ghl_pipeline_id: string;
+  ghl_location_id: string | null;
+  name: string;
+  stages: PipelineStage[] | null;
+  deleted_at: string | null;
 };
 
 export type Stage = {
@@ -284,15 +294,23 @@ export type Stage = {
 
 export type Opportunity = {
   id: string;
-  pipeline_id: string;
-  pipeline_stage_id: string;
-  contact_id: string | null;
-  status: "open" | "won" | "lost" | "abandoned";
+  ghl_opportunity_id: string;
+  ghl_pipeline_id: string;
+  ghl_stage_id: string | null;
+  ghl_contact_id: string | null;
+  name: string;
+  status: "open" | "won" | "lost" | "abandoned" | null;
   monetary_value: number | null;
-  name: string | null;
+  currency: string | null;
   source: string | null;
-  updated_at: string;
-  created_at: string;
+  /** GHL-native created instant — use for cycle aging, NOT created_at. */
+  date_added: string | null;
+  /** GHL-native last-change instant — use for idle/stuck, NOT updated_at. */
+  date_updated: string | null;
+  synced_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  deleted_at: string | null;
 };
 
 /**
