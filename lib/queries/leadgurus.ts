@@ -93,8 +93,20 @@ export async function getLeadGurusSummary(days = 30): Promise<LeadGurusSummary> 
   if (error) throw new Error(`ft_daily_summary read: ${error.message}`);
 
   const daily = ((dailyRaw ?? []) as Record<string, unknown>[]).map(mapDaily);
-  const latest = daily[daily.length - 1] ?? null;
-  const trend = daily.map((d: FtDaily) => ({
+  // The current day's row is partial until that day's pull finalizes — it reads
+  // near-zero (no leads, no revenue) and looks like "no data loaded". Anchor the
+  // section on the most recent day that actually has leads pulled; fall back to
+  // the raw latest row only if every in-range day is empty.
+  const latest =
+    [...daily].reverse().find((d) => (d.total_leads ?? 0) > 0) ??
+    daily[daily.length - 1] ??
+    null;
+  // Keep the trend in step with `latest` so the chart doesn't trail off into the
+  // partial current day after the tiles have settled on the last complete one.
+  const visible = latest
+    ? daily.filter((d) => d.date <= latest.date)
+    : daily;
+  const trend = visible.map((d: FtDaily) => ({
     date: d.date,
     spend: d.total_spend ?? 0,
     revenue: d.gross_amount ?? 0,
