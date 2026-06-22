@@ -9,8 +9,9 @@ import { hlService } from "@/lib/supabase/hl";
  *                    created_at_lp is the true per-lead creation time, not sync time.
  *  leadsYesterday    Same, for the prior ET calendar day (drives the delta).
  *  appointmentsToday HL `appointments` whose scheduled start_time falls within
- *                    today's ET calendar day and that are not soft-deleted. This
- *                    is a REAL appointment date — not the old proxy that counted
+ *                    today's ET calendar day, that are not soft-deleted, and
+ *                    whose status is not cancelled/invalid. This is a REAL
+ *                    appointment date — not the old proxy that counted
  *                    opportunities touched by sync today.
  *  oppsInFlight      HL `opportunities` that are open, not soft-deleted, and were
  *                    genuinely updated in GHL (date_updated, NOT the sync-time
@@ -120,9 +121,13 @@ async function countOpenIssues(): Promise<number> {
 }
 
 /**
- * Appointments whose scheduled start falls within today's ET calendar day and
- * that are not soft-deleted. `appointments.start_time` is the real appointment
- * timestamp synced from GHL.
+ * Appointments whose scheduled start falls within today's ET calendar day, that
+ * are not soft-deleted, and whose status is not cancelled/invalid.
+ * `appointments.start_time` is the real appointment timestamp synced from GHL.
+ *
+ * The status filter depends on the HL-MCP appointment-status mapping fix
+ * (appointmentStatus → status column); before that ships every row reads
+ * 'confirmed', so this filter is a harmless no-op until then.
  */
 async function countAppointmentsToday(dayStart: Date, dayEnd: Date): Promise<number> {
   const sb = hlService();
@@ -130,6 +135,9 @@ async function countAppointmentsToday(dayStart: Date, dayEnd: Date): Promise<num
     .from("appointments")
     .select("id", { count: "exact", head: true })
     .is("deleted_at", null)
+    // Exclude appointments GHL has cancelled or invalidated — they keep a
+    // start_time today but are no longer real appointments on the books.
+    .not("status", "in", '("cancelled","invalid")')
     .gte("start_time", dayStart.toISOString())
     .lt("start_time", dayEnd.toISOString());
   return count ?? 0;
