@@ -261,16 +261,16 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   // ── /scorecard · Goal/variance ("Monday a.m.") report ────────────────
   "scorecard.funnel": {
-    title: "Funnel vs goal",
-    what: "ACTUALS for the selected period — Sets, Demos, Sales (and Close% = Sales ÷ Demos) — aggregated from the live LP cache, shown against the Monthly Goal and a Period Goal prorated to the window. Sales/Demos/Close% are audited-accurate. ‘Leads (Issued)’ and the report Demo% show ‘—’: the cache has no issued dimension yet (needs the LP issued field). Rows marked ⚠ (Good Rate, Good Business $, KO %) use provisional LP-internal definitions pending tie-out.",
+    title: "MTD funnel vs goal",
+    what: "Month-to-date ACTUALS (Leads/Issued, Sales, Demos, Good Business $) re-derived from raw Lead Perfection records, shown against the Monthly Goal and a prorated MTD Goal. Actual cells are green when they meet/beat the MTD goal, red when behind. Rows marked ⚠ (Close %, Good Rate, Good Business $, KO %) use provisional LP-internal definitions pending tie-out.",
     where:
-      "Aggregated at read time in `lib/queries/scorecard.ts` from `lp_leads` (sets=appointment_set, demos=demo_completed, sales=closed_won) over the selected window, joined to the editable `scorecard_goals`. $ buckets read `lp_jobs`/`lp_job_milestones` when available.",
-    fix: "Pick a period with the selector. Edit goal targets via the admin Goals editor. ‘Leads (Issued)’ stays ‘—’ until LP’s issued field is added to the cache. The PROVISIONAL banner clears once a market is reconciled to the Reece export.",
+      "`lp_market_scorecard_daily` (latest snapshot, written daily by the LP-MCP job from the live LP API — NOT the lp_leads cache) joined at read time to the editable `scorecard_goals`. Goal columns / pace / variance are computed in `lib/queries/scorecard.ts`.",
+    fix: "If a number looks wrong, run the backfill for a closed window (`POST /n8n/admin/goal-scorecard-run`) and reconcile to the Reece Monday-a.m. export. Edit the goal targets via the admin Goals editor on this page. The PROVISIONAL banner clears once a market is reconciled.",
   },
   "scorecard.header": {
     title: "Goal & pace header",
-    what: "Grouped clusters — Goal (monthly goal, goal/day, target-to-date, balance), Pace (per-day actual, projected), $ Pipeline (gross/net/pending/deposits/avg sale/NSLI) and Inventory (open jobs, $ due). ⚠ marks provisional fields; $ Pipeline / Inventory show ‘—’ when the job cache is unavailable.",
-    where: "Derived in `lib/queries/scorecard.ts` from `lp_leads` counts + `lp_jobs`/`lp_job_milestones` $ buckets + `scorecard_goals`, for the selected window.",
+    what: "Working days, days elapsed, prorated goal-to-date, average sale, NSLI, gross/pending dollars and per-day pace. Pace targets derive from the monthly goal $ ÷ trailing NSLI ÷ working days (provisional).",
+    where: "Derived in `lib/queries/scorecard.ts` from `lp_market_scorecard_daily` actuals + `scorecard_goals`.",
     fix: "Set `trailing_nsli`, `monthly_goal_dollars`, and `working_days` in the Goals editor to drive accurate pace.",
   },
   "scorecard.pace": {
@@ -282,7 +282,7 @@ export const helpContent: Record<string, HelpEntry> = {
   "scorecard.variance": {
     title: "Won/Lost vs goal",
     what: "Dollarized and point-gap variance of actuals against goal. ⚠ The bridge math is provisional (LP-internal) until reconciled to a Reece export.",
-    where: "Computed in `lib/queries/scorecard.ts` (net sales vs the period goal $, plus per-metric point gaps).",
+    where: "Computed in `lib/queries/scorecard.ts` (net sales vs MTD goal $, plus per-metric point gaps).",
     fix: "Treat as directional until the PROVISIONAL banner clears.",
   },
 };
