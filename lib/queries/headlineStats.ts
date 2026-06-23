@@ -1,5 +1,6 @@
 import { lpService } from "@/lib/supabase/lp";
 import { hlService } from "@/lib/supabase/hl";
+import { DAY_MS, businessDayStart } from "@/lib/time";
 
 /**
  * Headline "Today" cards — definitions (keep these in sync with the card
@@ -24,47 +25,7 @@ import { hlService } from "@/lib/supabase/hl";
  * "today" matches how staff read the calendar, regardless of server timezone.
  */
 
-const BUSINESS_TZ = "America/New_York";
-const DAY_MS = 24 * 60 * 60 * 1000;
 const OPPS_ACTIVE_WINDOW_DAYS = 30;
-
-/** Minutes that `tz` is offset from UTC at the given instant (e.g. EDT → -240). */
-function tzOffsetMinutes(tz: string, at: Date): number {
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const parts = dtf.formatToParts(at);
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-  const asUTC = Date.UTC(
-    get("year"),
-    get("month") - 1,
-    get("day"),
-    get("hour"),
-    get("minute"),
-    get("second"),
-  );
-  return (asUTC - at.getTime()) / 60000;
-}
-
-/** UTC instant of midnight (start of the calendar day) in BUSINESS_TZ for `base`. */
-function businessDayStart(base: Date): Date {
-  const ymd = new Intl.DateTimeFormat("en-CA", {
-    timeZone: BUSINESS_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(base); // "YYYY-MM-DD"
-  const utcMidnight = new Date(`${ymd}T00:00:00Z`);
-  const offsetMin = tzOffsetMinutes(BUSINESS_TZ, utcMidnight);
-  return new Date(utcMidnight.getTime() - offsetMin * 60000);
-}
 
 export type HeadlineStats = {
   leadsToday: number;

@@ -7,7 +7,10 @@ import { FunnelTable } from "@/components/scorecard/FunnelTable";
 import { PaceBlock } from "@/components/scorecard/PaceBlock";
 import { VarianceBridge } from "@/components/scorecard/VarianceBridge";
 import { GoalEditor } from "@/components/scorecard/GoalEditor";
+import { PeriodPicker } from "@/components/scorecard/PeriodPicker";
 import { getScorecard, getScorecardGoals } from "@/lib/queries/scorecard";
+import { resolvePeriod } from "@/lib/time";
+import { relTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +19,20 @@ const MARKET = "REECE";
 export default async function ScorecardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ period?: string; start?: string; end?: string }>;
 }) {
-  const [user, ctx, { date }] = await Promise.all([
+  const [user, ctx, sp] = await Promise.all([
     requireUser(),
     getAccessContext(),
     searchParams,
   ]);
   const isAdmin = ctx?.isAdmin ?? false;
 
-  const view = await getScorecard(MARKET, date);
+  const period = resolvePeriod(sp);
+  const view = await getScorecard(MARKET, {
+    start: period.start.toISOString(),
+    end: period.end.toISOString(),
+  });
   const goals = isAdmin ? await getScorecardGoals(MARKET) : null;
 
   return (
@@ -34,20 +41,30 @@ export default async function ScorecardPage({
         email={user.email}
         role={user.role}
         title="Scorecard"
-        subtitle="Marketing & sales performance vs goal (MTD)."
+        subtitle="Marketing & sales performance vs goal."
       />
 
       <div className="space-y-6 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-navy-900 dark:text-white">
+              {period.label}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {view?.lastSyncedAt
+                ? `As of ${relTime(view.lastSyncedAt)} · source: live cache`
+                : "source: live cache"}
+            </p>
+          </div>
+          <PeriodPicker />
+        </div>
+
         {!view ? (
           <Card>
             <CardContent>
               <p className="py-8 text-center text-sm text-slate-500">
-                No scorecard snapshot yet. The daily job writes one each morning —
-                or trigger a backfill via{" "}
-                <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
-                  POST /n8n/admin/goal-scorecard-run
-                </code>{" "}
-                on the LP-MCP service.
+                No scorecard data for this period. The funnel counts read the live
+                LP cache (`lp_leads`) — if this stays empty, check the LP sync.
               </p>
             </CardContent>
           </Card>
@@ -61,6 +78,17 @@ export default async function ScorecardPage({
                 <strong className="font-semibold">PROVISIONAL — not reconciled.</strong>{" "}
                 These figures are computed from LP raw data and have not yet been
                 reconciled to the official LP report. Do not use for commitments.
+              </div>
+            )}
+
+            {view.warnings.length > 0 && (
+              <div
+                role="status"
+                className="no-print rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-400"
+              >
+                {view.warnings.map((w) => (
+                  <p key={w}>· {w}</p>
+                ))}
               </div>
             )}
 
