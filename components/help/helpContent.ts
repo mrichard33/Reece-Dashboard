@@ -259,6 +259,32 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "`ft_summary_territory` for the latest date, ordered by spend.",
     fix: "Territories come straight from Lead Gurus' `/summary/territory/` feed.",
   },
+  // ── /scorecard · Goal/variance ("Monday a.m.") report ────────────────
+  "scorecard.funnel": {
+    title: "MTD funnel vs goal",
+    what: "Month-to-date ACTUALS (Leads/Issued, Sales, Demos, Good Business $) re-derived from raw Lead Perfection records, shown against the Monthly Goal and a prorated MTD Goal. Actual cells are green when they meet/beat the MTD goal, red when behind. Rows marked ⚠ (Close %, Good Rate, Good Business $, KO %) use provisional LP-internal definitions pending tie-out.",
+    where:
+      "`lp_market_scorecard_daily` (latest snapshot, written daily by the LP-MCP job from the live LP API — NOT the lp_leads cache) joined at read time to the editable `scorecard_goals`. Goal columns / pace / variance are computed in `lib/queries/scorecard.ts`.",
+    fix: "If a number looks wrong, run the backfill for a closed window (`POST /n8n/admin/goal-scorecard-run`) and reconcile to the Reece Monday-a.m. export. Edit the goal targets via the admin Goals editor on this page. The PROVISIONAL banner clears once a market is reconciled.",
+  },
+  "scorecard.header": {
+    title: "Goal & pace header",
+    what: "Working days, days elapsed, prorated goal-to-date, average sale, NSLI, gross/pending dollars and per-day pace. Pace targets derive from the monthly goal $ ÷ trailing NSLI ÷ working days (provisional).",
+    where: "Derived in `lib/queries/scorecard.ts` from `lp_market_scorecard_daily` actuals + `scorecard_goals`.",
+    fix: "Set `trailing_nsli`, `monthly_goal_dollars`, and `working_days` in the Goals editor to drive accurate pace.",
+  },
+  "scorecard.pace": {
+    title: "Per-day pace",
+    what: "Target vs actual leads issued, demoed, and closed per day. ⚠ The target derivation is provisional until reconciled to a Reece export.",
+    where: "Computed at read time from goals (trailing NSLI, working days, funnel %) and actuals ÷ days elapsed.",
+    fix: "If targets look off, confirm `trailing_nsli` and the target percentages in the Goals editor.",
+  },
+  "scorecard.variance": {
+    title: "Won/Lost vs goal",
+    what: "Dollarized and point-gap variance of actuals against goal. ⚠ The bridge math is provisional (LP-internal) until reconciled to a Reece export.",
+    where: "Computed in `lib/queries/scorecard.ts` (net sales vs MTD goal $, plus per-metric point gaps).",
+    fix: "Treat as directional until the PROVISIONAL banner clears.",
+  },
 };
 
 export function getHelp(key: string): HelpEntry | null {
