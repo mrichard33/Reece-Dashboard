@@ -141,27 +141,22 @@ const DEFAULT_GOALS = (market: string): ScorecardGoals => ({
 });
 
 /**
- * Assumed lp_jobs / lp_job_milestones shape. Unverified — kept in one place so a
- * single edit fixes the aggregation once the real schema is known.
+ * Verified lp_jobs shape (2026-06). lp_jobs exposes a single `job_value` (no
+ * gross/net/remaining split) and a `job_status` text, so the $ buckets key off
+ * those two columns. ⚠ The status groupings below are provisional — final
+ * definitions are §4 (reconciliation), still pending. lp_job_milestones carries
+ * only DATE milestones (no $ amount), so Deposits is not derivable from the
+ * cache and is reported as "—" rather than guessed.
  */
 const JOBS_SCHEMA = {
   jobsTable: "lp_jobs",
-  milestonesTable: "lp_job_milestones",
-  // lp_jobs
   jobDateCol: "created_at_lp",
   jobStatusCol: "job_status",
-  jobGrossCol: "contract_amount",
-  jobNetCol: "net_amount",
-  jobRemainingCol: "balance_remaining",
-  // status groupings
-  openStatuses: ["In Production", "Scheduled", "In Progress", "Pending"],
+  jobValueCol: "job_value",
+  // Lost — excluded from gross.
+  deadStatuses: ["Cancelled", "Dead Deal", "Credit Decline", "Cancelled By Mgt"],
+  // Realized / paid.
   netStatuses: ["Paid In Full", "PIF Survey Ready", "PIF NO Survey", "Assumed Complete"],
-  pendingStatuses: ["Pending", "Awaiting Deposit"],
-  // lp_job_milestones
-  msDateCol: "created_at_lp",
-  msTypeCol: "milestone_type",
-  msAmountCol: "amount",
-  depositTypes: ["Deposit", "deposit"],
 } as const;
 
 const PAGE = 1000;
@@ -203,13 +198,18 @@ type JobsBuckets = {
 };
 
 /**
- * Sum the $ buckets from lp_jobs over the window, paginating by id keyset to
- * defeat the 1000-row PostgREST cap on wide windows. Throws on any schema/column
- * mismatch so the caller can degrade to null buckets + a warning.
+ * Sum the $ buckets from lp_jobs (signed in the window), paginating by id keyset
+ * to defeat the 1000-row PostgREST cap on wide windows. Only `job_value` exists,
+ * so: gross = Σ value of live (non-dead) jobs; net = Σ value of realized/paid
+ * jobs; the live-but-unpaid remainder is the in-production backlog (count =
+ * inventory_jobs, value = inventory_due ≈ pending). ⚠ provisional groupings.
+ * Throws on any schema/column mismatch so the caller can degrade to a warning.
  */
 async function sumJobsBuckets(start: string, end: string): Promise<JobsBuckets> {
   const sb = lpService();
-  const cols = `id, ${JOBS_SCHEMA.jobStatusCol}, ${JOBS_SCHEMA.jobGrossCol}, ${JOBS_SCHEMA.jobNetCol}, ${JOBS_SCHEMA.jobRemainingCol}`;
+  const cols = `id, ${JOBS_SCHEMA.jobStatusCol}, ${JOBS_SCHEMA.jobValueCol}`;
+  const dead = JOBS_SCHEMA.deadStatuses as readonly string[];
+  const net = JOBS_SCHEMA.netStatuses as readonly string[];
   const out: JobsBuckets = {
     gross_sales: 0,
     net_sales: 0,
@@ -232,51 +232,22 @@ async function sumJobsBuckets(start: string, end: string): Promise<JobsBuckets> 
     const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
     for (const r of rows) {
       const status = String(r[JOBS_SCHEMA.jobStatusCol] ?? "");
-      const gross = Number(r[JOBS_SCHEMA.jobGrossCol] ?? 0) || 0;
-      const net = Number(r[JOBS_SCHEMA.jobNetCol] ?? 0) || 0;
-      const remaining = Number(r[JOBS_SCHEMA.jobRemainingCol] ?? 0) || 0;
-      out.gross_sales += gross;
-      if ((JOBS_SCHEMA.netStatuses as readonly string[]).includes(status)) out.net_sales += net;
-      if ((JOBS_SCHEMA.pendingStatuses as readonly string[]).includes(status)) out.pending_dollars += remaining;
-      if ((JOBS_SCHEMA.openStatuses as readonly string[]).includes(status)) {
+      const value = Number(r[JOBS_SCHEMA.jobValueCol] ?? 0) || 0;
+      if (dead.includes(status)) continue; // lost — not gross
+      out.gross_sales += value;
+      if (net.includes(status)) {
+        out.net_sales += value;
+      } else {
+        // Live, signed, not yet realized → in-production backlog.
+        out.pending_dollars += value;
         out.inventory_jobs += 1;
-        out.inventory_due += remaining;
+        out.inventory_due += value;
       }
     }
     if (rows.length < PAGE) break;
     after = String(rows[rows.length - 1]?.id ?? "");
   }
   return out;
-}
-
-/** Σ deposit-milestone amounts in the window. Throws on schema mismatch. */
-async function sumDeposits(start: string, end: string): Promise<number> {
-  const sb = lpService();
-  const cols = `id, ${JOBS_SCHEMA.msTypeCol}, ${JOBS_SCHEMA.msAmountCol}`;
-  let total = 0;
-  let after: string | null = null;
-  for (;;) {
-    let q = sb
-      .from(JOBS_SCHEMA.milestonesTable)
-      .select(cols)
-      .gte(JOBS_SCHEMA.msDateCol, start)
-      .lt(JOBS_SCHEMA.msDateCol, end)
-      .order("id", { ascending: true })
-      .limit(PAGE);
-    if (after) q = q.gt("id", after);
-    const { data, error } = await q;
-    if (error) throw error;
-    const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
-    for (const r of rows) {
-      const type = String(r[JOBS_SCHEMA.msTypeCol] ?? "");
-      if ((JOBS_SCHEMA.depositTypes as readonly string[]).includes(type)) {
-        total += Number(r[JOBS_SCHEMA.msAmountCol] ?? 0) || 0;
-      }
-    }
-    if (rows.length < PAGE) break;
-    after = String(rows[rows.length - 1]?.id ?? "");
-  }
-  return total;
 }
 
 /** Most recent lp_leads.synced_at — cache freshness for the provenance line. */
@@ -379,19 +350,17 @@ export async function getScorecard(
     return null;
   }
 
-  // $ buckets — degrade gracefully if lp_jobs / lp_job_milestones are absent.
+  // $ buckets — degrade gracefully if lp_jobs is absent or its schema differs.
   let buckets: JobsBuckets | null = null;
-  let deposits: number | null = null;
   try {
     buckets = await sumJobsBuckets(period.start, period.end);
   } catch {
     warnings.push("Job $ buckets unavailable (lp_jobs not found or schema differs) — Gross/Net/Pending/Inventory show —.");
   }
-  try {
-    deposits = await sumDeposits(period.start, period.end);
-  } catch {
-    warnings.push("Deposits unavailable (lp_job_milestones not found or schema differs) — Deposits show —.");
-  }
+  // Deposit $ is not tracked in the cache: lp_job_milestones holds date
+  // milestones only (no amount). Reported as "—" pending an LP enrichment.
+  const deposits: number | null = null;
+  warnings.push("Deposit $ not in the cache (job milestones are date-type only) — Deposits show —.");
 
   const [goalsRow, lastSyncedAt] = await Promise.all([
     lpService()
