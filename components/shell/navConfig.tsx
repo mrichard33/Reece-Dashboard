@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Cog,
   ShieldCheck,
+  Gauge,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -76,6 +77,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Pipelines",
         desc: "Where every deal stands",
         Icon: GitBranch,
+        audience: "all",
+      },
+      {
+        href: "/scorecard",
+        label: "Scorecard",
+        desc: "Goal & variance vs plan",
+        Icon: Gauge,
         audience: "all",
       },
       {
