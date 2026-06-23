@@ -99,6 +99,35 @@
   }
 }
 
+/* Print parity — render the scorecard close to the LP PDF for partners who read
+   the printout. Hides app chrome (nav, top bar, the period picker and other
+   .no-print controls), flattens cards, and forces light tokens. */
+@media print {
+  nav,
+  aside,
+  header,
+  .no-print {
+    display: none !important;
+  }
+  :root {
+    --background: #ffffff;
+  }
+  body {
+    background: #ffffff !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  .rounded-lg,
+  .rounded-md {
+    box-shadow: none !important;
+    border-color: #d1d5db !important;
+  }
+  table {
+    page-break-inside: avoid;
+  }
+}
+
 /* Scrollbar nicety */
 ::-webkit-scrollbar {
   width: 10px;

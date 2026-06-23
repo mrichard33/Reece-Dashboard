@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
+import { BulletBar } from "./Bars";
 import type { ScorecardDerived } from "@/lib/queries/scorecard";
 
 function n1(v: number | null): string {
@@ -35,17 +36,29 @@ export function PaceBlock({ derived }: { derived: ScorecardDerived }) {
               <th className="py-2 text-left font-medium"> </th>
               <th className="py-2 text-right font-medium">Target</th>
               <th className="py-2 text-right font-medium">Actual</th>
+              <th className="hidden w-32 py-2 pl-4 text-left font-medium sm:table-cell"> </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
-              const meets = r.target != null && r.actual >= r.target;
+              const meets = r.target != null && r.actual != null && r.actual >= r.target;
               return (
                 <tr key={r.label} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
                   <td className="py-2 text-left text-slate-700 dark:text-slate-300">{r.label}</td>
                   <td className="py-2 text-right font-mono tabular text-slate-500 dark:text-slate-400">{n1(r.target)}</td>
-                  <td className={`py-2 text-right font-mono tabular font-semibold ${r.target == null ? "text-slate-800 dark:text-slate-200" : meets ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                  <td
+                    className={`py-2 text-right font-mono tabular font-semibold ${
+                      r.target == null || r.actual == null
+                        ? "text-slate-800 dark:text-slate-200"
+                        : meets
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-rose-600 dark:text-rose-400"
+                    }`}
+                  >
                     {n1(r.actual)}
+                  </td>
+                  <td className="hidden py-2 pl-4 align-middle sm:table-cell">
+                    <BulletBar actual={r.actual} goal={r.target} />
                   </td>
                 </tr>
               );

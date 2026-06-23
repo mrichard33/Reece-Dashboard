@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { usd } from "@/lib/utils";
+import { DivergingBar } from "./Bars";
 import type { ScorecardDerived } from "@/lib/queries/scorecard";
 
 function ptsStr(v: number | null): string {
@@ -19,11 +20,13 @@ function tone(v: number | null, lowerIsBetter = false): string {
 export function VarianceBridge({ derived }: { derived: ScorecardDerived }) {
   const v = derived.variance;
   const rows = [
-    { label: "Close %", value: ptsStr(v.close_pts), cls: tone(v.close_pts) },
-    { label: "Demo %", value: ptsStr(v.demo_pts), cls: tone(v.demo_pts) },
-    { label: "Good Rate", value: ptsStr(v.good_rate_pts), cls: tone(v.good_rate_pts) },
-    { label: "KO %", value: ptsStr(v.ko_pts), cls: tone(v.ko_pts, true) },
+    { label: "Close %", value: v.close_pts, lowerIsBetter: false },
+    { label: "Demo %", value: v.demo_pts, lowerIsBetter: false },
+    { label: "Good Rate", value: v.good_rate_pts, lowerIsBetter: false },
+    { label: "KO %", value: v.ko_pts, lowerIsBetter: true },
   ];
+  // Scale the diverging bars to the largest point-gap on show (min 5 pts).
+  const maxPts = Math.max(5, ...rows.map((r) => (r.value == null ? 0 : Math.abs(r.value))));
 
   return (
     <Card>
@@ -41,20 +44,22 @@ export function VarianceBridge({ derived }: { derived: ScorecardDerived }) {
       <CardContent>
         <div className="mb-4">
           <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Net Sales vs MTD Goal
+            Net Sales vs Period Goal
           </span>
-          <div className={`font-mono tabular text-2xl font-bold ${tone(derived.variance.dollars)}`}>
-            {derived.variance.dollars >= 0 ? "+" : ""}
-            {usd(derived.variance.dollars)}
+          <div className={`font-mono tabular text-2xl font-bold ${tone(v.dollars)}`}>
+            {v.dollars == null ? "—" : `${v.dollars >= 0 ? "+" : ""}${usd(v.dollars)}`}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+        <div className="space-y-2.5">
           {rows.map((r) => (
-            <div key={r.label} className="flex flex-col gap-0.5">
+            <div key={r.label} className="grid grid-cols-[5rem_1fr_4.5rem] items-center gap-3 text-sm">
               <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {r.label}
               </span>
-              <span className={`font-mono tabular font-semibold ${r.cls}`}>{r.value}</span>
+              <DivergingBar value={r.value} max={maxPts} lowerIsBetter={r.lowerIsBetter} />
+              <span className={`text-right font-mono tabular font-semibold ${tone(r.value, r.lowerIsBetter)}`}>
+                {ptsStr(r.value)}
+              </span>
             </div>
           ))}
         </div>
