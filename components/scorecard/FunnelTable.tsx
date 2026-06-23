@@ -52,15 +52,23 @@ export function FunnelTable({
   const prorate = (v: number | null) =>
     v == null ? null : v * (actuals.days_elapsed / (goals.working_days || 1));
 
+  // Rows mirror the Reece "Marketing Sub-Source By Appt Date" report, in order.
+  // ⚠ = provisional (Net columns / NSLI) pending tie-out to the official report.
   const rows: Row[] = [
-    { label: "Leads (Issued)", fmt: "count", monthlyGoal: monthlyIssued, mtdGoal: prorate(monthlyIssued), actual: actuals.issued },
-    { label: "Close %", fmt: "pct", monthlyGoal: goals.target_close_pct, mtdGoal: goals.target_close_pct, actual: actuals.close_pct, provisional: true },
-    { label: "Sales", fmt: "count", monthlyGoal: monthlySales, mtdGoal: prorate(monthlySales), actual: actuals.sales },
+    { label: "Set", fmt: "count", monthlyGoal: null, mtdGoal: null, actual: actuals.sets },
+    { label: "Issued", fmt: "count", monthlyGoal: monthlyIssued, mtdGoal: prorate(monthlyIssued), actual: actuals.issued },
+    { label: "Net Issue", fmt: "count", monthlyGoal: null, mtdGoal: null, actual: actuals.net_issue, provisional: true },
+    { label: "% Issue", fmt: "pct", monthlyGoal: null, mtdGoal: null, actual: actuals.pct_issue },
     { label: "Demos", fmt: "count", monthlyGoal: monthlyDemos, mtdGoal: prorate(monthlyDemos), actual: actuals.demos },
-    { label: "Good Rate", fmt: "pct", monthlyGoal: goals.target_good_rate_pct, mtdGoal: goals.target_good_rate_pct, actual: actuals.good_rate_pct, provisional: true },
-    { label: "Good Business $", fmt: "usd", monthlyGoal: goals.monthly_goal_dollars, mtdGoal: derived.mtd_goal_dollars, actual: actuals.good_business, provisional: true },
-    { label: "Demo %", fmt: "pct", monthlyGoal: goals.target_demo_pct, mtdGoal: goals.target_demo_pct, actual: actuals.demo_pct },
-    { label: "KO %", fmt: "pct", monthlyGoal: goals.target_ko_pct, mtdGoal: goals.target_ko_pct, actual: actuals.ko_pct, lowerIsBetter: true, provisional: true },
+    { label: "% Demo", fmt: "pct", monthlyGoal: goals.target_demo_pct, mtdGoal: goals.target_demo_pct, actual: actuals.demo_pct },
+    { label: "Sold", fmt: "count", monthlyGoal: monthlySales, mtdGoal: prorate(monthlySales), actual: actuals.sales },
+    { label: "% Gross Close", fmt: "pct", monthlyGoal: goals.target_close_pct, mtdGoal: goals.target_close_pct, actual: actuals.close_pct },
+    { label: "# Net Close", fmt: "count", monthlyGoal: null, mtdGoal: null, actual: actuals.net_close, provisional: true },
+    { label: "% Net Close", fmt: "pct", monthlyGoal: null, mtdGoal: null, actual: actuals.pct_net_close, provisional: true },
+    { label: "Gross Sale $", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.gross_sales },
+    { label: "Net Sale $", fmt: "usd", monthlyGoal: goals.monthly_goal_dollars, mtdGoal: derived.mtd_goal_dollars, actual: actuals.net_sales, provisional: true },
+    { label: "GSLI", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.gsli },
+    { label: "NSLI", fmt: "usd", monthlyGoal: goals.trailing_nsli || null, mtdGoal: goals.trailing_nsli || null, actual: actuals.nsli, provisional: true },
   ];
 
   return (
