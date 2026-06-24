@@ -18,7 +18,11 @@ export type ScorecardActuals = {
   as_of_date: string;
   period_start: string;
   period_end: string;
+  /** Selling days elapsed [period_start, as_of] (Mon–Sat minus Reece closures). */
   days_elapsed: number;
+  /** Selling days in the full month — goal-proration denominator. Null on
+   *  pre-Step-1 snapshots; read layer falls back to scorecard_goals.working_days. */
+  working_days_in_period: number | null;
   leads: number;
   issued: number;
   sets: number;
@@ -197,7 +201,11 @@ function derive(
   goals: ScorecardGoals,
   goalMeta: ScorecardDerived["goal"],
 ): ScorecardDerived {
-  const wd = goals.working_days || 1;
+  // Selling-day basis: prefer the denominator the LP-MCP job persisted with the
+  // snapshot (working_days_in_period); fall back to the editable goal for
+  // pre-Step-1 rows. `elapsed` is now selling days (writer-side), so numerator
+  // and denominator share one basis.
+  const wd = actuals.working_days_in_period ?? goals.working_days ?? 1;
   const elapsed = actuals.days_elapsed || 1;
   const mtd_goal_dollars = Math.round(goals.monthly_goal_dollars * (elapsed / wd));
 

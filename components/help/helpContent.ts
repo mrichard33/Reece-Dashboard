@@ -269,15 +269,21 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.header": {
     title: "Goal & pace header",
-    what: "Working days, days elapsed, prorated goal-to-date, average sale, NSLI, gross/pending dollars and per-day pace. Pace targets derive from the monthly goal $ ÷ trailing NSLI ÷ working days (provisional).",
-    where: "Derived in `lib/queries/scorecard.ts` from `lp_market_scorecard_daily` actuals + `scorecard_goals`.",
-    fix: "Set `trailing_nsli`, `monthly_goal_dollars`, and `working_days` in the Goals editor to drive accurate pace.",
+    what: "Selling days, days elapsed, prorated goal-to-date, average sale, NSLI, gross/pending dollars and per-day pace. Everything is on a SELLING-DAY basis (Mon–Sat minus Reece closures). MTD Goal = monthly goal × (selling days elapsed ÷ selling days in the month). Pace targets derive from the monthly goal $ ÷ trailing NSLI ÷ selling days (provisional).",
+    where: "Derived in `lib/queries/scorecard.ts` from `lp_market_scorecard_daily` actuals (`days_elapsed`, `working_days_in_period`, both selling days written by the LP-MCP job) + `scorecard_goals`. The job uses `src/selling-days.js`; the calendar is configured by `SCORECARD_SELLING_DAYS` / `SCORECARD_HOLIDAYS`.",
+    fix: "Set `trailing_nsli` and `monthly_goal_dollars` in the Goals editor to drive accurate pace. To change which days count, edit the `SCORECARD_SELLING_DAYS` / `SCORECARD_HOLIDAYS` env on the LP-MCP service. The Goals editor `working_days` is only a fallback for snapshots written before the selling-day fix.",
   },
   "scorecard.pace": {
     title: "Per-day pace",
-    what: "Target vs actual leads issued, demoed, and closed per day. ⚠ The target derivation is provisional until reconciled to a Reece export.",
-    where: "Computed at read time from goals (trailing NSLI, working days, funnel %) and actuals ÷ days elapsed.",
-    fix: "If targets look off, confirm `trailing_nsli` and the target percentages in the Goals editor.",
+    what: "Target vs actual leads issued, demoed, and closed per SELLING day. Actuals = count ÷ selling days elapsed. ⚠ The target derivation is provisional until reconciled to a Reece export.",
+    where: "Computed at read time from goals (trailing NSLI, selling days, funnel %) and actuals ÷ selling days elapsed (`days_elapsed`).",
+    fix: "If targets look off, confirm `trailing_nsli` and the target percentages in the Goals editor; if the day counts look off, check `SCORECARD_SELLING_DAYS` / `SCORECARD_HOLIDAYS`.",
+  },
+  "scorecard.daysElapsed": {
+    title: "Selling days & Days Elapsed",
+    what: "The scorecard counts SELLING days, not calendar days. By default Mon–Sat are selling days and Sunday is not; the Reece closure list (New Year's, Independence Day, Thanksgiving, Christmas) is also excluded. Juneteenth is intentionally a selling day. 'Days Elapsed' is selling days from the 1st through the as-of date; 'Selling Days' is selling days in the full month (e.g. June 2026 = 26). The snapshot is reported 'complete through' the last COMPLETED selling day — yesterday if it was a selling day, otherwise the most recent one (so on Sun/Mon the period ends the prior Saturday). Today's partial numbers never feed goal/pace math.",
+    where: "Written by the LP-MCP job `goal-scorecard-daily.js` via `src/selling-days.js` into `days_elapsed` / `working_days_in_period`; mirrored read-side in `lib/date/sellingDays.ts` for the stale-snapshot guard.",
+    fix: "If the count is wrong for a month, verify `SCORECARD_SELLING_DAYS` (weekday pattern) and `SCORECARD_HOLIDAYS` (closure dates, or `none`) on the LP-MCP service, then re-run the backfill (`POST /n8n/admin/goal-scorecard-run`). If 'snapshot stale' shows, the daily job hasn't advanced — check `/n8n/admin/goal-scorecard-status`.",
   },
   "scorecard.variance": {
     title: "Won/Lost vs goal",

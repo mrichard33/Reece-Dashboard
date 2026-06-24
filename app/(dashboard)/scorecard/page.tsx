@@ -15,8 +15,17 @@ import { TieOutPanel } from "@/components/scorecard/TieOutPanel";
 import { getScorecard, getScorecardGoals } from "@/lib/queries/scorecard";
 import { getSourceScorecard } from "@/lib/queries/sources";
 import { getLeadCost } from "@/lib/queries/leadcost";
+import {
+  resolveSellingCalendar,
+  lastCompletedSellingDay,
+  todayET,
+} from "@/lib/date/sellingDays";
 
 export const dynamic = "force-dynamic";
+
+// Selling-day calendar (server env) — used to flag a stale snapshot when the
+// daily LP-MCP job hasn't advanced as-of to the last completed selling day.
+const SELLING_CAL = resolveSellingCalendar();
 
 const MARKET = "REECE";
 
@@ -83,6 +92,9 @@ export default async function ScorecardPage({
               rawLeadsIn={view.actuals.raw_leads_in}
               rawLeadsBasis={view.actuals.raw_inputs?.raw_leads_basis}
               reconciled={view.derived.reconciled}
+              daysElapsed={view.actuals.days_elapsed}
+              workingDaysInPeriod={view.actuals.working_days_in_period}
+              expectedAsOf={lastCompletedSellingDay(todayET(), SELLING_CAL)}
             />
 
             <ScorecardHeader
