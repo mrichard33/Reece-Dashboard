@@ -46,7 +46,10 @@ export function ScorecardHeader({
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-6">
-          <Cell label="Working Days" value={num(goals.working_days)} />
+          <Cell
+            label="Selling Days"
+            value={num(actuals.working_days_in_period ?? goals.working_days)}
+          />
           <Cell label="Days Elapsed" value={num(actuals.days_elapsed)} />
           <Cell label="Monthly Goal" value={usd(derived.monthly_goal_dollars)} />
           <Cell label="MTD Goal" value={usd(derived.mtd_goal_dollars)} />

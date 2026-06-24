@@ -102,8 +102,14 @@ export default async function OverviewPage() {
 
         {/* Row 2 — Headline stats */}
         <section>
-          <h2 className="mb-3 font-display text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <h2 className="mb-3 flex items-center gap-2 font-display text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Today
+            <span
+              className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700"
+              title="Intraday live-cache counts for the current day. Partial and still changing — these never feed the scorecard's goal/pace math, which reports complete through the last selling day."
+            >
+              live · partial
+            </span>
           </h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
             <StatTile
