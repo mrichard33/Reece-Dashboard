@@ -7,7 +7,9 @@ import { FunnelTable } from "@/components/scorecard/FunnelTable";
 import { PaceBlock } from "@/components/scorecard/PaceBlock";
 import { VarianceBridge } from "@/components/scorecard/VarianceBridge";
 import { GoalEditor } from "@/components/scorecard/GoalEditor";
+import { SourcePerformanceTable } from "@/components/scorecard/SourcePerformanceTable";
 import { getScorecard, getScorecardGoals } from "@/lib/queries/scorecard";
+import { getSourceScorecard } from "@/lib/queries/sources";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +27,10 @@ export default async function ScorecardPage({
   ]);
   const isAdmin = ctx?.isAdmin ?? false;
 
-  const view = await getScorecard(MARKET, date);
+  const [view, sources] = await Promise.all([
+    getScorecard(MARKET, date),
+    getSourceScorecard(MARKET, date),
+  ]);
   const goals = isAdmin ? await getScorecardGoals(MARKET) : null;
 
   return (
@@ -75,6 +80,16 @@ export default async function ScorecardPage({
               goals={view.goals}
               derived={view.derived}
             />
+
+            {sources && (
+              <SourcePerformanceTable
+                rows={sources.rows}
+                unmappedCount={sources.unmapped_count}
+                asOfDate={sources.as_of_date}
+                referenceClosePct={view.actuals.close_pct}
+                referenceNsli={view.actuals.nsli}
+              />
+            )}
 
             <div className="grid gap-6 lg:grid-cols-2">
               <PaceBlock derived={view.derived} />
