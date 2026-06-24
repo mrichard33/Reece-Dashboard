@@ -109,7 +109,7 @@ export function FunnelTable({
     { label: "Good Rate %", fmt: "pct", kind: "goalable", monthlyGoal: goals.target_good_rate_pct, mtdGoal: goals.target_good_rate_pct, actual: actuals.good_rate_pct, helpKey: "scorecard.kpi.goodRate" },
     { label: "KO %", fmt: "pct", kind: "goalable", monthlyGoal: goals.target_ko_pct, mtdGoal: goals.target_ko_pct, actual: actuals.ko_pct, lowerIsBetter: true, helpKey: "scorecard.kpi.ko" },
     { label: "Gross Sale $", fmt: "usd", kind: "diagnostic", monthlyGoal: null, mtdGoal: null, actual: actuals.gross_sales },
-    { label: "Net Sales (Released)", fmt: "usd", kind: "goalable", monthlyGoal: goals.monthly_goal_dollars, mtdGoal: derived.mtd_goal_dollars, actual: actuals.net_sales, provisional: true, helpKey: "scorecard.kpi.netsales" },
+    { label: "Net Sale", fmt: "usd", kind: "goalable", monthlyGoal: goals.monthly_goal_dollars, mtdGoal: derived.mtd_goal_dollars, actual: actuals.net_sales, provisional: true, helpKey: "scorecard.kpi.netsales" },
     { label: "Working Revenue", fmt: "usd", kind: "diagnostic", monthlyGoal: null, mtdGoal: null, actual: actuals.working_dollars, provisional: true, helpKey: "scorecard.kpi.working" },
     { label: "Open Quotes", fmt: "usd", kind: "diagnostic", monthlyGoal: null, mtdGoal: null, actual: actuals.raw_inputs?.bucket_tally?.other_pending ?? null, provisional: true, helpKey: "scorecard.kpi.openQuotes" },
     { label: "GSLI", fmt: "usd", kind: "diagnostic", monthlyGoal: null, mtdGoal: null, actual: actuals.gsli },

@@ -293,14 +293,14 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.sources": {
     title: "Source Performance",
-    what: "Per-source funnel for the latest snapshot, By Appt Date — leads, issued, demo%, close%, Net Sales (released $), pending, and NSLI, with the same released/working/cancel definitions as the aggregate. 'Quality' flags a source's close% vs the REECE average: Strong (≥ average), OK (≥ half), Weak (< half). Sortable; default sort is Net Sales. Sources that don't resolve through lp_source_mapping are marked ⚠ and counted in the header badge.",
+    what: "Per-source funnel for the latest snapshot, By Appt Date — leads, issued, demo%, close%, Net Sale (non-cancelled $), pending, and NSLI, with the same released/working/cancel definitions as the aggregate. 'Quality' flags a source's close% vs the REECE average: Strong (≥ average), OK (≥ half), Weak (< half). Sortable; default sort is Net Sales. Sources that don't resolve through lp_source_mapping are marked ⚠ and counted in the header badge.",
     where:
       "`lp_source_scorecard_daily` (latest snapshot), written daily by the LP-MCP job in the same run as the aggregate row via `computeActuals(..., { groupBy:['source','sub_source'] })`. Read by `lib/queries/sources.ts`.",
     fix: "If a source is ⚠ unmapped, add it to `lp_source_mapping` (ties to lp_unmapped_sources). Per-source numbers inherit the aggregate's PROVISIONAL status until reconciled. Backfill a window via `POST /n8n/admin/goal-scorecard-run`.",
   },
   "scorecard.leadcost": {
     title: "Lead Cost",
-    what: "Per-source spend efficiency over the snapshot window: spend, cost per lead, cost as % of Net Sales (released $), and ROMI (Net Sales ÷ spend). Cost % is green at/under the target, amber up to ~1.3× target, red above. Sources with no spend show 'Spend not connected' instead of a misleading 0% — spend is never invented.",
+    what: "Per-source spend efficiency over the snapshot window: spend, cost per lead, cost as % of Net Sale (non-cancelled $), and ROMI (Net Sale ÷ spend). Cost % is green at/under the target, amber up to ~1.3× target, red above. Sources with no spend show 'Spend not connected' instead of a misleading 0% — spend is never invented.",
     where:
       "`lib/queries/leadcost.ts` joins `lp_source_scorecard_daily` (collapsed to source) to `lp_source_spend_daily` over the MTD window, plus the existing LeadGurus feed (`ft_daily_summary`) attributed to the 'Lead Gurus' source. Target % is `SCORECARD_LEADCOST_TARGET_PCT` (default 15).",
     fix: "To light up a source, land daily spend in `lp_source_spend_daily` (market, source, sub_source, spend_date, spend). The Lead Gurus row fills automatically from the LeadGurus daily pull. Adjust the target via `SCORECARD_LEADCOST_TARGET_PCT` on the dashboard service.",
@@ -308,14 +308,14 @@ export const helpContent: Record<string, HelpEntry> = {
 
   // ── /scorecard · per-KPI + Phase 4 UX ────────────────────────────────
   "scorecard.kpi.netsales": {
-    title: "Net Sales (Released)",
-    what: "Sold dollars on deals RELEASED to production — the bookable, finalized revenue. Excludes cancelled deals and deals still held (those are Working Revenue). This is the headline goal metric. ⚠ Includes 'RTP Await recission' — deals released but still inside the legal rescission window (they can still cancel). Whether to book at RTP or wait for rescission to close is a finance-policy call; if rescission cancellations are material, finance may choose to carry that slice separately.",
-    where: "`lp_market_scorecard_daily.released_dollars` (= net_sales). Bucketed by LP-MCP `computeActuals` from job statuses in `SCORECARD_RELEASED_STATUSES` (currently: Rel To Production, RTP Await recission, RTP DP DUE, Awaiting Product).",
-    fix: "If it looks low vs the old number, that's expected: held deals moved to Working Revenue. To change what counts as released, edit `SCORECARD_RELEASED_STATUSES` (env, no code) and re-run. Confirm the RTP/rescission booking policy with finance.",
+    title: "Net Sale",
+    what: "Every non-cancelled sold dollar — Net Sale = Gross − Cancelled = Released + Working + Open Quotes. Matches the Reece report's 'Net Sale' and is consistent with the Net Close COUNT (both span all non-cancelled deals). This is the headline goal metric. The Released / Working / Open Quotes split is shown separately (Working Revenue, Open Quotes rows, and the Tie-out panel) as a pipeline-risk breakdown.",
+    where: "`lp_market_scorecard_daily.net_sales` (= released_dollars + working_dollars + other_pending). Cancelled $ is excluded via `SCORECARD_CANCEL_STATUSES`; the Released subset is `SCORECARD_RELEASED_STATUSES`.",
+    fix: "To change what counts as cancelled (and therefore what's excluded from Net Sale), edit `SCORECARD_CANCEL_STATUSES` (env, no code) and re-run. Use the Tie-out panel status tally to calibrate the gross→net haircut against the report.",
   },
   "scorecard.kpi.working": {
     title: "Working Revenue",
-    what: "Sold but HELD dollars — financing/HOA/docs/measure not yet released to production. Earned but not bookable, and a pipeline risk if it stalls. Counts toward Net Close (not cancelled) but NOT toward Net Sales.",
+    what: "Sold but HELD dollars — financing/HOA/docs/measure not yet released to production. Earned but not yet bookable, and a pipeline risk if it stalls. Counts toward Net Close and Net Sale (it's non-cancelled), but is the held — not-yet-released — slice of it.",
     where: "`lp_market_scorecard_daily.working_dollars`. Statuses in `SCORECARD_WORKING_STATUSES`.",
     fix: "If a status is misclassified, adjust `SCORECARD_WORKING_STATUSES` (env, no code change) and re-run the scorecard. Cross-check against the status tally in the Tie-out panel.",
   },
@@ -351,8 +351,8 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.kpi.nsli": {
     title: "NSLI",
-    what: "⚠ Provisional: Net (released) Sale $ ÷ Issue. Drives the per-day pace targets together with the goal $ and working days.",
-    where: "`lp_market_scorecard_daily.nsli` (released_dollars ÷ issued).",
+    what: "⚠ Provisional: Net Sale $ ÷ Issue (Net Sale = non-cancelled total). Drives the per-day pace targets together with the goal $ and working days.",
+    where: "`lp_market_scorecard_daily.nsli` (net_sales ÷ issued).",
     fix: "Set Trailing NSLI in the Goals editor to drive pace; reconcile the definition to the export.",
   },
   "scorecard.kpi.goodRate": {
