@@ -9,6 +9,9 @@ import { VarianceBridge } from "@/components/scorecard/VarianceBridge";
 import { GoalEditor } from "@/components/scorecard/GoalEditor";
 import { SourcePerformanceTable } from "@/components/scorecard/SourcePerformanceTable";
 import { LeadCostTable } from "@/components/scorecard/LeadCostTable";
+import { FreshnessStrip } from "@/components/scorecard/FreshnessStrip";
+import { ScorecardAlerts } from "@/components/scorecard/ScorecardAlerts";
+import { TieOutPanel } from "@/components/scorecard/TieOutPanel";
 import { getScorecard, getScorecardGoals } from "@/lib/queries/scorecard";
 import { getSourceScorecard } from "@/lib/queries/sources";
 import { getLeadCost } from "@/lib/queries/leadcost";
@@ -72,10 +75,27 @@ export default async function ScorecardPage({
               </div>
             )}
 
+            <FreshnessStrip
+              asOfDate={view.actuals.as_of_date}
+              createdAt={view.actuals.created_at}
+              periodStart={view.actuals.period_start}
+              periodEnd={view.actuals.period_end}
+              rawLeadsIn={view.actuals.raw_leads_in}
+              rawLeadsBasis={view.actuals.raw_inputs?.raw_leads_basis}
+              reconciled={view.derived.reconciled}
+            />
+
             <ScorecardHeader
               actuals={view.actuals}
               goals={view.goals}
               derived={view.derived}
+            />
+
+            <ScorecardAlerts
+              actuals={view.actuals}
+              derived={view.derived}
+              unmappedSources={sources?.unmapped_count ?? 0}
+              leadCost={leadCost}
             />
 
             <FunnelTable
@@ -107,6 +127,8 @@ export default async function ScorecardPage({
               <PaceBlock derived={view.derived} />
               <VarianceBridge derived={view.derived} />
             </div>
+
+            {isAdmin && <TieOutPanel actuals={view.actuals} />}
 
             {isAdmin && goals && (
               <GoalEditor

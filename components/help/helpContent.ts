@@ -299,6 +299,62 @@ export const helpContent: Record<string, HelpEntry> = {
       "`lib/queries/leadcost.ts` joins `lp_source_scorecard_daily` (collapsed to source) to `lp_source_spend_daily` over the MTD window, plus the existing LeadGurus feed (`ft_daily_summary`) attributed to the 'Lead Gurus' source. Target % is `SCORECARD_LEADCOST_TARGET_PCT` (default 15).",
     fix: "To light up a source, land daily spend in `lp_source_spend_daily` (market, source, sub_source, spend_date, spend). The Lead Gurus row fills automatically from the LeadGurus daily pull. Adjust the target via `SCORECARD_LEADCOST_TARGET_PCT` on the dashboard service.",
   },
+
+  // ── /scorecard · per-KPI + Phase 4 UX ────────────────────────────────
+  "scorecard.kpi.netsales": {
+    title: "Net Sales (Released)",
+    what: "Sold dollars on deals RELEASED to production — the bookable, finalized revenue. Excludes cancelled deals and deals still held (those are Working Revenue). This is the headline goal metric.",
+    where: "`lp_market_scorecard_daily.released_dollars` (= net_sales). Bucketed by LP-MCP `computeActuals` from job statuses in `SCORECARD_RELEASED_STATUSES`.",
+    fix: "If it looks low vs the old number, that's expected post-Phase-1: held deals moved to Working Revenue. Reconcile the released/working status sets against the Reece export.",
+  },
+  "scorecard.kpi.working": {
+    title: "Working Revenue",
+    what: "Sold but HELD dollars — financing/HOA/docs/measure not yet released to production. Earned but not bookable, and a pipeline risk if it stalls. Counts toward Net Close (not cancelled) but NOT toward Net Sales.",
+    where: "`lp_market_scorecard_daily.working_dollars`. Statuses in `SCORECARD_WORKING_STATUSES`.",
+    fix: "If a status is misclassified, adjust `SCORECARD_WORKING_STATUSES` (env, no code change) and re-run the scorecard. Cross-check against the status tally in the Tie-out panel.",
+  },
+  "scorecard.kpi.pending": {
+    title: "Pending Total",
+    what: "Working Revenue plus any other non-cancelled, not-yet-released sold dollars. The full in-flight balance behind Net Sales.",
+    where: "`lp_market_scorecard_daily.pending_total` (= working_dollars + other_pending).",
+    fix: "Audit what landed in 'other pending' via the Tie-out panel's status tally — some statuses may belong in the Working set.",
+  },
+  "scorecard.kpi.demos": {
+    title: "Demos",
+    what: "Sat appointments that count as demos. Sits dispositioned NOC (No Contact) / NIS (Not Interested - Shown) are excluded — see the Tie-out panel for the per-code drop count.",
+    where: "LP-MCP `computeActuals`: sat leads minus `SCORECARD_NON_DEMO_DISPOSITIONS`.",
+    fix: "If the demo count is off, check `non_demo_tally` in the Tie-out panel and adjust the non-demo disposition set.",
+  },
+  "scorecard.kpi.closePct": {
+    title: "% Gross Close",
+    what: "Sold ÷ Demos. The headline close rate. Compared to target in the cell color.",
+    where: "Derived from `lp_market_scorecard_daily` (sales, demos).",
+    fix: "Set the target via the Goals editor (Target Close %).",
+  },
+  "scorecard.kpi.netClose": {
+    title: "# Net Close",
+    what: "⚠ Provisional: sold deals that are not cancelled (released OR working both count as 'stuck-but-alive'). No native LP net-close flag.",
+    where: "LP-MCP `computeActuals` — sold and not (has job & all jobs cancelled).",
+    fix: "Definition is provisional until tied out to the Reece export.",
+  },
+  "scorecard.kpi.nsli": {
+    title: "NSLI",
+    what: "⚠ Provisional: Net (released) Sale $ ÷ Issue. Drives the per-day pace targets together with the goal $ and working days.",
+    where: "`lp_market_scorecard_daily.nsli` (released_dollars ÷ issued).",
+    fix: "Set Trailing NSLI in the Goals editor to drive pace; reconcile the definition to the export.",
+  },
+  "scorecard.alerts": {
+    title: "Scorecard Alerts",
+    what: "At-a-glance flags derived from the data already on the page: pace vs MTD goal, Working Revenue held, unmapped sources, and any source over the lead-cost target. No extra data source.",
+    where: "Computed in `components/scorecard/ScorecardAlerts.tsx` from the actuals/derived view, source count, and Lead Cost view.",
+    fix: "Each alert links conceptually to a section below — pace to the Variance bridge, working revenue to the funnel, sources to Source Performance, cost to Lead Cost.",
+  },
+  "scorecard.tieout": {
+    title: "Tie-out / Reconciliation",
+    what: "Admin reconciliation aid. Shows the released/working/other/cancelled bucket split with the identity check (sum = Gross Sales), every distinct job status and its count, and which dispositions were dropped from demos.",
+    where: "Reads `raw_inputs` (bucket_tally / status_tally / non_demo_tally) from the latest `lp_market_scorecard_daily` snapshot — emitted by LP-MCP `computeActuals`.",
+    fix: "Use the status tally to decide whether any 'other pending' status belongs in `SCORECARD_WORKING_STATUSES`, then re-run the scorecard. When figures match the Reece export, add the market to `SCORECARD_RECONCILED_MARKETS` to clear the PROVISIONAL banner.",
+  },
 };
 
 export function getHelp(key: string): HelpEntry | null {
