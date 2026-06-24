@@ -70,7 +70,7 @@ export function FunnelTable({
     { label: "Gross Sale $", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.gross_sales },
     { label: "Net Sales (Released)", fmt: "usd", monthlyGoal: goals.monthly_goal_dollars, mtdGoal: derived.mtd_goal_dollars, actual: actuals.net_sales, provisional: true, helpKey: "scorecard.kpi.netsales" },
     { label: "Working Revenue", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.working_dollars, provisional: true, helpKey: "scorecard.kpi.working" },
-    { label: "Pending Total", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.pending_total ?? actuals.pending_dollars, provisional: true, helpKey: "scorecard.kpi.pending" },
+    { label: "Open Quotes", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.raw_inputs?.bucket_tally?.other_pending ?? null, provisional: true, helpKey: "scorecard.kpi.openQuotes" },
     { label: "GSLI", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.gsli },
     { label: "NSLI", fmt: "usd", monthlyGoal: goals.trailing_nsli || null, mtdGoal: goals.trailing_nsli || null, actual: actuals.nsli, provisional: true, helpKey: "scorecard.kpi.nsli" },
   ];
