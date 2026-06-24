@@ -11,14 +11,22 @@ import { getHelp } from "./helpContent";
  */
 export function InfoPopover({
   helpKey,
+  info,
   className,
   align = "right",
 }: {
-  helpKey: string;
+  /** Registry key (helpContent.ts). Omit when passing `info` inline. */
+  helpKey?: string;
+  /** Inline help, bypassing the registry — used by the scorecard section cards. */
+  info?: { title?: string; what: string; where: string; fix: string };
   className?: string;
   align?: "left" | "right";
 }) {
-  const entry = getHelp(helpKey);
+  const entry = info
+    ? { title: info.title ?? "About this section", what: info.what, where: info.where, fix: info.fix }
+    : helpKey
+      ? getHelp(helpKey)
+      : null;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

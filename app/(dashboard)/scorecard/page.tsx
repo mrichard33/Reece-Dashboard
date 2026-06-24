@@ -1,34 +1,34 @@
 import { requireUser } from "@/components/shell/RoleGate";
 import { getAccessContext } from "@/lib/auth";
 import { TopBar } from "@/components/shell/TopBar";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Card, CardContent } from "@/components/ui/Card";
-import { ScorecardHeader } from "@/components/scorecard/ScorecardHeader";
-import { FunnelTable } from "@/components/scorecard/FunnelTable";
-import { PaceBlock } from "@/components/scorecard/PaceBlock";
-import { VarianceBridge } from "@/components/scorecard/VarianceBridge";
+import { PeriodPicker } from "@/components/scorecard/PeriodPicker";
+import { SnapshotStrip } from "@/components/scorecard/SnapshotStrip";
+import { HeadlineStrip } from "@/components/scorecard/HeadlineStrip";
+import { JumpNav } from "@/components/scorecard/JumpNav";
+import { ScorecardAlerts } from "@/components/scorecard/ScorecardAlerts";
+import { PaceHero } from "@/components/scorecard/PaceHero";
+import { FunnelCard } from "@/components/scorecard/FunnelCard";
+import { RatesCard } from "@/components/scorecard/RatesCard";
+import { RevenueCard } from "@/components/scorecard/RevenueCard";
+import { PerDayCard } from "@/components/scorecard/PerDayCard";
+import { StatusCard } from "@/components/scorecard/StatusCard";
+import { DetailsTable } from "@/components/scorecard/DetailsTable";
+import { GlossaryCard } from "@/components/scorecard/GlossaryCard";
 import { GoalEditor } from "@/components/scorecard/GoalEditor";
 import { SourcePerformanceTable } from "@/components/scorecard/SourcePerformanceTable";
 import { LeadCostTable } from "@/components/scorecard/LeadCostTable";
-import { FreshnessStrip } from "@/components/scorecard/FreshnessStrip";
-import { ScorecardAlerts } from "@/components/scorecard/ScorecardAlerts";
-import { TieOutPanel } from "@/components/scorecard/TieOutPanel";
-import { PeriodControls } from "@/components/scorecard/PeriodControls";
 import { getScorecardForPeriod, getScorecardGoals } from "@/lib/queries/scorecard";
 import { getSourceScorecardForPeriod } from "@/lib/queries/sources";
 import { getLeadCostForPeriod } from "@/lib/queries/leadcost";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
-import {
-  resolveSellingCalendar,
-  lastCompletedSellingDay,
-  todayET,
-} from "@/lib/date/sellingDays";
+import { resolveSellingCalendar } from "@/lib/date/sellingDays";
+import { buildScorecardVM } from "@/lib/scorecard/viewModel";
 
 export const dynamic = "force-dynamic";
 
-// Selling-day calendar (server env) — used to flag a stale snapshot when the
-// daily LP-MCP job hasn't advanced as-of to the last completed selling day.
 const SELLING_CAL = resolveSellingCalendar();
-
 const MARKET = "REECE";
 
 export default async function ScorecardPage({
@@ -61,8 +61,12 @@ export default async function ScorecardPage({
         subtitle={`Marketing & sales performance vs goal · ${resolved.label}.`}
       />
 
-      <div className="space-y-6 p-6">
-        <PeriodControls />
+      <div className="space-y-4 p-6">
+        <SectionHeader
+          title="Scorecard"
+          subtitle="Goal & variance vs plan — at a glance."
+          action={<PeriodPicker />}
+        />
 
         {!view ? (
           <Card>
@@ -82,86 +86,74 @@ export default async function ScorecardPage({
             </CardContent>
           </Card>
         ) : (
-          <>
-            {!view.derived.reconciled && (
-              <div
-                role="status"
-                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200"
-              >
-                <strong className="font-semibold">PROVISIONAL — not reconciled.</strong>{" "}
-                These figures are computed from LP raw data and have not yet been
-                reconciled to the official LP report. Do not use for commitments.
-              </div>
-            )}
+          (() => {
+            const vm = buildScorecardVM(view, resolved);
+            return (
+              <>
+                {!view.derived.reconciled && (
+                  <div
+                    role="status"
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200"
+                  >
+                    <strong className="font-semibold">PROVISIONAL — not reconciled.</strong>{" "}
+                    These figures are computed from LP raw data and have not yet been reconciled
+                    to the official LP report. Do not use for commitments.
+                  </div>
+                )}
 
-            <FreshnessStrip
-              asOfDate={view.actuals.as_of_date}
-              createdAt={view.actuals.created_at}
-              periodStart={view.actuals.period_start}
-              periodEnd={view.actuals.period_end}
-              rawLeadsIn={view.actuals.raw_leads_in}
-              rawLeadsBasis={view.actuals.raw_inputs?.raw_leads_basis}
-              reconciled={view.derived.reconciled}
-              daysElapsed={view.actuals.days_elapsed}
-              workingDaysInPeriod={view.actuals.working_days_in_period}
-              expectedAsOf={lastCompletedSellingDay(todayET(), SELLING_CAL)}
-              periodLabel={resolved.label}
-              isPartial={resolved.isPartial}
-              staleCheck={resolved.source === "snapshot"}
-            />
+                <SnapshotStrip vm={vm} />
+                <HeadlineStrip vm={vm} />
+                <JumpNav />
 
-            <ScorecardHeader
-              actuals={view.actuals}
-              goals={view.goals}
-              derived={view.derived}
-            />
+                <ScorecardAlerts
+                  actuals={view.actuals}
+                  derived={view.derived}
+                  unmappedSources={sources?.unmapped_count ?? 0}
+                  leadCost={leadCost}
+                />
 
-            <ScorecardAlerts
-              actuals={view.actuals}
-              derived={view.derived}
-              unmappedSources={sources?.unmapped_count ?? 0}
-              leadCost={leadCost}
-            />
+                <PaceHero vm={vm} />
 
-            <FunnelTable
-              actuals={view.actuals}
-              goals={view.goals}
-              derived={view.derived}
-            />
+                <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+                  <FunnelCard vm={vm} />
+                  <RatesCard vm={vm} />
+                </div>
 
-            {sources && (
-              <SourcePerformanceTable
-                rows={sources.rows}
-                unmappedCount={sources.unmapped_count}
-                asOfDate={sources.as_of_date}
-                referenceClosePct={view.actuals.close_pct}
-                referenceNsli={view.actuals.nsli}
-              />
-            )}
+                <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+                  <RevenueCard vm={vm} />
+                  <PerDayCard vm={vm} />
+                </div>
 
-            {leadCost && (
-              <LeadCostTable
-                rows={leadCost.rows}
-                targetPct={leadCost.target_pct}
-                asOfDate={leadCost.as_of_date}
-                anyConnected={leadCost.any_connected}
-              />
-            )}
+                <StatusCard vm={vm} />
+                <DetailsTable rows={vm.marketing} abbr={vm.abbr} />
+                <GlossaryCard />
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <PaceBlock derived={view.derived} />
-              <VarianceBridge derived={view.derived} />
-            </div>
+                {isAdmin && goals && (
+                  <GoalEditor goals={goals} baselineNetSales={view.derived.goal.baseline_net_sales} />
+                )}
 
-            {isAdmin && <TieOutPanel actuals={view.actuals} />}
+                {/* Deep-dive tables retained from the prior scorecard, below the visual story. */}
+                {sources && (
+                  <SourcePerformanceTable
+                    rows={sources.rows}
+                    unmappedCount={sources.unmapped_count}
+                    asOfDate={sources.as_of_date}
+                    referenceClosePct={view.actuals.close_pct}
+                    referenceNsli={view.actuals.nsli}
+                  />
+                )}
 
-            {isAdmin && goals && (
-              <GoalEditor
-                goals={goals}
-                baselineNetSales={view.derived.goal.baseline_net_sales}
-              />
-            )}
-          </>
+                {leadCost && (
+                  <LeadCostTable
+                    rows={leadCost.rows}
+                    targetPct={leadCost.target_pct}
+                    asOfDate={leadCost.as_of_date}
+                    anyConnected={leadCost.any_connected}
+                  />
+                )}
+              </>
+            );
+          })()
         )}
       </div>
     </>
