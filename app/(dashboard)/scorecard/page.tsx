@@ -8,8 +8,10 @@ import { PaceBlock } from "@/components/scorecard/PaceBlock";
 import { VarianceBridge } from "@/components/scorecard/VarianceBridge";
 import { GoalEditor } from "@/components/scorecard/GoalEditor";
 import { SourcePerformanceTable } from "@/components/scorecard/SourcePerformanceTable";
+import { LeadCostTable } from "@/components/scorecard/LeadCostTable";
 import { getScorecard, getScorecardGoals } from "@/lib/queries/scorecard";
 import { getSourceScorecard } from "@/lib/queries/sources";
+import { getLeadCost } from "@/lib/queries/leadcost";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +29,10 @@ export default async function ScorecardPage({
   ]);
   const isAdmin = ctx?.isAdmin ?? false;
 
-  const [view, sources] = await Promise.all([
+  const [view, sources, leadCost] = await Promise.all([
     getScorecard(MARKET, date),
     getSourceScorecard(MARKET, date),
+    getLeadCost(MARKET, date),
   ]);
   const goals = isAdmin ? await getScorecardGoals(MARKET) : null;
 
@@ -91,12 +94,26 @@ export default async function ScorecardPage({
               />
             )}
 
+            {leadCost && (
+              <LeadCostTable
+                rows={leadCost.rows}
+                targetPct={leadCost.target_pct}
+                asOfDate={leadCost.as_of_date}
+                anyConnected={leadCost.any_connected}
+              />
+            )}
+
             <div className="grid gap-6 lg:grid-cols-2">
               <PaceBlock derived={view.derived} />
               <VarianceBridge derived={view.derived} />
             </div>
 
-            {isAdmin && goals && <GoalEditor goals={goals} />}
+            {isAdmin && goals && (
+              <GoalEditor
+                goals={goals}
+                baselineNetSales={view.derived.goal.baseline_net_sales}
+              />
+            )}
           </>
         )}
       </div>

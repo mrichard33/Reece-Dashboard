@@ -292,6 +292,13 @@ export const helpContent: Record<string, HelpEntry> = {
       "`lp_source_scorecard_daily` (latest snapshot), written daily by the LP-MCP job in the same run as the aggregate row via `computeActuals(..., { groupBy:['source','sub_source'] })`. Read by `lib/queries/sources.ts`.",
     fix: "If a source is ⚠ unmapped, add it to `lp_source_mapping` (ties to lp_unmapped_sources). Per-source numbers inherit the aggregate's PROVISIONAL status until reconciled. Backfill a window via `POST /n8n/admin/goal-scorecard-run`.",
   },
+  "scorecard.leadcost": {
+    title: "Lead Cost",
+    what: "Per-source spend efficiency over the snapshot window: spend, cost per lead, cost as % of Net Sales (released $), and ROMI (Net Sales ÷ spend). Cost % is green at/under the target, amber up to ~1.3× target, red above. Sources with no spend show 'Spend not connected' instead of a misleading 0% — spend is never invented.",
+    where:
+      "`lib/queries/leadcost.ts` joins `lp_source_scorecard_daily` (collapsed to source) to `lp_source_spend_daily` over the MTD window, plus the existing LeadGurus feed (`ft_daily_summary`) attributed to the 'Lead Gurus' source. Target % is `SCORECARD_LEADCOST_TARGET_PCT` (default 15).",
+    fix: "To light up a source, land daily spend in `lp_source_spend_daily` (market, source, sub_source, spend_date, spend). The Lead Gurus row fills automatically from the LeadGurus daily pull. Adjust the target via `SCORECARD_LEADCOST_TARGET_PCT` on the dashboard service.",
+  },
 };
 
 export function getHelp(key: string): HelpEntry | null {

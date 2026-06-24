@@ -44,6 +44,8 @@ export type SourceScorecardRow = {
 
 export type SourceScorecardView = {
   as_of_date: string;
+  period_start: string | null;
+  period_end: string | null;
   rows: SourceScorecardRow[];
   /** Sources in the snapshot that don't resolve through lp_source_mapping. */
   unmapped_count: number;
@@ -121,7 +123,10 @@ export async function getSourceScorecard(
     .eq("as_of_date", asOfDate);
   if (error) throw error;
 
-  const rows = ((data ?? []) as Record<string, unknown>[]).map(mapRow);
+  const raw = (data ?? []) as Record<string, unknown>[];
+  const rows = raw.map(mapRow);
   const unmapped_count = rows.filter((r) => r.unmapped).length;
-  return { as_of_date: asOfDate, rows, unmapped_count };
+  const period_start = raw[0]?.period_start ? String(raw[0].period_start) : null;
+  const period_end = raw[0]?.period_end ? String(raw[0].period_end) : null;
+  return { as_of_date: asOfDate, period_start, period_end, rows, unmapped_count };
 }

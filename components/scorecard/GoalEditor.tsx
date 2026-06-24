@@ -4,13 +4,15 @@ import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { saveScorecardGoals } from "@/lib/actions/scorecard";
-import { GoalSchema, type GoalValues } from "@/lib/scorecard/goalSchema";
+import { GoalSchema } from "@/lib/scorecard/goalSchema";
 import type { ScorecardGoals } from "@/lib/queries/scorecard";
+import { usd } from "@/lib/utils";
 
-type FieldSpec = { name: keyof GoalValues; label: string; step?: string };
+type FieldSpec = { name: string; label: string; step?: string };
 
+// monthly_goal_dollars / growth_pct are handled in the Goal-mode section; these are
+// the always-numeric remaining inputs.
 const FIELDS: FieldSpec[] = [
-  { name: "monthly_goal_dollars", label: "Monthly Goal ($)", step: "1000" },
   { name: "working_days", label: "Working Days", step: "1" },
   { name: "trailing_nsli", label: "Trailing NSLI ($)", step: "1" },
   { name: "target_close_pct", label: "Target Close %", step: "0.1" },
@@ -19,19 +21,29 @@ const FIELDS: FieldSpec[] = [
   { name: "target_ko_pct", label: "Target KO %", step: "0.1" },
 ];
 
+const n1 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(1));
+
 /**
- * Admin-only goal targets editor. Validates with the shared zod GoalSchema and
- * calls the (also admin-gated) saveScorecardGoals server action. On success the
- * action revalidates /scorecard, so the goal columns / pace / variance refresh
- * immediately — no cron wait.
+ * Admin-only goal editor. Supports two modes: a flat dollar goal, or a growth %
+ * applied to a trailing baseline (resolved server-side and passed in as
+ * `baselineNetSales`). Previews the resulting goal $ and the required per-day
+ * issued/demoed/closed before saving. Validates with the shared zod GoalSchema.
  */
-export function GoalEditor({ goals }: { goals: ScorecardGoals }) {
+export function GoalEditor({
+  goals,
+  baselineNetSales,
+}: {
+  goals: ScorecardGoals;
+  baselineNetSales: number | null;
+}) {
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const { register, handleSubmit } = useForm<Record<string, string>>({
+  const { register, handleSubmit, watch } = useForm<Record<string, string>>({
     defaultValues: {
+      goal_mode: goals.goal_mode,
       monthly_goal_dollars: String(goals.monthly_goal_dollars),
+      growth_pct: goals.growth_pct != null ? String(goals.growth_pct) : "",
       working_days: String(goals.working_days),
       trailing_nsli: String(goals.trailing_nsli),
       target_close_pct: String(goals.target_close_pct),
@@ -41,11 +53,33 @@ export function GoalEditor({ goals }: { goals: ScorecardGoals }) {
     },
   });
 
+  // Live preview of the resulting goal $ and required per-day pace.
+  const w = watch();
+  const mode = w.goal_mode === "growth_pct" ? "growth_pct" : "dollars";
+  const growth = Number(w.growth_pct);
+  const effectiveGoal =
+    mode === "growth_pct"
+      ? baselineNetSales != null && Number.isFinite(growth)
+        ? Math.round(baselineNetSales * (1 + growth / 100))
+        : null
+      : Number(w.monthly_goal_dollars) || 0;
+  const wd = Number(w.working_days) || 1;
+  const tnsli = Number(w.trailing_nsli) || 0;
+  const demoPct = Number(w.target_demo_pct) || 0;
+  const closePct = Number(w.target_close_pct) || 0;
+  const issuedPerDay =
+    effectiveGoal != null && tnsli > 0 ? effectiveGoal / tnsli / wd : null;
+  const demoedPerDay = issuedPerDay != null ? issuedPerDay * (demoPct / 100) : null;
+  const closedPerDay = demoedPerDay != null ? demoedPerDay * (closePct / 100) : null;
+
   const onSubmit = handleSubmit((raw) => {
     setMsg(null);
+    const m = raw.goal_mode === "growth_pct" ? "growth_pct" : "dollars";
     const candidate = {
       market: goals.market,
-      monthly_goal_dollars: Number(raw.monthly_goal_dollars),
+      goal_mode: m,
+      monthly_goal_dollars: Number(raw.monthly_goal_dollars) || 0,
+      growth_pct: raw.growth_pct === "" ? null : Number(raw.growth_pct),
       working_days: Number(raw.working_days),
       trailing_nsli: Number(raw.trailing_nsli),
       target_close_pct: Number(raw.target_close_pct),
@@ -68,6 +102,9 @@ export function GoalEditor({ goals }: { goals: ScorecardGoals }) {
     });
   });
 
+  const inputCls =
+    "rounded-md border border-slate-300 bg-white px-2 py-1.5 font-mono tabular text-sm text-navy-900 focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white";
+
   return (
     <Card>
       <CardHeader>
@@ -75,30 +112,78 @@ export function GoalEditor({ goals }: { goals: ScorecardGoals }) {
           Edit Goals
         </h3>
         {goals.updated_by && (
-          <span className="text-xs text-slate-500">
-            Last edited by {goals.updated_by}
-          </span>
+          <span className="text-xs text-slate-500">Last edited by {goals.updated_by}</span>
         )}
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
+          {/* Goal mode */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Goal Mode
+              </span>
+              <select className={inputCls} {...register("goal_mode")}>
+                <option value="dollars">Dollars</option>
+                <option value="growth_pct">Growth %</option>
+              </select>
+            </label>
+
+            {mode === "dollars" ? (
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Monthly Goal ($)
+                </span>
+                <input type="number" step="1000" min="0" inputMode="decimal" className={inputCls} {...register("monthly_goal_dollars")} />
+              </label>
+            ) : (
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Growth %
+                </span>
+                <input type="number" step="0.1" inputMode="decimal" className={inputCls} {...register("growth_pct")} />
+              </label>
+            )}
+          </div>
+
+          {/* Remaining numeric targets */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {FIELDS.map((f) => (
               <label key={f.name} className="flex flex-col gap-1 text-sm">
                 <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {f.label}
                 </span>
-                <input
-                  type="number"
-                  step={f.step}
-                  min="0"
-                  inputMode="decimal"
-                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 font-mono tabular text-sm text-navy-900 focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                  {...register(f.name)}
-                />
+                <input type="number" step={f.step} min="0" inputMode="decimal" className={inputCls} {...register(f.name)} />
               </label>
             ))}
           </div>
+
+          {/* Live preview */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900/40">
+            <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Preview</div>
+            {mode === "growth_pct" && (
+              <p className="text-slate-600 dark:text-slate-300">
+                Baseline net sales{" "}
+                <span className="font-mono">{baselineNetSales != null ? usd(baselineNetSales) : "—"}</span>
+                {" × "}
+                <span className="font-mono">{Number.isFinite(growth) ? `${growth >= 0 ? "+" : ""}${growth}%` : "—"}</span>
+                {" → goal "}
+                <span className="font-mono font-semibold">{effectiveGoal != null ? usd(effectiveGoal) : "—"}</span>
+              </p>
+            )}
+            {mode === "dollars" && (
+              <p className="text-slate-600 dark:text-slate-300">
+                Monthly goal <span className="font-mono font-semibold">{usd(effectiveGoal ?? 0)}</span>
+              </p>
+            )}
+            <p className="mt-1 text-slate-600 dark:text-slate-300">
+              Required / day — issued <span className="font-mono">{n1(issuedPerDay)}</span>, demoed{" "}
+              <span className="font-mono">{n1(demoedPerDay)}</span>, closed{" "}
+              <span className="font-mono">{n1(closedPerDay)}</span>
+              {tnsli <= 0 && <span className="ml-2 text-amber-600">set Trailing NSLI to compute pace</span>}
+            </p>
+          </div>
+
           <div className="flex items-center gap-3">
             <button
               type="submit"
@@ -108,9 +193,7 @@ export function GoalEditor({ goals }: { goals: ScorecardGoals }) {
               {pending ? "Saving…" : "Save goals"}
             </button>
             {msg && (
-              <span
-                className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
-              >
+              <span className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
                 {msg.text}
               </span>
             )}
