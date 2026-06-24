@@ -30,8 +30,12 @@ export type ScorecardActuals = {
   good_business: number;
   gross_sales: number;
   net_sales: number;
+  released_dollars: number | null;
+  working_dollars: number | null;
+  pending_total: number | null;
   pending_dollars: number;
   deposits: number;
+  raw_leads_in: number | null;
   pct_issue: number | null;
   demo_pct: number | null;
   close_pct: number | null;
@@ -42,6 +46,21 @@ export type ScorecardActuals = {
   nsli: number | null;
   avg_sale: number | null;
   reconciled: boolean;
+  created_at: string | null;
+  /** Tie-out aids emitted by the LP-MCP engine (status/bucket/non-demo tallies). */
+  raw_inputs: {
+    status_tally?: Record<string, number>;
+    bucket_tally?: {
+      released_dollars: number;
+      working_dollars: number;
+      other_pending: number;
+      cancelled_dollars: number;
+    };
+    non_demo_tally?: Record<string, number>;
+    revenue_basis?: string;
+    raw_leads_basis?: string;
+    [k: string]: unknown;
+  } | null;
 };
 
 export type ScorecardGoals = {
