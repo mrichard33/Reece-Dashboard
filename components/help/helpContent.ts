@@ -285,6 +285,13 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "Computed in `lib/queries/scorecard.ts` (net sales vs MTD goal $, plus per-metric point gaps).",
     fix: "Treat as directional until the PROVISIONAL banner clears.",
   },
+  "scorecard.sources": {
+    title: "Source Performance",
+    what: "Per-source funnel for the latest snapshot, By Appt Date — leads, issued, demo%, close%, Net Sales (released $), pending, and NSLI, with the same released/working/cancel definitions as the aggregate. 'Quality' flags a source's close% vs the REECE average: Strong (≥ average), OK (≥ half), Weak (< half). Sortable; default sort is Net Sales. Sources that don't resolve through lp_source_mapping are marked ⚠ and counted in the header badge.",
+    where:
+      "`lp_source_scorecard_daily` (latest snapshot), written daily by the LP-MCP job in the same run as the aggregate row via `computeActuals(..., { groupBy:['source','sub_source'] })`. Read by `lib/queries/sources.ts`.",
+    fix: "If a source is ⚠ unmapped, add it to `lp_source_mapping` (ties to lp_unmapped_sources). Per-source numbers inherit the aggregate's PROVISIONAL status until reconciled. Backfill a window via `POST /n8n/admin/goal-scorecard-run`.",
+  },
 };
 
 export function getHelp(key: string): HelpEntry | null {
