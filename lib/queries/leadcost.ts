@@ -1,5 +1,10 @@
 import { lpServer } from "@/lib/supabase/lp";
-import { getSourceScorecard } from "@/lib/queries/sources";
+import {
+  getSourceScorecard,
+  getSourceScorecardForPeriod,
+  type SourceScorecardView,
+} from "@/lib/queries/sources";
+import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
 
 /**
  * Lead Cost / cost-as-%-of-revenue / ROMI (Phase 3B).
@@ -72,6 +77,31 @@ export async function getLeadCost(
 ): Promise<LeadCostView | null> {
   const sv = await getSourceScorecard(market, asOf);
   if (!sv) return null;
+  return computeLeadCost(market, sv);
+}
+
+/**
+ * Period-aware lead cost. Sources the per-source view for the resolved period and
+ * windows spend over [periodStart, periodEnd] (overriding the snapshot's MTD
+ * window) so cost % / ROMI match the selected range.
+ */
+export async function getLeadCostForPeriod(
+  market: string,
+  resolved: ResolvedPeriod,
+): Promise<LeadCostView | null> {
+  const sv = await getSourceScorecardForPeriod(market, resolved);
+  if (!sv) return null;
+  return computeLeadCost(market, {
+    ...sv,
+    period_start: resolved.periodStart,
+    period_end: resolved.periodEnd,
+  });
+}
+
+async function computeLeadCost(
+  market: string,
+  sv: SourceScorecardView,
+): Promise<LeadCostView | null> {
   const { as_of_date, period_start, period_end } = sv;
 
   // Collapse per-(source, sub_source) rows to the source level.

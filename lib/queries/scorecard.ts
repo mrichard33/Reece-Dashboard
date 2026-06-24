@@ -1,4 +1,6 @@
 import { lpServer } from "@/lib/supabase/lp";
+import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
+import { getAggregateActuals } from "@/lib/queries/scorecardAggregate";
 
 /**
  * Goal/variance scorecard read layer.
@@ -78,6 +80,10 @@ export type ScorecardGoals = {
   target_demo_pct: number;
   target_ko_pct: number;
   trailing_nsli: number;
+  /** Optional funnel-stage targets (sql/033). When null the stage goal rows read
+   *  "no target" instead of a bare "—". */
+  target_issue_pct: number | null;
+  target_net_close_pct: number | null;
   updated_by: string | null;
   updated_at: string;
 };
@@ -138,6 +144,8 @@ const DEFAULT_GOALS = (market: string): ScorecardGoals => ({
   target_demo_pct: 70,
   target_ko_pct: 10,
   trailing_nsli: 0,
+  target_issue_pct: null,
+  target_net_close_pct: null,
   updated_by: null,
   updated_at: new Date(0).toISOString(),
 });
@@ -268,6 +276,19 @@ export async function getScorecard(
   const actuals = (actualsRows?.[0] as ScorecardActuals | undefined) ?? null;
   if (!actuals) return null;
 
+  return buildView(sb, market, actuals);
+}
+
+/**
+ * Merge an actuals row with its editable goals + derived goal/pace/variance into a
+ * ScorecardView. Shared by every sourcing path (stored snapshot, LP recompute
+ * preview, multi-month aggregate) so they render identically.
+ */
+async function buildView(
+  sb: Sb,
+  market: string,
+  actuals: ScorecardActuals,
+): Promise<ScorecardView> {
   const { data: goalsRow } = await sb
     .from("scorecard_goals")
     .select("*")
@@ -296,6 +317,130 @@ export async function getScorecard(
     goals: effectiveGoals,
     derived: derive(actuals, effectiveGoals, goalMeta),
   };
+}
+
+/** Coerce a Postgres numeric (string over PostgREST) to number | null. */
+function n(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+}
+function i(v: unknown): number {
+  return n(v) ?? 0;
+}
+
+/** Normalize the LP-MCP preview route's `actuals` payload into ScorecardActuals. */
+function mapRecomputedActuals(raw: Record<string, unknown>, market: string): ScorecardActuals {
+  return {
+    market: String(raw.market ?? market),
+    as_of_date: String(raw.as_of_date ?? ""),
+    period_start: String(raw.period_start ?? ""),
+    period_end: String(raw.period_end ?? ""),
+    days_elapsed: i(raw.days_elapsed),
+    working_days_in_period: n(raw.working_days_in_period),
+    leads: i(raw.leads),
+    issued: i(raw.issued),
+    sets: i(raw.sets),
+    demos: i(raw.demos),
+    sales: i(raw.sales),
+    net_issue: i(raw.net_issue),
+    net_close: i(raw.net_close),
+    ko_count: i(raw.ko_count),
+    good_business: i(raw.good_business),
+    gross_sales: i(raw.gross_sales),
+    net_sales: i(raw.net_sales),
+    released_dollars: n(raw.released_dollars),
+    working_dollars: n(raw.working_dollars),
+    pending_total: n(raw.pending_total),
+    pending_dollars: i(raw.pending_dollars),
+    deposits: i(raw.deposits),
+    raw_leads_in: n(raw.raw_leads_in),
+    pct_issue: n(raw.pct_issue),
+    demo_pct: n(raw.demo_pct),
+    close_pct: n(raw.close_pct),
+    pct_net_close: n(raw.pct_net_close),
+    good_rate_pct: n(raw.good_rate_pct),
+    ko_pct: n(raw.ko_pct),
+    gsli: n(raw.gsli),
+    nsli: n(raw.nsli),
+    avg_sale: n(raw.avg_sale),
+    reconciled: raw.reconciled === true,
+    created_at: null,
+    raw_inputs: (raw.raw_inputs as ScorecardActuals["raw_inputs"]) ?? null,
+  };
+}
+
+/**
+ * LP-MCP recompute preview for a short window. Calls the goal-scorecard-run route
+ * with persist:false so it computes WITHOUT overwriting the stored MTD snapshot,
+ * and returns the full actuals row. Cached so repeated period clicks don't re-pull
+ * LP. Returns null on any failure (page falls back to the empty state).
+ */
+export async function fetchScorecardPreview(
+  market: string,
+  resolved: ResolvedPeriod,
+): Promise<{ actuals: ScorecardActuals; sources: Record<string, unknown>[] } | null> {
+  const base = (process.env.SCORECARD_RECOMPUTE_BASE_URL || process.env.LP_MCP_URL || "").replace(/\/$/, "");
+  if (!base) return null;
+  const token = (process.env.LP_MCP_AUTH_TOKEN || "").trim();
+  try {
+    const res = await fetch(`${base}/n8n/admin/goal-scorecard-run`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        period_start: resolved.periodStart,
+        period_end: resolved.periodEnd,
+        persist: false,
+      }),
+      next: { revalidate: 600, tags: ["scorecard", market] },
+    });
+    if (!res.ok) {
+      console.error(`[scorecard] recompute ${resolved.key} failed: HTTP ${res.status}`);
+      return null;
+    }
+    const body = (await res.json()) as { success?: boolean; actuals?: Record<string, unknown>; sources?: Record<string, unknown>[]; error?: string };
+    if (!body?.success || !body.actuals) {
+      console.error(`[scorecard] recompute ${resolved.key} returned no actuals: ${body?.error ?? "unknown"}`);
+      return null;
+    }
+    return { actuals: mapRecomputedActuals(body.actuals, market), sources: body.sources ?? [] };
+  } catch (err) {
+    console.error(`[scorecard] recompute ${resolved.key} threw:`, (err as Error).message);
+    return null;
+  }
+}
+
+/**
+ * Period-aware scorecard read. Branches on the resolved sourcing strategy, always
+ * returning the same ScorecardView shape so every component renders unchanged:
+ *   - snapshot:  stored MTD daily row (no LP call).
+ *   - recompute: LP-MCP preview for the window (persist:false, cached).
+ *   - aggregate: sum stored monthly snapshots, ratios re-derived.
+ * Returns null when the chosen source has no data (page shows the empty state).
+ */
+export async function getScorecardForPeriod(
+  market: string,
+  resolved: ResolvedPeriod,
+): Promise<ScorecardView | null> {
+  if (resolved.source === "snapshot") {
+    return getScorecard(market, resolved.asOf);
+  }
+
+  const sb = await lpServer();
+
+  if (resolved.source === "aggregate") {
+    const actuals = await getAggregateActuals(market, resolved);
+    if (!actuals) return null;
+    return buildView(sb, market, actuals);
+  }
+
+  // recompute
+  const recomputed = await fetchScorecardPreview(market, resolved);
+  if (!recomputed) return null;
+  return buildView(sb, market, recomputed.actuals);
 }
 
 /** The editable goal row for a market (for the admin editor). */
