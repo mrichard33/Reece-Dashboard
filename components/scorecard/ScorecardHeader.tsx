@@ -58,7 +58,11 @@ export function ScorecardHeader({
           <Cell label="Avg Sale" value={actuals.avg_sale == null ? "—" : usd(actuals.avg_sale)} />
           <Cell label="NSLI" value={actuals.nsli == null ? "—" : usd(actuals.nsli)} />
           <Cell label="Gross Sales" value={usd(actuals.gross_sales)} />
-          <Cell label="Working Rev" value={usd(actuals.pending_dollars)} />
+          <Cell label="Working Rev" value={usd(actuals.working_dollars ?? 0)} />
+          <Cell
+            label="Open Quotes"
+            value={usd(actuals.raw_inputs?.bucket_tally?.other_pending ?? 0)}
+          />
           <Cell label="Demo %" value={pct(actuals.demo_pct)} />
           <Cell label="Trailing NSLI" value={goals.trailing_nsli ? usd(goals.trailing_nsli) : "—"} />
         </div>

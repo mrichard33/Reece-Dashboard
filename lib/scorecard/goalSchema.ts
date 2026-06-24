@@ -19,6 +19,10 @@ export const GoalSchema = z
     target_demo_pct: z.number().min(0).max(100),
     target_ko_pct: z.number().min(0).max(100),
     trailing_nsli: z.number().min(0),
+    // Optional funnel-stage targets (sql/033). Null = no target (rows render
+    // "no target" rather than a bare "—").
+    target_issue_pct: z.number().min(0).max(100).nullable().default(null),
+    target_net_close_pct: z.number().min(0).max(100).nullable().default(null),
   })
   .superRefine((v, ctx) => {
     if (v.goal_mode === "growth_pct" && (v.growth_pct === null || v.growth_pct === undefined)) {

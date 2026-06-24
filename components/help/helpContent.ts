@@ -355,6 +355,24 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "`lp_market_scorecard_daily.nsli` (released_dollars ÷ issued).",
     fix: "Set Trailing NSLI in the Goals editor to drive pace; reconcile the definition to the export.",
   },
+  "scorecard.kpi.goodRate": {
+    title: "Good Rate %",
+    what: "Released $ ÷ Gross Sale $ — the share of sold dollars that made it to production (vs cancelled or still held). Higher is better; compared to target in the cell color.",
+    where: "`lp_market_scorecard_daily.good_rate_pct` (released_dollars ÷ gross_sales).",
+    fix: "Set the target via the Goals editor (Target Good Rate %). A low rate points to cancellations or stuck holds — see the Tie-out bucket split.",
+  },
+  "scorecard.kpi.ko": {
+    title: "KO %",
+    what: "Knock-out rate: cancelled deals ÷ Sold. Lower is better. Cancels are the statuses in SCORECARD_CANCEL_STATUSES.",
+    where: "`lp_market_scorecard_daily.ko_pct` (ko_count ÷ sales).",
+    fix: "Set the target via the Goals editor (Target KO %). If a status is misclassified as a cancel, adjust SCORECARD_CANCEL_STATUSES and re-run.",
+  },
+  "scorecard.kpi.diagnostic": {
+    title: "Diagnostic metric",
+    what: "This row is informational only — it has no goal/target by design (e.g. Gross Sale $, Working Revenue, Open Quotes, GSLI, Net Issue). The goal columns show 'n/a' rather than a target.",
+    where: "Rendered in `components/scorecard/FunnelTable.tsx`; values come from `lp_market_scorecard_daily`.",
+    fix: "Nothing to set — use the value to read pipeline health alongside the goal-bearing rows above it.",
+  },
   "scorecard.alerts": {
     title: "Scorecard Alerts",
     what: "At-a-glance flags derived from the data already on the page: pace vs MTD goal, Working Revenue held, unmapped sources, and any source over the lead-cost target. No extra data source.",

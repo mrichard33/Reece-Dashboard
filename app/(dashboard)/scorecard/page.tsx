@@ -12,9 +12,11 @@ import { LeadCostTable } from "@/components/scorecard/LeadCostTable";
 import { FreshnessStrip } from "@/components/scorecard/FreshnessStrip";
 import { ScorecardAlerts } from "@/components/scorecard/ScorecardAlerts";
 import { TieOutPanel } from "@/components/scorecard/TieOutPanel";
-import { getScorecard, getScorecardGoals } from "@/lib/queries/scorecard";
-import { getSourceScorecard } from "@/lib/queries/sources";
-import { getLeadCost } from "@/lib/queries/leadcost";
+import { PeriodControls } from "@/components/scorecard/PeriodControls";
+import { getScorecardForPeriod, getScorecardGoals } from "@/lib/queries/scorecard";
+import { getSourceScorecardForPeriod } from "@/lib/queries/sources";
+import { getLeadCostForPeriod } from "@/lib/queries/leadcost";
+import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import {
   resolveSellingCalendar,
   lastCompletedSellingDay,
@@ -32,19 +34,21 @@ const MARKET = "REECE";
 export default async function ScorecardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ period?: string; start?: string; end?: string; date?: string }>;
 }) {
-  const [user, ctx, { date }] = await Promise.all([
+  const [user, ctx, { period, start, end }] = await Promise.all([
     requireUser(),
     getAccessContext(),
     searchParams,
   ]);
   const isAdmin = ctx?.isAdmin ?? false;
 
+  const resolved = resolvePeriod(period, { start, end }, SELLING_CAL);
+
   const [view, sources, leadCost] = await Promise.all([
-    getScorecard(MARKET, date),
-    getSourceScorecard(MARKET, date),
-    getLeadCost(MARKET, date),
+    getScorecardForPeriod(MARKET, resolved),
+    getSourceScorecardForPeriod(MARKET, resolved),
+    getLeadCostForPeriod(MARKET, resolved),
   ]);
   const goals = isAdmin ? await getScorecardGoals(MARKET) : null;
 
@@ -54,16 +58,22 @@ export default async function ScorecardPage({
         email={user.email}
         role={user.role}
         title="Scorecard"
-        subtitle="Marketing & sales performance vs goal (MTD)."
+        subtitle={`Marketing & sales performance vs goal · ${resolved.label}.`}
       />
 
       <div className="space-y-6 p-6">
+        <PeriodControls />
+
         {!view ? (
           <Card>
             <CardContent>
               <p className="py-8 text-center text-sm text-slate-500">
-                No scorecard snapshot yet. The daily job writes one each morning —
-                or trigger a backfill via{" "}
+                No data for {resolved.label}.{" "}
+                {resolved.source === "snapshot"
+                  ? "The daily job writes a snapshot each morning — or trigger a backfill via "
+                  : resolved.source === "aggregate"
+                    ? "No stored monthly snapshots fall in this range yet. Backfill via "
+                    : "The recompute could not be reached. Trigger it via "}
                 <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
                   POST /n8n/admin/goal-scorecard-run
                 </code>{" "}
@@ -95,6 +105,9 @@ export default async function ScorecardPage({
               daysElapsed={view.actuals.days_elapsed}
               workingDaysInPeriod={view.actuals.working_days_in_period}
               expectedAsOf={lastCompletedSellingDay(todayET(), SELLING_CAL)}
+              periodLabel={resolved.label}
+              isPartial={resolved.isPartial}
+              staleCheck={resolved.source === "snapshot"}
             />
 
             <ScorecardHeader

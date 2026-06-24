@@ -50,6 +50,9 @@ export function GoalEditor({
       target_demo_pct: String(goals.target_demo_pct),
       target_good_rate_pct: String(goals.target_good_rate_pct),
       target_ko_pct: String(goals.target_ko_pct),
+      target_issue_pct: goals.target_issue_pct != null ? String(goals.target_issue_pct) : "",
+      target_net_close_pct:
+        goals.target_net_close_pct != null ? String(goals.target_net_close_pct) : "",
     },
   });
 
@@ -86,6 +89,9 @@ export function GoalEditor({
       target_demo_pct: Number(raw.target_demo_pct),
       target_good_rate_pct: Number(raw.target_good_rate_pct),
       target_ko_pct: Number(raw.target_ko_pct),
+      target_issue_pct: raw.target_issue_pct === "" ? null : Number(raw.target_issue_pct),
+      target_net_close_pct:
+        raw.target_net_close_pct === "" ? null : Number(raw.target_net_close_pct),
     };
     const parsed = GoalSchema.safeParse(candidate);
     if (!parsed.success) {
@@ -156,6 +162,22 @@ export function GoalEditor({
                 <input type="number" step={f.step} min="0" inputMode="decimal" className={inputCls} {...register(f.name)} />
               </label>
             ))}
+          </div>
+
+          {/* Optional funnel-stage targets (blank = no target) */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Target Issue % <span className="normal-case text-slate-400">(optional)</span>
+              </span>
+              <input type="number" step="0.1" min="0" max="100" inputMode="decimal" placeholder="no target" className={inputCls} {...register("target_issue_pct")} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Target Net Close % <span className="normal-case text-slate-400">(optional)</span>
+              </span>
+              <input type="number" step="0.1" min="0" max="100" inputMode="decimal" placeholder="no target" className={inputCls} {...register("target_net_close_pct")} />
+            </label>
           </div>
 
           {/* Live preview */}

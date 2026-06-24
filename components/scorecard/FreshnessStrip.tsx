@@ -16,6 +16,9 @@ export function FreshnessStrip({
   daysElapsed,
   workingDaysInPeriod,
   expectedAsOf,
+  periodLabel,
+  isPartial = false,
+  staleCheck = true,
 }: {
   asOfDate: string;
   createdAt: string | null;
@@ -31,6 +34,13 @@ export function FreshnessStrip({
   /** Last completed selling day relative to now; if as-of is behind it, the
    *  daily job likely failed and the snapshot is stale. */
   expectedAsOf?: string;
+  /** Resolved period label (e.g. "This week · Jun 16–20"). */
+  periodLabel?: string;
+  /** True only for the in-progress "today" period → shows a partial badge. */
+  isPartial?: boolean;
+  /** Only the live MTD snapshot can be "stale" vs the last selling day; off for
+   *  recompute/aggregate periods whose as-of is intentionally historical. */
+  staleCheck?: boolean;
 }) {
   const computed = createdAt
     ? new Date(createdAt).toLocaleString("en-US", {
@@ -42,7 +52,7 @@ export function FreshnessStrip({
       })
     : "—";
 
-  const stale = !!expectedAsOf && asOfDate < expectedAsOf;
+  const stale = staleCheck && !!expectedAsOf && asOfDate < expectedAsOf;
   const sellingDayLabel =
     daysElapsed != null && workingDaysInPeriod != null
       ? `${daysElapsed} of ${workingDaysInPeriod} selling days`
@@ -50,6 +60,17 @@ export function FreshnessStrip({
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+      {periodLabel ? (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="font-semibold text-slate-800 dark:text-slate-100">{periodLabel}</span>
+          {isPartial ? (
+            <span className="rounded-full bg-sky-50 px-2 py-0.5 font-medium text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:ring-sky-900">
+              in progress · partial
+            </span>
+          ) : null}
+          <span className="text-slate-300 dark:text-slate-700">·</span>
+        </span>
+      ) : null}
       <span>
         Snapshot <span className="font-mono font-semibold">{asOfDate}</span>
       </span>

@@ -7,6 +7,7 @@
     "build": "next build --turbopack",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "lint": "next lint",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "types:generate:lp": "supabase gen types typescript --project-id $env:LP_SUPABASE_PROJECT_ID --schema public > lib/supabase/types-lp.ts",
     "types:generate:hl": "supabase gen types typescript --project-id $env:HL_SUPABASE_PROJECT_ID --schema public > lib/supabase/types-hl.ts"
@@ -39,6 +40,7 @@
     "eslint-config-next": "^16.2.6",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.3.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
   }
 }
