@@ -19,6 +19,8 @@ type Row = {
   lowerIsBetter?: boolean;
   /** ⚠ TIE-OUT — definition provisional until reconciled. */
   provisional?: boolean;
+  /** Optional per-KPI help popover key. */
+  helpKey?: string;
 };
 
 function fmt(v: number | null, kind: Fmt): string {
@@ -59,16 +61,18 @@ export function FunnelTable({
     { label: "Issued", fmt: "count", monthlyGoal: monthlyIssued, mtdGoal: prorate(monthlyIssued), actual: actuals.issued },
     { label: "Net Issue", fmt: "count", monthlyGoal: null, mtdGoal: null, actual: actuals.net_issue, provisional: true },
     { label: "% Issue", fmt: "pct", monthlyGoal: null, mtdGoal: null, actual: actuals.pct_issue },
-    { label: "Demos", fmt: "count", monthlyGoal: monthlyDemos, mtdGoal: prorate(monthlyDemos), actual: actuals.demos },
+    { label: "Demos", fmt: "count", monthlyGoal: monthlyDemos, mtdGoal: prorate(monthlyDemos), actual: actuals.demos, helpKey: "scorecard.kpi.demos" },
     { label: "% Demo", fmt: "pct", monthlyGoal: goals.target_demo_pct, mtdGoal: goals.target_demo_pct, actual: actuals.demo_pct },
     { label: "Sold", fmt: "count", monthlyGoal: monthlySales, mtdGoal: prorate(monthlySales), actual: actuals.sales },
-    { label: "% Gross Close", fmt: "pct", monthlyGoal: goals.target_close_pct, mtdGoal: goals.target_close_pct, actual: actuals.close_pct },
-    { label: "# Net Close", fmt: "count", monthlyGoal: null, mtdGoal: null, actual: actuals.net_close, provisional: true },
+    { label: "% Gross Close", fmt: "pct", monthlyGoal: goals.target_close_pct, mtdGoal: goals.target_close_pct, actual: actuals.close_pct, helpKey: "scorecard.kpi.closePct" },
+    { label: "# Net Close", fmt: "count", monthlyGoal: null, mtdGoal: null, actual: actuals.net_close, provisional: true, helpKey: "scorecard.kpi.netClose" },
     { label: "% Net Close", fmt: "pct", monthlyGoal: null, mtdGoal: null, actual: actuals.pct_net_close, provisional: true },
     { label: "Gross Sale $", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.gross_sales },
-    { label: "Net Sale $", fmt: "usd", monthlyGoal: goals.monthly_goal_dollars, mtdGoal: derived.mtd_goal_dollars, actual: actuals.net_sales, provisional: true },
+    { label: "Net Sales (Released)", fmt: "usd", monthlyGoal: goals.monthly_goal_dollars, mtdGoal: derived.mtd_goal_dollars, actual: actuals.net_sales, provisional: true, helpKey: "scorecard.kpi.netsales" },
+    { label: "Working Revenue", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.working_dollars, provisional: true, helpKey: "scorecard.kpi.working" },
+    { label: "Pending Total", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.pending_total ?? actuals.pending_dollars, provisional: true, helpKey: "scorecard.kpi.pending" },
     { label: "GSLI", fmt: "usd", monthlyGoal: null, mtdGoal: null, actual: actuals.gsli },
-    { label: "NSLI", fmt: "usd", monthlyGoal: goals.trailing_nsli || null, mtdGoal: goals.trailing_nsli || null, actual: actuals.nsli, provisional: true },
+    { label: "NSLI", fmt: "usd", monthlyGoal: goals.trailing_nsli || null, mtdGoal: goals.trailing_nsli || null, actual: actuals.nsli, provisional: true, helpKey: "scorecard.kpi.nsli" },
   ];
 
   return (
@@ -95,15 +99,18 @@ export function FunnelTable({
             {rows.map((r) => (
               <tr key={r.label} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
                 <td className="py-2 text-left text-slate-700 dark:text-slate-300">
-                  {r.label}
-                  {r.provisional && (
-                    <span
-                      title="Provisional definition — pending tie-out to the Reece export"
-                      className="ml-1 text-amber-500"
-                    >
-                      ⚠
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1">
+                    {r.label}
+                    {r.provisional && (
+                      <span
+                        title="Provisional definition — pending tie-out to the Reece export"
+                        className="text-amber-500"
+                      >
+                        ⚠
+                      </span>
+                    )}
+                    {r.helpKey && <InfoPopover helpKey={r.helpKey} align="left" />}
+                  </span>
                 </td>
                 <td className="py-2 text-right font-mono tabular text-slate-500 dark:text-slate-400">
                   {fmt(r.monthlyGoal, r.fmt)}
