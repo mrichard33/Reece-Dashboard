@@ -41,8 +41,8 @@ export function TieOutPanel({ actuals }: { actuals: ScorecardActuals }) {
             {bt ? (
               <dl className="space-y-1 text-sm">
                 <Line label="Released (Net Sales)" value={usd(bt.released_dollars)} />
-                <Line label="Working (held)" value={usd(bt.working_dollars)} />
-                <Line label="Other pending" value={usd(bt.other_pending)} />
+                <Line label="Working (held = Pending)" value={usd(bt.working_dollars)} />
+                <Line label="Open quotes (pre-firm)" value={usd(bt.other_pending)} />
                 <Line label="Cancelled" value={usd(bt.cancelled_dollars)} />
                 <div className="mt-1 border-t border-slate-200 pt-1 dark:border-slate-800">
                   <Line label="Sum" value={usd(sumBuckets!)} />

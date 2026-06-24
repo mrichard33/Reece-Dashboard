@@ -303,9 +303,9 @@ export const helpContent: Record<string, HelpEntry> = {
   // ── /scorecard · per-KPI + Phase 4 UX ────────────────────────────────
   "scorecard.kpi.netsales": {
     title: "Net Sales (Released)",
-    what: "Sold dollars on deals RELEASED to production — the bookable, finalized revenue. Excludes cancelled deals and deals still held (those are Working Revenue). This is the headline goal metric.",
-    where: "`lp_market_scorecard_daily.released_dollars` (= net_sales). Bucketed by LP-MCP `computeActuals` from job statuses in `SCORECARD_RELEASED_STATUSES`.",
-    fix: "If it looks low vs the old number, that's expected post-Phase-1: held deals moved to Working Revenue. Reconcile the released/working status sets against the Reece export.",
+    what: "Sold dollars on deals RELEASED to production — the bookable, finalized revenue. Excludes cancelled deals and deals still held (those are Working Revenue). This is the headline goal metric. ⚠ Includes 'RTP Await recission' — deals released but still inside the legal rescission window (they can still cancel). Whether to book at RTP or wait for rescission to close is a finance-policy call; if rescission cancellations are material, finance may choose to carry that slice separately.",
+    where: "`lp_market_scorecard_daily.released_dollars` (= net_sales). Bucketed by LP-MCP `computeActuals` from job statuses in `SCORECARD_RELEASED_STATUSES` (currently: Rel To Production, RTP Await recission, RTP DP DUE, Awaiting Product).",
+    fix: "If it looks low vs the old number, that's expected: held deals moved to Working Revenue. To change what counts as released, edit `SCORECARD_RELEASED_STATUSES` (env, no code) and re-run. Confirm the RTP/rescission booking policy with finance.",
   },
   "scorecard.kpi.working": {
     title: "Working Revenue",
@@ -314,10 +314,16 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "If a status is misclassified, adjust `SCORECARD_WORKING_STATUSES` (env, no code change) and re-run the scorecard. Cross-check against the status tally in the Tie-out panel.",
   },
   "scorecard.kpi.pending": {
-    title: "Pending Total",
-    what: "Working Revenue plus any other non-cancelled, not-yet-released sold dollars. The full in-flight balance behind Net Sales.",
-    where: "`lp_market_scorecard_daily.pending_total` (= working_dollars + other_pending).",
-    fix: "Audit what landed in 'other pending' via the Tie-out panel's status tally — some statuses may belong in the Working set.",
+    title: "Pending Revenue (Working)",
+    what: "Pending Revenue = Working only (sold but held: financing/HOA/docs/measure). Open quotes (sold leads whose job is still pre-firm) are NOT included — they're a separate Open Quotes line — so Pending isn't inflated by unsigned quotes.",
+    where: "`lp_market_scorecard_daily.pending_dollars` (= working_dollars; `raw_inputs.pending_basis` = 'working_only').",
+    fix: "If a held status is misclassified, edit `SCORECARD_WORKING_STATUSES` (env) and re-run. Cross-check the Tie-out panel status tally.",
+  },
+  "scorecard.kpi.openQuotes": {
+    title: "Open Quotes",
+    what: "Sold leads whose job is still in a pre-firm status (Quoted/New/Await Rep) — neither released nor a sold-but-held deal. Kept separate from Pending Revenue so it can't inflate it. A large value usually means leads flagged sold while the job lags in Quoted, or genuine open pipeline.",
+    where: "`lp_market_scorecard_daily.raw_inputs.bucket_tally.other_pending`. A diagnostic sample of these leads is in `raw_inputs.suspect_sold_sample`.",
+    fix: "Review `raw_inputs.suspect_sold_sample` (lead id + per-status $) to tell stuck-sold (workflow lag) from real open pipeline. If a pre-firm status should count as Working, add it to `SCORECARD_WORKING_STATUSES`.",
   },
   "scorecard.kpi.demos": {
     title: "Demos",
