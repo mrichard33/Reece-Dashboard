@@ -224,14 +224,16 @@ export async function servicesWatchingCount(): Promise<number> {
   }
 }
 
+/**
+ * Service-process health only. Deploy age is deliberately NOT a signal here:
+ * a stable service that hasn't needed a new deploy in weeks is healthy, and
+ * flagging it "warning" made the Overview tile read as if DATA were stale
+ * (the "7 days" incident, July 2026). Data freshness is measured exclusively
+ * by syncStatus() / heartbeatStatus(), which look at actual sync timestamps.
+ */
 export function railwayStatus(s: HealthSnapshot["lpMcp"]) {
   if ("error" in s) return "neutral" as const;
-  if (s.status === "running") {
-    if (!s.last_deploy_at) return "healthy" as const;
-    const days = (minutesSince(s.last_deploy_at) ?? 0) / 60 / 24;
-    if (days <= 7) return "healthy" as const;
-    return "warning" as const;
-  }
+  if (s.status === "running") return "healthy" as const;
   if (s.status === "stopped" || s.status === "error") return "critical" as const;
   return "neutral" as const;
 }

@@ -62,6 +62,7 @@ export default async function OverviewPage() {
                 status={railwayStatus(health.lpMcp)}
                 detail={`${health.lpMcp.service ?? "lp-mcp"} · ${health.lpMcp.status}`}
                 lastActivity={health.lpMcp.last_deploy_at}
+                lastActivityLabel="Synced"
                 helpKey="overview.lpMcp"
               />
             )}
@@ -73,6 +74,7 @@ export default async function OverviewPage() {
                 status={railwayStatus(health.hlMcp)}
                 detail={`${health.hlMcp.service ?? "hl-mcp"} · ${health.hlMcp.status}`}
                 lastActivity={health.hlMcp.last_deploy_at}
+                lastActivityLabel="Deployed"
                 helpKey="overview.hlMcp"
               />
             )}

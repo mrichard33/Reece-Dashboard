@@ -9,6 +9,7 @@ export function HealthTile({
   status,
   detail,
   lastActivity,
+  lastActivityLabel,
   lastError,
   helpKey,
 }: {
@@ -16,6 +17,9 @@ export function HealthTile({
   status: DotStatus;
   detail?: string;
   lastActivity?: Date | string | null;
+  /** Optional prefix for the relative timestamp (e.g. "Deployed") so a bare
+   * "7 days ago" is never mistaken for data freshness. */
+  lastActivityLabel?: string;
   /** When the underlying MCP/Supabase call failed, render the error in place
    * of "Status unavailable" so operators have a real diagnosis. */
   lastError?: string | null;
@@ -45,6 +49,7 @@ export function HealthTile({
         {lastActivity !== undefined && (
           <Tooltip label={absTime(lastActivity)}>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {lastActivityLabel ? `${lastActivityLabel} ` : ""}
               {relTime(lastActivity)}
             </p>
           </Tooltip>
