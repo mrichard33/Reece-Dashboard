@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Video } from "lucide-react";
 import {
   startOfMonth,
   endOfMonth,
@@ -44,6 +44,13 @@ function dotFor(p: FbPost): string {
 function statusTextFor(p: FbPost): string {
   if (p.status === "approved" && p.page_posted_at) return "page posted";
   return p.status;
+}
+
+/** Brief-status dot on a planned slot (draft = amber, approved = emerald). */
+function briefDot(status: FbContentPlan["brief_status"]): string | null {
+  if (status === "approved") return "bg-emerald-500";
+  if (status === "draft") return "bg-amber-400";
+  return null;
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -187,6 +194,7 @@ export function Calendar({
           const inMonth = d.getMonth() === monthIndex;
           const cellPosts = byDate.get(key) ?? [];
           const planSlot = planByDate.get(key);
+          const planBriefDot = planSlot ? briefDot(planSlot.brief_status) : null;
           return (
             <div
               key={key}
@@ -221,6 +229,9 @@ export function Calendar({
                     title={p.pillar ? pillarLabel(p.pillar) : "Post"}
                   >
                     <span className={cn("h-2 w-2 flex-shrink-0 rounded-full", dotFor(p))} />
+                    {p.media_type === "video" && (
+                      <Video className="h-3 w-3 flex-shrink-0 text-sky-500" />
+                    )}
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
                   </button>
                 ))}
@@ -229,10 +240,17 @@ export function Calendar({
                     type="button"
                     onClick={() => setSel({ kind: "plan", id: planSlot.id })}
                     className="flex w-full items-center gap-1 truncate rounded border border-dashed border-sky-300 px-1 py-0.5 text-left text-[11px] text-slate-500 hover:ring-1 hover:ring-sky-300 dark:border-sky-800"
-                    title={`Planned · ${pillarLabel(planSlot.pillar)}`}
+                    title={`Planned · ${pillarLabel(planSlot.pillar)}${
+                      planSlot.brief_status !== "none" ? ` · brief ${planSlot.brief_status}` : ""
+                    }`}
                   >
                     <span className="h-2 w-2 flex-shrink-0 rounded-full bg-sky-400" />
                     <span className="truncate">{pillarLabel(planSlot.pillar)}</span>
+                    {planBriefDot && (
+                      <span
+                        className={cn("ml-auto h-1.5 w-1.5 flex-shrink-0 rounded-full", planBriefDot)}
+                      />
+                    )}
                   </button>
                 )}
               </div>
@@ -289,6 +307,9 @@ export function Calendar({
                     )}
                   >
                     <span className={cn("h-2.5 w-2.5 flex-shrink-0 rounded-full", dotFor(p))} />
+                    {p.media_type === "video" && (
+                      <Video className="h-3.5 w-3.5 flex-shrink-0 text-sky-500" />
+                    )}
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
                     <span className="ml-auto text-xs capitalize text-slate-400">
                       {statusTextFor(p)}
@@ -303,7 +324,9 @@ export function Calendar({
                   >
                     <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-sky-400" />
                     <span className="truncate">{pillarLabel(planSlot.pillar)}</span>
-                    <span className="ml-auto text-xs text-slate-400">planned</span>
+                    <span className="ml-auto text-xs text-slate-400">
+                      {planSlot.brief_status !== "none" ? `brief ${planSlot.brief_status}` : "planned"}
+                    </span>
                   </button>
                 )}
               </div>
