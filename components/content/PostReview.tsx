@@ -20,9 +20,11 @@ import { Badge } from "@/components/ui/Badge";
 import {
   FB_STATUS_META,
   COMPONENT_STATUS_META,
+  MEDIA_TYPE_META,
   TARGET_META,
   COPY_REASON_CODES,
   IMAGE_REASON_CODES,
+  VIDEO_REASON_CODES,
   pillarLabel,
   pillarTone,
   archetypeLabel,
@@ -31,6 +33,7 @@ import {
 import {
   approveCopy,
   approveImage,
+  approveVideo,
   rejectComponent,
   editPost,
   skipPost,
@@ -68,6 +71,7 @@ export function PostReview({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const groupUrl = process.env.NEXT_PUBLIC_FB_GROUP_URL;
+  const isVideo = post.media_type === "video";
 
   // Scheduling badge: a set time reads "Posts at 9:00 AM ET", and once the post is
   // approved but the publish instant is still in the future it doubles as the queue
@@ -85,13 +89,15 @@ export function PostReview({
   // Regen in flight: rejectComponent fires WF3 and returns immediately (WF3 responds
   // right after its secret check, then regenerates in the background — ~10s for copy,
   // ~60–90s when an image renders at quality:high). The component sits at 'rejected'
-  // until WF3 flips it back to 'pending' with the new draft, so while either component
+  // until WF3 flips it back to 'pending' with the new draft, so while any component
   // is 'rejected' (and we're not at the manual cap) poll the server for fresh props.
   // Without this the page refreshes BEFORE the regen finishes and the old draft just
   // sits there looking broken. 5-minute safety cutoff in case WF3 dies mid-run.
   const regenInFlight =
     !post.needs_manual &&
-    (post.copy_status === "rejected" || post.image_status === "rejected");
+    (post.copy_status === "rejected" ||
+      post.image_status === "rejected" ||
+      post.video_status === "rejected");
   useEffect(() => {
     if (!regenInFlight) return;
     const interval = setInterval(() => router.refresh(), 8_000);
@@ -131,6 +137,7 @@ export function PostReview({
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={FB_STATUS_META[post.status].tone}>{FB_STATUS_META[post.status].label}</Badge>
         <Badge tone={TARGET_META[post.target].tone}>{TARGET_META[post.target].label}</Badge>
+        {isVideo && <Badge tone={MEDIA_TYPE_META.video.tone}>{MEDIA_TYPE_META.video.label}</Badge>}
         {post.pillar && <Badge tone={pillarTone(post.pillar)}>{pillarLabel(post.pillar)}</Badge>}
         {post.archetype && <Badge tone="slate">{archetypeLabel(post.archetype)}</Badge>}
         {timeLabel ? (
@@ -257,6 +264,37 @@ export function PostReview({
           </p>
         )}
       </ComponentBlock>
+
+      {/* VIDEO (video posts only — the image is the seed frame) */}
+      {isVideo && (
+        <ComponentBlock
+          title="Video"
+          status={post.video_status ?? "pending"}
+          reasonCodes={VIDEO_REASON_CODES}
+          disabled={pending}
+          approving={busy("approve-video")}
+          rejecting={busy("reject-video")}
+          regenInFlight={post.video_status === "rejected" && !post.needs_manual}
+          isExecutive={isExecutive}
+          onApprove={() => run("approve-video", () => approveVideo(post.id))}
+          onReject={(code, text) => run("reject-video", () => rejectComponent(post.id, "video", code, text))}
+        >
+          {post.video_url ? (
+            <video
+              src={post.video_url}
+              controls
+              className="max-h-64 w-full rounded-md bg-black object-contain"
+            />
+          ) : (
+            <p className="text-sm text-slate-400">No video yet.</p>
+          )}
+          {post.video_concept && (
+            <p className="mt-2 text-xs text-slate-500">
+              <span className="font-medium">Concept:</span> {post.video_concept}
+            </p>
+          )}
+        </ComponentBlock>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
@@ -447,7 +485,7 @@ function ComponentBlock({
 }: {
   title: string;
   status: "pending" | "approved" | "rejected";
-  /** Component-specific rejection reasons (COPY_REASON_CODES or IMAGE_REASON_CODES). */
+  /** Component-specific rejection reasons (COPY / IMAGE / VIDEO_REASON_CODES). */
   reasonCodes: { value: FbReasonCode; label: string }[];
   isExecutive: boolean;
   disabled: boolean;
