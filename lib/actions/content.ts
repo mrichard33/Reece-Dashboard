@@ -20,11 +20,11 @@ function refresh() {
   revalidatePath("/content", "layout");
 }
 
-// ── Copy / Image approval ────────────────────────────────────────
+// ── Copy / Image / Video approval ────────────────────────────────
 
 async function approveComponent(
   postId: string,
-  which: "copy" | "image",
+  which: "copy" | "image" | "video",
 ): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Approvals are limited to executives." };
@@ -34,21 +34,36 @@ async function approveComponent(
   const supabase = await lpServer();
   const { data: post, error: readErr } = await supabase
     .from("fb_posts")
-    .select("copy_status, image_status")
+    .select("copy_status, image_status, video_status, media_type")
     .eq("id", postId)
     .maybeSingle();
   if (readErr || !post) return { ok: false, error: readErr?.message ?? "Post not found." };
 
-  const p = post as { copy_status: string; image_status: string };
+  const p = post as {
+    copy_status: string;
+    image_status: string;
+    video_status: string | null;
+    media_type: string;
+  };
   const nextCopy = which === "copy" ? "approved" : p.copy_status;
   const nextImage = which === "image" ? "approved" : p.image_status;
-  const bothApproved = nextCopy === "approved" && nextImage === "approved";
+  const nextVideo = which === "video" ? "approved" : p.video_status;
+  // Required components mirror the DB trigger (0011): a video post gates on copy + video
+  // (the image is the seed frame, not a gate); an image post gates on copy + image.
+  const allApproved =
+    p.media_type === "video"
+      ? nextCopy === "approved" && nextVideo === "approved"
+      : nextCopy === "approved" && nextImage === "approved";
 
-  // The DB trigger fb_sync_post_status() flips overall status to 'approved' when
-  // both components are approved — we only set the component + the name snapshot.
+  // The DB trigger fb_sync_post_status() flips overall status to 'approved' when the
+  // required components are approved — we only set the component + the name snapshot.
   const update: Record<string, unknown> =
-    which === "copy" ? { copy_status: "approved" } : { image_status: "approved" };
-  if (bothApproved) update.approved_by = ctx.executive.name;
+    which === "copy"
+      ? { copy_status: "approved" }
+      : which === "image"
+        ? { image_status: "approved" }
+        : { video_status: "approved" };
+  if (allApproved) update.approved_by = ctx.executive.name;
 
   const { error } = await supabase.from("fb_posts").update(update).eq("id", postId);
   if (error) return { ok: false, error: error.message };
@@ -66,19 +81,24 @@ export async function approveImage(postId: string): Promise<ActionResult> {
   return approveComponent(postId, "image");
 }
 
+export async function approveVideo(postId: string): Promise<ActionResult> {
+  return approveComponent(postId, "video");
+}
+
 // ── Component rejection → feedback log + n8n regeneration ─────────
 //
 // ┌─ CONTRACT: action ↔ WF3 (fb-regeneration-webhook) ──────────────────────────┐
 // │ The Dashboard is the SYSTEM OF RECORD. This action is the authoritative      │
 // │ writer of a rejection: it (1) inserts the fb_post_feedback row (snapshotting  │
-// │ the rejected copy/image), (2) flips the rejected component to 'rejected',     │
-// │ (3) increments fb_posts.revision, and (4) sets needs_manual=true once         │
-// │ revision >= MAX_REGEN_ATTEMPTS. It THEN fires the WF3 webhook to regenerate.  │
+// │ the rejected copy/image/video), (2) flips the rejected component to           │
+// │ 'rejected', (3) increments fb_posts.revision, and (4) sets needs_manual=true  │
+// │ once revision >= MAX_REGEN_ATTEMPTS. It THEN fires the WF3 webhook.           │
 // │                                                                              │
 // │ n8n WF3 CONSUMES this — it must NOT insert feedback again. WF3 reads the      │
 // │ latest feedback row, regenerates copy and/or image (reusing a kept image      │
 // │ when only copy was rejected), and sets the regenerated component back to      │
-// │ 'pending'. If needs_manual is already set, WF3 alerts and stops.             │
+// │ 'pending'. If needs_manual is already set, WF3 alerts and stops. Video        │
+// │ regeneration wiring is deferred with the video generation branch.            │
 // │ The mirror of this note lives in n8n/fb-regeneration-webhook.json + README.   │
 // └──────────────────────────────────────────────────────────────────────────────┘
 export async function rejectComponent(
@@ -103,14 +123,20 @@ export async function rejectComponent(
   const supabase = await lpServer();
   const { data: post, error: readErr } = await supabase
     .from("fb_posts")
-    .select("post_body, image_url, revision")
+    .select("post_body, image_url, video_url, revision")
     .eq("id", postId)
     .maybeSingle();
   if (readErr || !post) return { ok: false, error: readErr?.message ?? "Post not found." };
-  const p = post as { post_body: string | null; image_url: string | null; revision: number };
+  const p = post as {
+    post_body: string | null;
+    image_url: string | null;
+    video_url: string | null;
+    revision: number;
+  };
 
   // 1. Log the rejection (system of record).
-  const snapshot = component === "image" ? p.image_url : p.post_body;
+  const snapshot =
+    component === "image" ? p.image_url : component === "video" ? p.video_url : p.post_body;
   const { error: fbErr } = await supabase.from("fb_post_feedback").insert({
     post_id: postId,
     component,
@@ -128,6 +154,7 @@ export async function rejectComponent(
   const update: Record<string, unknown> = { revision: nextRevision, needs_manual: needsManual };
   if (component === "copy" || component === "both") update.copy_status = "rejected";
   if (component === "image" || component === "both") update.image_status = "rejected";
+  if (component === "video") update.video_status = "rejected";
   const { error } = await supabase.from("fb_posts").update(update).eq("id", postId);
   if (error) return { ok: false, error: error.message };
 
@@ -292,6 +319,37 @@ export async function runStrategicRefresh(): Promise<ActionResult> {
   if (!ctx?.isAdmin) return { ok: false, error: "Admin only." };
   const res = await postWebhook("fb-strategic-refresh", {});
   return { ok: true, error: res.queued ? undefined : "Queued locally — n8n not connected yet." };
+}
+
+// ── Strategist pass (Content Brief) ──────────────────────────────
+//
+// runStrategist fires the on-demand WF-Strategist (fb-run-strategist), which reads
+// dashboard data signals and upserts a Content Brief onto the target date's
+// fb_content_plan slot with brief_status='draft'. approveContentBrief flips that to
+// 'approved', which is the gate WF1/WF-Batch check before filling the generator
+// prompt from the brief (else they use image-only fallbacks). No-op offline.
+
+export async function runStrategist(scheduledDate: string): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
+    return { ok: false, error: "Pick a valid date." };
+  }
+  const res = await postWebhook("fb-run-strategist", { scheduled_date: scheduledDate });
+  return { ok: true, error: res.queued ? undefined : "Queued locally — n8n not connected yet." };
+}
+
+export async function approveContentBrief(planId: string): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+  const supabase = await lpServer();
+  const { error } = await supabase
+    .from("fb_content_plan")
+    .update({ brief_status: "approved" })
+    .eq("id", planId);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
 }
 
 // ── Plan-ahead + capped batch generation (Part 2) ────────────────
