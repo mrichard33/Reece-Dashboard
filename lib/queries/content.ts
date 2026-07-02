@@ -12,22 +12,26 @@ import type {
 } from "@/lib/supabase/types";
 
 const POST_COLUMNS =
-  "id, scheduled_date, target, pillar, archetype, post_body, first_comment, image_concept, image_url, subtopic_id, copy_status, image_status, status, revision, needs_manual, approved_by, posted_by, posted_at, fb_permalink, created_at, page_posted_at, page_permalink, publish_attempts, last_publish_error, scheduled_time, publish_at";
+  "id, scheduled_date, target, pillar, archetype, post_body, first_comment, image_concept, image_url, subtopic_id, copy_status, image_status, status, revision, needs_manual, approved_by, posted_by, posted_at, fb_permalink, created_at, page_posted_at, page_permalink, publish_attempts, last_publish_error, scheduled_time, publish_at, media_type, video_concept, video_url, video_status";
 
 const PLAN_COLUMNS =
-  "id, plan_date, pillar, archetype, subtopic_id, campaign, status, created_at";
+  "id, plan_date, pillar, archetype, subtopic_id, campaign, status, created_at, brief, brief_status";
 
 const SUBTOPIC_COLUMNS =
   "id, subtopic, pillar, buyer_stage, source, answers_question, source_evidence, status, last_used_at, times_used, created_at";
 
 // ── Generation tuning (fb_settings → env fallback → hardcoded default) ─────────
 
-/** Hardcoded defaults, used when neither the DB column nor the env var is set. */
+/** Hardcoded defaults, used when neither the DB column nor the env var is set.
+ *  video_share / mascot_frequency are percentages (0-100); the video mix knobs
+ *  ship in 0011 (consumed once the video generation branch is wired). */
 const TUNING_DEFAULTS = {
   max_regen_attempts: 3,
   max_per_generation: 7,
   plan_horizon_days: 30,
   generation_buffer_days: 3,
+  video_share: 20,
+  mascot_frequency: 15,
 } as const;
 
 export type TuningKey = keyof typeof TUNING_DEFAULTS;
@@ -37,6 +41,8 @@ const TUNING_ENV: Record<TuningKey, string> = {
   max_per_generation: "MAX_PER_GENERATION",
   plan_horizon_days: "PLAN_HORIZON_DAYS",
   generation_buffer_days: "GENERATION_BUFFER_DAYS",
+  video_share: "VIDEO_SHARE",
+  mascot_frequency: "MASCOT_FREQUENCY",
 };
 
 export type TuningFieldInfo = {
@@ -55,6 +61,8 @@ export type FbTuning = {
   maxPerGeneration: number;
   planHorizonDays: number;
   generationBufferDays: number;
+  videoShare: number;
+  mascotFrequency: number;
   /** "HH:MM" Eastern, or null = publish on approval (no default post time). */
   defaultPostTime: string | null;
   /** Per-field provenance for the Content Settings tuning card. */
@@ -99,7 +107,7 @@ export async function getFbTuning(): Promise<FbTuning> {
     const { data } = await supabase
       .from("fb_settings")
       .select(
-        "default_post_time, max_regen_attempts, max_per_generation, plan_horizon_days, generation_buffer_days",
+        "default_post_time, max_regen_attempts, max_per_generation, plan_horizon_days, generation_buffer_days, video_share, mascot_frequency",
       )
       .eq("id", 1)
       .maybeSingle();
@@ -128,6 +136,8 @@ export async function getFbTuning(): Promise<FbTuning> {
     maxPerGeneration: byKey("max_per_generation"),
     planHorizonDays: byKey("plan_horizon_days"),
     generationBufferDays: byKey("generation_buffer_days"),
+    videoShare: byKey("video_share"),
+    mascotFrequency: byKey("mascot_frequency"),
     defaultPostTime,
     fields,
   };
