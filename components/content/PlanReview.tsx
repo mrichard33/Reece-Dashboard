@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, SkipForward, Loader2, Sparkles } from "lucide-react";
+import { Pencil, SkipForward, Loader2, Sparkles, Compass, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import {
@@ -13,9 +13,17 @@ import {
   pillarTone,
   archetypeLabel,
 } from "@/components/content/meta";
-import { skipPlanSlot, editPlanSlot, generateNow } from "@/lib/actions/content";
+import {
+  skipPlanSlot,
+  editPlanSlot,
+  generateNow,
+  runStrategist,
+  approveContentBrief,
+} from "@/lib/actions/content";
 import { getSubtopicDetail } from "@/lib/actions/getSubtopic";
 import type { FbContentPlan, FbSubtopic } from "@/lib/supabase/types";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Drawer body for a planned (not-yet-generated) calendar slot. Executives can edit the
@@ -23,7 +31,9 @@ import type { FbContentPlan, FbSubtopic } from "@/lib/supabase/types";
  * in-flight + refresh pattern so the calendar updates live.
  *
  * On open it resolves the slot's linked subtopic so the day shows what it will actually
- * cover (topic, the question it answers, evidence, buyer stage) before generation.
+ * cover (topic, the question it answers, evidence, buyer stage) before generation. When a
+ * Strategist Content Brief exists it's shown here for review + approval; the generator
+ * only consumes an APPROVED brief.
  */
 export function PlanReview({
   slot,
@@ -65,15 +75,29 @@ export function PlanReview({
   }, [slot.subtopic_id]);
 
   const busy = (key: string) => pending && activeKey === key;
+  const brief = slot.brief;
 
-  function run(key: string, fn: () => Promise<{ ok: boolean; error?: string }>, okText?: string) {
+  // pollSeconds > 0 keeps refreshing after the action returns — used for Run Strategist,
+  // whose brief lands asynchronously (n8n upserts it a few seconds later).
+  function run(
+    key: string,
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+    okText?: string,
+    pollSeconds = 0,
+  ) {
     setMsg(null);
     setActiveKey(key);
     startTransition(async () => {
       const res = await fn();
-      if (!res.ok) setMsg({ tone: "error", text: res.error ?? "Something went wrong." });
-      else {
-        if (okText || res.error) setMsg({ tone: "info", text: res.error ?? okText ?? "" });
+      if (!res.ok) {
+        setMsg({ tone: "error", text: res.error ?? "Something went wrong." });
+        return;
+      }
+      if (okText || res.error) setMsg({ tone: "info", text: res.error ?? okText ?? "" });
+      router.refresh();
+      const ticks = Math.ceil(pollSeconds / 5);
+      for (let i = 0; i < ticks; i++) {
+        await sleep(5000);
         router.refresh();
       }
     });
@@ -85,6 +109,11 @@ export function PlanReview({
         <Badge tone={PLAN_STATUS_META[slot.status].tone}>{PLAN_STATUS_META[slot.status].label}</Badge>
         <Badge tone={pillarTone(slot.pillar)}>{pillarLabel(slot.pillar)}</Badge>
         <Badge tone="slate">{archetypeLabel(slot.archetype)}</Badge>
+        {slot.brief_status !== "none" && (
+          <Badge tone={slot.brief_status === "approved" ? "emerald" : "amber"}>
+            Brief {slot.brief_status}
+          </Badge>
+        )}
         {slot.campaign && <span className="text-xs text-slate-500">arc: {slot.campaign}</span>}
       </div>
 
@@ -92,6 +121,85 @@ export function PlanReview({
         {pillarLabel(slot.pillar)} pillar · {archetypeLabel(slot.archetype)} angle
         {slot.campaign ? ` · part of the “${slot.campaign}” arc` : ""}.
       </p>
+
+      {/* Strategist Content Brief (review + approve; the generator consumes it only once approved) */}
+      {slot.brief_status !== "none" && brief ? (
+        <div className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Content Brief
+            </p>
+            <Badge tone={slot.brief_status === "approved" ? "emerald" : "amber"}>
+              {slot.brief_status === "approved" ? "Approved" : "Draft"}
+            </Badge>
+          </div>
+          <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+            {brief.post_strategy && (
+              <p>
+                <span className="font-medium">Strategy:</span> {brief.post_strategy}
+              </p>
+            )}
+            {brief.caption_direction && (
+              <p>
+                <span className="font-medium">Angle:</span> {brief.caption_direction}
+              </p>
+            )}
+            {brief.recommended_cta && (
+              <p>
+                <span className="font-medium">CTA:</span> {brief.recommended_cta}
+              </p>
+            )}
+            {(brief.recommended_format || brief.funnel_stage || brief.buyer_objective) && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                {brief.recommended_format && <span>format: {brief.recommended_format}</span>}
+                {brief.funnel_stage && <span>stage: {brief.funnel_stage}</span>}
+                {brief.buyer_objective && <span>objective: {brief.buyer_objective}</span>}
+              </div>
+            )}
+            {brief.image_concept && (
+              <p>
+                <span className="font-medium">Image:</span> {brief.image_concept}
+              </p>
+            )}
+            {brief.video_concept && (
+              <p>
+                <span className="font-medium">Video:</span> {brief.video_concept}
+              </p>
+            )}
+            {brief.why_it_works && (
+              <p className="border-l-2 border-slate-200 pl-2 italic dark:border-slate-700">
+                {brief.why_it_works}
+              </p>
+            )}
+            {brief.data_insight_trigger && (
+              <p className="text-[11px] text-slate-400">Trigger: {brief.data_insight_trigger}</p>
+            )}
+          </div>
+          {isExecutive && slot.brief_status === "draft" && (
+            <div className="mt-2">
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    "approve-brief",
+                    () => approveContentBrief(slot.id),
+                    "Brief approved — the generator will use it.",
+                  )
+                }
+              >
+                {busy("approve-brief") ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ClipboardCheck className="h-3.5 w-3.5" />
+                )}{" "}
+                Approve brief
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {/* What this day will cover (the planned subtopic) */}
       {slot.subtopic_id ? (
@@ -134,8 +242,8 @@ export function PlanReview({
       )}
 
       <p className="text-sm text-slate-600 dark:text-slate-300">
-        Not generated yet — no copy or image exists. Generate it into the buffer, edit the plan, or
-        skip it.
+        Not generated yet — no copy or image exists. Run the Strategist for a data-driven brief,
+        generate it into the buffer, edit the plan, or skip it.
       </p>
 
       {editing ? (
@@ -194,6 +302,26 @@ export function PlanReview({
 
       {isExecutive && (
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={pending}
+            onClick={() =>
+              run(
+                "strategist",
+                () => runStrategist(slot.plan_date),
+                `Strategist running for ${slot.plan_date} — the brief will appear here shortly.`,
+                25,
+              )
+            }
+          >
+            {busy("strategist") ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Compass className="h-3.5 w-3.5" />
+            )}{" "}
+            {slot.brief_status === "none" ? "Run Strategist" : "Re-run Strategist"}
+          </Button>
           <Button
             size="sm"
             variant="secondary"

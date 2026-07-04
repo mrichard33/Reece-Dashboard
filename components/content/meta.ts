@@ -7,6 +7,7 @@ import type {
   FbPillar,
   FbTarget,
   FbArchetype,
+  FbMediaType,
   FbReasonCode,
 } from "@/lib/supabase/types";
 
@@ -49,6 +50,12 @@ export const COMPONENT_STATUS_META: Record<FbComponentStatus, { label: string; t
   pending: { label: "Pending", tone: "amber" },
   approved: { label: "Approved", tone: "emerald" },
   rejected: { label: "Rejected", tone: "rose" },
+};
+
+/** Post media type badge (0011). Shown on a post when media_type='video'. */
+export const MEDIA_TYPE_META: Record<FbMediaType, { label: string; tone: BadgeTone }> = {
+  image: { label: "Image", tone: "slate" },
+  video: { label: "Video", tone: "sky" },
 };
 
 /** The 8 content pillars (rotation axis 1). Order is the canonical list. */
@@ -105,10 +112,10 @@ export const TARGET_META: Record<FbTarget, { label: string; tone: BadgeTone }> =
 
 /**
  * Rejection reason codes — component-specific so the dropdown is always
- * relevant to what's being rejected. The union of both lists matches the
- * fb_post_feedback CHECK constraint. The chosen code + note flow into WF3's
- * regeneration prompt as feedback, so a specific reason directly improves
- * the regenerated copy or image.
+ * relevant to what's being rejected. The union of the lists matches the
+ * fb_post_feedback CHECK constraint (widened in db/migrations/0011). The
+ * chosen code + note flow into WF3's regeneration prompt as feedback, so a
+ * specific reason directly improves the regenerated copy, image, or video.
  */
 export const COPY_REASON_CODES: { value: FbReasonCode; label: string }[] = [
   { value: "weak-hook", label: "Weak hook — wouldn't stop the scroll" },
@@ -133,10 +140,19 @@ export const IMAGE_REASON_CODES: { value: FbReasonCode; label: string }[] = [
   { value: "other", label: "Other (describe below)" },
 ];
 
+export const VIDEO_REASON_CODES: { value: FbReasonCode; label: string }[] = [
+  { value: "motion-unnatural", label: "Unnatural motion — jittery, morphing, or off" },
+  { value: "video-quality", label: "Low quality — artifacts, blur, or bad render" },
+  { value: "off-brand", label: "Off-brand — doesn't look or sound like us" },
+  { value: "compliance-risk", label: "Compliance risk — claim, scarcity, or pricing" },
+  { value: "other", label: "Other (describe below)" },
+];
+
 /** Union list (back-compat for non-component contexts). */
 export const REASON_CODES: { value: FbReasonCode; label: string }[] = [
   ...COPY_REASON_CODES.filter((r) => r.value !== "other"),
-  ...IMAGE_REASON_CODES,
+  ...IMAGE_REASON_CODES.filter((r) => r.value !== "other"),
+  ...VIDEO_REASON_CODES,
 ];
 
 /** Short labels for chart axes and compact UI (covers every code). */
@@ -156,6 +172,8 @@ export const REASON_LABEL: Record<FbReasonCode, string> = {
   "bad-composition": "Bad composition",
   "image-artifacts": "Artifacts",
   "image-quality": "Image quality",
+  "motion-unnatural": "Unnatural motion",
+  "video-quality": "Video quality",
   other: "Other",
 };
 

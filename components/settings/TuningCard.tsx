@@ -9,26 +9,42 @@ import { Button } from "@/components/ui/Button";
 import { saveFbTuning } from "@/lib/actions/settings";
 import type { FbTuning, TuningFieldInfo, TuningKey } from "@/lib/queries/content";
 
-const FIELD_LABELS: Record<TuningKey, { label: string; help: string; max: number }> = {
+const FIELD_LABELS: Record<TuningKey, { label: string; help: string; min: number; max: number }> = {
   max_regen_attempts: {
     label: "Max regen attempts",
     help: "Rejections before a slot is flagged for manual authoring (1–10).",
+    min: 1,
     max: 10,
   },
   max_per_generation: {
     label: "Max per generation",
     help: "Hard cap on drafts one batch fill may create (1–20).",
+    min: 1,
     max: 20,
   },
   plan_horizon_days: {
     label: "Plan horizon (days)",
     help: 'Default window for "Plan next N days" (1–90).',
+    min: 1,
     max: 90,
   },
   generation_buffer_days: {
     label: "Generation buffer (days)",
     help: "Lead time WF1 keeps drafts ahead of schedule (1–30).",
+    min: 1,
     max: 30,
+  },
+  video_share: {
+    label: "Video share (%)",
+    help: "Target share of posts that should be video (0–100). Consumed once video generation is wired.",
+    min: 0,
+    max: 100,
+  },
+  mascot_frequency: {
+    label: "Mascot frequency (%)",
+    help: "Of video posts, the share that use the mascot (0–100). Consumed once video generation is wired.",
+    min: 0,
+    max: 100,
   },
 };
 
@@ -99,7 +115,7 @@ export function TuningCard({
                 </div>
                 <input
                   type="number"
-                  min={1}
+                  min={meta.min}
                   max={meta.max}
                   value={nums[f.key]}
                   onChange={(e) => setNums((n) => ({ ...n, [f.key]: e.target.value }))}

@@ -443,7 +443,7 @@ export type RailwayServiceStatus = {
 };
 
 // ─────────────────────────────────────────────────────────────────
-// Facebook Content Engine (LP Supabase — see db/migrations/0003, 0004)
+// Facebook Content Engine (LP Supabase — see db/migrations/0003, 0004, 0011)
 // ─────────────────────────────────────────────────────────────────
 
 export type FbPillar =
@@ -471,13 +471,15 @@ export type FbComponentStatus = "pending" | "approved" | "rejected";
 export type FbPostStatus = "draft" | "approved" | "posted" | "skipped";
 export type FbSubtopicStatus = "proposed" | "active" | "inactive" | "rejected";
 export type FbPlanStatus = "planned" | "generated" | "skipped";
-export type FbComponent = "copy" | "image" | "both";
+/** Post media type (0011). Video posts gate on copy + video; image posts on copy + image. */
+export type FbMediaType = "image" | "video";
+export type FbComponent = "copy" | "image" | "both" | "video";
 
 /**
  * Rejection reason codes. Component-specific sets live in
- * components/content/meta.ts (COPY_REASON_CODES / IMAGE_REASON_CODES); this
- * union matches the fb_post_feedback CHECK constraint, which is the union of
- * both sets.
+ * components/content/meta.ts (COPY_REASON_CODES / IMAGE_REASON_CODES /
+ * VIDEO_REASON_CODES); this union matches the fb_post_feedback CHECK
+ * constraint as widened in db/migrations/0011.
  */
 export type FbReasonCode =
   // copy
@@ -497,6 +499,9 @@ export type FbReasonCode =
   | "bad-composition"
   | "image-artifacts"
   | "image-quality"
+  // video
+  | "motion-unnatural"
+  | "video-quality"
   // shared
   | "other";
 
@@ -531,13 +536,21 @@ export type FbPost = {
   // (set by the fb_set_publish_at trigger) WF4 gates on.
   scheduled_time: string | null;
   publish_at: string | null;
+  // ── Video component (0011). media_type drives which components gate approval.
+  // video_status is null until a video is generated (generation still deferred). ──
+  media_type: FbMediaType;
+  video_concept: string | null;
+  video_url: string | null;
+  video_status: FbComponentStatus | null;
 };
 
 /**
  * Single-row FB content-engine config (id = 1). Non-secret connection fields
- * (0006_fb_publish) plus UI-managed generation tuning (0007_settings_controls).
- * Tuning columns are nullable: null = fall back to the env knob, then a hardcoded
- * default. The token itself lives in fb_secrets (service-role only), never here.
+ * (0006_fb_publish) plus UI-managed generation tuning (0007_settings_controls)
+ * and the video mix knobs (0011). The token itself lives in fb_secrets
+ * (service-role only), never here.
+ * Tuning/knob columns are nullable: null = fall back to the env knob, then a
+ * hardcoded default.
  */
 export type FbSettings = {
   id: number;
@@ -555,6 +568,10 @@ export type FbSettings = {
   max_per_generation: number | null;
   plan_horizon_days: number | null;
   generation_buffer_days: number | null;
+  // ── Video mix knobs (0011) — null = use env fallback / default ──
+  video_share: number | null; // % of posts that should be video (0-100)
+  mascot_frequency: number | null; // % of video posts that use the mascot (0-100)
+  animate_still_model: string | null; // fal animate-still model id (video-gen; UI deferred)
 };
 
 export type FbSubtopic = {
@@ -571,6 +588,29 @@ export type FbSubtopic = {
   created_at: string;
 };
 
+/** Brief statuses on fb_content_plan (0011). 'none' = no strategist brief yet. */
+export type FbBriefStatus = "none" | "draft" | "approved";
+
+/**
+ * The Strategist's Content Brief — the 12-field JSON the `strategist` prompt
+ * emits, stored on fb_content_plan.brief. All optional (a partial/legacy brief
+ * should still render).
+ */
+export type FbContentBrief = {
+  post_strategy?: string;
+  caption_direction?: string;
+  image_concept?: string;
+  video_concept?: string;
+  recommended_format?: string;
+  recommended_platform?: string;
+  recommended_cta?: string;
+  why_it_works?: string;
+  data_insight_trigger?: string;
+  funnel_stage?: string;
+  pillar?: string;
+  buyer_objective?: string;
+};
+
 export type FbContentPlan = {
   id: string;
   plan_date: string;
@@ -580,6 +620,9 @@ export type FbContentPlan = {
   campaign: string | null;
   status: FbPlanStatus;
   created_at: string;
+  // ── Content-Brief storage (0011) — the Strategist output lands here ──
+  brief: FbContentBrief | null;
+  brief_status: FbBriefStatus;
 };
 
 export type FbMessagingPrompt = {
