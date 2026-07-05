@@ -1,6 +1,6 @@
 # n8n workflows — Reece Automated Facebook Post Engine
 
-Seven importable workflow definitions for the content engine's orchestration layer.
+Importable workflow definitions for the content engine's orchestration layer.
 They are committed as **artifacts**: import each JSON into n8n, attach credentials,
 replace the placeholder tokens, then activate. They are inert until then — the
 Dashboard's Content area runs fully without them (the webhook triggers no-op when
@@ -19,11 +19,12 @@ Dashboard's Content area runs fully without them (the webhook triggers no-op whe
 | `fb-weekly-miner.json` | FB · Weekly Idea Miner (WF2) | schedule + webhook `fb-run-miner` | `0 7 * * 1` |
 | `fb-regeneration-webhook.json` | FB · Regeneration Webhook (WF3) | webhook `fb-regenerate` | — |
 | `fb-page-publish.json` | FB · Page Publish (WF4) | schedule | `*/2 * * * *` |
-| `fb-metrics-pull.json` | FB · Metrics Pull (WF5) | schedule | `0 9 * * *` |
+| `fb-metrics-pull.json` | FB · Metrics Pull (WF5) | schedule | daily 12:00 AM ET |
 | `fb-queue-health.json` | FB · Queue Health (WF6) | schedule | `0 18 * * *` |
 | `fb-strategic-refresh.json` | FB · Strategic Refresh (WF7) | schedule + webhook `fb-strategic-refresh` | `0 8 1 */3 *` |
 | `fb-plan-period.json` | FB · Plan Period (WF-Plan) | webhook `fb-plan-period` | — |
 | `fb-generate-batch.json` | FB · Generate Batch (WF-Batch) | webhook `fb-generate-batch` | — |
+| `fb-strategist.json` | FB · Strategist (WF-Strategist) | schedule + webhook `fb-run-strategist` | daily 7:00 AM ET |
 
 ## Status
 
@@ -34,8 +35,21 @@ image, uploads to the public `fb-images` bucket, inserts a real `fb_posts` draft
 subtopic's `last_used_at`/`times_used`. WF3 honors the system-of-record contract below: it reads
 the latest feedback + post (never re-inserts feedback), regenerates the copy and/or image branch,
 reuses a kept image when only copy was rejected, and flips the regenerated component back to
-`pending` (alerting and stopping when `needs_manual` is already set). The other five workflows
-(WF2/WF4/WF5/WF6/WF7) remain scaffolds for later milestones.
+`pending` (alerting and stopping when `needs_manual` is already set). **All ten workflows are
+implemented and deployed** — WF2 (idea miner), WF4 (page publisher), WF5 (metrics pull: per-post
+engagement into `fb_post_metrics` + daily page views into `fb_page_metrics`, rebuilt 2026-06-12),
+WF6 (queue health), WF7 (strategic refresh), WF-Plan, WF-Batch, and WF-Strategist are all live in
+the n8n instance; these committed JSONs are mirrors of the deployed shape (with secrets as
+placeholders). The live instance is the runtime source of truth — re-sync a mirror here after
+editing a workflow in n8n.
+
+**WF-Strategist (deployed 2026-07-05)** closes the engagement feedback loop:
+`WF5 → fb_post_metrics → v_fb_post_engagement → strategist ({{recent_performance}} +
+{{dashboard_signals}}) → fb_content_plan.brief (draft) → human approves in PlanReview →
+WF1/WF-Batch generate from the approved brief`. It has two triggers: the dashboard's
+Run Strategist button (webhook `fb-run-strategist`, explicit intent — may re-draft an
+existing brief) and a daily 7:00 AM ET auto-run that targets the earliest upcoming planned
+slot without a brief and never overwrites a draft/approved brief.
 
 Current provider defaults (set as n8n credentials/values on import): **image** = OpenAI
 `gpt-image-1` (endpoint hardcoded to `https://api.openai.com/v1/images/generations`; swap the
@@ -87,6 +101,7 @@ each workflow's Verify Secret node matches `$json.headers['x-webhook-secret']`:
 | `fb-strategic-refresh` | `runStrategicRefresh()` | `{}` | WF7 — §6.6 quarterly refresh (also runs on a quarterly schedule). Returns the proposals JSON; surfaced for human apply (no DB write). |
 | `fb-plan-period` | `planPeriod()` | `{start_date, days}` | WF-Plan — one cheap Anthropic call → upserts `fb_content_plan` (`status='planned'`). |
 | `fb-generate-batch` | `generateBatch()` | `{max}` | WF-Batch — fills up to `max` `planned` slots with finished drafts (throttled), flips them to `generated`. |
+| `fb-run-strategist` | `runStrategist()` | `{scheduled_date}` | WF-Strategist — reads engagement + scorecard signals, drafts a Content Brief onto that date's `fb_content_plan` slot (`brief_status='draft'`; approve in PlanReview). Also auto-runs daily at 7:00 AM ET. |
 
 ## System of record (WF3)
 
