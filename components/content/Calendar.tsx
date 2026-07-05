@@ -17,7 +17,7 @@ import { PostReview } from "@/components/content/PostReview";
 import { PlanReview } from "@/components/content/PlanReview";
 import { PlanControls } from "@/components/content/PlanControls";
 import { GeneratePostButton } from "@/components/content/GeneratePostButton";
-import { pillarLabel } from "@/components/content/meta";
+import { formatPostTime, pillarLabel } from "@/components/content/meta";
 import { cn } from "@/lib/utils";
 import type { FbPost, FbContentPlan, FbPostStatus } from "@/lib/supabase/types";
 
@@ -44,6 +44,16 @@ function dotFor(p: FbPost): string {
 function statusTextFor(p: FbPost): string {
   if (p.status === "approved" && p.page_posted_at) return "page posted";
   return p.status;
+}
+
+/**
+ * Compact posting-time label for calendar cells/rows: per-post scheduled_time →
+ * settings default → "on approval". All times are Eastern; the " ET" suffix is
+ * dropped for space (the drawer badge spells it out).
+ */
+function timeLabelFor(p: FbPost, defaultPostTime: string | null): string {
+  const label = formatPostTime(p.scheduled_time) ?? formatPostTime(defaultPostTime);
+  return label ? label.replace(" ET", "") : "on approval";
 }
 
 /** Brief-status dot on a planned slot (draft = amber, approved = emerald). */
@@ -233,6 +243,9 @@ export function Calendar({
                       <Video className="h-3 w-3 flex-shrink-0 text-sky-500" />
                     )}
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
+                    <span className="ml-auto flex-shrink-0 text-[10px] text-slate-400">
+                      {timeLabelFor(p, defaultPostTime)}
+                    </span>
                   </button>
                 ))}
                 {planSlot && (
@@ -311,8 +324,9 @@ export function Calendar({
                       <Video className="h-3.5 w-3.5 flex-shrink-0 text-sky-500" />
                     )}
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
-                    <span className="ml-auto text-xs capitalize text-slate-400">
-                      {statusTextFor(p)}
+                    <span className="ml-auto flex-shrink-0 whitespace-nowrap text-xs text-slate-400">
+                      {timeLabelFor(p, defaultPostTime)}
+                      <span className="capitalize"> · {statusTextFor(p)}</span>
                     </span>
                   </button>
                 ))}
