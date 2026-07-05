@@ -10,6 +10,7 @@ import {
   Cog,
   ShieldCheck,
   Gauge,
+  BookOpen,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -84,6 +85,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Scorecard",
         desc: "Goal & variance vs plan",
         Icon: Gauge,
+        audience: "all",
+      },
+      {
+        href: "/guide",
+        label: "Guide Metrics",
+        desc: "DHP Guide performance",
+        Icon: BookOpen,
         audience: "all",
       },
       {
