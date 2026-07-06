@@ -89,8 +89,8 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         href: "/guide",
-        label: "Guide Metrics",
-        desc: "DHP Guide performance",
+        label: "Page Metrics",
+        desc: "Guide & WP journey performance",
         Icon: BookOpen,
         audience: "all",
       },
