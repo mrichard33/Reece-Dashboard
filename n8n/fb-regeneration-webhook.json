@@ -246,7 +246,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build regeneration context from the rejected post + the rejection reason.\n// Reuses WF1's prompt-merge logic; runs in REGENERATION MODE (prepends rejection_feedback).\n// When the image was approved (copy-only reject), reuse the kept image_concept so the\n// image is preserved. Returns { system, user, component, regen_copy, regen_image,\n// post_id, image_concept, image_status }.\nconst post = $('Get Post').first().json;\nconst body = $('Webhook (fb-regenerate)').first().json.body;\nconst component = body.component;\nconst promptItems = $('Get Prompts + Bank').all();\nconst byName = Object.fromEntries(promptItems.map(i => [i.json.name, i.json.body]));\nconst bank = $('Get Message Bank').first()?.json?.variables ?? {};\n\nconst regen_copy = component === 'copy' || component === 'both';\nconst regen_image = component === 'image' || component === 'both';\nconst rejection_feedback = (body.reason_code || '') + ': ' + (body.reason_text || '');\nconst kept_image_concept = (post.image_status === 'approved') ? (post.image_concept || '') : '';\n\nlet user = (byName['generator'] || '')\n  .replaceAll('{{style_guide}}', byName['style_guide'] || '')\n  .replaceAll('{{message_bank}}', JSON.stringify(bank))\n  .replaceAll('{{pillar}}', post.pillar || '')\n  .replaceAll('{{archetype}}', post.archetype || '')\n  .replaceAll('{{subtopic}}', '')\n  // generator v2 also carries Strategist-brief + regeneration placeholders. Fill the regen\n  // values we have, image-only / no-brief defaults for the rest, then strip any leftover\n  // placeholder token so a literal one never reaches the model.\n  .replaceAll('{{rejection_feedback}}', rejection_feedback)\n  .replaceAll('{{kept_image_concept}}', kept_image_concept)\n  .replaceAll('{{buyer_stage}}', '#1')\n  .replaceAll('{{buyer_objective}}', 'education')\n  .replaceAll('{{caption_direction}}', '')\n  .replaceAll('{{media_type}}', 'image')\n  .replaceAll('{{image_concept}}', kept_image_concept)\n  .replaceAll('{{video_concept}}', '')\n  .replaceAll('{{recommended_cta}}', 'soft: end with one engagement question')\n  .replace(/\\{\\{[^}]+\\}\\}/g, '');\nuser = 'REGENERATION MODE. The previous draft was rejected.\\n'\n  + 'rejection_feedback: ' + rejection_feedback + '\\n'\n  + (kept_image_concept ? ('Keep the existing image; reuse this image_concept verbatim: ' + kept_image_concept + '\\n') : '')\n  + 'Previous post_body: ' + (post.post_body || '') + '\\n'\n  + 'Previous first_comment: ' + (post.first_comment || '') + '\\n\\n'\n  + user;\n\nreturn [{ json: {\n  system: byName['style_guide'] || '',\n  user,\n  component, regen_copy, regen_image,\n  post_id: post.id,\n  image_concept: kept_image_concept || (post.image_concept || ''),\n  image_status: post.image_status\n} }];"
+        "jsCode": "// Build regeneration context from the rejected post + the rejection reason.\n// Reuses WF1's prompt-merge logic; runs in REGENERATION MODE (prepends rejection_feedback).\n// When the image was approved (copy-only reject), reuse the kept image_concept so the\n// image is preserved. Returns { system, user, component, regen_copy, regen_image, regen_video,\n// post_id, image_concept, image_status, post_image_url, video_concept }.\nconst post = $('Get Post').first().json;\nconst body = $('Webhook (fb-regenerate)').first().json.body;\nconst component = body.component;\nconst promptItems = $('Get Prompts + Bank').all();\nconst byName = Object.fromEntries(promptItems.map(i => [i.json.name, i.json.body]));\nconst bank = $('Get Message Bank').first()?.json?.variables ?? {};\n\nconst regen_copy = component === 'copy' || component === 'both';\nconst regen_image = component === 'image' || component === 'both';\nconst regen_video = component === 'video';\nconst rejection_feedback = (body.reason_code || '') + ': ' + (body.reason_text || '');\nconst kept_image_concept = (post.image_status === 'approved') ? (post.image_concept || '') : '';\n\nlet user = (byName['generator'] || '')\n  .replaceAll('{{style_guide}}', byName['style_guide'] || '')\n  .replaceAll('{{message_bank}}', JSON.stringify(bank))\n  .replaceAll('{{pillar}}', post.pillar || '')\n  .replaceAll('{{archetype}}', post.archetype || '')\n  .replaceAll('{{subtopic}}', '')\n  // generator v2 also carries Strategist-brief + regeneration placeholders. Fill the regen\n  // values we have, image-only / no-brief defaults for the rest, then strip any leftover\n  // placeholder token so a literal one never reaches the model.\n  .replaceAll('{{rejection_feedback}}', rejection_feedback)\n  .replaceAll('{{kept_image_concept}}', kept_image_concept)\n  .replaceAll('{{buyer_stage}}', '#1')\n  .replaceAll('{{buyer_objective}}', 'education')\n  .replaceAll('{{caption_direction}}', '')\n  .replaceAll('{{media_type}}', (post.media_type || 'image'))\n  .replaceAll('{{image_concept}}', kept_image_concept)\n  .replaceAll('{{video_concept}}', (post.video_concept || ''))\n  .replaceAll('{{recommended_cta}}', 'soft: end with one engagement question')\n  .replace(/\\{\\{[^}]+\\}\\}/g, '');\nuser = 'REGENERATION MODE. The previous draft was rejected.\\n'\n  + 'rejection_feedback: ' + rejection_feedback + '\\n'\n  + (kept_image_concept ? ('Keep the existing image; reuse this image_concept verbatim: ' + kept_image_concept + '\\n') : '')\n  + 'Previous post_body: ' + (post.post_body || '') + '\\n'\n  + 'Previous first_comment: ' + (post.first_comment || '') + '\\n\\n'\n  + user;\n\nreturn [{ json: {\n  system: byName['style_guide'] || '',\n  user,\n  component, regen_copy, regen_image, regen_video,\n  post_id: post.id,\n  image_concept: kept_image_concept || (post.image_concept || ''),\n  image_status: post.image_status,\n  post_image_url: post.image_url || '',\n  video_concept: post.video_concept || ''\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -585,6 +585,125 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c",
+              "leftValue": "={{ $('Build Regen Context').first().json.regen_video }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4180,
+        460
+      ],
+      "id": "wf3-need-video-0023",
+      "name": "Need Video?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Regenerate the video from the kept seed image + the post's video_concept via fal\n// (Veo 3.1 image-to-video by default, swappable). Submit -> poll -> download the MP4, returned\n// as binary for the Upload node. Throws (surfaced in the n8n log) when FAL_KEY is unset or the\n// job fails/times out. Model: $env.FAL_ANIMATE_MODEL, else fb_settings.animate_still_model,\n// else the veo3.1/fast default.\nconst FAL_KEY = $env.FAL_KEY;\nif (!FAL_KEY) throw new Error('FAL_KEY is not set on this n8n instance');\nconst SB = '__SUPABASE_URL__';\nconst KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY';\nlet model = $env.FAL_ANIMATE_MODEL || '';\nif (!model) {\n  try {\n    const rows = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_settings?id=eq.1&select=animate_still_model', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }, json: true });\n    model = (rows && rows[0] && rows[0].animate_still_model) || '';\n  } catch (e) {}\n}\nif (!model) model = 'fal-ai/veo3.1/fast/image-to-video';\nconst ctx = $('Build Regen Context').first().json;\nconst imageUrl = ctx.post_image_url;\nconst prompt = ctx.video_concept || 'Subtle, brand-safe motion: soft light shift and a slow push-in. No text, no logos.';\nconst fh = { Authorization: 'Key ' + FAL_KEY, 'Content-Type': 'application/json' };\nconst sub = await this.helpers.httpRequest({ method: 'POST', url: 'https://queue.fal.run/' + model, headers: fh, body: { prompt, image_url: imageUrl, aspect_ratio: '9:16', duration: '8s', resolution: '720p', generate_audio: false }, json: true });\nif (!sub || !sub.status_url) throw new Error('fal submit failed: ' + JSON.stringify(sub));\nlet out = null;\nfor (let i = 0; i < 60; i++) {\n  await new Promise(r => setTimeout(r, 5000));\n  const st = await this.helpers.httpRequest({ method: 'GET', url: sub.status_url, headers: fh, json: true });\n  const s = st && st.status;\n  if (s === 'COMPLETED') { out = await this.helpers.httpRequest({ method: 'GET', url: sub.response_url, headers: fh, json: true }); break; }\n  if (s === 'FAILED' || s === 'ERROR') throw new Error('fal video job failed: ' + JSON.stringify(st));\n}\nif (!out) throw new Error('fal video timed out after ~5 min');\nconst vurl = out.video && out.video.url;\nif (!vurl) throw new Error('fal returned no video.url: ' + JSON.stringify(out));\nconst path = `${$now.toFormat('yyyy-LL-dd')}-${Math.random().toString(36).slice(2,10)}.mp4`;\nconst bin = await this.helpers.httpRequest({ method: 'GET', url: vurl, encoding: 'arraybuffer', returnFullResponse: false });\nreturn [{ json: { path, video_url: SB + '/storage/v1/object/public/fb-videos/' + path }, binary: { data: await this.helpers.prepareBinaryData(Buffer.from(bin), path, 'video/mp4') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        560
+      ],
+      "id": "wf3-gen-video-0024",
+      "name": "Generate Video (fal)"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=__SUPABASE_URL__/storage/v1/object/fb-videos/{{ $json.path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            },
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4620,
+        560
+      ],
+      "id": "wf3-upload-video-0025",
+      "name": "Upload to fb-videos"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts?id=eq.{{ $('Webhook (fb-regenerate)').item.json.body.post_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ video_url: $('Generate Video (fal)').first().json.video_url, video_status: 'pending' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4840,
+        560
+      ],
+      "id": "wf3-update-video-0026",
+      "name": "Update Video"
+    },
+    {
+      "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {}
@@ -600,15 +719,15 @@
     },
     {
       "parameters": {
-        "content": "## ⚠️ CONTRACT: WF3 ↔ Dashboard action (SYSTEM OF RECORD)\n\nThe Reece Dashboard is the system of record. `lib/actions/content.ts → rejectComponent()` is the authoritative writer of a rejection. BEFORE this webhook fires, that action has ALREADY:\n  1. inserted the `fb_post_feedback` row (snapshotting the rejected copy/image),\n  2. flipped the rejected component to `status = 'rejected'`,\n  3. incremented `fb_posts.revision`, and\n  4. set `needs_manual = true` once `revision >= MAX_REGEN_ATTEMPTS`.\n\nTHIS workflow CONSUMES that — it must **NOT** insert feedback again. It reads the\nlatest feedback for the post/component (Get Feedback) + the fb_posts row, regenerates\ncopy and/or image (reusing the kept image when only copy was rejected), and sets the\nregenerated component back to `pending`. If `needs_manual` is already set, it alerts on\nGroupMe and stops.\n\nIf Get Feedback returns no row (a manual trigger or a race), the Has Feedback? gate\nresponds and stops instead of regenerating against nothing — real Dashboard rejects\nalways write feedback first, so this is just an edge-case safety net.\n\nNOTE (generator v2 / canon fix): the active `generator` prompt now carries Strategist-brief\n+ regeneration placeholders. Build Regen Context fills the regen values it has\n(rejection_feedback, kept_image_concept), image-only / no-brief defaults for the rest, and\nstrips any leftover {{...}} token, so the canon fix is safe before the Strategist pass exists.\n\nLogic is COMPLETE: copy branch (Need Copy?) rebuilds the generator prompt in regeneration\nmode and PATCHes post_body/first_comment + copy_status='pending'; image branch (Need Image?)\nregenerates via decode→PUT→public-URL and PATCHes image_url + image_status='pending'. For\ncomponent='both' both run.\n\nPayload: { post_id, component, reason_code, reason_text, rejected_by }.\nThe mirror of this note lives in lib/actions/content.ts (rejectComponent).",
-        "height": 460,
+        "content": "## ⚠️ CONTRACT: WF3 ↔ Dashboard action (SYSTEM OF RECORD)\n\nThe Reece Dashboard is the system of record. `lib/actions/content.ts → rejectComponent()` is the authoritative writer of a rejection. BEFORE this webhook fires, that action has ALREADY:\n  1. inserted the `fb_post_feedback` row (snapshotting the rejected copy/image/video),\n  2. flipped the rejected component to `status = 'rejected'`,\n  3. incremented `fb_posts.revision`, and\n  4. set `needs_manual = true` once `revision >= MAX_REGEN_ATTEMPTS`.\n\nTHIS workflow CONSUMES that — it must **NOT** insert feedback again. It reads the\nlatest feedback for the post/component (Get Feedback) + the fb_posts row, regenerates\ncopy and/or image and/or video, and sets the regenerated component back to `pending`.\nIf `needs_manual` is already set, it alerts on GroupMe and stops.\n\nIf Get Feedback returns no row (a manual trigger or a race), the Has Feedback? gate\nresponds and stops instead of regenerating against nothing.\n\nBRANCHES: Need Copy? (component copy|both) rebuilds the generator prompt in regeneration\nmode → PATCH post_body/first_comment + copy_status='pending'. Need Image? (image|both)\nregenerates the still → PATCH image_url + image_status='pending'. Need Video? (component\n'video') re-animates the KEPT seed image + the post's video_concept via fal (Veo 3.1\nimage-to-video, model swappable via $env.FAL_ANIMATE_MODEL / fb_settings.animate_still_model;\ngenerate_audio=false) → upload to fb-videos → PATCH video_url + video_status='pending'.\nRequires the `FAL_KEY` env var; executionTimeout is raised to 600s for the fal poll.\n\nPayload: { post_id, component, reason_code, reason_text, rejected_by }.\nThe mirror of this note lives in lib/actions/content.ts (rejectComponent).",
+        "height": 500,
         "width": 540
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
         -220,
-        -300
+        -340
       ],
       "id": "wf3-note-000000000009",
       "name": "CONTRACT — read me"
@@ -809,7 +928,7 @@
         ],
         [
           {
-            "node": "Respond",
+            "node": "Need Video?",
             "type": "main",
             "index": 0
           }
@@ -886,6 +1005,57 @@
       "main": [
         [
           {
+            "node": "Need Video?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Need Video?": {
+      "main": [
+        [
+          {
+            "node": "Generate Video (fal)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Video (fal)": {
+      "main": [
+        [
+          {
+            "node": "Upload to fb-videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to fb-videos": {
+      "main": [
+        [
+          {
+            "node": "Update Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Video": {
+      "main": [
+        [
+          {
             "node": "Respond",
             "type": "main",
             "index": 0
@@ -897,7 +1067,8 @@
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "timezone": "America/New_York"
+    "timezone": "America/New_York",
+    "executionTimeout": 600
   },
   "meta": {
     "templateCredsSetupCompleted": false
