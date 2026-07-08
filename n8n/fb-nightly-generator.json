@@ -197,7 +197,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Merge subtopic + prompts + message bank into the generator system/user prompts.\n// Prefer the planned slot's pillar/archetype/subtopic (nightly buffer top-up); otherwise the\n// least-recently-used active subtopic + a date-derived archetype (also the on-demand path).\n// Returns { system, user, subtopic_id, pillar, times_used, archetype, scheduled_date, plan_id }.\nlet picked = null; try { picked = $('Pick Plan Slot or Date').first().json; } catch (e) {}\nconst lru = $('Get LRU Subtopic').first().json;\nconst followPlan = !!(picked && picked.follow_plan);\nconst sub = (followPlan && picked.subtopic) ? picked.subtopic : lru;\nconst promptItems = $('Get Prompts + Bank').all();\nconst byName = Object.fromEntries(promptItems.map(i => [i.json.name, i.json.body]));\nconst bank = $('Get Message Bank').first()?.json?.variables ?? {};\n\nconst archetypes = ['myth-bust','secret-reveal','story','mistake-expose','seasonal','thought-leadership','community-cause','social-proof'];\nconst pillar = (followPlan && picked.plan_pillar) ? picked.plan_pillar : (sub.pillar || '');\nconst archetype = (followPlan && picked.plan_archetype) ? picked.plan_archetype : archetypes[new Date().getDate() % archetypes.length];\n\n// Strategist brief (only when the plan slot carries an APPROVED brief); else Phase 1 image-only\n// fallbacks. media_type is forced to image / video_concept empty until the video branch lands.\nconst brief = (followPlan && picked && picked.brief_status === 'approved' && picked.brief) ? picked.brief : null;\nconst pillarFinal = (brief && brief.pillar) ? brief.pillar : pillar;\nconst buyerStage = (brief && brief.funnel_stage) ? brief.funnel_stage : '#1';\nconst buyerObjective = (brief && brief.buyer_objective) ? brief.buyer_objective : 'education';\nconst captionDirection = (brief && brief.caption_direction) ? brief.caption_direction : '';\nconst recommendedCta = (brief && brief.recommended_cta) ? brief.recommended_cta : 'soft: end with one engagement question';\nconst imageConcept = (brief && brief.image_concept) ? brief.image_concept : '';\n\nconst user = (byName['generator'] || '')\n  .replaceAll('{{style_guide}}', byName['style_guide'] || '')\n  .replaceAll('{{message_bank}}', JSON.stringify(bank))\n  .replaceAll('{{pillar}}', pillarFinal)\n  .replaceAll('{{archetype}}', archetype)\n  .replaceAll('{{subtopic}}', sub.subtopic || '')\n  // generator v2 brief placeholders: use an approved Strategist brief when present, else the\n  // image-only / no-brief defaults; then strip any leftover token so a literal one never ships.\n  .replaceAll('{{buyer_stage}}', buyerStage)\n  .replaceAll('{{buyer_objective}}', buyerObjective)\n  .replaceAll('{{caption_direction}}', captionDirection)\n  .replaceAll('{{media_type}}', 'image')\n  .replaceAll('{{image_concept}}', imageConcept)\n  .replaceAll('{{video_concept}}', '')\n  .replaceAll('{{recommended_cta}}', recommendedCta)\n  .replace(/\\{\\{[^}]+\\}\\}/g, '');\n\n// scheduled_date comes from the webhook body (on-demand) or the picker (nightly).\nlet scheduled_date = null;\ntry { scheduled_date = $('On-demand (fb-generate-now)').first().json.body.scheduled_date; } catch (e) {}\nif (!scheduled_date) { try { scheduled_date = picked.scheduled_date; } catch (e) {} }\n\nreturn [{ json: {\n  system: byName['style_guide'] || '',\n  user,\n  subtopic_id: sub.id,\n  pillar: pillarFinal,\n  times_used: sub.times_used || 0,\n  archetype,\n  scheduled_date,\n  plan_id: followPlan ? picked.plan_id : null\n} }];"
+        "jsCode": "// Merge subtopic + prompts + message bank into the generator system/user prompts.\n// Prefer the planned slot's pillar/archetype/subtopic (nightly buffer top-up); otherwise the\n// least-recently-used active subtopic + a date-derived archetype (also the on-demand path).\n// Returns { system, user, subtopic_id, pillar, times_used, archetype, scheduled_date, plan_id,\n// media_type, video_concept }.\nlet picked = null; try { picked = $('Pick Plan Slot or Date').first().json; } catch (e) {}\nconst lru = $('Get LRU Subtopic').first().json;\nconst followPlan = !!(picked && picked.follow_plan);\nconst sub = (followPlan && picked.subtopic) ? picked.subtopic : lru;\nconst promptItems = $('Get Prompts + Bank').all();\nconst byName = Object.fromEntries(promptItems.map(i => [i.json.name, i.json.body]));\nconst bank = $('Get Message Bank').first()?.json?.variables ?? {};\n\nconst archetypes = ['myth-bust','secret-reveal','story','mistake-expose','seasonal','thought-leadership','community-cause','social-proof'];\nconst pillar = (followPlan && picked.plan_pillar) ? picked.plan_pillar : (sub.pillar || '');\nconst archetype = (followPlan && picked.plan_archetype) ? picked.plan_archetype : archetypes[new Date().getDate() % archetypes.length];\n\n// Strategist brief (only when the plan slot carries an APPROVED brief); else image-only\n// fallbacks. Media type is the brief's decision: video when the brief supplies a video_concept\n// or a reel/video/motion format, else image (also the on-demand + no-brief path).\nconst brief = (followPlan && picked && picked.brief_status === 'approved' && picked.brief) ? picked.brief : null;\nconst pillarFinal = (brief && brief.pillar) ? brief.pillar : pillar;\nconst buyerStage = (brief && brief.funnel_stage) ? brief.funnel_stage : '#1';\nconst buyerObjective = (brief && brief.buyer_objective) ? brief.buyer_objective : 'education';\nconst captionDirection = (brief && brief.caption_direction) ? brief.caption_direction : '';\nconst recommendedCta = (brief && brief.recommended_cta) ? brief.recommended_cta : 'soft: end with one engagement question';\nconst imageConcept = (brief && brief.image_concept) ? brief.image_concept : '';\nconst recFmt = (brief && brief.recommended_format) ? String(brief.recommended_format) : '';\nconst videoConcept = (brief && brief.video_concept) ? brief.video_concept : '';\nconst mediaType = (brief && (videoConcept || /reel|video|motion/i.test(recFmt))) ? 'video' : 'image';\n\nconst user = (byName['generator'] || '')\n  .replaceAll('{{style_guide}}', byName['style_guide'] || '')\n  .replaceAll('{{message_bank}}', JSON.stringify(bank))\n  .replaceAll('{{pillar}}', pillarFinal)\n  .replaceAll('{{archetype}}', archetype)\n  .replaceAll('{{subtopic}}', sub.subtopic || '')\n  // generator v2 brief placeholders: use an approved Strategist brief when present, else the\n  // no-brief defaults; then strip any leftover token so a literal one never ships.\n  .replaceAll('{{buyer_stage}}', buyerStage)\n  .replaceAll('{{buyer_objective}}', buyerObjective)\n  .replaceAll('{{caption_direction}}', captionDirection)\n  .replaceAll('{{media_type}}', mediaType)\n  .replaceAll('{{image_concept}}', imageConcept)\n  .replaceAll('{{video_concept}}', videoConcept)\n  .replaceAll('{{recommended_cta}}', recommendedCta)\n  .replace(/\\{\\{[^}]+\\}\\}/g, '');\n\n// scheduled_date comes from the webhook body (on-demand) or the picker (nightly).\nlet scheduled_date = null;\ntry { scheduled_date = $('On-demand (fb-generate-now)').first().json.body.scheduled_date; } catch (e) {}\nif (!scheduled_date) { try { scheduled_date = picked.scheduled_date; } catch (e) {} }\n\nreturn [{ json: {\n  system: byName['style_guide'] || '',\n  user,\n  subtopic_id: sub.id,\n  pillar: pillarFinal,\n  times_used: sub.times_used || 0,\n  archetype,\n  scheduled_date,\n  plan_id: followPlan ? picked.plan_id : null,\n  media_type: mediaType,\n  video_concept: videoConcept\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -245,7 +245,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Tolerant JSON parse: strip ```json fences, then JSON.parse; on failure extract\n// the first balanced {...}. Returns the generator object { post_body, first_comment, image_concept, ... }.\nlet t = $json.content?.[0]?.text || '';\nt = t.replace(/```json|```/g, '').trim();\nlet out;\ntry { out = JSON.parse(t); } catch (e) {\n  const m = t.match(/\\{[\\s\\S]*\\}/); out = m ? JSON.parse(m[0]) : {};\n}\nreturn [{ json: out }];"
+        "jsCode": "// Tolerant JSON parse: strip ```json fences, then JSON.parse; on failure extract\n// the first balanced {...}. Returns the generator object { post_body, first_comment, image_concept, video_concept, ... }.\nlet t = $json.content?.[0]?.text || '';\nt = t.replace(/```json|```/g, '').trim();\nlet out;\ntry { out = JSON.parse(t); } catch (e) {\n  const m = t.match(/\\{[\\s\\S]*\\}/); out = m ? JSON.parse(m[0]) : {};\n}\nreturn [{ json: out }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -306,7 +306,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.content?.[0]?.text || '', size: '1024x1024', n: 1 }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.content?.[0]?.text || '', size: $('Build Generator Prompt').first().json.media_type === 'video' ? '1024x1536' : '1024x1024', n: 1 }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -381,6 +381,85 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-video",
+              "leftValue": "={{ $('Build Generator Prompt').first().json.media_type }}",
+              "rightValue": "video",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        240
+      ],
+      "id": "wf1-video-post-0000023",
+      "name": "Video post?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Animate the approved seed image into a 9:16 clip via fal (Veo 3.1 image-to-video by\n// default, swappable). Submit -> poll (status_url) -> fetch result (response_url) -> download\n// the MP4, returned as binary for the Upload node. Throws (surfaced in the n8n execution log,\n// no post inserted) when FAL_KEY is unset or the job fails/times out. Model resolves from\n// $env.FAL_ANIMATE_MODEL, else fb_settings.animate_still_model, else the veo3.1/fast default.\nconst FAL_KEY = $env.FAL_KEY;\nif (!FAL_KEY) throw new Error('FAL_KEY is not set on this n8n instance');\nconst SB = '__SUPABASE_URL__';\nconst KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY';\nlet model = $env.FAL_ANIMATE_MODEL || '';\nif (!model) {\n  try {\n    const rows = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_settings?id=eq.1&select=animate_still_model', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }, json: true });\n    model = (rows && rows[0] && rows[0].animate_still_model) || '';\n  } catch (e) {}\n}\nif (!model) model = 'fal-ai/veo3.1/fast/image-to-video';\nconst imageUrl = $('Set image_url').first().json.image_url;\nconst prompt = $('Parse JSON (tolerant)').first().json.video_concept || $('Build Generator Prompt').first().json.video_concept || 'Subtle, brand-safe motion: soft light shift and a slow push-in. No text, no logos.';\nconst fh = { Authorization: 'Key ' + FAL_KEY, 'Content-Type': 'application/json' };\nconst sub = await this.helpers.httpRequest({ method: 'POST', url: 'https://queue.fal.run/' + model, headers: fh, body: { prompt, image_url: imageUrl, aspect_ratio: '9:16', duration: '8s', resolution: '720p', generate_audio: false }, json: true });\nif (!sub || !sub.status_url) throw new Error('fal submit failed: ' + JSON.stringify(sub));\nlet out = null;\nfor (let i = 0; i < 60; i++) {\n  await new Promise(r => setTimeout(r, 5000));\n  const st = await this.helpers.httpRequest({ method: 'GET', url: sub.status_url, headers: fh, json: true });\n  const s = st && st.status;\n  if (s === 'COMPLETED') { out = await this.helpers.httpRequest({ method: 'GET', url: sub.response_url, headers: fh, json: true }); break; }\n  if (s === 'FAILED' || s === 'ERROR') throw new Error('fal video job failed: ' + JSON.stringify(st));\n}\nif (!out) throw new Error('fal video timed out after ~5 min');\nconst vurl = out.video && out.video.url;\nif (!vurl) throw new Error('fal returned no video.url: ' + JSON.stringify(out));\nconst path = `${$now.toFormat('yyyy-LL-dd')}-${Math.random().toString(36).slice(2,10)}.mp4`;\nconst bin = await this.helpers.httpRequest({ method: 'GET', url: vurl, encoding: 'arraybuffer', returnFullResponse: false });\nreturn [{ json: { path, video_url: SB + '/storage/v1/object/public/fb-videos/' + path }, binary: { data: await this.helpers.prepareBinaryData(Buffer.from(bin), path, 'video/mp4') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        400
+      ],
+      "id": "wf1-gen-video-0000024",
+      "name": "Generate Video (fal)"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=__SUPABASE_URL__/storage/v1/object/fb-videos/{{ $json.path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            },
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3300,
+        400
+      ],
+      "id": "wf1-upload-video-0025",
+      "name": "Upload to fb-videos"
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "=__SUPABASE_URL__/rest/v1/fb_posts",
         "sendHeaders": true,
@@ -406,14 +485,53 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ scheduled_date: $('Build Generator Prompt').first().json.scheduled_date, target: 'both', pillar: $('Build Generator Prompt').first().json.pillar, archetype: $('Build Generator Prompt').first().json.archetype, subtopic_id: $('Build Generator Prompt').first().json.subtopic_id, post_body: $('Parse JSON (tolerant)').first().json.post_body, first_comment: $('Parse JSON (tolerant)').first().json.first_comment, image_concept: $('Parse JSON (tolerant)').first().json.image_concept, image_url: $('Set image_url').first().json.image_url, copy_status: 'pending', image_status: 'pending', revision: 0 }) }}",
+        "jsonBody": "={{ JSON.stringify({ scheduled_date: $('Build Generator Prompt').first().json.scheduled_date, target: 'both', pillar: $('Build Generator Prompt').first().json.pillar, archetype: $('Build Generator Prompt').first().json.archetype, subtopic_id: $('Build Generator Prompt').first().json.subtopic_id, post_body: $('Parse JSON (tolerant)').first().json.post_body, first_comment: $('Parse JSON (tolerant)').first().json.first_comment, image_concept: $('Parse JSON (tolerant)').first().json.image_concept, image_url: $('Set image_url').first().json.image_url, media_type: 'video', video_concept: ($('Parse JSON (tolerant)').first().json.video_concept || $('Build Generator Prompt').first().json.video_concept || ''), video_url: $('Generate Video (fal)').first().json.video_url, copy_status: 'pending', image_status: 'approved', video_status: 'pending', revision: 0 }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        2860,
-        240
+        3520,
+        400
+      ],
+      "id": "wf1-insert-video-0026",
+      "name": "Insert fb_posts (video)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ scheduled_date: $('Build Generator Prompt').first().json.scheduled_date, target: 'both', pillar: $('Build Generator Prompt').first().json.pillar, archetype: $('Build Generator Prompt').first().json.archetype, subtopic_id: $('Build Generator Prompt').first().json.subtopic_id, post_body: $('Parse JSON (tolerant)').first().json.post_body, first_comment: $('Parse JSON (tolerant)').first().json.first_comment, image_concept: $('Parse JSON (tolerant)').first().json.image_concept, image_url: $('Set image_url').first().json.image_url, media_type: 'image', copy_status: 'pending', image_status: 'pending', revision: 0 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3080,
+        140
       ],
       "id": "wf1-insert-post-0000000012",
       "name": "Insert fb_posts (public image URL)"
@@ -447,7 +565,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        3080,
+        3960,
         240
       ],
       "id": "wf1-bump-subtopic-00000021",
@@ -459,13 +577,13 @@
         "url": "https://api.groupme.com/v3/bots/post",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '📝 New post draft + image ready for ' + $('Build Generator Prompt').first().json.scheduled_date + ' — review in the Dashboard.' }) }}",
+        "jsonBody": "={{ JSON.stringify({ bot_id: '__GROUPME_BOT_ID__', text: '📝 New ' + ($('Build Generator Prompt').first().json.media_type === 'video' ? 'video' : 'post') + ' draft ready for ' + $('Build Generator Prompt').first().json.scheduled_date + ' — review in the Dashboard.' }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        3300,
+        4180,
         240
       ],
       "id": "wf1-groupme-00000000000013",
@@ -480,7 +598,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        3520,
+        4400,
         360
       ],
       "id": "wf1-respond-000000000014",
@@ -488,15 +606,15 @@
     },
     {
       "parameters": {
-        "content": "## WF1 — Nightly Generator (logic complete)\nRuns at 06:00 in TZ America/New_York. Also exposes the `fb-generate-now` webhook (verify the `x-webhook-secret: __N8N_WEBHOOK_SECRET__` header — n8n redacts Authorization) that the Dashboard 'Generate Now' button calls with { scheduled_date }.\n\nPipeline: nightly path tops up the buffer — it follows the earliest planned fb_content_plan slot within GENERATION_BUFFER_DAYS (using that slot's pillar/archetype/subtopic and marking it 'generated'), falling back to the first uncovered date in a 5-day horizon + LRU subtopic when no plan exists; on-demand path uses the body's scheduled_date + LRU subtopic. Then: message bank + prompts → archetype → Anthropic generator → tolerant JSON parse → image prompt → Generate Image (OpenAI gpt-image-1, swappable) → decode → PUT upload to the PUBLIC fb-images bucket → set public image_url → insert fb_posts (copy_status/image_status='pending') → bump subtopic → GroupMe.\n\nNOTE (Strategist brief): Build Generator Prompt fills generator v2's brief placeholders from the plan slot's APPROVED brief (fb_content_plan.brief_status='approved') when present, else image-only defaults; any leftover {{...}} token is stripped. media_type is forced to image / video_concept empty until the video branch lands.\n\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders with credentials/values on import. Keep `active:false` in the committed copy.",
-        "height": 360,
-        "width": 460
+        "content": "## WF1 — Nightly Generator (logic complete)\nRuns at 06:00 in TZ America/New_York. Also exposes the `fb-generate-now` webhook (verify the `x-webhook-secret: __N8N_WEBHOOK_SECRET__` header — n8n redacts Authorization) that the Dashboard 'Generate Now' button calls with { scheduled_date }.\n\nPipeline: pick plan slot (with any APPROVED Strategist brief) or LRU subtopic → message bank + prompts → archetype → Anthropic generator → tolerant JSON parse → image prompt → Generate Image (OpenAI gpt-image-1; portrait 1024x1536 for video, square otherwise) → decode → PUT upload to the PUBLIC fb-images bucket → set public image_url → **Video post?**.\n\nMEDIA DECISION: Build Generator Prompt sets media_type from the approved brief — video when the brief has a video_concept or a reel/video/motion recommended_format, else image (on-demand + no-brief always image).\n\nVIDEO branch (media_type='video'): Generate Video (fal) animates the seed image into a 9:16 clip via fal Veo 3.1 image-to-video (model swappable via $env.FAL_ANIMATE_MODEL / fb_settings.animate_still_model; default fal-ai/veo3.1/fast/image-to-video; generate_audio=false), uploads the MP4 to the PUBLIC fb-videos bucket, and inserts an fb_posts row (media_type='video', video_status='pending', image_status='approved' seed). Requires the `FAL_KEY` n8n env var; without it the node throws (no post inserted). fal renders can take 1–3 min, so this workflow's executionTimeout is raised to 600s — confirm EXECUTIONS_TIMEOUT on the instance allows it.\n\nIMAGE branch: inserts fb_posts (media_type='image', copy/image 'pending') as before. Both inserts converge → Mark Plan Generated → Bump Subtopic → GroupMe.\n\nReplace `YOUR_SUPABASE_SERVICE_ROLE_KEY` and `__...__` placeholders with credentials/values on import. Keep `active:false` in the committed copy.",
+        "height": 440,
+        "width": 480
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
         -220,
-        -260
+        -420
       ],
       "id": "wf1-note-00000000000015",
       "name": "About WF1"
@@ -530,8 +648,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        2860,
-        400
+        3740,
+        240
       ],
       "id": "wf1-markplan-00000022",
       "name": "Mark Plan Generated"
@@ -704,7 +822,58 @@
       "main": [
         [
           {
+            "node": "Video post?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video post?": {
+      "main": [
+        [
+          {
+            "node": "Generate Video (fal)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Insert fb_posts (public image URL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Video (fal)": {
+      "main": [
+        [
+          {
+            "node": "Upload to fb-videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to fb-videos": {
+      "main": [
+        [
+          {
+            "node": "Insert fb_posts (video)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert fb_posts (video)": {
+      "main": [
+        [
+          {
+            "node": "Mark Plan Generated",
             "type": "main",
             "index": 0
           }
@@ -770,7 +939,8 @@
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "timezone": "America/New_York"
+    "timezone": "America/New_York",
+    "executionTimeout": 600
   },
   "meta": {
     "templateCredsSetupCompleted": false
