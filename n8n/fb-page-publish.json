@@ -131,6 +131,50 @@
           "combinator": "and",
           "conditions": [
             {
+              "id": "wf4-isvideo-cond-1",
+              "leftValue": "={{ $('Loop Posts').item.json.media_type }}",
+              "rightValue": "video",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "wf4-isvideo-cond-2",
+              "leftValue": "={{ $('Loop Posts').item.json.video_url }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1760, 208],
+      "id": "wf4-isvideo-021",
+      "name": "Is video?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('FB Config').first().json.graph_version }}/{{ $('FB Config').first().json.page_id }}/videos",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ file_url: $('Loop Posts').item.json.video_url, description: $('Loop Posts').item.json.post_body, access_token: $('FB Config').first().json.token }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1984, 40],
+      "id": "wf4-publish-video-022",
+      "name": "Publish Video to Page",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
               "id": "wf4-hasimage-cond",
               "leftValue": "={{ $('Loop Posts').item.json.image_url }}",
               "rightValue": "",
@@ -142,7 +186,7 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1760, 208],
+      "position": [1984, 288],
       "id": "wf4-hasimage-010",
       "name": "Has image?"
     },
@@ -157,7 +201,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [1984, 128],
+      "position": [2208, 208],
       "id": "wf4-publish-photo-011",
       "name": "Publish Photo to Page",
       "onError": "continueErrorOutput"
@@ -173,18 +217,18 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [1984, 304],
+      "position": [2208, 384],
       "id": "wf4-publish-feed-012",
       "name": "Publish to Feed",
       "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "jsCode": "// Both publish nodes converge here. Normalize the Graph response so every\n// downstream node reads the FB post id from one place — after Post First\n// Comment runs, $json would otherwise be the COMMENT id, which broke permalinks.\nconst j = $json;\nreturn [{ json: { fb_post_id: String(j.post_id || j.id || '') } }];"
+        "jsCode": "// Both publish nodes converge here. Normalize the Graph response so every\n// downstream node reads the FB post id from one place — after Post First\n// Comment runs, $json would otherwise be the COMMENT id, which broke permalinks.\n// The /videos endpoint returns { id }, /photos returns { id, post_id }, /feed { id }.\nconst j = $json;\nreturn [{ json: { fb_post_id: String(j.post_id || j.id || '') } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2192, 208],
+      "position": [2432, 208],
       "id": "wf4-capture-postid-020",
       "name": "Capture Post ID"
     },
@@ -206,7 +250,7 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [2384, 208],
+      "position": [2624, 208],
       "id": "wf4-hascomment-013",
       "name": "Has first comment?"
     },
@@ -221,7 +265,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [2608, 128],
+      "position": [2848, 128],
       "id": "wf4-comment-00014",
       "name": "Post First Comment",
       "onError": "continueRegularOutput"
@@ -243,7 +287,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [2832, 208],
+      "position": [3072, 208],
       "id": "wf4-mark-pageleg-015",
       "name": "Mark Page Leg",
       "credentials": { "httpMultipleHeadersAuth": { "id": "E0rGNWmOCXvZ4oYb", "name": "LP Supabase Account" } }
@@ -259,7 +303,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [3040, 208],
+      "position": [3296, 208],
       "id": "wf4-groupme-ok-016",
       "name": "GroupMe Notify",
       "onError": "continueRegularOutput"
@@ -281,7 +325,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [2384, 432],
+      "position": [2624, 432],
       "id": "wf4-record-error-017",
       "name": "Record Publish Error",
       "credentials": { "httpMultipleHeadersAuth": { "id": "E0rGNWmOCXvZ4oYb", "name": "LP Supabase Account" } }
@@ -297,19 +341,19 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [2608, 432],
+      "position": [2848, 432],
       "id": "wf4-groupme-fail-018",
       "name": "GroupMe Alert (failure)",
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "content": "## WF4 — runtime-config Page publisher (mirror of the live workflow)\n\nThis JSON is the repo MIRROR; the live WF4 (jpk9cLbvvvZxMMFi) is updated via MCP.\nKeep them in sync.\n\n**No FB credentials live here.** At runtime WF4:\n1. Fetches `fb_settings` (page id, graph version, `auto_publish_enabled`) and the\n   `fb_secrets.fb_page_access_token` from LP Supabase, authenticated by the n8n\n   credential **LP Supabase Account** (httpMultipleHeadersAuth: apikey + Authorization\n   headers). NOTE: $env.LP_SUPABASE_SERVICE_KEY did NOT work on this instance —\n   trigger runs failed; the credential store is the working pattern for all FB\n   workflow Supabase auth.\n2. **Gate:** publishes only when `auto_publish_enabled === true` AND page id + token\n   are present. OFF in /content/settings ⇒ instant no-op pause.\n3. **Query owns date + time + retry gates:** `status=approved & target in (page,both)\n   & page_posted_at is null & publish_attempts<3 & scheduled_date <= today(ET) &\n   (publish_at is null OR publish_at <= now)`. Future-dated posts wait for their\n   date; timed posts wait for their ET time (DB trigger derives publish_at).\n4. **Claim** PATCHes with `page_posted_at=is.null` + `Prefer: return=representation` —\n   if 0 rows come back another run already claimed it (idempotency).\n5. Publishes via `/photos` (image) or `/feed` (text); token in the BODY, never the URL.\n6. **Capture Post ID** normalizes the Graph response — downstream nodes must read\n   `$('Capture Post ID')`, never `$json`, or the comment id leaks into permalinks.\n7. **target='both' two-leg model:** always sets `page_posted_at`/`page_permalink`;\n   ONLY `target='page'` also flips `status='posted'`. A 'both' post stays 'approved'\n   until the human Group leg is recorded by `markPosted()` in the Dashboard.\n8. **Failure:** Graph error → `last_publish_error` + GroupMe alert; attempts increment\n   at claim, row drops out of the query at 3.\n\nNothing here posts to a Facebook GROUP (Meta deprecated that API in April 2024).",
-        "height": 520, "width": 560
+        "content": "## WF4 — runtime-config Page publisher (mirror of the live workflow)\n\nThis JSON is the repo MIRROR; the live WF4 (jpk9cLbvvvZxMMFi) is updated via MCP.\nKeep them in sync.\n\n**No FB credentials live here.** At runtime WF4:\n1. Fetches `fb_settings` (page id, graph version, `auto_publish_enabled`) and the\n   `fb_secrets.fb_page_access_token` from LP Supabase, authenticated by the n8n\n   credential **LP Supabase Account** (httpMultipleHeadersAuth: apikey + Authorization\n   headers). NOTE: $env.LP_SUPABASE_SERVICE_KEY did NOT work on this instance —\n   trigger runs failed; the credential store is the working pattern for all FB\n   workflow Supabase auth.\n2. **Gate:** publishes only when `auto_publish_enabled === true` AND page id + token\n   are present. OFF in /content/settings ⇒ instant no-op pause.\n3. **Query owns date + time + retry gates:** `status=approved & target in (page,both)\n   & page_posted_at is null & publish_attempts<3 & scheduled_date <= today(ET) &\n   (publish_at is null OR publish_at <= now)`. Future-dated posts wait for their\n   date; timed posts wait for their ET time (DB trigger derives publish_at).\n4. **Claim** PATCHes with `page_posted_at=is.null` + `Prefer: return=representation` —\n   if 0 rows come back another run already claimed it (idempotency).\n5. **Is video?** (media_type='video' & video_url set) publishes via `/videos`\n   (file_url + description). Otherwise `/photos` (image) or `/feed` (text). Token in\n   the BODY, never the URL.\n6. **Capture Post ID** normalizes the Graph response — downstream nodes must read\n   `$('Capture Post ID')`, never `$json`, or the comment id leaks into permalinks.\n   (/videos and /feed return `id`; /photos returns `id`+`post_id`.)\n7. **target='both' two-leg model:** always sets `page_posted_at`/`page_permalink`;\n   ONLY `target='page'` also flips `status='posted'`. A 'both' post stays 'approved'\n   until the human Group leg is recorded by `markPosted()` in the Dashboard.\n8. **Failure:** Graph error → `last_publish_error` + GroupMe alert; attempts increment\n   at claim, row drops out of the query at 3.\n\nNothing here posts to a Facebook GROUP (Meta deprecated that API in April 2024).",
+        "height": 560, "width": 560
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [0, -480],
+      "position": [0, -520],
       "id": "wf4-note-0019",
       "name": "WF4 model"
     }
@@ -329,7 +373,15 @@
       [],
       [ { "node": "Claim (idempotency guard)", "type": "main", "index": 0 } ]
     ] },
-    "Claim (idempotency guard)": { "main": [ [ { "node": "Has image?", "type": "main", "index": 0 } ] ] },
+    "Claim (idempotency guard)": { "main": [ [ { "node": "Is video?", "type": "main", "index": 0 } ] ] },
+    "Is video?": { "main": [
+      [ { "node": "Publish Video to Page", "type": "main", "index": 0 } ],
+      [ { "node": "Has image?", "type": "main", "index": 0 } ]
+    ] },
+    "Publish Video to Page": { "main": [
+      [ { "node": "Capture Post ID", "type": "main", "index": 0 } ],
+      [ { "node": "Record Publish Error", "type": "main", "index": 0 } ]
+    ] },
     "Has image?": { "main": [
       [ { "node": "Publish Photo to Page", "type": "main", "index": 0 } ],
       [ { "node": "Publish to Feed", "type": "main", "index": 0 } ]
