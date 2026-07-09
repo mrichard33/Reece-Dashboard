@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { num, usd } from "@/lib/utils";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
@@ -62,7 +63,7 @@ function SplitCard({
   );
 }
 
-export function RevenueCard({ vm }: { vm: ScorecardVM }) {
+export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode }) {
   const r = vm.revenue;
 
   const soldLines: Line[] = [
@@ -84,7 +85,7 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      <div className={`grid grid-cols-1 items-start gap-4 ${aside ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
         <SplitCard
           title="Sold this period"
           subtitle="Sold-date basis"
@@ -97,6 +98,7 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           accent="border-t-2 border-t-sky-400"
           lines={netLines}
         />
+        {aside}
       </div>
 
       <p className="flex items-start gap-1.5 px-1 text-[12px] leading-snug text-slate-500 dark:text-slate-400">
