@@ -1,34 +1,59 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarRange, ChevronDown } from "lucide-react";
+import { CalendarRange, ChevronDown, Check } from "lucide-react";
 
 /**
- * Period filter, restyled to the redesign's navy segmented pill control. Writes
- * ?period=…(&start=&end=) to the URL; the server page resolves it
- * (lib/date/resolvePeriod) and re-sources the data. Custom opens a From/To popover.
+ * Period filter (v3). Navy segmented pill with four choices — MTD (default) ·
+ * 3 Months · YTD · Month ▾. Writes ?period=… (and ?start=YYYY-MM for a picked
+ * month) to the URL; the server page resolves it (lib/date/resolvePeriod) and
+ * re-sources the data.
  *
- * Day → today · Week → week · Month → month (MTD, default) · 3 months → qtd ·
- * YTD → ytd · Custom → custom.
+ *   MTD       → month        (stored MTD snapshot)
+ *   3 Months  → trailing_3m  (current + 2 prior full months, aggregate)
+ *   YTD       → ytd          (Jan 1 → today, aggregate)
+ *   Month ▾   → select_month (a past completed month's stored EOM snapshot)
+ *
+ * Day / Week / Custom range and the live recompute path are intentionally gone —
+ * this page reads snapshots/aggregates only.
  */
-const SEGMENTS: { key: string; label: string }[] = [
-  { key: "today", label: "Day" },
-  { key: "week", label: "Week" },
-  { key: "month", label: "Month" },
-  { key: "qtd", label: "3 months" },
-  { key: "ytd", label: "YTD" },
-  { key: "custom", label: "Custom" },
+
+const MONTHS_LONG = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
 ];
+
+const SEGMENTS: { key: string; label: string }[] = [
+  { key: "month", label: "MTD" },
+  { key: "trailing_3m", label: "3 Months" },
+  { key: "ytd", label: "YTD" },
+];
+
+/** Trailing completed months (newest first): the 12 months before this month. */
+function completedMonths(): { ym: string; label: string }[] {
+  const now = new Date();
+  const out: { ym: string; label: string }[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth(); // 0-based
+    out.push({
+      ym: `${y}-${String(m + 1).padStart(2, "0")}`,
+      label: `${MONTHS_LONG[m]} ${y}`,
+    });
+  }
+  return out;
+}
 
 export function PeriodPicker() {
   const router = useRouter();
   const params = useSearchParams();
   const active = params.get("period") || "month";
+  const selectedMonth = params.get("start") || "";
   const [open, setOpen] = useState(false);
-  const [start, setStart] = useState(params.get("start") || "");
-  const [end, setEnd] = useState(params.get("end") || "");
   const ref = useRef<HTMLDivElement>(null);
+  const months = useMemo(completedMonths, []);
 
   useEffect(() => {
     if (!open) return;
@@ -39,22 +64,19 @@ export function PeriodPicker() {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  function go(period: string, extra?: { start?: string; end?: string }) {
+  function go(period: string, start?: string) {
     const next = new URLSearchParams(params.toString());
     next.set("period", period);
-    if (extra?.start) next.set("start", extra.start);
+    if (start) next.set("start", start);
     else next.delete("start");
-    if (extra?.end) next.set("end", extra.end);
-    else next.delete("end");
+    next.delete("end");
     router.replace(`?${next.toString()}`);
   }
 
-  function applyCustom() {
-    if (start && end && start <= end) {
-      go("custom", { start, end });
-      setOpen(false);
-    }
-  }
+  const monthActive = active === "select_month";
+  const monthLabel = monthActive
+    ? months.find((m) => m.ym === selectedMonth)?.label ?? "Month"
+    : "Month";
 
   return (
     <div className="flex flex-wrap items-center gap-2.5">
@@ -65,10 +87,7 @@ export function PeriodPicker() {
           return (
             <button
               key={s.key}
-              onClick={() => {
-                if (s.key === "custom") setOpen(true);
-                else go(s.key);
-              }}
+              onClick={() => go(s.key)}
               className={`h-7 whitespace-nowrap rounded px-3 text-[12px] font-medium transition ${
                 on
                   ? "bg-[#0C2340] text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
@@ -79,54 +98,52 @@ export function PeriodPicker() {
             </button>
           );
         })}
-      </div>
-
-      {active === "custom" && (
+        {/* Month ▾ — dropdown of past completed months */}
         <div className="relative" ref={ref}>
           <button
             onClick={() => setOpen((o) => !o)}
-            className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            className={`inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded px-3 text-[12px] font-medium transition ${
+              monthActive
+                ? "bg-[#0C2340] text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
+                : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+            }`}
           >
-            <span className="font-mono tabular">{start || "from"} – {end || "to"}</span>
-            <ChevronDown size={14} className={`text-slate-400 transition ${open ? "rotate-180" : ""}`} />
+            {monthLabel}
+            <ChevronDown size={13} className={`transition ${open ? "rotate-180" : ""}`} />
           </button>
           {open && (
-            <div className="absolute right-0 z-40 mt-1.5 w-[300px] rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-              <div className="grid grid-cols-2 gap-2.5">
-                <label className="block">
-                  <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">From</span>
-                  <input
-                    type="date"
-                    value={start}
-                    max={end || undefined}
-                    onChange={(e) => setStart(e.target.value)}
-                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 font-mono text-[12.5px] tabular text-slate-800 outline-none focus:ring-2 focus:ring-[#274560] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">To</span>
-                  <input
-                    type="date"
-                    value={end}
-                    min={start || undefined}
-                    onChange={(e) => setEnd(e.target.value)}
-                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 font-mono text-[12.5px] tabular text-slate-800 outline-none focus:ring-2 focus:ring-[#274560] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </label>
-              </div>
-              <div className="mt-2.5 flex justify-end">
-                <button
-                  onClick={applyCustom}
-                  disabled={!start || !end || start > end}
-                  className="inline-flex h-8 items-center rounded-md bg-[#0C2340] px-3 text-[12px] font-medium text-white transition hover:bg-[#122739] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Apply range
-                </button>
-              </div>
+            <div
+              role="listbox"
+              className="absolute right-0 z-40 mt-1.5 max-h-72 w-44 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              {months.map((m) => {
+                const on = monthActive && selectedMonth === m.ym;
+                return (
+                  <button
+                    key={m.ym}
+                    role="option"
+                    aria-selected={on}
+                    onClick={() => {
+                      go("select_month", m.ym);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-left text-[12.5px] transition ${
+                      on
+                        ? "bg-slate-100 font-semibold text-slate-900 dark:bg-slate-800 dark:text-slate-100"
+                        : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <span className="tabular">{m.label}</span>
+                    {on && <Check size={13} className="text-[#0C2340] dark:text-slate-100" />}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

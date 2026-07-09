@@ -41,6 +41,8 @@ function abbrFor(key: ResolvedPeriod["key"]): string {
     case "week":
     case "last_week":
       return "WTD";
+    case "trailing_3m":
+      return "3MO";
     case "qtd":
       return "QTD";
     case "ytd":
@@ -97,6 +99,7 @@ export type ScorecardVM = {
     paceGoal: number;
     monthlyGoal: number;
     avgSale: number;
+    nsli: number;
     daysElapsed: number;
     sellingDays: number;
   };
@@ -116,6 +119,19 @@ export type ScorecardVM = {
     demoPct: number;
     trailingNSLI: number;
     identityOk: boolean;
+    // Section ③ Sold-vs-Net figures. `net` = authoritative good business
+    // (a.net_sales). On reconciled June-2026+ data it equals released+working+other
+    // and gross − impliedCancelled; earlier months carry net but no bucket split,
+    // surfaced as `unbucketed` with `bucketsComplete=false`.
+    released: number;
+    working: number;
+    other: number;
+    unbucketed: number;
+    bucketsComplete: boolean;
+    impliedCancelled: number;
+    net: number;
+    salesCount: number;
+    cancelledCount: number;
   };
   perDay: { key: string; label: string; target: number; actual: number }[];
   status: { items: RankedItem[]; total: number; dropped: RankedItem[] };
@@ -202,6 +218,13 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
     { key: "cancelled", label: "Cancelled", value: cancelled, tone: "slate" },
   ];
   const bucketSum = released + working + open + cancelled;
+  // Net (Good Business) is the authoritative stored figure (= gross − cancellations).
+  // The released/working/other split may be partial for pre-June-2026 months, so we
+  // total ③ on `net` and surface any unbucketed remainder rather than a bucket sum.
+  const net = a.net_sales ?? released + working + open;
+  const bucketed = released + working + open;
+  const unbucketed = Math.max(0, Math.round(net - bucketed));
+  const impliedCancelled = Math.max(0, Math.round(gross - net));
   const revenue = {
     buckets,
     gross,
@@ -209,6 +232,15 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
     demoPct: a.demo_pct ?? 0,
     trailingNSLI: g.trailing_nsli ?? 0,
     identityOk: Math.abs(bucketSum - gross) <= 1,
+    released,
+    working,
+    other: open,
+    unbucketed,
+    bucketsComplete: unbucketed <= 1,
+    impliedCancelled,
+    net,
+    salesCount: sold,
+    cancelledCount: a.ko_count ?? 0,
   };
 
   // ── per-day pace ──
@@ -262,6 +294,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
       paceGoal,
       monthlyGoal,
       avgSale: a.avg_sale ?? 0,
+      nsli: a.nsli ?? 0,
       daysElapsed,
       sellingDays,
     },

@@ -16,12 +16,14 @@ const rows: MonthlySnapshotRow[] = [
     net_close: 8,
     ko_count: 2,
     gross_sales: 500_000,
+    net_sales: 480_000,
     released_dollars: 400_000,
     working_dollars: 60_000,
     raw_leads_in: 100,
     raw_inputs: { bucket_tally: { other_pending: 10_000, cancelled_dollars: 40_000 } },
   },
-  // May: final snapshot (must be used)
+  // May: final snapshot (must be used). net_sales (good business) is the
+  // authoritative per-month figure — the aggregator sums THIS, not the buckets.
   {
     period_start: "2026-05-01",
     as_of_date: "2026-05-31",
@@ -33,6 +35,7 @@ const rows: MonthlySnapshotRow[] = [
     net_close: 20,
     ko_count: 4,
     gross_sales: 1_000_000,
+    net_sales: 950_000,
     released_dollars: 800_000,
     working_dollars: 120_000,
     raw_leads_in: 220,
@@ -50,6 +53,7 @@ const rows: MonthlySnapshotRow[] = [
     net_close: 15,
     ko_count: 3,
     gross_sales: 700_000,
+    net_sales: 650_000,
     released_dollars: 560_000,
     working_dollars: 70_000,
     raw_leads_in: 130,
@@ -83,19 +87,21 @@ describe("aggregateActuals", () => {
   });
 
   it("re-derives ratios from the SUMS, not by averaging monthly percentages", () => {
-    // NSLI = Σreleased ÷ Σissued = 1,360,000 / 160 = 8,500 (rounded).
-    expect(agg.nsli).toBe(8_500);
+    // NSLI = Σnet_sales ÷ Σissued = 1,600,000 / 160 = 10,000 (rounded).
+    expect(agg.nsli).toBe(10_000);
     // close_pct = Σsales ÷ Σdemos = 42 / 130 = 32.3% (1-decimal).
     expect(agg.close_pct).toBe(32.3);
-    // good_rate_pct = Σreleased ÷ Σgross = 1,360,000 / 1,700,000 = 80.0%.
+    // good_rate_pct = Σreleased ÷ Σgross = 1,360,000 / 1,700,000 = 80.0% (a
+    // quality ratio — still released-based, unlike Net Sales).
     expect(agg.good_rate_pct).toBe(80);
-    // A naive average of monthly NSLIs (8,000 and ~9,333) would be ~8,667 — confirm
-    // we are NOT doing that.
-    expect(agg.nsli).not.toBe(8_667);
   });
 
-  it("Net Sales = released; Pending = working only", () => {
-    expect(agg.net_sales).toBe(1_360_000);
+  it("Net Sales = Σ per-month net_sales (good business), not Σreleased", () => {
+    // May final 950,000 + June 650,000 = 1,600,000 (NOT Σreleased 1,360,000, and
+    // NOT the stale May-15 row's 480,000).
+    expect(agg.net_sales).toBe(1_600_000);
+    expect(agg.good_business).toBe(1_600_000);
+    expect(agg.released_dollars).toBe(1_360_000); // released bucket kept separately
     expect(agg.pending_total).toBe(190_000); // 120k + 70k working
     expect(agg.pending_dollars).toBe(190_000);
   });
