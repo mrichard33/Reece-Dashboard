@@ -6,13 +6,15 @@ import { TopBar } from "@/components/shell/TopBar";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Card, CardContent } from "@/components/ui/Card";
 import { PeriodPicker } from "@/components/scorecard/PeriodPicker";
-import { MarketPicker } from "@/components/scorecard/MarketPicker";
+import { MarketPicker, marketLabel } from "@/components/scorecard/MarketPicker";
 import { PaceHero } from "@/components/scorecard/PaceHero";
 import { FunnelGoalTable } from "@/components/scorecard/FunnelGoalTable";
 import { RevenueCard } from "@/components/scorecard/RevenueCard";
 import { PerDayCard } from "@/components/scorecard/PerDayCard";
+import { ByMarketTable } from "@/components/scorecard/ByMarketTable";
 import { EditGoalsPanel } from "@/components/scorecard/EditGoalsPanel";
 import { getScorecardForPeriod, getScorecardGoals } from "@/lib/queries/scorecard";
+import { getByMarket } from "@/lib/queries/byMarket";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar } from "@/lib/date/sellingDays";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
@@ -21,28 +23,31 @@ import { usDate } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 const SELLING_CAL = resolveSellingCalendar();
-const MARKET = "REECE";
 
 export default async function ScorecardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; start?: string; end?: string }>;
+  searchParams: Promise<{ period?: string; start?: string; end?: string; market?: string }>;
 }) {
-  const [user, ctx, { period, start, end }] = await Promise.all([
+  const [user, ctx, { period, start, end, market }] = await Promise.all([
     requireUser(),
     getAccessContext(),
     searchParams,
   ]);
   const isAdmin = ctx?.isAdmin ?? false;
+  const MARKET = market || "REECE";
 
   const resolved = resolvePeriod(period, { start, end }, SELLING_CAL);
 
-  const view = await getScorecardForPeriod(MARKET, resolved);
+  const [view, byMarket] = await Promise.all([
+    getScorecardForPeriod(MARKET, resolved),
+    getByMarket(resolved),
+  ]);
   const goals = isAdmin ? await getScorecardGoals(MARKET) : null;
 
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
-      <MarketPicker locked />
+      <MarketPicker />
       <PeriodPicker />
       {view && (
         <span
@@ -70,7 +75,7 @@ export default async function ScorecardPage({
         email={user.email}
         role={user.role}
         title="Scorecard"
-        subtitle={`Marketing & sales performance vs goal · ${resolved.label}.`}
+        subtitle={`${marketLabel(MARKET)} · ${resolved.label} · marketing & sales vs goal.`}
       />
 
       <div className="space-y-4 p-6">
@@ -120,24 +125,8 @@ export default async function ScorecardPage({
                 {/* ③ Sold vs Net + ④ Per-Day Pace — one row (Sold · Net · Per-Day) */}
                 <RevenueCard vm={vm} aside={<PerDayCard vm={vm} />} />
 
-                {/* ⑤ By Market — per-market breakdown lands in a later phase. */}
-                <section className="scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-5 pb-3 pt-4">
-                    <h3 className="font-display text-[12.5px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
-                      By Market
-                    </h3>
-                    <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                      per-market breakdown coming
-                    </div>
-                  </div>
-                  <div className="border-t border-slate-100 px-5 py-8 dark:border-slate-800/70">
-                    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50/60 px-5 py-6 text-center dark:border-slate-800 dark:bg-slate-900/30">
-                      <p className="text-[12.5px] text-slate-400">
-                        Each of the seven markets against its own goal — landing in a later phase.
-                      </p>
-                    </div>
-                  </div>
-                </section>
+                {/* ⑤ By Market — every market for the period; rows sum to All Markets. */}
+                {byMarket.rows.length > 0 && <ByMarketTable data={byMarket} />}
               </>
             );
           })()
