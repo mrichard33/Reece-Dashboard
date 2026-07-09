@@ -25,7 +25,7 @@ describe("resolvePeriod", () => {
       expect(r.periodEnd).toBe("2026-06-23"); // last completed selling day
       expect(r.asOf).toBe("2026-06-23");
       expect(r.isPartial).toBe(false);
-      expect(r.label).toContain("Jun 2026 (MTD)");
+      expect(r.label).toContain("June 2026 (MTD)");
     }
   });
 
@@ -57,6 +57,14 @@ describe("resolvePeriod", () => {
     expect(r.source).toBe("recompute");
     expect(r.periodStart).toBe("2026-06-15");
     expect(r.periodEnd).toBe("2026-06-20"); // previous Saturday
+  });
+
+  it("trailing_3m → current + 2 prior full months through last completed selling day (aggregate)", () => {
+    const r = resolvePeriod("trailing_3m", {}, cal);
+    expect(r.source).toBe("aggregate");
+    expect(r.periodStart).toBe("2026-04-01"); // April (June minus 2 months), first of month
+    expect(r.periodEnd).toBe("2026-06-23");
+    expect(r.label).toContain("April 2026–June 2026");
   });
 
   it("qtd → quarter start through last completed selling day (aggregate)", () => {

@@ -28,6 +28,7 @@ export type PeriodKey =
   | "month"
   | "last_month"
   | "select_month"
+  | "trailing_3m"
   | "qtd"
   | "ytd"
   | "custom";
@@ -49,9 +50,14 @@ const MONTHS = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+const MONTHS_LONG = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
 const VALID_KEYS = new Set<PeriodKey>([
   "today", "yesterday", "week", "last_week", "month",
-  "last_month", "select_month", "qtd", "ytd", "custom",
+  "last_month", "select_month", "trailing_3m", "qtd", "ytd", "custom",
 ]);
 
 const isYmd = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -103,10 +109,17 @@ function fmtRange(start: string, end: string): string {
   return sameMonth ? `${fmtDay(start)}–${parts(end).d}` : `${fmtDay(start)}–${fmtDay(end)}`;
 }
 
+/** Spelled month label: "June 2026" (house style — see Part D5). */
 const monthLabel = (ymd: string): string => {
   const { y, m } = parts(ymd);
-  return `${MONTHS[m - 1]} ${y}`;
+  return `${MONTHS_LONG[m - 1]} ${y}`;
 };
+
+/** First of the month `n` months before the month containing `ymd` (UTC-safe). */
+function monthStartMinus(ymd: string, n: number): string {
+  const { y, m } = parts(ymd);
+  return new Date(Date.UTC(y, m - 1 - n, 1, 12, 0, 0)).toISOString().slice(0, 10);
+}
 
 /**
  * Resolve a period key (+ optional custom bounds) against the selling calendar.
@@ -170,6 +183,18 @@ export function resolvePeriod(
       // Current month → cap at last completed selling day; past month → full month.
       const end = start.slice(0, 7) === today.slice(0, 7) ? lastDone : monthEnd(start);
       return make("select_month", start, end, "aggregate", monthLabel(start));
+    }
+
+    case "trailing_3m": {
+      // "3 Months" = current + 2 prior full months (trailing-3, not quarter-to-date).
+      const start = monthStartMinus(today, 2);
+      return make(
+        "trailing_3m",
+        start,
+        lastDone,
+        "aggregate",
+        `Last 3 months · ${monthLabel(start)}–${monthLabel(today)}`,
+      );
     }
 
     case "qtd": {

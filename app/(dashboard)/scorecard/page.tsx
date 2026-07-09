@@ -1,30 +1,22 @@
+import Link from "next/link";
+import { BarChart3 } from "lucide-react";
 import { requireUser } from "@/components/shell/RoleGate";
 import { getAccessContext } from "@/lib/auth";
 import { TopBar } from "@/components/shell/TopBar";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Card, CardContent } from "@/components/ui/Card";
 import { PeriodPicker } from "@/components/scorecard/PeriodPicker";
-import { SnapshotStrip } from "@/components/scorecard/SnapshotStrip";
-import { HeadlineStrip } from "@/components/scorecard/HeadlineStrip";
-import { JumpNav } from "@/components/scorecard/JumpNav";
-import { ScorecardAlerts } from "@/components/scorecard/ScorecardAlerts";
+import { MarketPicker } from "@/components/scorecard/MarketPicker";
 import { PaceHero } from "@/components/scorecard/PaceHero";
-import { FunnelCard } from "@/components/scorecard/FunnelCard";
-import { RatesCard } from "@/components/scorecard/RatesCard";
+import { FunnelGoalTable } from "@/components/scorecard/FunnelGoalTable";
 import { RevenueCard } from "@/components/scorecard/RevenueCard";
 import { PerDayCard } from "@/components/scorecard/PerDayCard";
-import { StatusCard } from "@/components/scorecard/StatusCard";
-import { DetailsTable } from "@/components/scorecard/DetailsTable";
-import { GlossaryCard } from "@/components/scorecard/GlossaryCard";
-import { GoalEditor } from "@/components/scorecard/GoalEditor";
-import { SourcePerformanceTable } from "@/components/scorecard/SourcePerformanceTable";
-import { LeadCostTable } from "@/components/scorecard/LeadCostTable";
+import { EditGoalsPanel } from "@/components/scorecard/EditGoalsPanel";
 import { getScorecardForPeriod, getScorecardGoals } from "@/lib/queries/scorecard";
-import { getSourceScorecardForPeriod } from "@/lib/queries/sources";
-import { getLeadCostForPeriod } from "@/lib/queries/leadcost";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar } from "@/lib/date/sellingDays";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
+import { usDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +26,7 @@ const MARKET = "REECE";
 export default async function ScorecardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; start?: string; end?: string; date?: string }>;
+  searchParams: Promise<{ period?: string; start?: string; end?: string }>;
 }) {
   const [user, ctx, { period, start, end }] = await Promise.all([
     requireUser(),
@@ -45,12 +37,32 @@ export default async function ScorecardPage({
 
   const resolved = resolvePeriod(period, { start, end }, SELLING_CAL);
 
-  const [view, sources, leadCost] = await Promise.all([
-    getScorecardForPeriod(MARKET, resolved),
-    getSourceScorecardForPeriod(MARKET, resolved),
-    getLeadCostForPeriod(MARKET, resolved),
-  ]);
+  const view = await getScorecardForPeriod(MARKET, resolved);
   const goals = isAdmin ? await getScorecardGoals(MARKET) : null;
+
+  const controls = (
+    <div className="flex flex-wrap items-center gap-3">
+      <MarketPicker locked />
+      <PeriodPicker />
+      {view && (
+        <span
+          className="inline-flex h-7 items-center rounded-md bg-slate-100 px-2.5 font-mono text-[11px] font-medium tabular text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+          title="Data current through this date."
+        >
+          as of {usDate(view.actuals.as_of_date)}
+        </span>
+      )}
+      {isAdmin && goals && (
+        <EditGoalsPanel goals={goals} baselineNetSales={view?.derived.goal.baseline_net_sales ?? null} />
+      )}
+      <Link
+        href="/scorecard/sources"
+        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+      >
+        <BarChart3 size={13} /> Sources & lead cost
+      </Link>
+    </div>
+  );
 
   return (
     <>
@@ -64,8 +76,8 @@ export default async function ScorecardPage({
       <div className="space-y-4 p-6">
         <SectionHeader
           title="Scorecard"
-          subtitle="Goal & variance vs plan — at a glance."
-          action={<PeriodPicker />}
+          subtitle="Goal & variance vs plan — one screen."
+          action={controls}
         />
 
         {!view ? (
@@ -75,9 +87,7 @@ export default async function ScorecardPage({
                 No data for {resolved.label}.{" "}
                 {resolved.source === "snapshot"
                   ? "The daily job writes a snapshot each morning — or trigger a backfill via "
-                  : resolved.source === "aggregate"
-                    ? "No stored monthly snapshots fall in this range yet. Backfill via "
-                    : "The recompute could not be reached. Trigger it via "}
+                  : "No stored monthly snapshots fall in this range yet. Backfill via "}
                 <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
                   POST /n8n/admin/goal-scorecard-run
                 </code>{" "}
@@ -101,56 +111,27 @@ export default async function ScorecardPage({
                   </div>
                 )}
 
-                <SnapshotStrip vm={vm} />
-                <HeadlineStrip vm={vm} />
-                <JumpNav />
-
-                <ScorecardAlerts
-                  actuals={view.actuals}
-                  derived={view.derived}
-                  unmappedSources={sources?.unmapped_count ?? 0}
-                  leadCost={leadCost}
-                />
-
+                {/* ① Goal & Pace */}
                 <PaceHero vm={vm} />
 
-                <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-                  <FunnelCard vm={vm} />
-                  <RatesCard vm={vm} />
-                </div>
+                {/* ② Funnel vs Goal */}
+                <FunnelGoalTable view={view} />
 
-                <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-                  <RevenueCard vm={vm} />
-                  <PerDayCard vm={vm} />
-                </div>
+                {/* ③ Sold vs Net */}
+                <RevenueCard vm={vm} />
 
-                <StatusCard vm={vm} />
-                <DetailsTable rows={vm.marketing} abbr={vm.abbr} />
-                <GlossaryCard />
+                {/* ④ Per-Day Pace */}
+                <PerDayCard vm={vm} />
 
-                {isAdmin && goals && (
-                  <GoalEditor goals={goals} baselineNetSales={view.derived.goal.baseline_net_sales} />
-                )}
-
-                {/* Deep-dive tables retained from the prior scorecard, below the visual story. */}
-                {sources && (
-                  <SourcePerformanceTable
-                    rows={sources.rows}
-                    unmappedCount={sources.unmapped_count}
-                    asOfDate={sources.as_of_date}
-                    referenceClosePct={view.actuals.close_pct}
-                    referenceNsli={view.actuals.nsli}
-                  />
-                )}
-
-                {leadCost && (
-                  <LeadCostTable
-                    rows={leadCost.rows}
-                    targetPct={leadCost.target_pct}
-                    asOfDate={leadCost.as_of_date}
-                    anyConnected={leadCost.any_connected}
-                  />
-                )}
+                {/* ⑤ By Market — per-market breakdown lands in a later phase. */}
+                <section className="scroll-mt-24 rounded-lg border border-dashed border-slate-200 bg-white/60 px-5 py-6 text-center dark:border-slate-800 dark:bg-slate-950/40">
+                  <h3 className="font-display text-[15px] font-semibold text-slate-500 dark:text-slate-400">
+                    By Market
+                  </h3>
+                  <p className="mt-1 text-[12.5px] text-slate-400">
+                    Per-market breakdown coming — each of the seven markets against its own goal.
+                  </p>
+                </section>
               </>
             );
           })()

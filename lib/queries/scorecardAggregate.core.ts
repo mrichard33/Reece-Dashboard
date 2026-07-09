@@ -70,9 +70,15 @@ export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx):
   const gross_sales = sum("gross_sales");
   const released_dollars = sum("released_dollars");
   const working_dollars = sum("working_dollars");
-  const net_sales = released_dollars; // Net Sales = released (matches the engine)
   const other_pending = sumBucket("other_pending");
   const cancelled_dollars = sumBucket("cancelled_dollars");
+  // Net (Good Business) = Σ of each month's stored net_sales (= good_business =
+  // gross − cancellations). Summing the authoritative per-month figure is robust:
+  // the pre-June-2026 EOM snapshots carry net_sales but NO released/working/other
+  // bucket split, so deriving net from buckets (or gross − cancelled) would drop
+  // those months. This keeps Net Sales / NSLI / Avg Sale consistent MTD → 3-Month
+  // / YTD, matching the engine snapshot.
+  const net_sales = sum("net_sales");
   const pending_total = working_dollars; // Pending = Working only
   const raw_leads_in = months.reduce((a, r) => a + num(r.raw_leads_in), 0);
 
@@ -107,8 +113,8 @@ export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx):
     good_rate_pct: rate(released_dollars, gross_sales),
     ko_pct: rate(ko_count, sales),
     gsli: money(gross_sales, issued),
-    nsli: money(released_dollars, issued),
-    avg_sale: money(released_dollars, net_close),
+    nsli: money(net_sales, issued),
+    avg_sale: money(net_sales, net_close),
     reconciled: ctx.reconciled,
     created_at: null,
     raw_inputs: {
