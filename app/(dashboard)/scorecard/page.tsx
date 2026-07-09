@@ -124,13 +124,22 @@ export default async function ScorecardPage({
                 <PerDayCard vm={vm} />
 
                 {/* ⑤ By Market — per-market breakdown lands in a later phase. */}
-                <section className="scroll-mt-24 rounded-lg border border-dashed border-slate-200 bg-white/60 px-5 py-6 text-center dark:border-slate-800 dark:bg-slate-950/40">
-                  <h3 className="font-display text-[15px] font-semibold text-slate-500 dark:text-slate-400">
-                    By Market
-                  </h3>
-                  <p className="mt-1 text-[12.5px] text-slate-400">
-                    Per-market breakdown coming — each of the seven markets against its own goal.
-                  </p>
+                <section className="scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-5 pb-3 pt-4">
+                    <h3 className="font-display text-[12.5px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+                      By Market
+                    </h3>
+                    <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                      per-market breakdown coming
+                    </div>
+                  </div>
+                  <div className="border-t border-slate-100 px-5 py-8 dark:border-slate-800/70">
+                    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50/60 px-5 py-6 text-center dark:border-slate-800 dark:bg-slate-900/30">
+                      <p className="text-[12.5px] text-slate-400">
+                        Each of the seven markets against its own goal — landing in a later phase.
+                      </p>
+                    </div>
+                  </div>
                 </section>
               </>
             );

@@ -20,7 +20,7 @@ export function PaceDayBar({
           <span
             className={
               behind
-                ? "font-semibold text-rose-600 dark:text-rose-400"
+                ? "font-semibold text-amber-600 dark:text-amber-400"
                 : "font-semibold text-emerald-600 dark:text-emerald-400"
             }
           >
@@ -32,7 +32,7 @@ export function PaceDayBar({
       <div className="relative h-2 rounded-full bg-slate-100 dark:bg-slate-800">
         <div
           className="sc-anim absolute inset-y-0 left-0 rounded-full"
-          style={{ width: `${(actual / max) * 100}%`, background: behind ? SC_COLOR.rose : SC_COLOR.emerald }}
+          style={{ width: `${(actual / max) * 100}%`, background: behind ? SC_COLOR.amber : SC_COLOR.emerald }}
         />
         <div
           className="absolute -bottom-0.5 -top-0.5 w-0.5 rounded bg-slate-500 dark:bg-slate-300"

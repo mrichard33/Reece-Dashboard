@@ -1,7 +1,6 @@
 import { num } from "@/lib/utils";
 import { pct } from "./format";
-import { scPts } from "@/lib/scorecard/viewModel";
-import { ScCard } from "./ScCard";
+import { ScSection } from "./ScSection";
 import type { ScorecardView } from "@/lib/queries/scorecard";
 
 /**
@@ -17,18 +16,24 @@ type Row = {
   monthly: string | null;
   targetToDate: string | null;
   actual: string;
-  pace: string | null;
-  paceTone: "pos" | "neg" | "plain";
+  paceLabel: string | null;
+  paceCls: string;
 };
 
 const r0 = (v: number) => Math.round(v);
+
+const EMERALD = "text-emerald-600 dark:text-emerald-400";
+const AMBER = "text-amber-600 dark:text-amber-400";
+const BRICK = "text-brick";
+const MUTE = "text-slate-400";
 
 export function FunnelGoalTable({ view }: { view: ScorecardView }) {
   const { actuals: a, goals: g, derived: d } = view;
   const daysElapsed = a.days_elapsed || 1;
   const sellingDays = a.working_days_in_period ?? g.working_days ?? 26;
 
-  // ── count rows: goal = per-day target × days (target-to-date) or × selling days (monthly)
+  // ── count rows: goal = per-day target × days (target-to-date) or × selling days (monthly).
+  //    A miss on a volume row is amber (recoverable), matching the approved design.
   const countRow = (metric: string, actual: number, perDay: number | null): Row => {
     const ttd = perDay == null ? null : r0(perDay * daysElapsed);
     const monthly = perDay == null ? null : r0(perDay * sellingDays);
@@ -38,12 +43,13 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
       monthly: monthly == null ? null : num(monthly),
       targetToDate: ttd == null ? null : num(ttd),
       actual: num(actual),
-      pace: paceVal == null ? null : (paceVal >= 0 ? "+" : "") + num(paceVal),
-      paceTone: paceVal == null ? "plain" : paceVal >= 0 ? "pos" : "neg",
+      paceLabel: paceVal == null ? null : `${paceVal >= 0 ? "+" : ""}${num(paceVal)} vs pace`,
+      paceCls: paceVal == null ? MUTE : paceVal >= 0 ? EMERALD : AMBER,
     };
   };
 
   // ── rate rows: percentages don't prorate — target-to-date = the flat target.
+  //    A miss on a rate row is red (a quality problem).
   const rateRow = (
     metric: string,
     actual: number | null,
@@ -51,19 +57,14 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
     ptsGap: number | null,
     higherIsBetter: boolean,
   ): Row => {
-    const tone: Row["paceTone"] =
-      ptsGap == null
-        ? "plain"
-        : (higherIsBetter ? ptsGap >= 0 : ptsGap <= 0)
-          ? "pos"
-          : "neg";
+    const good = ptsGap == null ? null : higherIsBetter ? ptsGap >= 0 : ptsGap <= 0;
     return {
       metric,
       monthly: pct(target),
       targetToDate: pct(target),
       actual: pct(actual),
-      pace: ptsGap == null ? null : scPts(ptsGap),
-      paceTone: tone,
+      paceLabel: ptsGap == null ? null : `${ptsGap >= 0 ? "+" : ""}${ptsGap.toFixed(1)} pt`,
+      paceCls: good == null ? MUTE : good ? EMERALD : BRICK,
     };
   };
 
@@ -78,56 +79,56 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
     rateRow("KO %", a.ko_pct, g.target_ko_pct, d.variance.ko_pts, false),
   ];
 
-  const toneCls = (t: Row["paceTone"]) =>
-    t === "pos"
-      ? "text-emerald-600 dark:text-emerald-400"
-      : t === "neg"
-        ? "text-brick"
-        : "text-slate-400";
+  const dotCls = (cls: string) =>
+    cls === EMERALD ? "bg-emerald-500" : cls === AMBER ? "bg-amber-500" : cls === BRICK ? "bg-brick" : "bg-slate-300";
 
   return (
-    <ScCard
+    <ScSection
       id="sc-funnel"
-      title="Funnel vs Goal"
-      lead="Every stage and rate against the monthly goal, the target you should have reached by today, and where you actually are."
-      info={{
-        what: "Funnel counts (Leads → Issued → Demos → Sales) and the four rates (Close / Demo / Good Rate / KO %) vs goal. KO% is inverted — lower is better.",
-        where: "Actuals from LP raw data for this window; goals & per-day targets from Edit Goals.",
-        fix: "A red Pace on a rate row means that conversion is under target — dig into the stage above it.",
-      }}
+      label="Funnel vs Goal"
+      meta="Actual measured against the prorated (MTD) target"
     >
-      <div className="overflow-x-auto p-2 sm:p-4">
-        <table className="w-full min-w-[520px] text-[13px]">
+      <div className="overflow-x-auto border-t border-slate-100 px-2 py-1 dark:border-slate-800/70 sm:px-4 sm:py-2">
+        <table className="w-full min-w-[560px] text-[13px]">
           <thead>
-            <tr className="border-b border-slate-100 text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800">
-              <th className="px-3 py-2 text-left font-semibold">Metric</th>
-              <th className="px-3 py-2 text-right font-semibold">Monthly Goal</th>
-              <th className="px-3 py-2 text-right font-semibold">
+            <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <th className="px-3 py-2.5 text-left font-semibold">Metric</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Monthly Goal</th>
+              <th className="px-3 py-2.5 text-right font-semibold">
                 <span className="inline-flex items-center gap-1" title="Monthly goal scaled to selling days elapsed.">
                   Target to Date
                   <span className="text-slate-400" aria-hidden>ⓘ</span>
                 </span>
               </th>
-              <th className="px-3 py-2 text-right font-semibold">Actual</th>
-              <th className="px-3 py-2 text-right font-semibold">Pace</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Actual</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Pace</th>
             </tr>
           </thead>
           <tbody className="font-mono tabular">
             {rows.map((row, i) => (
               <tr
                 key={row.metric}
-                className={`border-b border-slate-50 last:border-0 dark:border-slate-900 ${i === 4 ? "border-t-2 border-t-slate-100 dark:border-t-slate-800" : ""}`}
+                className={`border-t border-slate-50 dark:border-slate-900 ${i === 4 ? "border-t-2 border-t-slate-200 dark:border-t-slate-700" : ""}`}
               >
                 <td className="px-3 py-2 font-sans font-medium text-slate-700 dark:text-slate-200">{row.metric}</td>
                 <td className="px-3 py-2 text-right text-slate-500 dark:text-slate-400">{row.monthly ?? "—"}</td>
                 <td className="px-3 py-2 text-right text-slate-500 dark:text-slate-400">{row.targetToDate ?? "—"}</td>
                 <td className="px-3 py-2 text-right font-semibold text-slate-900 dark:text-slate-100">{row.actual}</td>
-                <td className={`px-3 py-2 text-right font-semibold ${toneCls(row.paceTone)}`}>{row.pace ?? "—"}</td>
+                <td className={`px-3 py-2 text-right font-medium ${row.paceCls}`}>
+                  {row.paceLabel ? (
+                    <span className="inline-flex items-center justify-end gap-1.5">
+                      <span className={`h-1.5 w-1.5 rounded-full ${dotCls(row.paceCls)}`} />
+                      {row.paceLabel}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </ScCard>
+    </ScSection>
   );
 }
