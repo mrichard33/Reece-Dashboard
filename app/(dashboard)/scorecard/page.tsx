@@ -117,11 +117,8 @@ export default async function ScorecardPage({
                 {/* ② Funnel vs Goal */}
                 <FunnelGoalTable view={view} />
 
-                {/* ③ Sold vs Net */}
-                <RevenueCard vm={vm} />
-
-                {/* ④ Per-Day Pace */}
-                <PerDayCard vm={vm} />
+                {/* ③ Sold vs Net + ④ Per-Day Pace — one row (Sold · Net · Per-Day) */}
+                <RevenueCard vm={vm} aside={<PerDayCard vm={vm} />} />
 
                 {/* ⑤ By Market — per-market breakdown lands in a later phase. */}
                 <section className="scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
