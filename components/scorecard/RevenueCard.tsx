@@ -1,5 +1,4 @@
 import { num, usd } from "@/lib/utils";
-import { ScCard } from "./ScCard";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /**
@@ -16,26 +15,49 @@ import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 type Line = { label: string; note?: string; value: string; tone?: "plain" | "red"; strong?: boolean };
 
-function LineList({ lines }: { lines: Line[] }) {
+function SplitCard({
+  title,
+  subtitle,
+  accent,
+  lines,
+}: {
+  title: string;
+  subtitle: string;
+  accent: string;
+  lines: Line[];
+}) {
   return (
-    <div className="divide-y divide-slate-100 dark:divide-slate-800">
-      {lines.map((l) => (
-        <div key={l.label} className={`flex items-baseline justify-between gap-3 px-5 py-2.5 ${l.strong ? "bg-slate-50/60 dark:bg-slate-900/40" : ""}`}>
-          <div className="min-w-0">
-            <span className={`text-[12.5px] ${l.strong ? "font-semibold text-slate-900 dark:text-slate-100" : "text-slate-600 dark:text-slate-300"}`}>
-              {l.label}
-            </span>
-            {l.note && <span className="ml-1.5 text-[10.5px] uppercase tracking-wider text-slate-400">{l.note}</span>}
-          </div>
-          <span
-            className={`shrink-0 font-mono text-[14px] tabular ${
-              l.strong ? "font-bold" : "font-semibold"
-            } ${l.tone === "red" ? "text-brick" : "text-slate-900 dark:text-slate-100"}`}
+    <div
+      className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 ${accent}`}
+    >
+      <div className="px-5 pb-2.5 pt-4">
+        <h3 className="font-display text-[12.5px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+          {title}
+        </h3>
+        <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">{subtitle}</p>
+      </div>
+      <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800/70 dark:border-slate-800/70">
+        {lines.map((l) => (
+          <div
+            key={l.label}
+            className={`flex items-baseline justify-between gap-3 px-5 py-2.5 ${l.strong ? "bg-slate-50/70 dark:bg-slate-900/50" : ""}`}
           >
-            {l.value}
-          </span>
-        </div>
-      ))}
+            <div className="min-w-0">
+              <span className={`text-[12.5px] ${l.strong ? "font-semibold text-slate-900 dark:text-slate-100" : "text-slate-600 dark:text-slate-300"}`}>
+                {l.label}
+              </span>
+              {l.note && <span className="ml-1.5 text-[10px] uppercase tracking-wider text-slate-400">{l.note}</span>}
+            </div>
+            <span
+              className={`shrink-0 font-mono text-[14px] tabular ${l.strong ? "font-bold" : "font-semibold"} ${
+                l.tone === "red" ? "text-brick" : "text-slate-900 dark:text-slate-100"
+              }`}
+            >
+              {l.value}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -44,9 +66,9 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
   const r = vm.revenue;
 
   const soldLines: Line[] = [
-    { label: "Sales", value: num(r.salesCount) },
+    { label: "Sales count", value: num(r.salesCount) },
     { label: "Gross sold", value: usd(r.gross) },
-    { label: "Cancellations", note: `${num(r.cancelledCount)} jobs`, value: `− ${usd(r.impliedCancelled)}`, tone: "red" },
+    { label: "Cancellations", value: `${num(r.cancelledCount)} · ${usd(r.impliedCancelled)}`, tone: "red" },
     { label: "Surviving good business", value: usd(r.net), strong: true },
   ];
 
@@ -63,46 +85,32 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <ScCard
-          id="sc-sold"
+        <SplitCard
           title="Sold this period"
-          lead="Everything written on a sale date in this window — before jobs release."
-          info={{
-            what: "Sold-date basis: gross written this period, minus cancellations, equals the surviving good business.",
-            where: "Sales & cancellations from LP raw data for this window.",
-            fix: "A large cancellation slice erodes surviving business — review KO reasons.",
-          }}
-        >
-          <div className="py-1.5">
-            <LineList lines={soldLines} />
-          </div>
-        </ScCard>
-
-        <ScCard
-          id="sc-net"
+          subtitle="Sold-date basis"
+          accent="border-t-2 border-t-[#0C2340] dark:border-t-slate-200"
+          lines={soldLines}
+        />
+        <SplitCard
           title="Net (Good Business) breakdown"
-          lead="The same surviving business, split by how far each dollar has progressed."
-          info={{
-            what: "Net-date basis: Released is the only slice recognized; Working and Other are still in flight. They sum to Net (Good Business).",
-            where: "Revenue buckets from LP raw data for this window.",
-            fix: "A large Working/Other share means money is sold but not yet released — chase financing/HOA/permits/production.",
-          }}
-        >
-          <div className="py-1.5">
-            <LineList lines={netLines} />
-          </div>
-        </ScCard>
+          subtitle="Net-date basis"
+          accent="border-t-2 border-t-sky-400"
+          lines={netLines}
+        />
       </div>
 
-      <p className="px-1 text-[12px] leading-snug text-slate-500 dark:text-slate-400">
-        Net rarely equals Sold in the same period — jobs net when they release (HOA, permits,
-        financing, production), often months later.
-        {!r.bucketsComplete && (
-          <span className="mt-1 block text-slate-400">
-            Net buckets tracked from June 2026 — earlier months contribute to Net (Good Business)
-            but aren&apos;t split into Released / Working / Other.
-          </span>
-        )}
+      <p className="flex items-start gap-1.5 px-1 text-[12px] leading-snug text-slate-500 dark:text-slate-400">
+        <span aria-hidden className="mt-px text-slate-400">ⓘ</span>
+        <span>
+          Net rarely equals Sold in the same period — jobs net when they release (HOA, permits,
+          financing, production), often months later.
+          {!r.bucketsComplete && (
+            <span className="mt-1 block text-slate-400">
+              Net buckets tracked from June 2026 — earlier months contribute to Net (Good Business)
+              but aren&apos;t split into Released / Working / Other.
+            </span>
+          )}
+        </span>
       </p>
     </div>
   );
