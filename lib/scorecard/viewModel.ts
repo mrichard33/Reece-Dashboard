@@ -72,6 +72,10 @@ export type MarketingRow = {
 
 export type ScorecardVM = {
   abbr: string;
+  /** True when any part of the view is the live in-progress month (not fully
+   *  report-sourced) — the released figure is a provisional estimate that ties to
+   *  the official Net Report when the month closes. */
+  provisional: boolean;
   snapshot: {
     asOfDate: string;
     rangeLabel: string;
@@ -148,12 +152,17 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   const sellingDays = a.working_days_in_period ?? g.working_days ?? 26;
 
   // ── pace ──
-  const netSales = a.net_sales ?? 0;
+  // Headline Net = RELEASED TO PRODUCTION (RTP) — the basis of Reece's official Net
+  // Report. Released is a subset of "good business" (③ still shows the full
+  // gross → good-business → released/working/other breakdown); the ① hero and pace
+  // track released vs goal. Falls back to net_sales only if a row predates the
+  // released split.
+  const netReleased = a.released_dollars ?? a.net_sales ?? 0;
   const paceGoal = d.mtd_goal_dollars ?? 0;
   const monthlyGoal = d.goal.effective_monthly_goal ?? d.monthly_goal_dollars ?? 0;
-  const gap = d.variance.dollars ?? netSales - paceGoal;
-  const pctOfPace = paceGoal > 0 ? (netSales / paceGoal) * 100 : 0;
-  const pctOfFull = monthlyGoal > 0 ? Math.min(100, (netSales / monthlyGoal) * 100) : 0;
+  const gap = Math.round(netReleased - paceGoal);
+  const pctOfPace = paceGoal > 0 ? (netReleased / paceGoal) * 100 : 0;
+  const pctOfFull = monthlyGoal > 0 ? Math.min(100, (netReleased / monthlyGoal) * 100) : 0;
   const elapsedPct = sellingDays > 0 ? Math.min(100, (daysElapsed / sellingDays) * 100) : 0;
   const behind = gap < 0;
   const tone: Tone = behind ? (pctOfPace < 75 ? "rose" : "amber") : "emerald";
@@ -205,7 +214,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
 
   // ── revenue ──
   const bt = a.raw_inputs?.bucket_tally;
-  const released = bt?.released_dollars ?? a.released_dollars ?? netSales;
+  const released = bt?.released_dollars ?? a.released_dollars ?? (a.net_sales ?? 0);
   const working = bt?.working_dollars ?? a.working_dollars ?? 0;
   const open = bt?.other_pending ?? 0;
   const gross = a.gross_sales ?? released + working + open;
@@ -263,8 +272,8 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   // ── headline copy ──
   const left = Math.max(0, sellingDays - daysElapsed);
   const sentence = behind
-    ? `Behind plan — net sales are ${scMoneyShort(Math.abs(gap))} under the ${abbr} goal.`
-    : `On track — net sales are ${scMoneyShort(gap)} ahead of the ${abbr} goal.`;
+    ? `Behind plan — released net is ${scMoneyShort(Math.abs(gap))} under the ${abbr} goal.`
+    : `On track — released net is ${scMoneyShort(gap)} ahead of the ${abbr} goal.`;
   const sub = `That's ${Math.round(pctOfPace)}% of where you should be by today, with ${left} selling day${left === 1 ? "" : "s"} left in the period.`;
   const headline = { behind, tone, sentence, sub, pctOfPace };
 
@@ -273,6 +282,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
 
   return {
     abbr,
+    provisional: a.computed_from !== "net_report_rtp",
     snapshot: {
       asOfDate: a.as_of_date,
       rangeLabel: `${a.period_start} → ${a.period_end}`,
@@ -290,7 +300,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
       pctOfFull,
       elapsedPct,
       gap,
-      netSales,
+      netSales: netReleased, // headline Net = released to production (RTP)
       paceGoal,
       monthlyGoal,
       avgSale: a.avg_sale ?? 0,
