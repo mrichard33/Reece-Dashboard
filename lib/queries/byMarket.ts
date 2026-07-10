@@ -39,10 +39,20 @@ export type ByMarketRow = {
 
 export type ByMarketView = { rows: ByMarketRow[]; total: ByMarketRow | null };
 
+/** Per-market fetch that never rejects — a bad market must not take down the page. */
+async function safeView(market: string, resolved: ResolvedPeriod) {
+  try {
+    return await getScorecardForPeriod(market, resolved);
+  } catch (err) {
+    console.error(`[byMarket] ${market} failed:`, (err as Error)?.message ?? err);
+    return null;
+  }
+}
+
 export async function getByMarket(resolved: ResolvedPeriod): Promise<ByMarketView> {
   const [reece, ...marketViews] = await Promise.all([
-    getScorecardForPeriod("REECE", resolved),
-    ...MARKETS.map((m) => getScorecardForPeriod(m.code, resolved)),
+    safeView("REECE", resolved),
+    ...MARKETS.map((m) => safeView(m.code, resolved)),
   ]);
 
   type V = NonNullable<Awaited<ReturnType<typeof getScorecardForPeriod>>>;
