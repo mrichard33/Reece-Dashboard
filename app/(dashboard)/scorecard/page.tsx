@@ -44,9 +44,19 @@ export default async function ScorecardPage({
       console.error(`[scorecard] view ${MARKET} failed:`, (err as Error)?.message ?? err);
       return null;
     }),
-    getByMarket(resolved),
+    getByMarket(resolved).catch((err) => {
+      console.error("[scorecard] byMarket failed:", (err as Error)?.message ?? err);
+      return { rows: [], total: null };
+    }),
   ]);
-  const goalsEditor = isAdmin ? await getScorecardGoalsForEditor() : null;
+  // Admin-only editor data — never let its fan-out take down the page; the panel
+  // simply hides if it can't load.
+  const goalsEditor = isAdmin
+    ? await getScorecardGoalsForEditor().catch((err) => {
+        console.error("[scorecard] goals editor failed:", (err as Error)?.message ?? err);
+        return null;
+      })
+    : null;
 
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
