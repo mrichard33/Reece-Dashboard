@@ -14,7 +14,7 @@ export function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-end justify-between gap-4">
+    <div className="flex flex-col items-start gap-3 lg:flex-row lg:items-end lg:justify-between lg:gap-4">
       <div className="min-w-0">
         <h1 className="font-display text-[22px] font-bold tracking-tight text-navy-900 dark:text-slate-50">
           {title}
@@ -25,7 +25,7 @@ export function SectionHeader({
           </p>
         )}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="w-full lg:w-auto lg:shrink-0">{action}</div>}
     </div>
   );
 }

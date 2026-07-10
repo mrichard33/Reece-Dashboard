@@ -56,13 +56,13 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
       tail="the 5-second read"
       meta={`${p.sellingDays} working days · ${p.daysElapsed} elapsed`}
     >
-      <div className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-slate-100 px-5 py-5 dark:border-slate-800/70 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-5 border-t border-slate-100 px-4 py-5 dark:border-slate-800/70 sm:grid-cols-4 sm:gap-x-6 sm:px-5 xl:grid-cols-8">
         {kpis.map((k) => (
           <div key={k.label} className="min-w-0">
             <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               {k.label}
             </div>
-            <div className={`mt-1.5 font-mono text-[18px] font-semibold leading-none tabular ${toneCls(k.tone)}`}>
+            <div className={`mt-1.5 truncate font-mono text-[15px] font-semibold leading-none tabular sm:text-[18px] ${toneCls(k.tone)}`}>
               {k.value}
             </div>
             <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{k.sub}</div>

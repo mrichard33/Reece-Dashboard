@@ -28,6 +28,63 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
   const cell = "px-3 py-2 text-right font-mono tabular";
   const headCell = "px-3 py-2.5 text-right font-semibold";
 
+  const goalBar = (pctToGoal: number) => (
+    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+      <div
+        className={`h-full rounded-full ${pctToGoal >= 100 ? "bg-emerald-500" : pctToGoal >= 90 ? "bg-amber-500" : "bg-brick"}`}
+        style={{ width: `${Math.min(100, pctToGoal)}%` }}
+      />
+    </div>
+  );
+
+  // Mobile: one tappable card per market (the table is too wide to read at 390px).
+  const MobileCard = ({ r, strong }: { r: ByMarketRow; strong?: boolean }) => {
+    const metrics: [string, string][] = [
+      ["Leads", num(r.leads)],
+      ["Issued", num(r.issued)],
+      ["Demos", num(r.demos)],
+      ["Sales", num(r.sales)],
+      ["Close %", r.utility ? "—" : pct(r.close_pct)],
+      ["Gross $", usd(r.gross_sales)],
+    ];
+    return (
+      <button
+        type="button"
+        onClick={() => open(r.market)}
+        className={`block w-full rounded-lg border px-3.5 py-3 text-left transition active:bg-slate-50 dark:active:bg-slate-900/50 ${
+          strong
+            ? "border-slate-300 bg-slate-50/70 dark:border-slate-700 dark:bg-slate-900/40"
+            : "border-slate-200 dark:border-slate-800"
+        }`}
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <span className={`text-[14px] font-semibold ${r.utility ? "text-slate-400 dark:text-slate-500" : "text-slate-900 dark:text-slate-100"}`}>
+            {r.label}
+          </span>
+          <span className="shrink-0 font-mono text-[15px] font-bold tabular text-slate-900 dark:text-slate-100">
+            {usd(r.net_sales)}
+          </span>
+        </div>
+        {r.pctToGoal != null && (
+          <div className="mt-2 flex items-center gap-2">
+            {goalBar(r.pctToGoal)}
+            <span className="w-[52px] shrink-0 text-right font-mono text-[11px] tabular text-slate-500">
+              {Math.round(r.pctToGoal)}% goal
+            </span>
+          </div>
+        )}
+        <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
+          {metrics.map(([label, value]) => (
+            <div key={label}>
+              <div className="text-[9.5px] font-semibold uppercase tracking-wider text-slate-400">{label}</div>
+              <div className="mt-0.5 font-mono text-[12.5px] tabular text-slate-700 dark:text-slate-200">{value}</div>
+            </div>
+          ))}
+        </div>
+      </button>
+    );
+  };
+
   const Row = ({ r, strong }: { r: ByMarketRow; strong?: boolean }) => (
     <tr
       onClick={() => open(r.market)}
@@ -65,8 +122,17 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
   );
 
   return (
-    <ScSection id="sc-bymarket" label="By Market" meta="Click a row to open that market's scorecard">
-      <div className="overflow-x-auto border-t border-slate-100 px-2 py-1 dark:border-slate-800/70 sm:px-4 sm:py-2">
+    <ScSection id="sc-bymarket" label="By Market" meta="Tap a market to open its scorecard">
+      {/* Phone + tablet: stacked cards */}
+      <div className="space-y-2 border-t border-slate-100 px-3 py-3 dark:border-slate-800/70 lg:hidden">
+        {rows.map((r) => (
+          <MobileCard key={r.market} r={r} />
+        ))}
+        {total && <MobileCard r={total} strong />}
+      </div>
+
+      {/* Desktop: full table */}
+      <div className="hidden overflow-x-auto border-t border-slate-100 px-2 py-1 dark:border-slate-800/70 lg:block lg:px-4 lg:py-2">
         <table className="w-full min-w-[820px] text-[13px]">
           <thead>
             <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">

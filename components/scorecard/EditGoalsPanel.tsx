@@ -33,7 +33,7 @@ export function EditGoalsPanel({
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 sm:h-7"
       >
         <SlidersHorizontal size={13} />
         Edit goals
@@ -52,7 +52,7 @@ export function EditGoalsPanel({
             <button
               onClick={() => setOpen(false)}
               aria-label="Close"
-              className="absolute -top-2 right-0 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-500 shadow-md transition hover:text-slate-900 dark:bg-slate-800 dark:text-slate-300 dark:hover:text-white"
+              className="absolute -top-2 right-0 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 shadow-md transition hover:text-slate-900 dark:bg-slate-800 dark:text-slate-300 dark:hover:text-white"
             >
               <X size={16} />
             </button>
