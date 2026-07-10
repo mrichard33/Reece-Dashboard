@@ -8,6 +8,13 @@ import { z } from "zod";
 export const GoalSchema = z
   .object({
     market: z.string().min(1).default("REECE"),
+    // First-of-month the goal applies to (frozen into scorecard_goals_monthly).
+    // Optional → the server action defaults it to the current month.
+    goal_month: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "goal_month must be YYYY-MM-DD")
+      .nullable()
+      .default(null),
     // 'dollars' → monthly_goal_dollars is the goal. 'growth_pct' → goal $ is derived
     // at read time from a trailing baseline × (1 + growth_pct/100).
     goal_mode: z.enum(["dollars", "growth_pct"]).default("dollars"),

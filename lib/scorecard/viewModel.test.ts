@@ -103,6 +103,7 @@ function makeView(overrides?: {
       baseline_net_sales: null,
       baseline_source: "none",
       effective_monthly_goal: 9067081,
+      estimated: false,
     },
     reconciled: false,
   };

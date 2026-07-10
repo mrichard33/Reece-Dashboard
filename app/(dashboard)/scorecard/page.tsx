@@ -13,7 +13,7 @@ import { RevenueCard } from "@/components/scorecard/RevenueCard";
 import { PerDayCard } from "@/components/scorecard/PerDayCard";
 import { ByMarketTable } from "@/components/scorecard/ByMarketTable";
 import { EditGoalsPanel } from "@/components/scorecard/EditGoalsPanel";
-import { getScorecardForPeriod, getScorecardGoals } from "@/lib/queries/scorecard";
+import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries/scorecard";
 import { getByMarket } from "@/lib/queries/byMarket";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar } from "@/lib/date/sellingDays";
@@ -46,7 +46,7 @@ export default async function ScorecardPage({
     }),
     getByMarket(resolved),
   ]);
-  const goals = isAdmin ? await getScorecardGoals(MARKET) : null;
+  const goalsEditor = isAdmin ? await getScorecardGoalsForEditor() : null;
 
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
@@ -60,8 +60,8 @@ export default async function ScorecardPage({
           as of {usDate(view.actuals.as_of_date)}
         </span>
       )}
-      {isAdmin && goals && (
-        <EditGoalsPanel goals={goals} baselineNetSales={view?.derived.goal.baseline_net_sales ?? null} />
+      {isAdmin && goalsEditor && (
+        <EditGoalsPanel data={goalsEditor} initialMarket={MARKET} />
       )}
       <Link
         href="/scorecard/sources"

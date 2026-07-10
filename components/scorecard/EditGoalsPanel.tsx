@@ -3,20 +3,20 @@
 import { useEffect, useState } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 import { GoalEditor } from "./GoalEditor";
-import type { ScorecardGoals } from "@/lib/queries/scorecard";
+import type { ScorecardGoalsEditorData } from "@/lib/queries/scorecard";
 
 /**
- * Admin "Edit goals" control. A compact header button that opens the GoalEditor
- * in a modal overlay, so the button can live in the page controls while the
- * editor floats above the scorecard. Phase 1 keeps the single-REECE editor;
- * per-market / per-month selectors arrive in a later phase.
+ * Admin "Edit goals" control. A compact header button that opens the per-market /
+ * per-month GoalEditor in a modal overlay, so the button can live in the page
+ * controls while the editor floats above the scorecard. `initialMarket` seeds the
+ * editor's Market selector from the currently viewed scope.
  */
 export function EditGoalsPanel({
-  goals,
-  baselineNetSales,
+  data,
+  initialMarket,
 }: {
-  goals: ScorecardGoals;
-  baselineNetSales: number | null;
+  data: ScorecardGoalsEditorData;
+  initialMarket?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -56,7 +56,7 @@ export function EditGoalsPanel({
             >
               <X size={16} />
             </button>
-            <GoalEditor goals={goals} baselineNetSales={baselineNetSales} />
+            <GoalEditor data={data} initialMarket={initialMarket} />
           </div>
         </div>
       )}

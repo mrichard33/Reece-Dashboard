@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
-import { Check, Circle } from "lucide-react";
+import { Check, Circle, AlertTriangle } from "lucide-react";
 import { saveScorecardGoals } from "@/lib/actions/scorecard";
 import { GoalSchema } from "@/lib/scorecard/goalSchema";
-import type { ScorecardGoals } from "@/lib/queries/scorecard";
-import { usd } from "@/lib/utils";
+import type {
+  ScorecardGoalsEditorData,
+  MarketGoalEntry,
+} from "@/lib/queries/scorecard";
+import { marketLabel, SCORECARD_MARKETS } from "./MarketPicker";
+import { usd, monthLabelFull } from "@/lib/utils";
 import { ScCard } from "./ScCard";
 
 type FieldSpec = { name: string; label: string; step?: string; prefix?: string };
@@ -23,64 +27,129 @@ const FIELDS: FieldSpec[] = [
 ];
 
 const n1 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(1));
+const s = (v: number | string | null | undefined) =>
+  v === null || v === undefined || v === "" ? "" : String(v);
+
+const EMPTY_FORM: Record<string, string> = {
+  goal_mode: "dollars", monthly_goal_dollars: "", growth_pct: "", working_days: "",
+  trailing_nsli: "", target_close_pct: "", target_demo_pct: "", target_good_rate_pct: "",
+  target_ko_pct: "", target_issue_pct: "", target_net_close_pct: "",
+};
+
+/** Form values for a (market, month) — prefers the frozen monthly row, else the live goal. */
+function formValuesFor(
+  entry: MarketGoalEntry | undefined,
+  month: string,
+  monthly: ScorecardGoalsEditorData["monthly"],
+): Record<string, string> {
+  if (!entry) return { ...EMPTY_FORM };
+  const g = entry.goals;
+  const frozen = monthly.find(
+    (r) => r.market === entry.market && String(r.goal_month).slice(0, 10) === month,
+  );
+  return {
+    goal_mode: frozen ? frozen.goal_mode : g.goal_mode,
+    monthly_goal_dollars: s(frozen ? frozen.goal_dollars : g.monthly_goal_dollars),
+    growth_pct: s(frozen ? frozen.growth_pct : g.growth_pct),
+    working_days: s(frozen ? frozen.working_days : g.working_days),
+    trailing_nsli: s(frozen ? frozen.trailing_nsli ?? g.trailing_nsli : g.trailing_nsli),
+    target_close_pct: s(frozen ? frozen.target_close_pct ?? g.target_close_pct : g.target_close_pct),
+    target_demo_pct: s(frozen ? frozen.target_demo_pct ?? g.target_demo_pct : g.target_demo_pct),
+    target_good_rate_pct: s(frozen ? frozen.target_good_rate_pct ?? g.target_good_rate_pct : g.target_good_rate_pct),
+    target_ko_pct: s(frozen ? frozen.target_ko_pct ?? g.target_ko_pct : g.target_ko_pct),
+    // Optional funnel targets aren't month-frozen — always from the live row.
+    target_issue_pct: s(g.target_issue_pct),
+    target_net_close_pct: s(g.target_net_close_pct),
+  };
+}
+
+/** Effective $ goal implied by the current form values for a market. */
+function effectiveFromForm(w: Record<string, string>, baseline: number | null): number {
+  if (w.goal_mode === "growth_pct") {
+    const g = Number(w.growth_pct);
+    return baseline != null && Number.isFinite(g) ? Math.round(baseline * (1 + g / 100)) : 0;
+  }
+  return Number(w.monthly_goal_dollars) || 0;
+}
 
 /**
- * Admin-only goal editor (restyled to the redesign's card). Supports a flat dollar
- * goal or a growth % over a trailing baseline (resolved server-side). Previews the
- * resulting goal $ and required per-day pace, flags unsaved changes, and persists
- * to Supabase via the shared server action (validated with the zod GoalSchema).
+ * Admin-only per-market / per-month goal editor. A Market + Month selector switch the
+ * form between every market's live goal and its frozen monthly history (client-side).
+ * Saving dual-writes the live goal and the month's frozen row. An amber banner warns
+ * when the 7 markets' goals don't sum to the All-Markets (REECE) goal.
  */
 export function GoalEditor({
-  goals,
-  baselineNetSales,
+  data,
+  initialMarket = "REECE",
 }: {
-  goals: ScorecardGoals;
-  baselineNetSales: number | null;
+  data: ScorecardGoalsEditorData;
+  initialMarket?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const initial: Record<string, string> = {
-    goal_mode: goals.goal_mode,
-    monthly_goal_dollars: String(goals.monthly_goal_dollars),
-    growth_pct: goals.growth_pct != null ? String(goals.growth_pct) : "",
-    working_days: String(goals.working_days),
-    trailing_nsli: String(goals.trailing_nsli),
-    target_close_pct: String(goals.target_close_pct),
-    target_demo_pct: String(goals.target_demo_pct),
-    target_good_rate_pct: String(goals.target_good_rate_pct),
-    target_ko_pct: String(goals.target_ko_pct),
-    target_issue_pct: goals.target_issue_pct != null ? String(goals.target_issue_pct) : "",
-    target_net_close_pct: goals.target_net_close_pct != null ? String(goals.target_net_close_pct) : "",
-  };
+  const byMarket = useMemo(() => {
+    const m = new Map<string, MarketGoalEntry>();
+    for (const e of data.markets) m.set(e.market, e);
+    return m;
+  }, [data.markets]);
 
-  const { register, handleSubmit, watch } = useForm<Record<string, string>>({ defaultValues: initial });
+  const knownMarket = byMarket.has(initialMarket) ? initialMarket : "REECE";
+  const [market, setMarket] = useState(knownMarket);
+  const [month, setMonth] = useState(data.defaultMonth);
 
-  // Live preview of the resulting goal $ and required per-day pace.
+  const entry = byMarket.get(market) ?? data.markets[0];
+  const baseline = entry?.baselineNetSales ?? null;
+
+  const initial = useMemo(
+    () => formValuesFor(entry, month, data.monthly),
+    [entry, month, data.monthly],
+  );
+
+  const { register, handleSubmit, watch, reset } = useForm<Record<string, string>>({
+    defaultValues: initial,
+  });
+
+  // Repopulate when market or month changes.
+  const lastKey = useRef(`${market}|${month}`);
+  useEffect(() => {
+    const key = `${market}|${month}`;
+    if (key !== lastKey.current) {
+      lastKey.current = key;
+      reset(initial);
+      setMsg(null);
+    }
+  }, [market, month, initial, reset]);
+
   const w = watch();
   const mode = w.goal_mode === "growth_pct" ? "growth_pct" : "dollars";
   const growth = Number(w.growth_pct);
-  const effectiveGoal =
-    mode === "growth_pct"
-      ? baselineNetSales != null && Number.isFinite(growth)
-        ? Math.round(baselineNetSales * (1 + growth / 100))
-        : null
-      : Number(w.monthly_goal_dollars) || 0;
+  const effectiveGoal = effectiveFromForm(w, baseline);
   const wd = Number(w.working_days) || 1;
   const tnsli = Number(w.trailing_nsli) || 0;
   const demoPct = Number(w.target_demo_pct) || 0;
   const closePct = Number(w.target_close_pct) || 0;
-  const issuedPerDay = effectiveGoal != null && tnsli > 0 ? effectiveGoal / tnsli / wd : null;
+  const issuedPerDay = tnsli > 0 ? effectiveGoal / tnsli / wd : null;
   const demoedPerDay = issuedPerDay != null ? issuedPerDay * (demoPct / 100) : null;
   const closedPerDay = demoedPerDay != null ? demoedPerDay * (closePct / 100) : null;
 
-  const dirty = Object.keys(initial).some((k) => (w[k] ?? "") !== initial[k]);
+  // Σ-mismatch: sum the 7 markets vs REECE, using the live-edited value for the
+  // currently selected market and server values for the rest.
+  const goalFor = (code: string) =>
+    code === market ? effectiveGoal : byMarket.get(code)?.effectiveGoal ?? 0;
+  const marketsSum = SCORECARD_MARKETS.reduce((a, m) => a + goalFor(m.code), 0);
+  const reeceGoal = goalFor("REECE");
+  const mismatch = Math.round(marketsSum - reeceGoal);
+  const showMismatch = reeceGoal > 0 && Math.abs(mismatch) >= 1000;
+
+  const dirty = Object.keys(initial).some((k) => (w[k] ?? "") !== (initial[k] ?? ""));
 
   const onSubmit = handleSubmit((raw) => {
     setMsg(null);
     const m = raw.goal_mode === "growth_pct" ? "growth_pct" : "dollars";
     const candidate = {
-      market: goals.market,
+      market,
+      goal_month: month,
       goal_mode: m,
       monthly_goal_dollars: Number(raw.monthly_goal_dollars) || 0,
       growth_pct: raw.growth_pct === "" ? null : Number(raw.growth_pct),
@@ -100,7 +169,11 @@ export function GoalEditor({
     }
     startTransition(async () => {
       const res = await saveScorecardGoals(parsed.data);
-      setMsg(res.ok ? { ok: true, text: "Goals saved — figures updated." } : { ok: false, text: res.error ?? "Save failed." });
+      setMsg(
+        res.ok
+          ? { ok: true, text: `Saved ${marketLabel(market)} · ${monthLabelFull(month)}.` }
+          : { ok: false, text: res.error ?? "Save failed." },
+      );
     });
   });
 
@@ -113,9 +186,42 @@ export function GoalEditor({
     <ScCard
       id="sc-goals"
       title="Edit goals"
-      action={goals.updated_by ? <span className="text-[11.5px] text-slate-400">Last edited by {goals.updated_by}</span> : undefined}
+      action={entry?.goals.updated_by ? <span className="text-[11.5px] text-slate-400">Last edited by {entry.goals.updated_by}</span> : undefined}
     >
       <form onSubmit={onSubmit} className="space-y-4 px-5 py-4">
+        {/* Market + Month scope */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className={fieldWrap}>
+            <span className={labelCls}>Market</span>
+            <select className={inputCls} value={market} onChange={(e) => setMarket(e.target.value)}>
+              <option value="REECE">All Markets (REECE)</option>
+              {SCORECARD_MARKETS.map((m) => (
+                <option key={m.code} value={m.code}>{m.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className={fieldWrap}>
+            <span className={labelCls}>Month</span>
+            <select className={inputCls} value={month} onChange={(e) => setMonth(e.target.value)}>
+              {data.months.map((mo) => (
+                <option key={mo} value={mo}>{monthLabelFull(mo)}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {/* Σ-mismatch warning */}
+        {showMismatch && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <span>
+              The 7 markets sum to <span className="font-mono font-semibold">{usd(marketsSum)}</span>, but All Markets is{" "}
+              <span className="font-mono font-semibold">{usd(reeceGoal)}</span> — a{" "}
+              <span className="font-mono font-semibold">{mismatch >= 0 ? "+" : ""}{usd(mismatch)}</span> gap. Adjust so the per-market goals reconcile to the company goal.
+            </span>
+          </div>
+        )}
+
         {/* Goal mode + primary goal */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className={fieldWrap}>
@@ -163,19 +269,19 @@ export function GoalEditor({
 
         {/* Live preview */}
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900/40">
-          <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-slate-500">Preview</div>
+          <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-slate-500">Preview — {marketLabel(market)} · {monthLabelFull(month)}</div>
           {mode === "growth_pct" && (
             <p className="text-slate-600 dark:text-slate-300">
-              Baseline net sales <span className="font-mono">{baselineNetSales != null ? usd(baselineNetSales) : "—"}</span>
+              Baseline net sales <span className="font-mono">{baseline != null ? usd(baseline) : "—"}</span>
               {" × "}
               <span className="font-mono">{Number.isFinite(growth) ? `${growth >= 0 ? "+" : ""}${growth}%` : "—"}</span>
               {" → goal "}
-              <span className="font-mono font-semibold">{effectiveGoal != null ? usd(effectiveGoal) : "—"}</span>
+              <span className="font-mono font-semibold">{usd(effectiveGoal)}</span>
             </p>
           )}
           {mode === "dollars" && (
             <p className="text-slate-600 dark:text-slate-300">
-              Monthly goal <span className="font-mono font-semibold">{usd(effectiveGoal ?? 0)}</span>
+              Monthly goal <span className="font-mono font-semibold">{usd(effectiveGoal)}</span>
             </p>
           )}
           <p className="mt-1 text-slate-600 dark:text-slate-300">
