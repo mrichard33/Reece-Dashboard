@@ -183,38 +183,32 @@ type Sb = Awaited<ReturnType<typeof lpServer>>;
  * is released-to-production $ (Phase 1). Always returns a value so the growth-mode
  * goal and the GoalEditor preview are computable.
  */
-export async function getBaselineNetSales(
-  sb: Sb,
-  market: string,
+/** A prior snapshot row used to derive the growth baseline. */
+export type BaselineRow = { net_sales: unknown; period_start: string; as_of_date?: unknown };
+
+/**
+ * Pure baseline computation over pre-fetched prior rows (rows MUST be ordered
+ * period_start desc, then as_of_date desc — latest first). Prefers same-month-last-
+ * year; else averages the latest snapshot of up to the 3 most recent prior months.
+ * Shared by getBaselineNetSales (single market) and the batched By-Market rollup so
+ * the growth goal is derived identically on both paths.
+ */
+export function computeBaselineFromRows(
+  rows: BaselineRow[],
   periodStart: string,
-): Promise<{ value: number; source: GoalBaselineSource }> {
+): { value: number; source: GoalBaselineSource } {
   const [y, m] = periodStart.split("-");
   const priorYearStart = `${Number(y) - 1}-${m}-01`;
 
-  const { data: py } = await sb
-    .from("lp_market_scorecard_daily")
-    .select("net_sales")
-    .eq("market", market)
-    .eq("period_start", priorYearStart)
-    .order("as_of_date", { ascending: false })
-    .limit(1);
-  const pyVal = py?.[0]?.net_sales;
-  if (pyVal != null) {
-    return { value: Math.round(Number(pyVal)), source: "prior_year_same_month" };
-  }
+  // rows are latest-first, so the first hit for the prior-year month is its latest as_of.
+  const py = rows.find((r) => r.period_start === priorYearStart && r.net_sales != null);
+  if (py) return { value: Math.round(Number(py.net_sales)), source: "prior_year_same_month" };
 
-  // Latest snapshot per prior month → average the 3 most recent.
-  const { data: rows } = await sb
-    .from("lp_market_scorecard_daily")
-    .select("net_sales, period_start, as_of_date")
-    .eq("market", market)
-    .lt("period_start", periodStart)
-    .order("period_start", { ascending: false })
-    .order("as_of_date", { ascending: false })
-    .limit(200);
   const latestPerMonth = new Map<string, number>();
-  for (const r of (rows ?? []) as { net_sales: unknown; period_start: string }[]) {
-    if (!latestPerMonth.has(r.period_start)) latestPerMonth.set(r.period_start, Number(r.net_sales) || 0);
+  for (const r of rows) {
+    if (r.period_start < periodStart && !latestPerMonth.has(r.period_start)) {
+      latestPerMonth.set(r.period_start, Number(r.net_sales) || 0);
+    }
   }
   const last3 = [...latestPerMonth.values()].slice(0, 3);
   if (last3.length === 0) return { value: 0, source: "none" };
@@ -222,6 +216,25 @@ export async function getBaselineNetSales(
   const source: GoalBaselineSource =
     last3.length >= 3 ? "trailing_3mo_avg" : last3.length === 2 ? "trailing_2mo_avg" : "trailing_1mo";
   return { value: avg, source };
+}
+
+export async function getBaselineNetSales(
+  sb: Sb,
+  market: string,
+  periodStart: string,
+): Promise<{ value: number; source: GoalBaselineSource }> {
+  // One query (prior-year-same-month is within period_start < periodStart), then the
+  // shared pure resolver. Ordered latest-first so computeBaselineFromRows picks the
+  // final state of each month.
+  const { data: rows } = await sb
+    .from("lp_market_scorecard_daily")
+    .select("net_sales, period_start, as_of_date")
+    .eq("market", market)
+    .lt("period_start", periodStart)
+    .order("period_start", { ascending: false })
+    .order("as_of_date", { ascending: false })
+    .limit(400);
+  return computeBaselineFromRows((rows ?? []) as BaselineRow[], periodStart);
 }
 
 function pts(actual: number | null, target: number | null): number | null {
