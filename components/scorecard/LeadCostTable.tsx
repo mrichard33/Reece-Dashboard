@@ -79,7 +79,45 @@ export function LeadCostTable({
             for the Lead Gurus source).
           </p>
         )}
-        <div className="overflow-x-auto">
+        {/* Phone + tablet: stacked cards */}
+        <div className="space-y-2 lg:hidden">
+          {sorted.map((r) => {
+            const metrics: { label: string; value: string; tone?: string }[] = [
+              { label: "Close %", value: pct(r.close_pct) },
+              { label: "Leads", value: num(r.leads) },
+              { label: "Cost/Lead", value: r.connected ? usd(r.cost_per_lead) : "—" },
+              { label: "Spend", value: r.connected ? usd(r.spend) : "—" },
+              { label: "Cost %", value: r.connected ? pct(r.cost_pct) : "—", tone: r.connected ? costTone(r.cost_pct, targetPct) : undefined },
+              { label: "ROMI", value: r.connected && r.romi != null ? `${r.romi.toFixed(2)}×` : "—" },
+            ];
+            return (
+              <div key={r.source} className="rounded-lg border border-slate-200 px-3.5 py-3 dark:border-slate-800">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-[13.5px] font-medium text-slate-700 dark:text-slate-200">
+                    {r.source}
+                    {r.source_system && (
+                      <span className="ml-1.5 align-middle">
+                        <Badge tone="slate">{r.source_system}</Badge>
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 font-mono text-[14px] font-semibold tabular text-slate-900 dark:text-slate-100">{usd(r.net_sales)}</span>
+                </div>
+                <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
+                  {metrics.map((m) => (
+                    <div key={m.label}>
+                      <div className="text-[9.5px] font-semibold uppercase tracking-wider text-slate-400">{m.label}</div>
+                      <div className={`mt-0.5 font-mono text-[12.5px] tabular ${m.tone ?? "text-slate-700 dark:text-slate-200"}`}>{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop: full table */}
+        <div className="hidden overflow-x-auto lg:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800">

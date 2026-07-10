@@ -65,7 +65,7 @@ export default async function ScorecardPage({
       <PeriodPicker />
       {view && (
         <span
-          className="inline-flex h-7 items-center rounded-md bg-slate-100 px-2.5 font-mono text-[11px] font-medium tabular text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+          className="inline-flex h-8 items-center rounded-md bg-slate-100 px-2.5 font-mono text-[11px] font-medium tabular text-slate-500 dark:bg-slate-800 dark:text-slate-400 sm:h-7"
           title="Data current through this date."
         >
           as of {usDate(view.actuals.as_of_date)}
@@ -76,7 +76,7 @@ export default async function ScorecardPage({
       )}
       <Link
         href="/scorecard/sources"
-        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 sm:h-7"
       >
         <BarChart3 size={13} /> Sources & lead cost
       </Link>
@@ -92,7 +92,7 @@ export default async function ScorecardPage({
         subtitle={`${marketLabel(MARKET)} · ${resolved.label} · marketing & sales vs goal.`}
       />
 
-      <div className="space-y-4 p-6">
+      <div className="space-y-4 p-4 sm:p-6">
         <SectionHeader
           title="Scorecard"
           subtitle="Goal & variance vs plan — one screen."
@@ -107,7 +107,7 @@ export default async function ScorecardPage({
                 {resolved.source === "snapshot"
                   ? "The daily job writes a snapshot each morning — or trigger a backfill via "
                   : "No stored monthly snapshots fall in this range yet. Backfill via "}
-                <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
+                <code className="break-words rounded bg-slate-100 px-1 dark:bg-slate-800">
                   POST /n8n/admin/goal-scorecard-run
                 </code>{" "}
                 on the LP-MCP service.

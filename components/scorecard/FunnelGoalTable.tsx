@@ -89,19 +89,20 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
       meta="Actual measured against the prorated (MTD) target"
     >
       <div className="overflow-x-auto border-t border-slate-100 px-2 py-1 dark:border-slate-800/70 sm:px-4 sm:py-2">
-        <table className="w-full min-w-[560px] text-[13px]">
+        <table className="w-full min-w-0 text-[13px] sm:min-w-[480px]">
           <thead>
             <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              <th className="px-3 py-2.5 text-left font-semibold">Metric</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Monthly Goal</th>
-              <th className="px-3 py-2.5 text-right font-semibold">
+              <th className="px-2 py-2.5 text-left font-semibold sm:px-3">Metric</th>
+              {/* Monthly Goal is secondary — hidden on phones so Actual/Pace fit without scroll */}
+              <th className="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">Monthly Goal</th>
+              <th className="px-2 py-2.5 text-right font-semibold sm:px-3">
                 <span className="inline-flex items-center gap-1" title="Monthly goal scaled to selling days elapsed.">
                   Target to Date
                   <span className="text-slate-400" aria-hidden>ⓘ</span>
                 </span>
               </th>
-              <th className="px-3 py-2.5 text-right font-semibold">Actual</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Pace</th>
+              <th className="px-2 py-2.5 text-right font-semibold sm:px-3">Actual</th>
+              <th className="px-2 py-2.5 text-right font-semibold sm:px-3">Pace</th>
             </tr>
           </thead>
           <tbody className="font-mono tabular">
@@ -110,11 +111,11 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
                 key={row.metric}
                 className={`border-t border-slate-50 dark:border-slate-900 ${i === 4 ? "border-t-2 border-t-slate-200 dark:border-t-slate-700" : ""}`}
               >
-                <td className="px-3 py-2 font-sans font-medium text-slate-700 dark:text-slate-200">{row.metric}</td>
-                <td className="px-3 py-2 text-right text-slate-500 dark:text-slate-400">{row.monthly ?? "—"}</td>
-                <td className="px-3 py-2 text-right text-slate-500 dark:text-slate-400">{row.targetToDate ?? "—"}</td>
-                <td className="px-3 py-2 text-right font-semibold text-slate-900 dark:text-slate-100">{row.actual}</td>
-                <td className={`px-3 py-2 text-right font-medium ${row.paceCls}`}>
+                <td className="px-2 py-2 font-sans font-medium text-slate-700 dark:text-slate-200 sm:px-3">{row.metric}</td>
+                <td className="hidden px-3 py-2 text-right text-slate-500 dark:text-slate-400 sm:table-cell">{row.monthly ?? "—"}</td>
+                <td className="px-2 py-2 text-right text-slate-500 dark:text-slate-400 sm:px-3">{row.targetToDate ?? "—"}</td>
+                <td className="px-2 py-2 text-right font-semibold text-slate-900 dark:text-slate-100 sm:px-3">{row.actual}</td>
+                <td className={`px-2 py-2 text-right font-medium sm:px-3 ${row.paceCls}`}>
                   {row.paceLabel ? (
                     <span className="inline-flex items-center justify-end gap-1.5">
                       <span className={`h-1.5 w-1.5 rounded-full ${dotCls(row.paceCls)}`} />

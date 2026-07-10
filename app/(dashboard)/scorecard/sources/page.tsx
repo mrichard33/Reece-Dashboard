@@ -32,10 +32,21 @@ export default async function ScorecardSourcesPage({
   const [user, { period, start, end }] = await Promise.all([requireUser(), searchParams]);
   const resolved = resolvePeriod(period, { start, end }, SELLING_CAL);
 
+  // Wrapped so a single failing fetch degrades to the empty state instead of 500ing
+  // the page (mirrors the main scorecard page).
   const [view, sources, leadCost] = await Promise.all([
-    getScorecardForPeriod(MARKET, resolved),
-    getSourceScorecardForPeriod(MARKET, resolved),
-    getLeadCostForPeriod(MARKET, resolved),
+    getScorecardForPeriod(MARKET, resolved).catch((err) => {
+      console.error("[sources] view failed:", (err as Error)?.message ?? err);
+      return null;
+    }),
+    getSourceScorecardForPeriod(MARKET, resolved).catch((err) => {
+      console.error("[sources] source scorecard failed:", (err as Error)?.message ?? err);
+      return null;
+    }),
+    getLeadCostForPeriod(MARKET, resolved).catch((err) => {
+      console.error("[sources] lead cost failed:", (err as Error)?.message ?? err);
+      return null;
+    }),
   ]);
 
   return (
@@ -47,7 +58,7 @@ export default async function ScorecardSourcesPage({
         subtitle={`Per-source performance & lead cost · ${resolved.label}.`}
       />
 
-      <div className="space-y-4 p-6">
+      <div className="space-y-4 p-4 sm:p-6">
         <SectionHeader
           title="Sources & lead cost"
           subtitle="Where the leads come from — quality vs cost."
@@ -55,7 +66,7 @@ export default async function ScorecardSourcesPage({
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/scorecard"
-                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 sm:h-7"
               >
                 <ArrowLeft size={13} /> Scorecard
               </Link>

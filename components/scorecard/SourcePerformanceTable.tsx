@@ -116,7 +116,43 @@ export function SourcePerformanceTable({
             Phase 2 path.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Phone + tablet: stacked cards */}
+          <div className="space-y-2 lg:hidden">
+            {sorted.map((r) => {
+              const q = quality(r.close_pct, referenceClosePct);
+              return (
+                <div key={`${r.source}${r.sub_source}`} className="rounded-lg border border-slate-200 px-3.5 py-3 dark:border-slate-800">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[13.5px] font-medium text-slate-700 dark:text-slate-200">{r.source}</span>
+                        {r.unmapped && <span title="Source does not resolve through lp_source_mapping" className="text-amber-500">⚠</span>}
+                      </div>
+                      {r.sub_source && r.sub_source !== "(none)" && (
+                        <div className="text-[11px] text-slate-400">{r.sub_source}</div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="font-mono text-[14px] font-semibold tabular text-slate-900 dark:text-slate-100">{fmtCell(r.net_sales, "usd")}</span>
+                      <Badge tone={q.tone}>{q.label}</Badge>
+                    </div>
+                  </div>
+                  <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
+                    {COLS.filter((c) => c.key !== "net_sales").map((c) => (
+                      <div key={c.key}>
+                        <div className="text-[9.5px] font-semibold uppercase tracking-wider text-slate-400">{c.label}</div>
+                        <div className="mt-0.5 font-mono text-[12.5px] tabular text-slate-700 dark:text-slate-200">{fmtCell(r[c.key], c.fmt)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop / tablet: full table */}
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800">
@@ -182,6 +218,7 @@ export function SourcePerformanceTable({
               </tbody>
             </table>
           </div>
+          </>
         )}
       </CardContent>
     </Card>

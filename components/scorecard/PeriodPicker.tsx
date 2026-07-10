@@ -88,7 +88,7 @@ export function PeriodPicker() {
             <button
               key={s.key}
               onClick={() => go(s.key)}
-              className={`h-7 whitespace-nowrap rounded px-3 text-[12px] font-medium transition ${
+              className={`h-8 whitespace-nowrap rounded px-3 text-[12px] font-medium transition sm:h-7 ${
                 on
                   ? "bg-[#0C2340] text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
@@ -104,7 +104,7 @@ export function PeriodPicker() {
             onClick={() => setOpen((o) => !o)}
             aria-haspopup="listbox"
             aria-expanded={open}
-            className={`inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded px-3 text-[12px] font-medium transition ${
+            className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded px-3 text-[12px] font-medium transition sm:h-7 ${
               monthActive
                 ? "bg-[#0C2340] text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
                 : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
