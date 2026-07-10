@@ -3,28 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Building2, ChevronDown, Check } from "lucide-react";
+import { SCORECARD_MARKETS, marketLabel } from "@/lib/scorecard/markets";
 
 /**
  * Market scope picker. "All Markets" is the REECE company roll-up (no `market`
  * param); picking a market sets `?market=<code>` and the whole scorecard re-sources
  * for that market. The 7 markets map to the per-market snapshot rows written by
- * the LP-MCP per-market writer.
+ * the LP-MCP per-market writer. SCORECARD_MARKETS / marketLabel now live in
+ * lib/scorecard/markets so the server page can call marketLabel too.
  */
-
-export const SCORECARD_MARKETS = [
-  { code: "STPET_MKT", label: "St. Petersburg" },
-  { code: "ORL_MKT", label: "Orlando" },
-  { code: "FTMYR_MKT", label: "Fort Myers" },
-  { code: "JAX_MKT", label: "Jacksonville" },
-  { code: "SAR_MKT", label: "Sarasota" },
-  { code: "FTLAU_MKT", label: "Fort Lauderdale" },
-  { code: "LAKE_MKT", label: "Lakeland" },
-] as const;
-
-export function marketLabel(code: string | null | undefined): string {
-  if (!code || code === "REECE") return "All Markets";
-  return SCORECARD_MARKETS.find((m) => m.code === code)?.label ?? code;
-}
 
 export function MarketPicker() {
   const router = useRouter();

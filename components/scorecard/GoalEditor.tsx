@@ -9,7 +9,7 @@ import type {
   ScorecardGoalsEditorData,
   MarketGoalEntry,
 } from "@/lib/queries/scorecard";
-import { marketLabel, SCORECARD_MARKETS } from "./MarketPicker";
+import { marketLabel, SCORECARD_MARKETS } from "@/lib/scorecard/markets";
 import { usd, monthLabelFull } from "@/lib/utils";
 import { ScCard } from "./ScCard";
 
