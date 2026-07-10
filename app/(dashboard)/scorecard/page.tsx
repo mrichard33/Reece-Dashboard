@@ -58,6 +58,33 @@ export default async function ScorecardPage({
       })
     : null;
 
+  // ── TEMP DIAGNOSTIC — surface the real render error (Next strips it in prod when
+  //    it bubbles uncaught). Catches the VM build + server-section render at source
+  //    and renders the message + stack. Remove once the cause is identified. ──
+  let renderDiag: { where: string; message: string; stack: string } | null = null;
+  let vmPre: ReturnType<typeof buildScorecardVM> | null = null;
+  if (view) {
+    try {
+      vmPre = buildScorecardVM(view, resolved);
+    } catch (e) {
+      renderDiag = { where: "buildScorecardVM", message: String((e as Error)?.message ?? e), stack: String((e as Error)?.stack ?? "") };
+    }
+    if (vmPre && !renderDiag) {
+      try {
+        const { renderToStaticMarkup } = await import("react-dom/server");
+        renderToStaticMarkup(
+          <>
+            <PaceHero vm={vmPre} />
+            <FunnelGoalTable view={view} />
+            <RevenueCard vm={vmPre} aside={<PerDayCard vm={vmPre} />} />
+          </>,
+        );
+      } catch (e) {
+        renderDiag = { where: "server-sections", message: String((e as Error)?.message ?? e), stack: String((e as Error)?.stack ?? "") };
+      }
+    }
+  }
+
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
       <MarketPicker />
@@ -98,7 +125,15 @@ export default async function ScorecardPage({
           action={controls}
         />
 
-        {!view ? (
+        {renderDiag && (
+          <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
+            <p className="font-semibold">Scorecard render diagnostic — {renderDiag.where}</p>
+            <p className="mt-1 break-words font-mono text-xs">{renderDiag.message}</p>
+            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-[11px] opacity-80">{renderDiag.stack}</pre>
+          </div>
+        )}
+
+        {renderDiag ? null : !view ? (
           <Card>
             <CardContent>
               <p className="py-8 text-center text-sm text-slate-500">
@@ -115,7 +150,7 @@ export default async function ScorecardPage({
           </Card>
         ) : (
           (() => {
-            const vm = buildScorecardVM(view, resolved);
+            const vm = vmPre ?? buildScorecardVM(view, resolved);
             return (
               <>
                 {!view.derived.reconciled && (
