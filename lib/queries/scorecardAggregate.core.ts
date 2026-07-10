@@ -116,6 +116,13 @@ export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx):
     nsli: money(net_sales, issued),
     avg_sale: money(net_sales, net_close),
     reconciled: ctx.reconciled,
+    // Seam marker across the aggregated months: report-sourced, live, or mixed.
+    computed_from: (() => {
+      const froms = months.map((r) => String(r.computed_from ?? "lp_api"));
+      const hasReport = froms.includes("net_report_rtp");
+      const hasLive = froms.some((f) => f !== "net_report_rtp");
+      return hasReport && hasLive ? "mixed" : hasReport ? "net_report_rtp" : "lp_api";
+    })(),
     created_at: null,
     raw_inputs: {
       revenue_basis: "aggregate (sum monthly snapshots, ratios re-derived)",

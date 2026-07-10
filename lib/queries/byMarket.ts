@@ -94,7 +94,9 @@ function rowFromActuals(
   a: Record<string, unknown>,
   goal: number | null,
 ): ByMarketRow {
-  const net = numOr0(a.net_sales);
+  // Net = released to production (RTP), matching the ① hero and the Net Report basis;
+  // falls back to net_sales only for rows predating the released split.
+  const net = numOr0(a.released_dollars ?? a.net_sales);
   const g = utility ? null : goal && goal > 0 ? goal : null;
   return {
     market,

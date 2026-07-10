@@ -23,6 +23,7 @@ function makeView(overrides?: {
 }): ScorecardView {
   const actuals: ScorecardView["actuals"] = {
     market: "REECE",
+    computed_from: "lp_api",
     as_of_date: "2026-06-24",
     period_start: "2026-06-01",
     period_end: "2026-06-24",

@@ -57,6 +57,9 @@ export type ScorecardActuals = {
   nsli: number | null;
   avg_sale: number | null;
   reconciled: boolean;
+  /** Provenance: 'net_report_rtp' = report-sourced historical actual; 'lp_api' = live
+   *  compute; 'mixed' = an aggregate spanning both (seam marker). */
+  computed_from: string | null;
   created_at: string | null;
   /** Tie-out aids emitted by the LP-MCP engine (status/bucket/non-demo tallies). */
   raw_inputs: {
@@ -495,6 +498,7 @@ function mapRecomputedActuals(raw: Record<string, unknown>, market: string): Sco
     nsli: n(raw.nsli),
     avg_sale: n(raw.avg_sale),
     reconciled: raw.reconciled === true,
+    computed_from: raw.computed_from != null ? String(raw.computed_from) : "lp_api",
     created_at: null,
     raw_inputs: (raw.raw_inputs as ScorecardActuals["raw_inputs"]) ?? null,
   };

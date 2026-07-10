@@ -71,6 +71,20 @@ export default async function ScorecardPage({
           as of {usDate(view.actuals.as_of_date)}
         </span>
       )}
+      {view && (() => {
+        const cf = view.actuals.computed_from;
+        const b =
+          cf === "net_report_rtp"
+            ? { t: "Net Report actual", c: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300", title: "Report-sourced historical actual (Released-to-Production, by milestone date)." }
+            : cf === "mixed"
+              ? { t: "report + live", c: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300", title: "Aggregate spans report-sourced closed months and the live current month." }
+              : { t: "live · RTP", c: "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300", title: "Live compute (released to production)." };
+        return (
+          <span className={`inline-flex h-8 items-center rounded-md px-2.5 text-[11px] font-medium sm:h-7 ${b.c}`} title={b.title}>
+            {b.t}
+          </span>
+        );
+      })()}
       {isAdmin && goalsEditor && (
         <EditGoalsPanel data={goalsEditor} initialMarket={MARKET} />
       )}
