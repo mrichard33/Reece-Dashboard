@@ -40,7 +40,10 @@ export default async function ScorecardPage({
   const resolved = resolvePeriod(period, { start, end }, SELLING_CAL);
 
   const [view, byMarket] = await Promise.all([
-    getScorecardForPeriod(MARKET, resolved),
+    getScorecardForPeriod(MARKET, resolved).catch((err) => {
+      console.error(`[scorecard] view ${MARKET} failed:`, (err as Error)?.message ?? err);
+      return null;
+    }),
     getByMarket(resolved),
   ]);
   const goals = isAdmin ? await getScorecardGoals(MARKET) : null;
