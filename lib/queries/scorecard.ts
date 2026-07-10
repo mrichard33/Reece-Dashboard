@@ -1,6 +1,11 @@
 import { lpServer } from "@/lib/supabase/lp";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
 import { getAggregateActuals } from "@/lib/queries/scorecardAggregate";
+import {
+  resolveSellingCalendar,
+  sellingDaysElapsed,
+  sellingDaysInPeriod,
+} from "@/lib/date/sellingDays";
 
 /**
  * Goal/variance scorecard read layer.
@@ -123,8 +128,28 @@ export type ScorecardDerived = {
     baseline_source: GoalBaselineSource;
     /** The dollar goal actually driving the figures (= monthly_goal_dollars). */
     effective_monthly_goal: number;
+    /** True when the period goal fell back to (live goal × months) because one or
+     *  more months in an aggregate range had no frozen scorecard_goals_monthly row. */
+    estimated: boolean;
   };
   reconciled: boolean;
+};
+
+/** A frozen per-month goal row (scorecard_goals_monthly). */
+export type ScorecardMonthlyGoal = {
+  market: string;
+  goal_month: string;
+  goal_mode: "dollars" | "growth_pct";
+  goal_dollars: number;
+  growth_pct: number | null;
+  working_days: number;
+  target_close_pct: number | null;
+  target_demo_pct: number | null;
+  target_good_rate_pct: number | null;
+  target_ko_pct: number | null;
+  trailing_nsli: number | null;
+  updated_by: string | null;
+  updated_at: string;
 };
 
 export type ScorecardView = {
@@ -208,6 +233,7 @@ function derive(
   actuals: ScorecardActuals,
   goals: ScorecardGoals,
   goalMeta: ScorecardDerived["goal"],
+  periodGoalOverride?: number | null,
 ): ScorecardDerived {
   // Selling-day basis: prefer the denominator the LP-MCP job persisted with the
   // snapshot (working_days_in_period); fall back to the editable goal for
@@ -215,7 +241,12 @@ function derive(
   // and denominator share one basis.
   const wd = actuals.working_days_in_period ?? goals.working_days ?? 1;
   const elapsed = actuals.days_elapsed || 1;
-  const mtd_goal_dollars = Math.round(goals.monthly_goal_dollars * (elapsed / wd));
+  // Aggregate periods (3 Months / YTD) sum the frozen monthly goals in range;
+  // single-month snapshots prorate the live monthly goal by elapsed selling days.
+  const mtd_goal_dollars =
+    periodGoalOverride != null
+      ? Math.round(periodGoalOverride)
+      : Math.round(goals.monthly_goal_dollars * (elapsed / wd));
 
   // ⚠ TIE-OUT: target issued/day = monthly goal $ ÷ trailing NSLI ÷ working days.
   const target_issued_total = goals.trailing_nsli > 0
@@ -288,6 +319,7 @@ async function buildView(
   sb: Sb,
   market: string,
   actuals: ScorecardActuals,
+  resolved?: ResolvedPeriod,
 ): Promise<ScorecardView> {
   const { data: goalsRow } = await sb
     .from("scorecard_goals")
@@ -304,19 +336,104 @@ async function buildView(
       ? Math.round(baseline.value * (1 + goals.growth_pct / 100))
       : goals.monthly_goal_dollars;
   const effectiveGoals: ScorecardGoals = { ...goals, monthly_goal_dollars: effectiveGoal };
+
+  // Aggregate periods sum the frozen monthly goals across the range (D4); single
+  // months use the normal elapsed-day proration in derive().
+  let periodGoalOverride: number | null = null;
+  let estimated = false;
+  if (resolved && resolved.source === "aggregate") {
+    const pg = await resolveAggregatePeriodGoal(sb, market, resolved, goals, effectiveGoal);
+    periodGoalOverride = pg.mtd_goal_dollars;
+    estimated = pg.estimated;
+  }
+
   const goalMeta: ScorecardDerived["goal"] = {
     mode: goals.goal_mode,
     growth_pct: goals.growth_pct,
     baseline_net_sales: baseline.source === "none" ? null : baseline.value,
     baseline_source: baseline.source,
     effective_monthly_goal: effectiveGoal,
+    estimated,
   };
 
   return {
     actuals,
     goals: effectiveGoals,
-    derived: derive(actuals, effectiveGoals, goalMeta),
+    derived: derive(actuals, effectiveGoals, goalMeta, periodGoalOverride),
   };
+}
+
+/** Month-first-of-month strings spanning [periodStart, periodEnd], inclusive. */
+function monthsInRange(periodStart: string, periodEnd: string): string[] {
+  const out: string[] = [];
+  let y = Number(periodStart.slice(0, 4));
+  let m = Number(periodStart.slice(5, 7));
+  const endY = Number(periodEnd.slice(0, 4));
+  const endM = Number(periodEnd.slice(5, 7));
+  while (y < endY || (y === endY && m <= endM)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}-01`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+
+/**
+ * Period goal for an aggregate range = Σ over each month of the goal in force that
+ * month, with the month containing `asOf` prorated by elapsed selling days. Prefers
+ * the frozen scorecard_goals_monthly row; falls back to the live goal (× 1 month,
+ * flagged `estimated`) when a month has no frozen row.
+ */
+async function resolveAggregatePeriodGoal(
+  sb: Sb,
+  market: string,
+  resolved: ResolvedPeriod,
+  liveGoals: ScorecardGoals,
+  effectiveMonthlyGoal: number,
+): Promise<{ mtd_goal_dollars: number; estimated: boolean }> {
+  const cal = resolveSellingCalendar();
+  const months = monthsInRange(resolved.periodStart, resolved.periodEnd);
+
+  const { data: frozenRows } = await sb
+    .from("scorecard_goals_monthly")
+    .select("*")
+    .eq("market", market)
+    .in("goal_month", months);
+  const frozen = new Map<string, ScorecardMonthlyGoal>();
+  for (const r of (frozenRows ?? []) as ScorecardMonthlyGoal[]) {
+    frozen.set(String(r.goal_month).slice(0, 10), r);
+  }
+
+  let total = 0;
+  let estimated = false;
+  for (const monthStart of months) {
+    const y = Number(monthStart.slice(0, 4));
+    const mo = Number(monthStart.slice(5, 7));
+    const monthEnd = new Date(Date.UTC(y, mo, 0, 12, 0, 0)).toISOString().slice(0, 10);
+
+    // Full-month dollar goal for this month.
+    const row = frozen.get(monthStart);
+    let monthGoal: number;
+    if (row) {
+      monthGoal =
+        row.goal_mode === "growth_pct" && row.growth_pct != null
+          ? Math.round((await getBaselineNetSales(sb, market, monthStart)).value * (1 + row.growth_pct / 100))
+          : Number(row.goal_dollars) || 0;
+    } else {
+      monthGoal = effectiveMonthlyGoal;
+      estimated = true;
+    }
+
+    // Prorate the month that contains asOf; earlier months count in full.
+    if (resolved.asOf >= monthStart && resolved.asOf < monthEnd) {
+      const wd = sellingDaysInPeriod(monthStart, monthEnd, cal) || 1;
+      const elapsed = sellingDaysElapsed(monthStart, resolved.asOf, cal);
+      monthGoal = monthGoal * (elapsed / wd);
+    }
+    total += monthGoal;
+  }
+  void liveGoals; // reserved: per-month live-goal history could refine the fallback
+  return { mtd_goal_dollars: Math.round(total), estimated };
 }
 
 /** Coerce a Postgres numeric (string over PostgREST) to number | null. */
@@ -434,13 +551,13 @@ export async function getScorecardForPeriod(
   if (resolved.source === "aggregate") {
     const actuals = await getAggregateActuals(market, resolved);
     if (!actuals) return null;
-    return buildView(sb, market, actuals);
+    return buildView(sb, market, actuals, resolved);
   }
 
   // recompute
   const recomputed = await fetchScorecardPreview(market, resolved);
   if (!recomputed) return null;
-  return buildView(sb, market, recomputed.actuals);
+  return buildView(sb, market, recomputed.actuals, resolved);
 }
 
 /** The editable goal row for a market (for the admin editor). */
@@ -452,4 +569,100 @@ export async function getScorecardGoals(market = "REECE"): Promise<ScorecardGoal
     .eq("market", market)
     .maybeSingle();
   return (data as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
+}
+
+/** REECE + the 7 markets the per-market editor manages (mirrors MarketPicker). */
+export const EDITOR_MARKETS = [
+  "REECE",
+  "STPET_MKT",
+  "ORL_MKT",
+  "FTMYR_MKT",
+  "JAX_MKT",
+  "SAR_MKT",
+  "FTLAU_MKT",
+  "LAKE_MKT",
+] as const;
+
+export type MarketGoalEntry = {
+  market: string;
+  goals: ScorecardGoals;
+  baselineNetSales: number | null;
+  /** Effective monthly $ goal (growth mode resolved) — drives the Σ-mismatch check. */
+  effectiveGoal: number;
+};
+
+export type ScorecardGoalsEditorData = {
+  markets: MarketGoalEntry[];
+  /** Frozen per-month rows for all editor markets — repopulates the form per month. */
+  monthly: ScorecardMonthlyGoal[];
+  /** Month options (first-of-month, newest first). */
+  months: string[];
+  /** Current month, first-of-month — the default freeze target. */
+  defaultMonth: string;
+};
+
+/** Current month, first-of-month (UTC). */
+function firstOfMonthUTC(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+/** Current + previous (count-1) months as first-of-month strings, newest first. */
+function recentMonths(count: number): string[] {
+  const now = new Date();
+  let y = now.getUTCFullYear();
+  let m = now.getUTCMonth() + 1; // 1-12
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    out.push(`${y}-${String(m).padStart(2, "0")}-01`);
+    m -= 1;
+    if (m < 1) { m = 12; y -= 1; }
+  }
+  return out;
+}
+
+/**
+ * Everything the admin GoalEditor needs to edit any market for any recent month:
+ * each market's live editable goal + growth baseline + effective $ goal (for the
+ * Σ-mismatch warning), the frozen monthly history, and the month options. One
+ * parallel fan-out; the editor switches market/month entirely client-side.
+ */
+export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditorData> {
+  const sb = await lpServer();
+  const months = recentMonths(6);
+  const defaultMonth = months[0] ?? firstOfMonthUTC(new Date());
+
+  const markets = await Promise.all(
+    EDITOR_MARKETS.map(async (market): Promise<MarketGoalEntry> => {
+      const { data } = await sb
+        .from("scorecard_goals")
+        .select("*")
+        .eq("market", market)
+        .maybeSingle();
+      const goals = (data as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
+      const baseline = await getBaselineNetSales(sb, market, defaultMonth);
+      const effectiveGoal =
+        goals.goal_mode === "growth_pct" && goals.growth_pct != null
+          ? Math.round(baseline.value * (1 + goals.growth_pct / 100))
+          : goals.monthly_goal_dollars;
+      return {
+        market,
+        goals,
+        baselineNetSales: baseline.source === "none" ? null : baseline.value,
+        effectiveGoal,
+      };
+    }),
+  );
+
+  const { data: monthlyRows } = await sb
+    .from("scorecard_goals_monthly")
+    .select("*")
+    .in("market", EDITOR_MARKETS as unknown as string[])
+    .in("goal_month", months);
+
+  return {
+    markets,
+    monthly: (monthlyRows as ScorecardMonthlyGoal[] | null) ?? [],
+    months,
+    defaultMonth,
+  };
 }
