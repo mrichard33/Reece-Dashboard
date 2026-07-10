@@ -121,22 +121,42 @@ async function countOpenIssues(): Promise<number> {
 }
 
 /**
- * Appointments whose scheduled start falls within today's ET calendar day, that
- * are not soft-deleted, and whose status is not cancelled/invalid.
- * `appointments.start_time` is the real appointment timestamp synced from GHL.
+ * Estimate-pool appointments (WE + MV + HPA) on today's ET calendar day.
  *
- * The status filter depends on the HL-MCP appointment-status mapping fix
- * (appointmentStatus → status column); before that ships every row reads
- * 'confirmed', so this filter is a harmless no-op until then.
+ * Source: the LIVE GHL calendar API via the LP-MCP endpoint
+ * (GET /admin/ghl-appointment-count). The HL Supabase `appointments` cache
+ * false-tombstones ~30% of live appointments (soft-deletes / stale statuses),
+ * so a cache-fed count showed phantom gaps vs Lead Perfection. The live count
+ * is the number Lead Perfection reconciles against.
+ *
+ * Resilience: if LP_MCP_URL is unset or the endpoint is unreachable, fall back
+ * to the HL cache count so a transient LP-MCP outage degrades gracefully
+ * instead of zeroing the card.
  */
 async function countAppointmentsToday(dayStart: Date, dayEnd: Date): Promise<number> {
+  const dateStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(dayStart);
+
+  const base = process.env.LP_MCP_URL;
+  if (base) {
+    try {
+      const res = await fetch(`${base}/admin/ghl-appointment-count?date=${dateStr}`, { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.ok && typeof json.active_count === "number") return json.active_count;
+      }
+    } catch {
+      // fall through to the cache below
+    }
+  }
+
+  // Fallback: HL `appointments` cache (phantom-gap risk — see above).
   const sb = hlService();
   const { count } = await sb
     .from("appointments")
     .select("id", { count: "exact", head: true })
     .is("deleted_at", null)
-    // Exclude appointments GHL has cancelled or invalidated — they keep a
-    // start_time today but are no longer real appointments on the books.
     .not("status", "in", '("cancelled","invalid")')
     .gte("start_time", dayStart.toISOString())
     .lt("start_time", dayEnd.toISOString());
