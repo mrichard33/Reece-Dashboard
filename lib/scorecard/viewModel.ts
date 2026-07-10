@@ -72,6 +72,10 @@ export type MarketingRow = {
 
 export type ScorecardVM = {
   abbr: string;
+  /** True when any part of the view is the live in-progress month (not fully
+   *  report-sourced) — the released figure is a provisional estimate that ties to
+   *  the official Net Report when the month closes. */
+  provisional: boolean;
   snapshot: {
     asOfDate: string;
     rangeLabel: string;
@@ -278,6 +282,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
 
   return {
     abbr,
+    provisional: a.computed_from !== "net_report_rtp",
     snapshot: {
       asOfDate: a.as_of_date,
       rangeLabel: `${a.period_start} → ${a.period_end}`,

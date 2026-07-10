@@ -30,7 +30,7 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
       tone: projTone,
     },
     { label: "Target to Date", sub: "prorated goal", value: usd(p.paceGoal) },
-    { label: `Net — Released ${vm.abbr}`, sub: "released to production (RTP)", value: usd(p.netSales) },
+    { label: `Net — Released ${vm.abbr}`, sub: vm.provisional ? "provisional · ties to report at close" : "released to production (RTP)", value: usd(p.netSales) },
     {
       label: "Balance",
       sub: balance >= 0 ? "ahead of target" : "behind target",
