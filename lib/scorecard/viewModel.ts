@@ -316,7 +316,9 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
       netSales: netReleased, // headline Net = released to production (RTP)
       paceGoal,
       monthlyGoal,
-      avgSale: a.avg_sale ?? 0,
+      // Average Sale on a NET basis (net sales ÷ sales count) so it matches the net
+      // goal and the target avg sale — one basis on the screen, not gross-vs-net.
+      avgSale: (a.sales && a.sales > 0) ? Math.round((a.net_sales ?? 0) / a.sales) : (a.avg_sale ?? 0),
       nsli: a.nsli ?? 0,
       daysElapsed,
       sellingDays,
@@ -337,9 +339,13 @@ function buildMarketing(
   _abbr: string,
 ): MarketingRow[] {
   const { actuals: a, goals: g, derived: d } = view;
+  // Target lead funnel (one direction from the NET goal): issued = goal ÷ NSLI →
+  // demos = issued × demo% → sales = goal ÷ NET average sale (NOT demos × close%,
+  // so the sales target can't drift off the dollar goal).
   const monthlyIssued = g.trailing_nsli > 0 ? g.monthly_goal_dollars / g.trailing_nsli : null;
   const monthlyDemos = monthlyIssued != null ? monthlyIssued * (g.target_demo_pct / 100) : null;
-  const monthlySales = monthlyDemos != null ? monthlyDemos * (g.target_close_pct / 100) : null;
+  const monthlySales =
+    d.avg_sale_target && d.avg_sale_target > 0 ? g.monthly_goal_dollars / d.avg_sale_target : null;
   const prorate = (v: number | null) => (v == null ? null : v * (daysElapsed / (sellingDays || 1)));
   const issuePct = g.target_issue_pct;
   const netClosePct = g.target_net_close_pct;

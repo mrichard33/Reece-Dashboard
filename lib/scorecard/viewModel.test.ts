@@ -92,6 +92,8 @@ function makeView(overrides?: {
     monthly_goal_dollars: 9067081,
     period_goal_dollars: 9067081,
     mtd_goal_dollars: 8369613,
+    avg_sale_target: 9358,
+    sales_target_divergence_pct: null,
     target_issued_per_day: 90.7,
     target_demoed_per_day: 63.5,
     target_closed_per_day: 19.1,
@@ -167,6 +169,19 @@ describe("buildScorecardVM", () => {
     const netSales = vm.marketing.find((r) => r.metric === "Net Sales (Released)")!;
     expect(netSales.tone).toBe("neg"); // behind the MTD goal
     expect(netSales.warn).toBe(true);
+  });
+
+  it("shows Average Sale on a NET basis (net sales ÷ sales count)", () => {
+    const vm = buildScorecardVM(makeView(), MONTH);
+    // 2,713,755 ÷ 375 = 7,237 (net), not the gross avg_sale (9,358).
+    expect(vm.pace.avgSale).toBe(Math.round(2713755 / 375));
+  });
+
+  it("targets Sold from goal ÷ NET average sale, not demos × close%", () => {
+    const vm = buildScorecardVM(makeView(), MONTH);
+    const sold = vm.marketing.find((r) => r.metric === "Sold")!;
+    // 9,067,081 ÷ 9,358 (avg_sale_target) ≈ 969.
+    expect(sold.monthGoal).toBe(String(Math.round(9067081 / 9358)));
   });
 });
 

@@ -82,12 +82,24 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
   const dotCls = (cls: string) =>
     cls === EMERALD ? "bg-emerald-500" : cls === AMBER ? "bg-amber-500" : cls === BRICK ? "bg-brick" : "bg-slate-300";
 
+  // Consistency signal: the goal-anchored sales target (goal ÷ avg sale) and the
+  // funnel flow (demos × close %) should agree. A material gap means this market's
+  // demo % / close % / NSLI / average-sale assumptions are internally inconsistent.
+  const divergence = d.sales_target_divergence_pct;
+  const showDivergence = divergence != null && divergence > 20;
+
   return (
     <ScSection
       id="sc-funnel"
       label="Funnel vs Goal"
       meta="Actual measured against the prorated (MTD) target"
     >
+      {showDivergence && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+          The sales target (goal ÷ average sale) and the funnel flow (demos × close %) differ by{" "}
+          {divergence!.toFixed(0)}% — this market&apos;s demo %, close %, NSLI, or average sale may be inconsistent.
+        </div>
+      )}
       <div className="overflow-x-auto border-t border-slate-100 px-2 py-1 dark:border-slate-800/70 sm:px-4 sm:py-2">
         <table className="w-full min-w-0 text-[13px] sm:min-w-[480px]">
           <thead>
