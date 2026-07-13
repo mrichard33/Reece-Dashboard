@@ -44,7 +44,7 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
       tone: balTone,
     },
     { label: "Elapsed / Working Days", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
-    { label: "Average Sale", sub: "gross ÷ sales", value: usd(p.avgSale) },
+    { label: "Average Sale", sub: "net ÷ sales", value: usd(p.avgSale) },
     { label: "NSLI", sub: "net sales / lead issued", value: usd(p.nsli) },
   ];
 

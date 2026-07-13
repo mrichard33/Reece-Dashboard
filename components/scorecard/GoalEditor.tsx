@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
-import { Check, Circle, AlertTriangle } from "lucide-react";
+import { Check, Circle, Info } from "lucide-react";
 import { saveScorecardGoals } from "@/lib/actions/scorecard";
 import { GoalSchema } from "@/lib/scorecard/goalSchema";
 import type {
@@ -10,7 +10,7 @@ import type {
   MarketGoalEntry,
 } from "@/lib/queries/scorecard";
 import { marketLabel, SCORECARD_MARKETS } from "@/lib/scorecard/markets";
-import { usd, monthLabelFull } from "@/lib/utils";
+import { usd, num, monthLabelFull } from "@/lib/utils";
 import { ScCard } from "./ScCard";
 
 type FieldSpec = { name: string; label: string; step?: string; prefix?: string };
@@ -19,7 +19,6 @@ type FieldSpec = { name: string; label: string; step?: string; prefix?: string }
 // the always-numeric remaining inputs.
 const FIELDS: FieldSpec[] = [
   { name: "working_days", label: "Working Days", step: "1" },
-  { name: "trailing_nsli", label: "Trailing NSLI ($)", step: "1", prefix: "$" },
   { name: "target_close_pct", label: "Target Close %", step: "0.1" },
   { name: "target_demo_pct", label: "Target Demo %", step: "0.1" },
   { name: "target_good_rate_pct", label: "Target Good Rate %", step: "0.1" },
@@ -94,7 +93,11 @@ export function GoalEditor({
     return m;
   }, [data.markets]);
 
-  const knownMarket = byMarket.has(initialMarket) ? initialMarket : "REECE";
+  // The company (REECE) goal is derived from the offices and not editable, so the
+  // editor always opens on an office.
+  const fallbackMarket = SCORECARD_MARKETS[0]?.code ?? "STPET_MKT";
+  const knownMarket =
+    initialMarket !== "REECE" && byMarket.has(initialMarket) ? initialMarket : fallbackMarket;
   const [market, setMarket] = useState(knownMarket);
   const [month, setMonth] = useState(data.defaultMonth);
 
@@ -126,21 +129,22 @@ export function GoalEditor({
   const growth = Number(w.growth_pct);
   const effectiveGoal = effectiveFromForm(w, baseline);
   const wd = Number(w.working_days) || 1;
-  const tnsli = Number(w.trailing_nsli) || 0;
+  // NSLI is CALCULATED (net sales ÷ leads issued) from the market's actuals — it is
+  // read-only here and drives "leads needed to hit the goal" (leads = goal ÷ NSLI).
+  const nsli = entry?.nsli ?? 0;
   const demoPct = Number(w.target_demo_pct) || 0;
   const closePct = Number(w.target_close_pct) || 0;
-  const issuedPerDay = tnsli > 0 ? effectiveGoal / tnsli / wd : null;
+  const leadsNeeded = nsli > 0 ? Math.round(effectiveGoal / nsli) : null;
+  const issuedPerDay = leadsNeeded != null ? leadsNeeded / wd : null;
   const demoedPerDay = issuedPerDay != null ? issuedPerDay * (demoPct / 100) : null;
   const closedPerDay = demoedPerDay != null ? demoedPerDay * (closePct / 100) : null;
 
-  // Σ-mismatch: sum the 7 markets vs REECE, using the live-edited value for the
-  // currently selected market and server values for the rest.
-  const goalFor = (code: string) =>
-    code === market ? effectiveGoal : byMarket.get(code)?.effectiveGoal ?? 0;
-  const marketsSum = SCORECARD_MARKETS.reduce((a, m) => a + goalFor(m.code), 0);
-  const reeceGoal = goalFor("REECE");
-  const mismatch = Math.round(marketsSum - reeceGoal);
-  const showMismatch = reeceGoal > 0 && Math.abs(mismatch) >= 1000;
+  // Company (All Markets) goal = Σ offices, using the in-form value for the selected
+  // office and server values for the rest — shown read-only; never edited directly.
+  const companyTotal = SCORECARD_MARKETS.reduce(
+    (a, m) => a + (m.code === market ? effectiveGoal : byMarket.get(m.code)?.effectiveGoal ?? 0),
+    0,
+  );
 
   const dirty = Object.keys(initial).some((k) => (w[k] ?? "") !== (initial[k] ?? ""));
 
@@ -154,7 +158,9 @@ export function GoalEditor({
       monthly_goal_dollars: Number(raw.monthly_goal_dollars) || 0,
       growth_pct: raw.growth_pct === "" ? null : Number(raw.growth_pct),
       working_days: Number(raw.working_days),
-      trailing_nsli: Number(raw.trailing_nsli),
+      // NSLI is calculated, not entered — send the computed value (the server
+      // recomputes it authoritatively regardless).
+      trailing_nsli: nsli,
       target_close_pct: Number(raw.target_close_pct),
       target_demo_pct: Number(raw.target_demo_pct),
       target_good_rate_pct: Number(raw.target_good_rate_pct),
@@ -194,7 +200,6 @@ export function GoalEditor({
           <label className={fieldWrap}>
             <span className={labelCls}>Market</span>
             <select className={inputCls} value={market} onChange={(e) => setMarket(e.target.value)}>
-              <option value="REECE">All Markets (REECE)</option>
               {SCORECARD_MARKETS.map((m) => (
                 <option key={m.code} value={m.code}>{m.label}</option>
               ))}
@@ -210,17 +215,14 @@ export function GoalEditor({
           </label>
         </div>
 
-        {/* Σ-mismatch warning */}
-        {showMismatch && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
-            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-            <span>
-              The 7 markets sum to <span className="font-mono font-semibold">{usd(marketsSum)}</span>, but All Markets is{" "}
-              <span className="font-mono font-semibold">{usd(reeceGoal)}</span> — a{" "}
-              <span className="font-mono font-semibold">{mismatch >= 0 ? "+" : ""}{usd(mismatch)}</span> gap. Adjust so the per-market goals reconcile to the company goal.
-            </span>
-          </div>
-        )}
+        {/* Company total — read-only: the company goal is the sum of the offices. */}
+        <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[12.5px] text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+          <Info size={15} className="mt-0.5 shrink-0 text-slate-400" />
+          <span>
+            Company (All Markets) goal is the sum of the offices:{" "}
+            <span className="font-mono font-semibold">{usd(companyTotal)}</span>. Edit an office to change it — the company total isn&apos;t set directly.
+          </span>
+        </div>
 
         {/* Goal mode + primary goal */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -285,8 +287,14 @@ export function GoalEditor({
             </p>
           )}
           <p className="mt-1 text-slate-600 dark:text-slate-300">
+            NSLI <span className="font-mono">{nsli > 0 ? usd(nsli) : "—"}</span>{" "}
+            <span className="text-[10.5px] uppercase tracking-wider text-slate-400">calculated</span>
+            {" · leads needed "}
+            <span className="font-mono font-semibold">{leadsNeeded != null ? num(leadsNeeded) : "—"}</span>
+            {nsli <= 0 && <span className="ml-2 text-amber-600">no issued history yet — leads / pace unavailable</span>}
+          </p>
+          <p className="mt-1 text-slate-600 dark:text-slate-300">
             Required / day — issued <span className="font-mono">{n1(issuedPerDay)}</span>, demoed <span className="font-mono">{n1(demoedPerDay)}</span>, closed <span className="font-mono">{n1(closedPerDay)}</span>
-            {tnsli <= 0 && <span className="ml-2 text-amber-600">set Trailing NSLI to compute pace</span>}
           </p>
         </div>
 

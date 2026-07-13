@@ -119,6 +119,13 @@ export type ScorecardDerived = {
   /** Goal $ prorated to the elapsed share of the period — Σ fully-elapsed months +
    *  current month × (elapsed ÷ working days). This is "Target to Date". */
   mtd_goal_dollars: number;
+  /** CALCULATED trailing NET average sale (net sales ÷ sales count) — the divisor
+   *  that turns the net goal into a target sales count (sales = goal ÷ this). */
+  avg_sale_target: number | null;
+  /** % gap between the goal-anchored sales target (goal ÷ avg sale) and the funnel
+   *  flow (demos × close%). A material value flags inconsistent office assumptions;
+   *  null when either side is uncomputable. */
+  sales_target_divergence_pct: number | null;
   // ⚠ TIE-OUT pace targets (goal $ ÷ trailing NSLI ÷ working days, then funnel %)
   target_issued_per_day: number | null;
   target_demoed_per_day: number | null;
@@ -251,6 +258,104 @@ export async function getBaselineNetSales(
   return computeBaselineFromRows((rows ?? []) as BaselineRow[], periodStart);
 }
 
+/** A prior snapshot row used to derive trailing NSLI (net sales ÷ leads issued). */
+export type NsliRow = { net_sales: unknown; issued: unknown; period_start: string; as_of_date?: unknown };
+
+/**
+ * Trailing NSLI = net sales per lead ISSUED — the rate that converts a dollar goal
+ * into "leads issued needed to hit it" (leads = goal ÷ NSLI). It is CALCULATED from
+ * the market's own recent actuals, never entered by hand. Same trailing window as
+ * the growth baseline: prior-year-same-month if present, else the sum over up to the
+ * 3 most recent prior months (Σ net ÷ Σ issued, so a low-volume month can't skew
+ * the ratio). Returns null when there's no issued volume to divide by.
+ */
+export function computeNsliFromRows(rows: NsliRow[], periodStart: string): number | null {
+  const [y, m] = periodStart.split("-");
+  const priorYearStart = `${Number(y) - 1}-${m}-01`;
+
+  const py = rows.find(
+    (r) => r.period_start === priorYearStart && Number(r.issued) > 0 && r.net_sales != null,
+  );
+  if (py) return Math.round(Number(py.net_sales) / Number(py.issued));
+
+  const latestPerMonth = new Map<string, { net: number; issued: number }>();
+  for (const r of rows) {
+    if (r.period_start < periodStart && !latestPerMonth.has(r.period_start)) {
+      latestPerMonth.set(r.period_start, { net: Number(r.net_sales) || 0, issued: Number(r.issued) || 0 });
+    }
+  }
+  const last3 = [...latestPerMonth.values()].slice(0, 3);
+  const net = last3.reduce((a, b) => a + b.net, 0);
+  const issued = last3.reduce((a, b) => a + b.issued, 0);
+  if (issued <= 0) return null;
+  return Math.round(net / issued);
+}
+
+/** Trailing NSLI for a single market (one query + the shared pure resolver). */
+export async function getTrailingNsli(
+  sb: Sb,
+  market: string,
+  periodStart: string,
+): Promise<number | null> {
+  const { data: rows } = await sb
+    .from("lp_market_scorecard_daily")
+    .select("net_sales, issued, period_start, as_of_date")
+    .eq("market", market)
+    .lt("period_start", periodStart)
+    .order("period_start", { ascending: false })
+    .order("as_of_date", { ascending: false })
+    .limit(400);
+  return computeNsliFromRows((rows ?? []) as NsliRow[], periodStart);
+}
+
+/** A prior snapshot row used to derive the trailing NET average sale. */
+export type AvgSaleRow = { net_sales: unknown; sales: unknown; period_start: string; as_of_date?: unknown };
+
+/**
+ * Trailing average sale on a NET basis = net sales ÷ sales count. The goal is stated
+ * in NET dollars, so the divisor that converts it to a target sales count must also
+ * be net (target sales = goal ÷ this). Same trailing window and Σ-over-months
+ * convention as NSLI, so the two stay on one basis. Returns null with no sales.
+ */
+export function computeAvgSaleFromRows(rows: AvgSaleRow[], periodStart: string): number | null {
+  const [y, m] = periodStart.split("-");
+  const priorYearStart = `${Number(y) - 1}-${m}-01`;
+
+  const py = rows.find(
+    (r) => r.period_start === priorYearStart && Number(r.sales) > 0 && r.net_sales != null,
+  );
+  if (py) return Math.round(Number(py.net_sales) / Number(py.sales));
+
+  const latestPerMonth = new Map<string, { net: number; sales: number }>();
+  for (const r of rows) {
+    if (r.period_start < periodStart && !latestPerMonth.has(r.period_start)) {
+      latestPerMonth.set(r.period_start, { net: Number(r.net_sales) || 0, sales: Number(r.sales) || 0 });
+    }
+  }
+  const last3 = [...latestPerMonth.values()].slice(0, 3);
+  const net = last3.reduce((a, b) => a + b.net, 0);
+  const sales = last3.reduce((a, b) => a + b.sales, 0);
+  if (sales <= 0) return null;
+  return Math.round(net / sales);
+}
+
+/** Trailing NET average sale for a single market (one query + the pure resolver). */
+export async function getTrailingAvgSale(
+  sb: Sb,
+  market: string,
+  periodStart: string,
+): Promise<number | null> {
+  const { data: rows } = await sb
+    .from("lp_market_scorecard_daily")
+    .select("net_sales, sales, period_start, as_of_date")
+    .eq("market", market)
+    .lt("period_start", periodStart)
+    .order("period_start", { ascending: false })
+    .order("as_of_date", { ascending: false })
+    .limit(400);
+  return computeAvgSaleFromRows((rows ?? []) as AvgSaleRow[], periodStart);
+}
+
 function pts(actual: number | null, target: number | null): number | null {
   if (actual == null || target == null) return null;
   return Math.round((actual - target) * 10) / 10;
@@ -262,6 +367,7 @@ function derive(
   goalMeta: ScorecardDerived["goal"],
   periodGoalOverride?: number | null,
   periodGoalFull?: number | null,
+  avgSaleTarget?: number | null,
 ): ScorecardDerived {
   // Selling-day basis: prefer the denominator the LP-MCP job persisted with the
   // snapshot (working_days_in_period); fall back to the editable goal for
@@ -281,24 +387,48 @@ function derive(
   const period_goal_dollars =
     periodGoalFull != null ? Math.round(periodGoalFull) : goals.monthly_goal_dollars;
 
-  // ⚠ TIE-OUT: target issued/day = monthly goal $ ÷ trailing NSLI ÷ working days.
+  // Target lead funnel, one direction from the NET goal (goal is RTP net, so every
+  // divisor is net):
+  //   issued = goal ÷ NSLI  →  demos = issued × demo%  →  sales = goal ÷ NET avg sale
+  // Sales is anchored to the goal directly (goal ÷ avg sale), NOT back-derived from
+  // demos × close%, so it can't drift off the dollar goal.
   const target_issued_total = goals.trailing_nsli > 0
     ? goals.monthly_goal_dollars / goals.trailing_nsli
     : null;
   const target_issued_per_day = target_issued_total != null
     ? Math.round((target_issued_total / wd) * 10) / 10
     : null;
-  const target_demoed_per_day = target_issued_per_day != null
-    ? Math.round((target_issued_per_day * (goals.target_demo_pct / 100)) * 10) / 10
+  const target_demoed_total = target_issued_total != null
+    ? target_issued_total * (goals.target_demo_pct / 100)
     : null;
-  const target_closed_per_day = target_demoed_per_day != null
-    ? Math.round((target_demoed_per_day * (goals.target_close_pct / 100)) * 10) / 10
+  const target_demoed_per_day = target_demoed_total != null
+    ? Math.round((target_demoed_total / wd) * 10) / 10
     : null;
+  const target_closed_total = avgSaleTarget && avgSaleTarget > 0
+    ? goals.monthly_goal_dollars / avgSaleTarget
+    : null;
+  const target_closed_per_day = target_closed_total != null
+    ? Math.round((target_closed_total / wd) * 10) / 10
+    : null;
+
+  // Consistency signal (surface, don't reconcile): the goal-anchored sales target
+  // (goal ÷ avg sale) and the funnel-flow sales (demos × close%) should land in the
+  // same neighborhood. A material gap means the office's demo%/close%/NSLI/avg-sale
+  // assumptions are internally inconsistent.
+  const closed_via_flow = target_demoed_total != null
+    ? target_demoed_total * (goals.target_close_pct / 100)
+    : null;
+  const sales_target_divergence_pct =
+    target_closed_total != null && closed_via_flow != null && closed_via_flow > 0
+      ? Math.round((Math.abs(target_closed_total - closed_via_flow) / closed_via_flow) * 1000) / 10
+      : null;
 
   return {
     monthly_goal_dollars: goals.monthly_goal_dollars,
     period_goal_dollars,
     mtd_goal_dollars,
+    avg_sale_target: avgSaleTarget ?? null,
+    sales_target_divergence_pct,
     target_issued_per_day,
     target_demoed_per_day,
     target_closed_per_day,
@@ -369,7 +499,22 @@ async function buildView(
     goals.goal_mode === "growth_pct" && goals.growth_pct != null
       ? Math.round(baseline.value * (1 + goals.growth_pct / 100))
       : goals.monthly_goal_dollars;
-  const effectiveGoals: ScorecardGoals = { ...goals, monthly_goal_dollars: effectiveGoal };
+
+  // NSLI and NET average sale are CALCULATED trailing rates (never the stored/
+  // possibly-stale value), anchored to the current month so every period view uses
+  // one current planning rate. They drive the target lead funnel (issued = goal ÷
+  // NSLI, sales = goal ÷ avg sale). Fall back to the stored NSLI only if there is no
+  // trailing history to compute from.
+  const nsliAnchor = firstOfMonthUTC(new Date());
+  const [trailingNsli, avgSaleTarget] = await Promise.all([
+    getTrailingNsli(sb, market, nsliAnchor),
+    getTrailingAvgSale(sb, market, nsliAnchor),
+  ]);
+  const effectiveGoals: ScorecardGoals = {
+    ...goals,
+    monthly_goal_dollars: effectiveGoal,
+    trailing_nsli: trailingNsli ?? goals.trailing_nsli,
+  };
 
   // Aggregate periods sum the frozen monthly goals across the range (D4); single
   // months use the normal elapsed-day proration in derive().
@@ -395,7 +540,7 @@ async function buildView(
   return {
     actuals,
     goals: effectiveGoals,
-    derived: derive(actuals, effectiveGoals, goalMeta, periodGoalOverride, periodGoalFull),
+    derived: derive(actuals, effectiveGoals, goalMeta, periodGoalOverride, periodGoalFull, avgSaleTarget),
   };
 }
 
@@ -636,8 +781,12 @@ export type MarketGoalEntry = {
   market: string;
   goals: ScorecardGoals;
   baselineNetSales: number | null;
-  /** Effective monthly $ goal (growth mode resolved) — drives the Σ-mismatch check. */
+  /** Effective monthly $ goal (growth mode resolved). For REECE this is the Σ of the
+   *  offices (the company goal is the roll-up, never set directly). */
   effectiveGoal: number;
+  /** CALCULATED trailing NSLI (net sales ÷ leads issued) for the market — drives the
+   *  "leads needed to hit the goal" figure. Null when there's no issued history. */
+  nsli: number | null;
 };
 
 export type ScorecardGoalsEditorData = {
@@ -667,10 +816,13 @@ function yearToDateMonths(now: Date): string[] {
 }
 
 /**
- * Everything the admin GoalEditor needs to edit any market for the current year to
- * date: each market's live editable goal + growth baseline + effective $ goal (for
- * the Σ-mismatch warning), the frozen monthly history, and the month options. One
+ * Everything the admin GoalEditor needs to edit any OFFICE for the current year to
+ * date: each market's live editable goal + growth baseline + effective $ goal +
+ * CALCULATED trailing NSLI, the frozen monthly history, and the month options. One
  * parallel fan-out; the editor switches market/month entirely client-side.
+ *
+ * The company (REECE) entry is the SUM of the offices, not an editable target — its
+ * effectiveGoal is the roll-up so callers can show the company total read-only.
  */
 export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditorData> {
   const sb = await lpServer();
@@ -688,7 +840,7 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
     .in("goal_month", months);
   const monthly = (monthlyRows as ScorecardMonthlyGoal[] | null) ?? [];
 
-  const markets = await Promise.all(
+  const entries = await Promise.all(
     EDITOR_MARKETS.map(async (market): Promise<MarketGoalEntry> => {
       const { data } = await sb
         .from("scorecard_goals")
@@ -696,7 +848,10 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         .eq("market", market)
         .maybeSingle();
       const goals = (data as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
-      const baseline = await getBaselineNetSales(sb, market, defaultMonth);
+      const [baseline, nsli] = await Promise.all([
+        getBaselineNetSales(sb, market, defaultMonth),
+        getTrailingNsli(sb, market, defaultMonth),
+      ]);
       const effectiveGoal =
         goals.goal_mode === "growth_pct" && goals.growth_pct != null
           ? Math.round(baseline.value * (1 + goals.growth_pct / 100))
@@ -706,8 +861,18 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         goals,
         baselineNetSales: baseline.source === "none" ? null : baseline.value,
         effectiveGoal,
+        nsli,
       };
     }),
+  );
+
+  // The company (REECE) goal is DERIVED — always the sum of the offices, never set
+  // directly — so surface its effectiveGoal as that roll-up.
+  const officeSum = entries
+    .filter((e) => e.market !== "REECE")
+    .reduce((a, e) => a + e.effectiveGoal, 0);
+  const markets = entries.map((e) =>
+    e.market === "REECE" ? { ...e, effectiveGoal: officeSum } : e,
   );
 
   return { markets, monthly, months, defaultMonth };
