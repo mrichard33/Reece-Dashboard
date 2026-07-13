@@ -90,6 +90,7 @@ function makeView(overrides?: {
 
   const derived: ScorecardView["derived"] = {
     monthly_goal_dollars: 9067081,
+    period_goal_dollars: 9067081,
     mtd_goal_dollars: 8369613,
     target_issued_per_day: 90.7,
     target_demoed_per_day: 63.5,
@@ -166,6 +167,47 @@ describe("buildScorecardVM", () => {
     const netSales = vm.marketing.find((r) => r.metric === "Net Sales (Released)")!;
     expect(netSales.tone).toBe("neg"); // behind the MTD goal
     expect(netSales.warn).toBe(true);
+  });
+});
+
+const YTD: ResolvedPeriod = {
+  key: "ytd",
+  label: "Year to date",
+  periodStart: "2026-01-01",
+  periodEnd: "2026-07-11",
+  asOf: "2026-07-11",
+  isPartial: false,
+  source: "aggregate",
+};
+
+describe("buildScorecardVM — aggregate (YTD) period-awareness", () => {
+  function ytdView(): ScorecardView {
+    const v = makeView();
+    // Aggregate rows carry the whole-period selling days and Σ-of-months goals.
+    v.actuals.period_working_days = 305; // full 2026 selling days
+    v.actuals.days_elapsed = 162; // Jan 1 → Jul 11 elapsed
+    v.derived.period_goal_dollars = 54_461_538; // Σ Jan–Jul goals (Period Goal)
+    v.derived.mtd_goal_dollars = 49_230_769; // Target to Date
+    return v;
+  }
+
+  it("uses the whole-period selling days, not the anchor month", () => {
+    const vm = buildScorecardVM(ytdView(), YTD);
+    expect(vm.pace.sellingDays).toBe(305);
+    expect(vm.snapshot.sellingDays).toBe(305);
+    expect(vm.snapshot.daysElapsed).toBe(162);
+    expect(Math.round(vm.pace.elapsedPct)).toBe(53); // 162 / 305
+  });
+
+  it("shows the full Period Goal (Σ months), not a single month", () => {
+    const vm = buildScorecardVM(ytdView(), YTD);
+    expect(vm.pace.monthlyGoal).toBe(54_461_538);
+    expect(vm.pace.paceGoal).toBe(49_230_769); // Target to Date
+    expect(vm.isSingleMonth).toBe(false);
+  });
+
+  it("flags a single-month view", () => {
+    expect(buildScorecardVM(makeView(), MONTH).isSingleMonth).toBe(true);
   });
 });
 

@@ -68,6 +68,7 @@ const ctx = {
   asOf: "2026-06-23",
   daysElapsed: 46,
   workingDays: 26,
+  periodWorkingDays: 51, // May (25) + June (26)
   reconciled: true,
 };
 
@@ -111,6 +112,7 @@ describe("aggregateActuals", () => {
     expect(agg.period_end).toBe("2026-06-23");
     expect(agg.days_elapsed).toBe(46);
     expect(agg.working_days_in_period).toBe(26);
+    expect(agg.period_working_days).toBe(51); // whole-period selling days
     expect(agg.raw_inputs?.months_aggregated).toBe(2);
   });
 });
