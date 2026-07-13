@@ -171,10 +171,13 @@ describe("buildScorecardVM", () => {
     expect(netSales.warn).toBe(true);
   });
 
-  it("shows Average Sale on a NET basis (net sales ÷ sales count)", () => {
+  it("shows NSLI and Average Sale as trailing rates (previous running data), not current actuals", () => {
     const vm = buildScorecardVM(makeView(), MONTH);
-    // 2,713,755 ÷ 375 = 7,237 (net), not the gross avg_sale (9,358).
-    expect(vm.pace.avgSale).toBe(Math.round(2713755 / 375));
+    // NSLI = the calculated trailing NSLI (goals.trailing_nsli), NOT a.nsli (1700).
+    expect(vm.pace.nsli).toBe(3843);
+    // Average Sale = the calculated trailing net avg sale (avg_sale_target), NOT
+    // the current period's net ÷ sales.
+    expect(vm.pace.avgSale).toBe(9358);
   });
 
   it("targets Sold from goal ÷ NET average sale, not demos × close%", () => {

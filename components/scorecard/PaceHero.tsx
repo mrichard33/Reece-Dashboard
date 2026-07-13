@@ -44,8 +44,8 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
       tone: balTone,
     },
     { label: "Elapsed / Working Days", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
-    { label: "Average Sale", sub: "net ÷ sales", value: usd(p.avgSale) },
-    { label: "NSLI", sub: "net sales / lead issued", value: usd(p.nsli) },
+    { label: "Average Sale", sub: "trailing net ÷ sales", value: p.avgSale > 0 ? usd(p.avgSale) : "—" },
+    { label: "NSLI", sub: "trailing net ÷ leads issued", value: p.nsli > 0 ? usd(p.nsli) : "—" },
   ];
 
   const toneCls = (t: Kpi["tone"]) =>
