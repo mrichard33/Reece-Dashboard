@@ -107,6 +107,10 @@ export type ScorecardVM = {
     monthlyGoal: number;
     avgSale: number;
     nsli: number;
+    /** Trailing window that produced NSLI + avg sale, and its sales-count sample —
+     *  for the "how was this computed" tooltip. */
+    rateWindow: string | null;
+    rateSampleN: number | null;
     daysElapsed: number;
     sellingDays: number;
   };
@@ -321,6 +325,8 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
       // volatile current partial-month actuals. Same values that drive the targets.
       avgSale: d.avg_sale_target ?? 0,
       nsli: g.trailing_nsli ?? 0,
+      rateWindow: d.rate_window,
+      rateSampleN: d.rate_sample_n,
       daysElapsed,
       sellingDays,
     },

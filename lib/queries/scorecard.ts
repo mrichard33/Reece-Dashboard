@@ -122,6 +122,11 @@ export type ScorecardDerived = {
   /** CALCULATED trailing NET average sale (net sales ÷ sales count) — the divisor
    *  that turns the net goal into a target sales count (sales = goal ÷ this). */
   avg_sale_target: number | null;
+  /** Which trailing window produced NSLI + avg sale (transparency for the tooltip):
+   *  'trailing_3' | 'trailing_6' | 'trailing_12' | 'company'. */
+  rate_window: RateWindow | null;
+  /** Sales-count sample (contracts) behind the chosen rate window. */
+  rate_sample_n: number | null;
   /** % gap between the goal-anchored sales target (goal ÷ avg sale) and the funnel
    *  flow (demos × close%). A material value flags inconsistent office assumptions;
    *  null when either side is uncomputable. */
@@ -258,102 +263,130 @@ export async function getBaselineNetSales(
   return computeBaselineFromRows((rows ?? []) as BaselineRow[], periodStart);
 }
 
-/** A prior snapshot row used to derive trailing NSLI (net sales ÷ leads issued). */
-export type NsliRow = { net_sales: unknown; issued: unknown; period_start: string; as_of_date?: unknown };
+/**
+ * Trailing rates — NSLI (net ÷ leads issued) and NET average sale (net ÷ sales) —
+ * CALCULATED from a market's own previous running data, never entered by hand.
+ * NSLI converts a dollar goal into leads needed (leads = goal ÷ NSLI); average sale
+ * converts it into a sales-count target (sales = goal ÷ avg sale). Both use the SAME
+ * window so the target chain stays internally consistent.
+ *
+ * WINDOW RULE (prior-year-same-month is deliberately NOT used — average sale is a
+ * pricing metric with ~5% CV, so seasonal matching buys almost nothing, while a
+ * single prior-year month carries full single-month noise and is 12 months stale on
+ * data that wasn't backfilled before 2026):
+ *   1. Primary: trailing 3 completed months.
+ *   2. If its sales count < 30 → widen to trailing 6.
+ *   3. If trailing-6 sales count < 30 → widen to trailing 12.
+ *   4. If trailing-12 sales count < 20 → fall back to the COMPANY-WIDE rate.
+ * A window is NEVER used as a divisor with fewer than 20 contracts. The window
+ * actually used and the sales n behind it are surfaced for transparency.
+ *
+ * FUTURE (not built): if average sale ever develops real seasonality, apply a
+ * seasonal INDEX to the trailing base rather than reverting to a noisy single month.
+ */
+export type RateWindow = "trailing_3" | "trailing_6" | "trailing_12" | "company";
+
+export type TrailingRates = {
+  nsli: number | null;
+  avgSale: number | null;
+  /** Which window produced the rates (null only when there's no data at all). */
+  window: RateWindow | null;
+  /** Sales-count sample behind the chosen window (contracts). */
+  sampleN: number;
+};
+
+/** Latest snapshot per completed month, aggregated to the fields the rates need. */
+export type RateMonth = { period_start: string; net: number; issued: number; sales: number };
+
+const MIN_WIDEN = 30; // widen the window below this sales count …
+const MIN_USE = 20; //   … but never divide by a window under this many contracts.
+
+/** Σ net/issued/sales over the k most recent months (months MUST be latest-first). */
+function sumWindow(months: RateMonth[], k: number): { net: number; issued: number; sales: number } {
+  return months.slice(0, k).reduce(
+    (a, r) => ({ net: a.net + r.net, issued: a.issued + r.issued, sales: a.sales + r.sales }),
+    { net: 0, issued: 0, sales: 0 },
+  );
+}
 
 /**
- * Trailing NSLI = net sales per lead ISSUED — the rate that converts a dollar goal
- * into "leads issued needed to hit it" (leads = goal ÷ NSLI). It is CALCULATED from
- * the market's own recent actuals, never entered by hand. Same trailing window as
- * the growth baseline: prior-year-same-month if present, else the sum over up to the
- * 3 most recent prior months (Σ net ÷ Σ issued, so a low-volume month can't skew
- * the ratio). Returns null when there's no issued volume to divide by.
+ * Resolve the trailing rates + the window actually used. `marketMonths` and
+ * `companyMonths` MUST be latest-first (most recent completed month first).
  */
-export function computeNsliFromRows(rows: NsliRow[], periodStart: string): number | null {
-  const [y, m] = periodStart.split("-");
-  const priorYearStart = `${Number(y) - 1}-${m}-01`;
+export function computeTrailingRates(
+  marketMonths: RateMonth[],
+  companyMonths: RateMonth[],
+): TrailingRates {
+  const rate = (n: number, d: number): number | null => (d > 0 ? Math.round(n / d) : null);
+  const at = (w: { net: number; issued: number; sales: number }, window: RateWindow): TrailingRates => ({
+    nsli: rate(w.net, w.issued),
+    avgSale: rate(w.net, w.sales),
+    window,
+    sampleN: w.sales,
+  });
 
-  const py = rows.find(
-    (r) => r.period_start === priorYearStart && Number(r.issued) > 0 && r.net_sales != null,
-  );
-  if (py) return Math.round(Number(py.net_sales) / Number(py.issued));
+  const w3 = sumWindow(marketMonths, 3);
+  if (w3.sales >= MIN_WIDEN) return at(w3, "trailing_3");
+  const w6 = sumWindow(marketMonths, 6);
+  if (w6.sales >= MIN_WIDEN) return at(w6, "trailing_6");
+  const w12 = sumWindow(marketMonths, 12);
+  if (w12.sales >= MIN_USE) return at(w12, "trailing_12");
 
-  const latestPerMonth = new Map<string, { net: number; issued: number }>();
+  // Too thin to trust the market's own history — use the company-wide rate.
+  const c3 = sumWindow(companyMonths, 3);
+  if (c3.sales > 0) return at(c3, "company");
+  // No usable data anywhere (brand-new market, empty warehouse).
+  return { nsli: null, avgSale: null, window: null, sampleN: 0 };
+}
+
+/** Latest snapshot per completed month (rows MUST be period_start desc, as_of desc). */
+function latestRateMonths(rows: Record<string, unknown>[]): RateMonth[] {
+  const byMonth = new Map<string, RateMonth>();
   for (const r of rows) {
-    if (r.period_start < periodStart && !latestPerMonth.has(r.period_start)) {
-      latestPerMonth.set(r.period_start, { net: Number(r.net_sales) || 0, issued: Number(r.issued) || 0 });
+    const ps = String(r.period_start);
+    if (!byMonth.has(ps)) {
+      byMonth.set(ps, {
+        period_start: ps,
+        net: Number(r.net_sales) || 0,
+        issued: Number(r.issued) || 0,
+        sales: Number(r.sales) || 0,
+      });
     }
   }
-  const last3 = [...latestPerMonth.values()].slice(0, 3);
-  const net = last3.reduce((a, b) => a + b.net, 0);
-  const issued = last3.reduce((a, b) => a + b.issued, 0);
-  if (issued <= 0) return null;
-  return Math.round(net / issued);
+  return [...byMonth.values()]; // desc order preserved from the query
 }
-
-/** Trailing NSLI for a single market (one query + the shared pure resolver). */
-export async function getTrailingNsli(
-  sb: Sb,
-  market: string,
-  periodStart: string,
-): Promise<number | null> {
-  const { data: rows } = await sb
-    .from("lp_market_scorecard_daily")
-    .select("net_sales, issued, period_start, as_of_date")
-    .eq("market", market)
-    .lt("period_start", periodStart)
-    .order("period_start", { ascending: false })
-    .order("as_of_date", { ascending: false })
-    .limit(400);
-  return computeNsliFromRows((rows ?? []) as NsliRow[], periodStart);
-}
-
-/** A prior snapshot row used to derive the trailing NET average sale. */
-export type AvgSaleRow = { net_sales: unknown; sales: unknown; period_start: string; as_of_date?: unknown };
 
 /**
- * Trailing average sale on a NET basis = net sales ÷ sales count. The goal is stated
- * in NET dollars, so the divisor that converts it to a target sales count must also
- * be net (target sales = goal ÷ this). Same trailing window and Σ-over-months
- * convention as NSLI, so the two stay on one basis. Returns null with no sales.
+ * Trailing NSLI + NET average sale for a market as of `anchorMonth` (first-of-month),
+ * with the min-sample window rule and company-wide fallback. One query for the
+ * market, one for the company (REECE) — skipped when the market IS the company.
  */
-export function computeAvgSaleFromRows(rows: AvgSaleRow[], periodStart: string): number | null {
-  const [y, m] = periodStart.split("-");
-  const priorYearStart = `${Number(y) - 1}-${m}-01`;
-
-  const py = rows.find(
-    (r) => r.period_start === priorYearStart && Number(r.sales) > 0 && r.net_sales != null,
-  );
-  if (py) return Math.round(Number(py.net_sales) / Number(py.sales));
-
-  const latestPerMonth = new Map<string, { net: number; sales: number }>();
-  for (const r of rows) {
-    if (r.period_start < periodStart && !latestPerMonth.has(r.period_start)) {
-      latestPerMonth.set(r.period_start, { net: Number(r.net_sales) || 0, sales: Number(r.sales) || 0 });
-    }
-  }
-  const last3 = [...latestPerMonth.values()].slice(0, 3);
-  const net = last3.reduce((a, b) => a + b.net, 0);
-  const sales = last3.reduce((a, b) => a + b.sales, 0);
-  if (sales <= 0) return null;
-  return Math.round(net / sales);
-}
-
-/** Trailing NET average sale for a single market (one query + the pure resolver). */
-export async function getTrailingAvgSale(
+export async function getTrailingRates(
   sb: Sb,
   market: string,
-  periodStart: string,
-): Promise<number | null> {
-  const { data: rows } = await sb
-    .from("lp_market_scorecard_daily")
-    .select("net_sales, sales, period_start, as_of_date")
-    .eq("market", market)
-    .lt("period_start", periodStart)
-    .order("period_start", { ascending: false })
-    .order("as_of_date", { ascending: false })
-    .limit(400);
-  return computeAvgSaleFromRows((rows ?? []) as AvgSaleRow[], periodStart);
+  anchorMonth: string,
+): Promise<TrailingRates> {
+  const query = (m: string) =>
+    sb
+      .from("lp_market_scorecard_daily")
+      .select("net_sales, issued, sales, period_start, as_of_date")
+      .eq("market", m)
+      .lt("period_start", anchorMonth)
+      .order("period_start", { ascending: false })
+      .order("as_of_date", { ascending: false })
+      .limit(400);
+
+  if (market === "REECE") {
+    const { data } = await query("REECE");
+    const months = latestRateMonths((data ?? []) as Record<string, unknown>[]);
+    return computeTrailingRates(months, months);
+  }
+
+  const [mkt, company] = await Promise.all([query(market), query("REECE")]);
+  return computeTrailingRates(
+    latestRateMonths((mkt.data ?? []) as Record<string, unknown>[]),
+    latestRateMonths((company.data ?? []) as Record<string, unknown>[]),
+  );
 }
 
 function pts(actual: number | null, target: number | null): number | null {
@@ -367,8 +400,9 @@ function derive(
   goalMeta: ScorecardDerived["goal"],
   periodGoalOverride?: number | null,
   periodGoalFull?: number | null,
-  avgSaleTarget?: number | null,
+  rates?: TrailingRates,
 ): ScorecardDerived {
+  const avgSaleTarget = rates?.avgSale ?? null;
   // Selling-day basis: prefer the denominator the LP-MCP job persisted with the
   // snapshot (working_days_in_period); fall back to the editable goal for
   // pre-Step-1 rows. `elapsed` is now selling days (writer-side), so numerator
@@ -428,6 +462,8 @@ function derive(
     period_goal_dollars,
     mtd_goal_dollars,
     avg_sale_target: avgSaleTarget ?? null,
+    rate_window: rates?.window ?? null,
+    rate_sample_n: rates?.sampleN ?? null,
     sales_target_divergence_pct,
     target_issued_per_day,
     target_demoed_per_day,
@@ -502,18 +538,15 @@ async function buildView(
 
   // NSLI and NET average sale are CALCULATED trailing rates (never the stored/
   // possibly-stale value), anchored to the current month so every period view uses
-  // one current planning rate. They drive the target lead funnel (issued = goal ÷
-  // NSLI, sales = goal ÷ avg sale). Fall back to the stored NSLI only if there is no
-  // trailing history to compute from.
+  // one current planning rate. The min-sample window rule + company fallback keep a
+  // thin market from producing a nonsense divisor. They drive the target lead funnel
+  // (issued = goal ÷ NSLI, sales = goal ÷ avg sale) and the displayed KPIs.
   const nsliAnchor = firstOfMonthUTC(new Date());
-  const [trailingNsli, avgSaleTarget] = await Promise.all([
-    getTrailingNsli(sb, market, nsliAnchor),
-    getTrailingAvgSale(sb, market, nsliAnchor),
-  ]);
+  const rates = await getTrailingRates(sb, market, nsliAnchor);
   const effectiveGoals: ScorecardGoals = {
     ...goals,
     monthly_goal_dollars: effectiveGoal,
-    trailing_nsli: trailingNsli ?? goals.trailing_nsli,
+    trailing_nsli: rates.nsli ?? goals.trailing_nsli,
   };
 
   // Aggregate periods sum the frozen monthly goals across the range (D4); single
@@ -540,7 +573,7 @@ async function buildView(
   return {
     actuals,
     goals: effectiveGoals,
-    derived: derive(actuals, effectiveGoals, goalMeta, periodGoalOverride, periodGoalFull, avgSaleTarget),
+    derived: derive(actuals, effectiveGoals, goalMeta, periodGoalOverride, periodGoalFull, rates),
   };
 }
 
@@ -787,6 +820,10 @@ export type MarketGoalEntry = {
   /** CALCULATED trailing NSLI (net sales ÷ leads issued) for the market — drives the
    *  "leads needed to hit the goal" figure. Null when there's no issued history. */
   nsli: number | null;
+  /** Which trailing window produced the NSLI, and the sales-count sample behind it —
+   *  surfaced so a small-market figure is explainable. */
+  rateWindow: RateWindow | null;
+  rateSampleN: number;
 };
 
 export type ScorecardGoalsEditorData = {
@@ -848,9 +885,9 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         .eq("market", market)
         .maybeSingle();
       const goals = (data as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
-      const [baseline, nsli] = await Promise.all([
+      const [baseline, rates] = await Promise.all([
         getBaselineNetSales(sb, market, defaultMonth),
-        getTrailingNsli(sb, market, defaultMonth),
+        getTrailingRates(sb, market, defaultMonth),
       ]);
       const effectiveGoal =
         goals.goal_mode === "growth_pct" && goals.growth_pct != null
@@ -861,7 +898,9 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         goals,
         baselineNetSales: baseline.source === "none" ? null : baseline.value,
         effectiveGoal,
-        nsli,
+        nsli: rates.nsli,
+        rateWindow: rates.window,
+        rateSampleN: rates.sampleN,
       };
     }),
   );

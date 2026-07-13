@@ -7,7 +7,18 @@ import type { ScorecardVM } from "@/lib/scorecard/viewModel";
  * KPIs (no gauge). Projected Pace and Balance are colored vs the monthly goal.
  */
 
-type Kpi = { label: string; sub: string; value: string; tone?: "pos" | "neg" | "plain" };
+type Kpi = { label: string; sub: string; value: string; tone?: "pos" | "neg" | "plain"; title?: string };
+
+/** Human label for the trailing rate window (transparency tooltip). */
+function windowLabel(w: string | null): string {
+  switch (w) {
+    case "trailing_3": return "trailing 3 mo";
+    case "trailing_6": return "trailing 6 mo";
+    case "trailing_12": return "trailing 12 mo";
+    case "company": return "company-wide (market too thin)";
+    default: return "—";
+  }
+}
 
 export function PaceHero({ vm }: { vm: ScorecardVM }) {
   const p = vm.pace;
@@ -22,6 +33,11 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
   const balTone: Kpi["tone"] = balance >= 0 ? "pos" : "neg";
   const projTone: Kpi["tone"] = p.monthlyGoal <= 0 ? "plain" : balTone;
   const signed = (v: number) => (v >= 0 ? "+" : "") + usd(v);
+
+  // Transparency: how NSLI / average sale were computed (window + contracts).
+  const rateTitle = p.rateWindow
+    ? `Basis: ${windowLabel(p.rateWindow)} · ${p.rateSampleN ?? 0} contracts`
+    : undefined;
 
   // Single month → "Monthly Goal / full month"; multi-month → "Period Goal / full period".
   const goalLabel = vm.isSingleMonth ? "Monthly Goal" : "Period Goal";
@@ -44,8 +60,8 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
       tone: balTone,
     },
     { label: "Elapsed / Working Days", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
-    { label: "Average Sale", sub: "trailing net ÷ sales", value: p.avgSale > 0 ? usd(p.avgSale) : "—" },
-    { label: "NSLI", sub: "trailing net ÷ leads issued", value: p.nsli > 0 ? usd(p.nsli) : "—" },
+    { label: "Average Sale", sub: "trailing net ÷ sales", value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle },
+    { label: "NSLI", sub: "trailing net ÷ leads issued", value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle },
   ];
 
   const toneCls = (t: Kpi["tone"]) =>
@@ -64,7 +80,7 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
     >
       <div className="grid grid-cols-2 gap-x-4 gap-y-5 border-t border-slate-100 px-4 py-5 dark:border-slate-800/70 sm:grid-cols-4 sm:gap-x-6 sm:px-5 xl:grid-cols-8">
         {kpis.map((k) => (
-          <div key={k.label} className="min-w-0">
+          <div key={k.label} className="min-w-0" title={k.title}>
             <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               {k.label}
             </div>

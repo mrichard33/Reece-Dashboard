@@ -93,6 +93,8 @@ function makeView(overrides?: {
     period_goal_dollars: 9067081,
     mtd_goal_dollars: 8369613,
     avg_sale_target: 9358,
+    rate_window: "trailing_3",
+    rate_sample_n: 100,
     sales_target_divergence_pct: null,
     target_issued_per_day: 90.7,
     target_demoed_per_day: 63.5,
