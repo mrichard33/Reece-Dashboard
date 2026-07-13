@@ -316,10 +316,11 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
       netSales: netReleased, // headline Net = released to production (RTP)
       paceGoal,
       monthlyGoal,
-      // Average Sale on a NET basis (net sales ÷ sales count) so it matches the net
-      // goal and the target avg sale — one basis on the screen, not gross-vs-net.
-      avgSale: (a.sales && a.sales > 0) ? Math.round((a.net_sales ?? 0) / a.sales) : (a.avg_sale ?? 0),
-      nsli: a.nsli ?? 0,
+      // NSLI and Average Sale are the CALCULATED trailing rates (previous running
+      // data — net ÷ leads issued and net ÷ sales over the trailing window), NOT the
+      // volatile current partial-month actuals. Same values that drive the targets.
+      avgSale: d.avg_sale_target ?? 0,
+      nsli: g.trailing_nsli ?? 0,
       daysElapsed,
       sellingDays,
     },
