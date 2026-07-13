@@ -670,15 +670,29 @@ function recentMonths(count: number): string[] {
 }
 
 /**
- * Everything the admin GoalEditor needs to edit any market for any recent month:
+ * Everything the admin GoalEditor needs to edit any market for any month that has a
+ * frozen goal (the whole seeded year, e.g. Jan–Dec) PLUS the trailing few months:
  * each market's live editable goal + growth baseline + effective $ goal (for the
  * Σ-mismatch warning), the frozen monthly history, and the month options. One
  * parallel fan-out; the editor switches market/month entirely client-side.
  */
 export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditorData> {
   const sb = await lpServer();
-  const months = recentMonths(6);
-  const defaultMonth = months[0] ?? firstOfMonthUTC(new Date());
+  const defaultMonth = firstOfMonthUTC(new Date());
+
+  // Every frozen monthly row for the editor markets (the whole seeded history).
+  const { data: monthlyRows } = await sb
+    .from("scorecard_goals_monthly")
+    .select("*")
+    .in("market", EDITOR_MARKETS as unknown as string[]);
+  const monthly = (monthlyRows as ScorecardMonthlyGoal[] | null) ?? [];
+
+  // Month options = every month that has a frozen goal (so Jan is selectable once
+  // the year is seeded) ∪ the current + trailing months (so a not-yet-seeded month
+  // can still be created). Newest first.
+  const monthSet = new Set<string>([defaultMonth, ...recentMonths(6)]);
+  for (const r of monthly) monthSet.add(String(r.goal_month).slice(0, 10));
+  const months = [...monthSet].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
 
   const markets = await Promise.all(
     EDITOR_MARKETS.map(async (market): Promise<MarketGoalEntry> => {
@@ -702,16 +716,5 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
     }),
   );
 
-  const { data: monthlyRows } = await sb
-    .from("scorecard_goals_monthly")
-    .select("*")
-    .in("market", EDITOR_MARKETS as unknown as string[])
-    .in("goal_month", months);
-
-  return {
-    markets,
-    monthly: (monthlyRows as ScorecardMonthlyGoal[] | null) ?? [],
-    months,
-    defaultMonth,
-  };
+  return { markets, monthly, months, defaultMonth };
 }
