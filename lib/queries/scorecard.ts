@@ -655,44 +655,38 @@ function firstOfMonthUTC(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
-/** Current + previous (count-1) months as first-of-month strings, newest first. */
-function recentMonths(count: number): string[] {
-  const now = new Date();
-  let y = now.getUTCFullYear();
-  let m = now.getUTCMonth() + 1; // 1-12
+/** Current year's months, January through the current month, newest first. */
+function yearToDateMonths(now: Date): string[] {
+  const y = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth() + 1; // 1-12
   const out: string[] = [];
-  for (let i = 0; i < count; i++) {
+  for (let m = currentMonth; m >= 1; m--) {
     out.push(`${y}-${String(m).padStart(2, "0")}-01`);
-    m -= 1;
-    if (m < 1) { m = 12; y -= 1; }
   }
   return out;
 }
 
 /**
- * Everything the admin GoalEditor needs to edit any market for any month that has a
- * frozen goal (the whole seeded year, e.g. Jan–Dec) PLUS the trailing few months:
- * each market's live editable goal + growth baseline + effective $ goal (for the
- * Σ-mismatch warning), the frozen monthly history, and the month options. One
+ * Everything the admin GoalEditor needs to edit any market for the current year to
+ * date: each market's live editable goal + growth baseline + effective $ goal (for
+ * the Σ-mismatch warning), the frozen monthly history, and the month options. One
  * parallel fan-out; the editor switches market/month entirely client-side.
  */
 export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditorData> {
   const sb = await lpServer();
-  const defaultMonth = firstOfMonthUTC(new Date());
 
-  // Every frozen monthly row for the editor markets (the whole seeded history).
+  // Month options = the current year, January through the current month, newest
+  // first (e.g. in July: Jul, Jun, … Jan). No future or prior-year months.
+  const months = yearToDateMonths(new Date());
+  const defaultMonth = months[0] ?? firstOfMonthUTC(new Date());
+
+  // Frozen monthly rows for the editor markets, limited to the selectable months.
   const { data: monthlyRows } = await sb
     .from("scorecard_goals_monthly")
     .select("*")
-    .in("market", EDITOR_MARKETS as unknown as string[]);
+    .in("market", EDITOR_MARKETS as unknown as string[])
+    .in("goal_month", months);
   const monthly = (monthlyRows as ScorecardMonthlyGoal[] | null) ?? [];
-
-  // Month options = every month that has a frozen goal (so Jan is selectable once
-  // the year is seeded) ∪ the current + trailing months (so a not-yet-seeded month
-  // can still be created). Newest first.
-  const monthSet = new Set<string>([defaultMonth, ...recentMonths(6)]);
-  for (const r of monthly) monthSet.add(String(r.goal_month).slice(0, 10));
-  const months = [...monthSet].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
 
   const markets = await Promise.all(
     EDITOR_MARKETS.map(async (market): Promise<MarketGoalEntry> => {
