@@ -72,6 +72,9 @@ export type MarketingRow = {
 
 export type ScorecardVM = {
   abbr: string;
+  /** True for a single calendar-month view (month / last_month / select_month) —
+   *  the pace strip labels the goal "Monthly Goal"; otherwise "Period Goal". */
+  isSingleMonth: boolean;
   /** True when any part of the view is the live in-progress month (not fully
    *  report-sourced) — the released figure is a provisional estimate that ties to
    *  the official Net Report when the month closes. */
@@ -149,7 +152,10 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   const abbr = abbrFor(resolved.key);
 
   const daysElapsed = a.days_elapsed || 1;
-  const sellingDays = a.working_days_in_period ?? g.working_days ?? 26;
+  // Period-total selling days — expands with the filter (whole year for YTD, whole
+  // quarter for QTD, the month for a single-month view). Falls back to the monthly
+  // denominator on single-month / recompute paths that don't set it.
+  const sellingDays = a.period_working_days ?? a.working_days_in_period ?? g.working_days ?? 26;
 
   // ── pace ──
   // Headline Net = RELEASED TO PRODUCTION (RTP) — the basis of Reece's official Net
@@ -159,7 +165,10 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   // released split.
   const netReleased = a.released_dollars ?? a.net_sales ?? 0;
   const paceGoal = d.mtd_goal_dollars ?? 0;
-  const monthlyGoal = d.goal.effective_monthly_goal ?? d.monthly_goal_dollars ?? 0;
+  // Full goal for the whole period (Σ of the months in range) — NOT the current
+  // month's goal alone. Equals the month goal for a single-month view.
+  const monthlyGoal =
+    d.period_goal_dollars ?? d.goal.effective_monthly_goal ?? d.monthly_goal_dollars ?? 0;
   const gap = Math.round(netReleased - paceGoal);
   const pctOfPace = paceGoal > 0 ? (netReleased / paceGoal) * 100 : 0;
   const pctOfFull = monthlyGoal > 0 ? Math.min(100, (netReleased / monthlyGoal) * 100) : 0;
@@ -280,8 +289,12 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   // ── Marketing / Sales detail rows (the numbers behind the visuals) ──
   const marketing = buildMarketing(view, daysElapsed, sellingDays, abbr);
 
+  const isSingleMonth =
+    resolved.key === "month" || resolved.key === "last_month" || resolved.key === "select_month";
+
   return {
     abbr,
+    isSingleMonth,
     provisional: a.computed_from !== "net_report_rtp",
     snapshot: {
       asOfDate: a.as_of_date,

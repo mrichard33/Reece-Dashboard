@@ -12,24 +12,30 @@ type Kpi = { label: string; sub: string; value: string; tone?: "pos" | "neg" | "
 export function PaceHero({ vm }: { vm: ScorecardVM }) {
   const p = vm.pace;
 
-  // Projected month-end net = current net run-rate × selling days in the period.
+  // Projected period-end net = current net run-rate × selling days in the whole
+  // period (whole year for YTD, the month for a month view).
   const projected = p.daysElapsed > 0 ? Math.round((p.netSales / p.daysElapsed) * p.sellingDays) : 0;
   // Balance = net vs the prorated target-to-date (dollars ahead of / behind pace).
   const balance = Math.round(p.gap);
-  const projTone: Kpi["tone"] =
-    p.monthlyGoal <= 0 ? "plain" : projected >= p.monthlyGoal ? "pos" : "neg";
+  // Projected Pace and Balance share the pace verdict: with a per-working-day goal,
+  // beating the projected period goal ⇔ being ahead of the to-date target.
   const balTone: Kpi["tone"] = balance >= 0 ? "pos" : "neg";
+  const projTone: Kpi["tone"] = p.monthlyGoal <= 0 ? "plain" : balTone;
   const signed = (v: number) => (v >= 0 ? "+" : "") + usd(v);
 
+  // Single month → "Monthly Goal / full month"; multi-month → "Period Goal / full period".
+  const goalLabel = vm.isSingleMonth ? "Monthly Goal" : "Period Goal";
+  const goalSub = vm.isSingleMonth ? "full month" : "full period";
+
   const kpis: Kpi[] = [
-    { label: "Monthly Goal", sub: "full month", value: usd(p.monthlyGoal) },
+    { label: goalLabel, sub: goalSub, value: usd(p.monthlyGoal) },
     {
       label: "Projected Pace",
-      sub: projTone === "pos" ? "on / ahead of goal" : "behind goal",
+      sub: projTone === "neg" ? "behind goal" : "on / ahead of goal",
       value: usd(projected),
       tone: projTone,
     },
-    { label: "Target to Date", sub: "prorated goal", value: usd(p.paceGoal) },
+    { label: "Target to Date", sub: "goal to date", value: usd(p.paceGoal) },
     { label: `Net — Released ${vm.abbr}`, sub: vm.provisional ? "provisional · ties to report at close" : "released to production (RTP)", value: usd(p.netSales) },
     {
       label: "Balance",
@@ -37,7 +43,7 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
       value: signed(balance),
       tone: balTone,
     },
-    { label: "Working / Elapsed", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
+    { label: "Elapsed / Working Days", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
     { label: "Average Sale", sub: "gross ÷ sales", value: usd(p.avgSale) },
     { label: "NSLI", sub: "net sales / lead issued", value: usd(p.nsli) },
   ];

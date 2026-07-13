@@ -23,7 +23,11 @@ export type AggregateCtx = {
   periodEnd: string;
   asOf: string;
   daysElapsed: number;
+  /** Selling days in the anchor (first) month — the per-day funnel-target basis. */
   workingDays: number;
+  /** Selling days in the ENTIRE period (whole year for YTD, whole quarter for QTD).
+   *  Drives the WORKING/ELAPSED tile, elapsed-% and projected-pace denominator. */
+  periodWorkingDays: number;
   reconciled: boolean;
 };
 
@@ -89,6 +93,7 @@ export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx):
     period_end: ctx.periodEnd,
     days_elapsed: ctx.daysElapsed,
     working_days_in_period: ctx.workingDays,
+    period_working_days: ctx.periodWorkingDays,
     leads,
     issued,
     sets,

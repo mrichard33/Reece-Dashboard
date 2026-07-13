@@ -30,6 +30,12 @@ export type ScorecardActuals = {
   /** Selling days in the full month — goal-proration denominator. Null on
    *  pre-Step-1 snapshots; read layer falls back to scorecard_goals.working_days. */
   working_days_in_period: number | null;
+  /** Selling days in the ENTIRE selected period (whole year for YTD, whole quarter
+   *  for QTD, the month for a single-month view). Drives the WORKING/ELAPSED tile,
+   *  the elapsed-% and the projected-pace denominator so they expand with the
+   *  filter. Set only on aggregate periods; single-month/recompute paths leave it
+   *  null and the read layer falls back to working_days_in_period. */
+  period_working_days?: number | null;
   leads: number;
   issued: number;
   sets: number;
@@ -106,7 +112,12 @@ export type GoalBaselineSource =
 
 export type ScorecardDerived = {
   monthly_goal_dollars: number;
-  /** Goal $ prorated to the elapsed share of the working month. */
+  /** Full goal for the ENTIRE selected period — Σ of every month's goal in range,
+   *  UNPRORATED (the "Period Goal"). Equals the single month's goal for a month
+   *  view; the sum of Jan…current-month goals for YTD. */
+  period_goal_dollars: number;
+  /** Goal $ prorated to the elapsed share of the period — Σ fully-elapsed months +
+   *  current month × (elapsed ÷ working days). This is "Target to Date". */
   mtd_goal_dollars: number;
   // ⚠ TIE-OUT pace targets (goal $ ÷ trailing NSLI ÷ working days, then funnel %)
   target_issued_per_day: number | null;
@@ -250,6 +261,7 @@ function derive(
   goals: ScorecardGoals,
   goalMeta: ScorecardDerived["goal"],
   periodGoalOverride?: number | null,
+  periodGoalFull?: number | null,
 ): ScorecardDerived {
   // Selling-day basis: prefer the denominator the LP-MCP job persisted with the
   // snapshot (working_days_in_period); fall back to the editable goal for
@@ -263,6 +275,11 @@ function derive(
     periodGoalOverride != null
       ? Math.round(periodGoalOverride)
       : Math.round(goals.monthly_goal_dollars * (elapsed / wd));
+  // Full (unprorated) goal for the whole period. Aggregate → Σ of every month's
+  // goal in range; single month → the month's goal. Never the current-month goal
+  // alone for a multi-month view.
+  const period_goal_dollars =
+    periodGoalFull != null ? Math.round(periodGoalFull) : goals.monthly_goal_dollars;
 
   // ⚠ TIE-OUT: target issued/day = monthly goal $ ÷ trailing NSLI ÷ working days.
   const target_issued_total = goals.trailing_nsli > 0
@@ -280,6 +297,7 @@ function derive(
 
   return {
     monthly_goal_dollars: goals.monthly_goal_dollars,
+    period_goal_dollars,
     mtd_goal_dollars,
     target_issued_per_day,
     target_demoed_per_day,
@@ -356,10 +374,12 @@ async function buildView(
   // Aggregate periods sum the frozen monthly goals across the range (D4); single
   // months use the normal elapsed-day proration in derive().
   let periodGoalOverride: number | null = null;
+  let periodGoalFull: number | null = null;
   let estimated = false;
   if (resolved && resolved.source === "aggregate") {
     const pg = await resolveAggregatePeriodGoal(sb, market, resolved, goals, effectiveGoal);
     periodGoalOverride = pg.mtd_goal_dollars;
+    periodGoalFull = pg.period_goal_dollars;
     estimated = pg.estimated;
   }
 
@@ -375,7 +395,7 @@ async function buildView(
   return {
     actuals,
     goals: effectiveGoals,
-    derived: derive(actuals, effectiveGoals, goalMeta, periodGoalOverride),
+    derived: derive(actuals, effectiveGoals, goalMeta, periodGoalOverride, periodGoalFull),
   };
 }
 
@@ -406,7 +426,7 @@ async function resolveAggregatePeriodGoal(
   resolved: ResolvedPeriod,
   liveGoals: ScorecardGoals,
   effectiveMonthlyGoal: number,
-): Promise<{ mtd_goal_dollars: number; estimated: boolean }> {
+): Promise<{ mtd_goal_dollars: number; period_goal_dollars: number; estimated: boolean }> {
   const cal = resolveSellingCalendar();
   const months = monthsInRange(resolved.periodStart, resolved.periodEnd);
 
@@ -420,7 +440,10 @@ async function resolveAggregatePeriodGoal(
     frozen.set(String(r.goal_month).slice(0, 10), r);
   }
 
+  // `total` = Target to Date (current month prorated). `periodTotal` = Period Goal
+  // (every month in range counted in full, unprorated).
   let total = 0;
+  let periodTotal = 0;
   let estimated = false;
   for (const monthStart of months) {
     const y = Number(monthStart.slice(0, 4));
@@ -440,16 +463,25 @@ async function resolveAggregatePeriodGoal(
       estimated = true;
     }
 
-    // Prorate the month that contains asOf; earlier months count in full.
-    if (resolved.asOf >= monthStart && resolved.asOf < monthEnd) {
+    // Period Goal counts every month in range at full.
+    periodTotal += monthGoal;
+
+    // Target to Date: prorate the month that contains asOf; fully-elapsed months
+    // count in full; months entirely after asOf contribute nothing.
+    if (resolved.asOf >= monthEnd) {
+      total += monthGoal;
+    } else if (resolved.asOf >= monthStart) {
       const wd = sellingDaysInPeriod(monthStart, monthEnd, cal) || 1;
       const elapsed = sellingDaysElapsed(monthStart, resolved.asOf, cal);
-      monthGoal = monthGoal * (elapsed / wd);
+      total += monthGoal * (elapsed / wd);
     }
-    total += monthGoal;
   }
   void liveGoals; // reserved: per-month live-goal history could refine the fallback
-  return { mtd_goal_dollars: Math.round(total), estimated };
+  return {
+    mtd_goal_dollars: Math.round(total),
+    period_goal_dollars: Math.round(periodTotal),
+    estimated,
+  };
 }
 
 /** Coerce a Postgres numeric (string over PostgREST) to number | null. */

@@ -10,11 +10,15 @@
  * period filter.
  *
  * Keep this in sync with the LP-MCP module: Mon–Sat selling by default, Sunday
- * off, a Reece closure list (New Year's / Jul 4 / Thanksgiving / Christmas) that
- * is NOT the federal-holiday calendar (Juneteenth stays a selling day). Config
- * is read from the same server env vars (SCORECARD_SELLING_DAYS /
- * SCORECARD_HOLIDAYS). Pure functions — server-side only (reads process.env).
+ * off, and the Reece closure list — the SINGLE source of truth for holidays lives
+ * in lib/date/holidays.ts (do NOT re-derive closures here). That list is NOT the
+ * federal-holiday calendar (Juneteenth stays a selling day). Config is read from
+ * the same server env vars (SCORECARD_SELLING_DAYS / SCORECARD_HOLIDAYS); with no
+ * env override the frozen holidays.ts list applies. Pure functions — server-side
+ * only (reads process.env).
  */
+
+import { reeceHolidays } from "./holidays";
 
 const ET = "America/New_York";
 const DOW_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
@@ -51,23 +55,6 @@ function dowFromYMD(ymd: string): number {
   return new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0)).getUTCDay();
 }
 
-/** Nth weekday of a month (e.g. 4th Thursday Nov → Thanksgiving). */
-function nthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): string {
-  const first = new Date(Date.UTC(year, month - 1, 1, 12, 0, 0));
-  const offset = (weekday - first.getUTCDay() + 7) % 7;
-  const day = 1 + offset + (n - 1) * 7;
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function defaultHolidays(year: number): Set<string> {
-  return new Set([
-    `${year}-01-01`, // New Year's Day
-    `${year}-07-04`, // Independence Day
-    nthWeekdayOfMonth(year, 11, 4, 4), // Thanksgiving
-    `${year}-12-25`, // Christmas Day
-  ]);
-}
-
 /** Resolve the selling calendar from server env (mirrors the LP-MCP defaults). */
 export function resolveSellingCalendar(
   env: Record<string, string | undefined> = process.env,
@@ -94,7 +81,7 @@ export function resolveSellingCalendar(
 
   const cache = new Map<number, Set<string>>();
   const holidays = (year: number): Set<string> => {
-    if (!cache.has(year)) cache.set(year, explicitSet ?? defaultHolidays(year));
+    if (!cache.has(year)) cache.set(year, explicitSet ?? reeceHolidays(year));
     return cache.get(year)!;
   };
 
