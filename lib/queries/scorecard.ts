@@ -251,6 +251,56 @@ export async function getBaselineNetSales(
   return computeBaselineFromRows((rows ?? []) as BaselineRow[], periodStart);
 }
 
+/** A prior snapshot row used to derive trailing NSLI (net sales ÷ leads issued). */
+export type NsliRow = { net_sales: unknown; issued: unknown; period_start: string; as_of_date?: unknown };
+
+/**
+ * Trailing NSLI = net sales per lead ISSUED — the rate that converts a dollar goal
+ * into "leads issued needed to hit it" (leads = goal ÷ NSLI). It is CALCULATED from
+ * the market's own recent actuals, never entered by hand. Same trailing window as
+ * the growth baseline: prior-year-same-month if present, else the sum over up to the
+ * 3 most recent prior months (Σ net ÷ Σ issued, so a low-volume month can't skew
+ * the ratio). Returns null when there's no issued volume to divide by.
+ */
+export function computeNsliFromRows(rows: NsliRow[], periodStart: string): number | null {
+  const [y, m] = periodStart.split("-");
+  const priorYearStart = `${Number(y) - 1}-${m}-01`;
+
+  const py = rows.find(
+    (r) => r.period_start === priorYearStart && Number(r.issued) > 0 && r.net_sales != null,
+  );
+  if (py) return Math.round(Number(py.net_sales) / Number(py.issued));
+
+  const latestPerMonth = new Map<string, { net: number; issued: number }>();
+  for (const r of rows) {
+    if (r.period_start < periodStart && !latestPerMonth.has(r.period_start)) {
+      latestPerMonth.set(r.period_start, { net: Number(r.net_sales) || 0, issued: Number(r.issued) || 0 });
+    }
+  }
+  const last3 = [...latestPerMonth.values()].slice(0, 3);
+  const net = last3.reduce((a, b) => a + b.net, 0);
+  const issued = last3.reduce((a, b) => a + b.issued, 0);
+  if (issued <= 0) return null;
+  return Math.round(net / issued);
+}
+
+/** Trailing NSLI for a single market (one query + the shared pure resolver). */
+export async function getTrailingNsli(
+  sb: Sb,
+  market: string,
+  periodStart: string,
+): Promise<number | null> {
+  const { data: rows } = await sb
+    .from("lp_market_scorecard_daily")
+    .select("net_sales, issued, period_start, as_of_date")
+    .eq("market", market)
+    .lt("period_start", periodStart)
+    .order("period_start", { ascending: false })
+    .order("as_of_date", { ascending: false })
+    .limit(400);
+  return computeNsliFromRows((rows ?? []) as NsliRow[], periodStart);
+}
+
 function pts(actual: number | null, target: number | null): number | null {
   if (actual == null || target == null) return null;
   return Math.round((actual - target) * 10) / 10;
@@ -636,8 +686,12 @@ export type MarketGoalEntry = {
   market: string;
   goals: ScorecardGoals;
   baselineNetSales: number | null;
-  /** Effective monthly $ goal (growth mode resolved) — drives the Σ-mismatch check. */
+  /** Effective monthly $ goal (growth mode resolved). For REECE this is the Σ of the
+   *  offices (the company goal is the roll-up, never set directly). */
   effectiveGoal: number;
+  /** CALCULATED trailing NSLI (net sales ÷ leads issued) for the market — drives the
+   *  "leads needed to hit the goal" figure. Null when there's no issued history. */
+  nsli: number | null;
 };
 
 export type ScorecardGoalsEditorData = {
@@ -667,10 +721,13 @@ function yearToDateMonths(now: Date): string[] {
 }
 
 /**
- * Everything the admin GoalEditor needs to edit any market for the current year to
- * date: each market's live editable goal + growth baseline + effective $ goal (for
- * the Σ-mismatch warning), the frozen monthly history, and the month options. One
+ * Everything the admin GoalEditor needs to edit any OFFICE for the current year to
+ * date: each market's live editable goal + growth baseline + effective $ goal +
+ * CALCULATED trailing NSLI, the frozen monthly history, and the month options. One
  * parallel fan-out; the editor switches market/month entirely client-side.
+ *
+ * The company (REECE) entry is the SUM of the offices, not an editable target — its
+ * effectiveGoal is the roll-up so callers can show the company total read-only.
  */
 export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditorData> {
   const sb = await lpServer();
@@ -688,7 +745,7 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
     .in("goal_month", months);
   const monthly = (monthlyRows as ScorecardMonthlyGoal[] | null) ?? [];
 
-  const markets = await Promise.all(
+  const entries = await Promise.all(
     EDITOR_MARKETS.map(async (market): Promise<MarketGoalEntry> => {
       const { data } = await sb
         .from("scorecard_goals")
@@ -696,7 +753,10 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         .eq("market", market)
         .maybeSingle();
       const goals = (data as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
-      const baseline = await getBaselineNetSales(sb, market, defaultMonth);
+      const [baseline, nsli] = await Promise.all([
+        getBaselineNetSales(sb, market, defaultMonth),
+        getTrailingNsli(sb, market, defaultMonth),
+      ]);
       const effectiveGoal =
         goals.goal_mode === "growth_pct" && goals.growth_pct != null
           ? Math.round(baseline.value * (1 + goals.growth_pct / 100))
@@ -706,8 +766,18 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         goals,
         baselineNetSales: baseline.source === "none" ? null : baseline.value,
         effectiveGoal,
+        nsli,
       };
     }),
+  );
+
+  // The company (REECE) goal is DERIVED — always the sum of the offices, never set
+  // directly — so surface its effectiveGoal as that roll-up.
+  const officeSum = entries
+    .filter((e) => e.market !== "REECE")
+    .reduce((a, e) => a + e.effectiveGoal, 0);
+  const markets = entries.map((e) =>
+    e.market === "REECE" ? { ...e, effectiveGoal: officeSum } : e,
   );
 
   return { markets, monthly, months, defaultMonth };
