@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { lpService } from "@/lib/supabase/lp";
 import { getAccessContext } from "@/lib/auth";
 import { GoalSchema } from "@/lib/scorecard/goalSchema";
-import { getBaselineNetSales, getTrailingNsli } from "@/lib/queries/scorecard";
+import { getBaselineNetSales, getTrailingRates } from "@/lib/queries/scorecard";
 import { SCORECARD_MARKETS } from "@/lib/scorecard/markets";
 
 /**
@@ -49,9 +49,10 @@ export async function saveScorecardGoals(
   const month = goal_month ?? firstOfCurrentMonth();
   const sb = lpService();
 
-  // NSLI is CALCULATED from the market's trailing actuals; the client value (if any)
-  // is ignored. Falls back to the submitted number only if there's no issued history.
-  const nsli = (await getTrailingNsli(sb, goal.market, month)) ?? goal.trailing_nsli ?? 0;
+  // NSLI is CALCULATED from the market's trailing actuals (min-sample window rule +
+  // company fallback); the client value (if any) is ignored. Falls back to the
+  // submitted number only if there's no history to compute from at all.
+  const nsli = (await getTrailingRates(sb, goal.market, month)).nsli ?? goal.trailing_nsli ?? 0;
 
   // Live row — the current, editable target for the market (drives today's view).
   const { error: liveErr } = await sb

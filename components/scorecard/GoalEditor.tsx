@@ -25,6 +25,13 @@ const FIELDS: FieldSpec[] = [
   { name: "target_ko_pct", label: "Target KO %", step: "0.1" },
 ];
 
+/** Short label for the trailing rate window (transparency for the NSLI figure). */
+const rateWindowLabel = (w: string | null): string =>
+  w === "trailing_3" ? "trailing 3mo"
+  : w === "trailing_6" ? "trailing 6mo"
+  : w === "trailing_12" ? "trailing 12mo"
+  : w === "company" ? "company-wide" : "—";
+
 const n1 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(1));
 const s = (v: number | string | null | undefined) =>
   v === null || v === undefined || v === "" ? "" : String(v);
@@ -289,6 +296,9 @@ export function GoalEditor({
           <p className="mt-1 text-slate-600 dark:text-slate-300">
             NSLI <span className="font-mono">{nsli > 0 ? usd(nsli) : "—"}</span>{" "}
             <span className="text-[10.5px] uppercase tracking-wider text-slate-400">calculated</span>
+            {entry?.rateWindow && (
+              <span className="text-[10.5px] text-slate-400"> ({rateWindowLabel(entry.rateWindow)} · n={entry.rateSampleN})</span>
+            )}
             {" · leads needed "}
             <span className="font-mono font-semibold">{leadsNeeded != null ? num(leadsNeeded) : "—"}</span>
             {nsli <= 0 && <span className="ml-2 text-amber-600">no issued history yet — leads / pace unavailable</span>}
