@@ -115,7 +115,23 @@ export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx):
     demo_pct: rate(demos, net_issue),
     close_pct: rate(sales, demos),
     pct_net_close: rate(net_close, demos),
-    good_rate_pct: rate(released_dollars, gross_sales),
+    // Good Rate — single SOLD basis: (sold gross − cancellations) ÷ sold gross. The sold-net
+    // per month isn't summable (the RTP realign strips the cancellation bucket), so aggregate the
+    // per-month good_rate_pct (each already sold-basis) GROSS-weighted: Σ(gr_i·gross_i)/Σgross_i =
+    // ΣsoldNet_i/Σgross_i. NOT released ÷ gross (that mixed RTP net over sold gross).
+    good_rate_pct: (() => {
+      let wsum = 0;
+      let gsum = 0;
+      for (const r of months) {
+        const g = num(r.gross_sales);
+        const gr = r.good_rate_pct;
+        if (gr != null && g > 0) {
+          wsum += Number(gr) * g;
+          gsum += g;
+        }
+      }
+      return gsum > 0 ? Math.round((wsum / gsum) * 10) / 10 : null;
+    })(),
     ko_pct: rate(ko_count, sales),
     gsli: money(gross_sales, issued),
     nsli: money(net_sales, issued),

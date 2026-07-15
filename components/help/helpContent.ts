@@ -357,9 +357,9 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.kpi.goodRate": {
     title: "Good Rate %",
-    what: "Released $ ÷ Gross Sale $ — the share of sold dollars that made it to production (vs cancelled or still held). Higher is better; compared to target in the cell color.",
-    where: "`lp_market_scorecard_daily.good_rate_pct` (released_dollars ÷ gross_sales).",
-    fix: "Set the target via the Goals editor (Target Good Rate %). A low rate points to cancellations or stuck holds — see the Tie-out bucket split.",
+    what: "(Sold gross − cancellations) ÷ sold gross — the share of sold dollars that survive (aren't cancelled). Single sold basis. Higher is better; compared to target in the cell color.",
+    where: "`lp_market_scorecard_daily.good_rate_pct` ((gross_sales − cancellations) ÷ gross_sales, both sold-basis). Aggregate periods gross-weight the monthly rate.",
+    fix: "Set the target via the Goals editor (Target Good Rate %). A low rate points to cancellations — see the Tie-out bucket split.",
   },
   "scorecard.kpi.ko": {
     title: "KO %",
