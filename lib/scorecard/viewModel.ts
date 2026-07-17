@@ -221,7 +221,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   const rates = [
     { key: "close", label: "Close %", actual: a.close_pct ?? 0, target: g.target_close_pct, higher: true, desc: "Sold ÷ demos" },
     { key: "demo", label: "Demo %", actual: a.demo_pct ?? 0, target: g.target_demo_pct, higher: true, desc: "Demos ÷ net issued" },
-    { key: "goodRate", label: "Good Rate %", actual: a.good_rate_pct ?? 0, target: g.target_good_rate_pct, higher: true, desc: "Released ÷ sold $" },
+    { key: "goodRate", label: "Good Rate %", actual: a.good_rate_pct ?? 0, target: g.target_good_rate_pct, higher: true, desc: "(Sold − cancelled) ÷ sold $" },
     { key: "ko", label: "KO %", actual: a.ko_pct ?? 0, target: g.target_ko_pct, higher: false, desc: "Knocked-off jobs" },
   ];
 

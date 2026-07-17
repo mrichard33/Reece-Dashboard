@@ -45,7 +45,8 @@ export type ScorecardActuals = {
   net_close: number;
   ko_count: number;
   good_business: number;
-  gross_sales: number;
+  gross_sales: number; // funnel SOLD gross (sold-basis, consistent across live + closed)
+  rtp_gross_dollars?: number | null; // report RTP gross (revenue basis) — preserved, not displayed
   net_sales: number;
   released_dollars: number | null;
   working_dollars: number | null;
@@ -691,6 +692,7 @@ function mapRecomputedActuals(raw: Record<string, unknown>, market: string): Sco
     ko_count: i(raw.ko_count),
     good_business: i(raw.good_business),
     gross_sales: i(raw.gross_sales),
+    rtp_gross_dollars: n(raw.rtp_gross_dollars),
     net_sales: i(raw.net_sales),
     released_dollars: n(raw.released_dollars),
     working_dollars: n(raw.working_dollars),

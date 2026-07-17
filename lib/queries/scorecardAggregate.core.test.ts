@@ -16,6 +16,7 @@ const rows: MonthlySnapshotRow[] = [
     net_close: 8,
     ko_count: 2,
     gross_sales: 500_000,
+    good_rate_pct: 92, // sold-basis (500k − 40k cancelled) ÷ 500k
     net_sales: 480_000,
     released_dollars: 400_000,
     working_dollars: 60_000,
@@ -35,6 +36,7 @@ const rows: MonthlySnapshotRow[] = [
     net_close: 20,
     ko_count: 4,
     gross_sales: 1_000_000,
+    good_rate_pct: 92, // sold-basis (1,000k − 80k cancelled) ÷ 1,000k
     net_sales: 950_000,
     released_dollars: 800_000,
     working_dollars: 120_000,
@@ -53,6 +55,7 @@ const rows: MonthlySnapshotRow[] = [
     net_close: 15,
     ko_count: 3,
     gross_sales: 700_000,
+    good_rate_pct: 90, // sold-basis (700k − 70k cancelled) ÷ 700k
     net_sales: 650_000,
     released_dollars: 560_000,
     working_dollars: 70_000,
@@ -92,9 +95,9 @@ describe("aggregateActuals", () => {
     expect(agg.nsli).toBe(10_000);
     // close_pct = Σsales ÷ Σdemos = 42 / 130 = 32.3% (1-decimal).
     expect(agg.close_pct).toBe(32.3);
-    // good_rate_pct = Σreleased ÷ Σgross = 1,360,000 / 1,700,000 = 80.0% (a
-    // quality ratio — still released-based, unlike Net Sales).
-    expect(agg.good_rate_pct).toBe(80);
+    // good_rate_pct = GROSS-WEIGHTED per-month sold-basis rate (single basis):
+    // (92·1,000,000 + 90·700,000) / 1,700,000 = 91.2% (May-final + June; stale May ignored).
+    expect(agg.good_rate_pct).toBe(91.2);
   });
 
   it("Net Sales = Σ per-month net_sales (good business), not Σreleased", () => {

@@ -24,7 +24,7 @@ export const SC_GLOSSARY: GlossaryGroup[] = [
       { term: "Close %", def: "Sold ÷ demos — the gross close rate." },
       { term: "% Net Close", def: "Net closes ÷ demos — closes that stuck." },
       { term: "Demo %", def: "Demos ÷ net issued — how many issued leads demo." },
-      { term: "Good Rate %", def: "Share of sold dollars that become released “good” business." },
+      { term: "Good Rate %", def: "Share of sold dollars that survive (aren’t cancelled) — (sold − cancelled) ÷ sold." },
       { term: "KO %", def: "Knock-off rate — jobs cancelled after the sale. Lower is better." },
     ],
   },
@@ -64,7 +64,7 @@ export const SC_DEFS: Record<string, string> = SC_GLOSSARY.reduce(
     return acc;
   },
   {
-    "good rate": "Share of sold dollars that become released “good” business.",
+    "good rate": "Share of sold dollars that survive (aren’t cancelled) — (sold − cancelled) ÷ sold.",
     working: "Sold but held up in financing, HOA or docs — not yet released.",
     released: "Revenue booked and released — what counts toward the goal.",
   } as Record<string, string>,
