@@ -113,7 +113,13 @@ export function PostReview({
   // Only the clicked button shows a spinner (pending is component-wide).
   const busy = (key: string) => pending && activeKey === key;
 
-  function run(key: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
+  // pollSeconds > 0 keeps refreshing after the action returns — used for background
+  // work (draft generation runs in n8n after the webhook answers { queued: true }).
+  function run(
+    key: string,
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+    pollSeconds = 0,
+  ) {
     setMsg(null);
     setActiveKey(key);
     startTransition(async () => {
@@ -123,6 +129,10 @@ export function PostReview({
         if (res.error) setMsg({ tone: "info", text: res.error });
         // The server re-fetch updates the calendar/drawer from fresh props.
         router.refresh();
+        for (let i = 0; i < Math.ceil(pollSeconds / 5); i++) {
+          await new Promise((r) => setTimeout(r, 5000));
+          router.refresh();
+        }
       }
     });
   }
@@ -341,15 +351,19 @@ export function PostReview({
             variant="ghost"
             disabled={pending}
             onClick={() =>
-              run("generate", async () => {
-                const res = await generateNow(post.scheduled_date, genMedia === "auto" ? undefined : genMedia);
-                if (res.ok && !res.error)
-                  setMsg({
-                    tone: "info",
-                    text: `Fresh draft created for ${post.scheduled_date} — it's on the calendar now.`,
-                  });
-                return res;
-              })
+              run(
+                "generate",
+                async () => {
+                  const res = await generateNow(post.scheduled_date, genMedia === "auto" ? undefined : genMedia);
+                  if (res.ok && !res.error)
+                    setMsg({
+                      tone: "info",
+                      text: `Fresh draft generated for ${post.scheduled_date} — check the calendar.`,
+                    });
+                  return res;
+                },
+                100,
+              )
             }
           >
             {busy("generate") ? (

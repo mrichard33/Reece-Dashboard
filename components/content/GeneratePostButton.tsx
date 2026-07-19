@@ -34,9 +34,13 @@ export function GeneratePostButton({ defaultDate }: { defaultDate?: string }) {
         setMsg({ tone: "error", text: res.error ?? "Something went wrong." });
         return;
       }
+      // Generation runs in the background (the webhook answers { queued: true }
+      // immediately) — poll the server so the finished draft surfaces, then report.
       router.refresh();
-      await sleep(2500);
-      router.refresh();
+      for (let i = 0; i < 20; i++) {
+        await sleep(5000);
+        router.refresh();
+      }
       setMsg({
         tone: "info",
         text: res.error ?? `Draft generated for ${date} — check the calendar.`,
