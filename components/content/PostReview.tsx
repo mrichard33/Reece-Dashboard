@@ -7,8 +7,6 @@ import {
   X,
   Pencil,
   SkipForward,
-  Copy,
-  ExternalLink,
   Send,
   RefreshCw,
   CalendarClock,
@@ -39,6 +37,7 @@ import {
   skipPost,
   markPosted,
   generateNow,
+  makeTextOnly,
   reschedulePost,
   setPostTime,
 } from "@/lib/actions/content";
@@ -70,9 +69,10 @@ export function PostReview({
   const [moveTime, setMoveTime] = useState(currentTime);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const groupUrl = process.env.NEXT_PUBLIC_FB_GROUP_URL;
   const isVideo = post.media_type === "video";
   const isText = post.media_type === "text";
+  // Media choice for the "Generate Now" regeneration: auto = WF1's settings-driven mix.
+  const [genMedia, setGenMedia] = useState<"auto" | "image" | "text">("auto");
 
   // Scheduling badge: a set time reads "Posts at 9:00 AM ET", and once the post is
   // approved but the publish instant is still in the future it doubles as the queue
@@ -124,12 +124,6 @@ export function PostReview({
         router.refresh();
       }
     });
-  }
-
-  function copyAndOpenGroup() {
-    void navigator.clipboard.writeText(post.post_body ?? "");
-    setMsg({ tone: "info", text: "Copied post body to clipboard." });
-    if (groupUrl) window.open(groupUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -266,6 +260,23 @@ export function PostReview({
               <span className="font-medium">Concept:</span> {post.image_concept}
             </p>
           )}
+          {isExecutive && post.status !== "posted" && (
+            <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => run("make-text", () => makeTextOnly(post.id))}
+              >
+                {busy("make-text") ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <X className="h-3.5 w-3.5" />
+                )}{" "}
+                Remove image — make text-only
+              </Button>
+            </div>
+          )}
         </ComponentBlock>
       )}
 
@@ -312,17 +323,26 @@ export function PostReview({
             </Button>
           </>
         )}
-        <Button size="sm" variant="secondary" onClick={copyAndOpenGroup}>
-          <Copy className="h-3.5 w-3.5" /> Copy + Open Group <ExternalLink className="h-3 w-3" />
-        </Button>
         {isExecutive && (
+          <span className="inline-flex items-center gap-1">
+          <select
+            value={genMedia}
+            onChange={(e) => setGenMedia(e.target.value as "auto" | "image" | "text")}
+            aria-label="Media type for Generate Now"
+            disabled={pending}
+            className="rounded-md border border-slate-300 px-1.5 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
+          >
+            <option value="auto">Auto</option>
+            <option value="image">With image</option>
+            <option value="text">Text only</option>
+          </select>
           <Button
             size="sm"
             variant="ghost"
             disabled={pending}
             onClick={() =>
               run("generate", async () => {
-                const res = await generateNow(post.scheduled_date);
+                const res = await generateNow(post.scheduled_date, genMedia === "auto" ? undefined : genMedia);
                 if (res.ok && !res.error)
                   setMsg({
                     tone: "info",
@@ -339,6 +359,7 @@ export function PostReview({
             )}{" "}
             Generate Now
           </Button>
+          </span>
         )}
         {isExecutive &&
           (confirmingDelete ? (
