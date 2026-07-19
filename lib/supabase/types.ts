@@ -471,8 +471,11 @@ export type FbComponentStatus = "pending" | "approved" | "rejected";
 export type FbPostStatus = "draft" | "approved" | "posted" | "skipped";
 export type FbSubtopicStatus = "proposed" | "active" | "inactive" | "rejected";
 export type FbPlanStatus = "planned" | "generated" | "skipped";
-/** Post media type (0011). Video posts gate on copy + video; image posts on copy + image. */
-export type FbMediaType = "image" | "video";
+/**
+ * Post media type (0011, text added in 0014). Video posts gate on copy + video;
+ * image posts on copy + image; text posts (no image at all) gate on copy alone.
+ */
+export type FbMediaType = "image" | "video" | "text";
 export type FbComponent = "copy" | "image" | "both" | "video";
 
 /**
@@ -571,6 +574,7 @@ export type FbSettings = {
   // ── Video mix knobs (0011) — null = use env fallback / default ──
   video_share: number | null; // % of posts that should be video (0-100)
   mascot_frequency: number | null; // % of video posts that use the mascot (0-100)
+  text_share: number | null; // % of auto-generated posts that ship text-only (0-100, 0014)
   animate_still_model: string | null; // fal animate-still model id (video-gen; UI deferred)
 };
 

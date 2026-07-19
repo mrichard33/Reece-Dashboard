@@ -24,7 +24,9 @@ const SUBTOPIC_COLUMNS =
 
 /** Hardcoded defaults, used when neither the DB column nor the env var is set.
  *  video_share / mascot_frequency are percentages (0-100); the video mix knobs
- *  ship in 0011 (consumed once the video generation branch is wired). */
+ *  ship in 0011 (consumed once the video generation branch is wired). text_share
+ *  (0014) is the % of auto-generated posts that ship text-only, no image —
+ *  consumed live by WF1/WF-Batch's date rotation. */
 const TUNING_DEFAULTS = {
   max_regen_attempts: 3,
   max_per_generation: 7,
@@ -32,6 +34,7 @@ const TUNING_DEFAULTS = {
   generation_buffer_days: 3,
   video_share: 20,
   mascot_frequency: 15,
+  text_share: 25,
 } as const;
 
 export type TuningKey = keyof typeof TUNING_DEFAULTS;
@@ -43,6 +46,7 @@ const TUNING_ENV: Record<TuningKey, string> = {
   generation_buffer_days: "GENERATION_BUFFER_DAYS",
   video_share: "VIDEO_SHARE",
   mascot_frequency: "MASCOT_FREQUENCY",
+  text_share: "TEXT_SHARE",
 };
 
 export type TuningFieldInfo = {
@@ -63,6 +67,7 @@ export type FbTuning = {
   generationBufferDays: number;
   videoShare: number;
   mascotFrequency: number;
+  textShare: number;
   /** "HH:MM" Eastern, or null = publish on approval (no default post time). */
   defaultPostTime: string | null;
   /** Per-field provenance for the Content Settings tuning card. */
@@ -107,7 +112,7 @@ export async function getFbTuning(): Promise<FbTuning> {
     const { data } = await supabase
       .from("fb_settings")
       .select(
-        "default_post_time, max_regen_attempts, max_per_generation, plan_horizon_days, generation_buffer_days, video_share, mascot_frequency",
+        "default_post_time, max_regen_attempts, max_per_generation, plan_horizon_days, generation_buffer_days, video_share, mascot_frequency, text_share",
       )
       .eq("id", 1)
       .maybeSingle();
@@ -138,6 +143,7 @@ export async function getFbTuning(): Promise<FbTuning> {
     generationBufferDays: byKey("generation_buffer_days"),
     videoShare: byKey("video_share"),
     mascotFrequency: byKey("mascot_frequency"),
+    textShare: byKey("text_share"),
     defaultPostTime,
     fields,
   };

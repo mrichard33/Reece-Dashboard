@@ -52,10 +52,11 @@ export const COMPONENT_STATUS_META: Record<FbComponentStatus, { label: string; t
   rejected: { label: "Rejected", tone: "rose" },
 };
 
-/** Post media type badge (0011). Shown on a post when media_type='video'. */
+/** Post media type badge (0011/0014). Shown on a post when media_type='video' or 'text'. */
 export const MEDIA_TYPE_META: Record<FbMediaType, { label: string; tone: BadgeTone }> = {
   image: { label: "Image", tone: "slate" },
   video: { label: "Video", tone: "sky" },
+  text: { label: "Text only", tone: "amber" },
 };
 
 /** The 8 content pillars (rotation axis 1). Order is the canonical list. */

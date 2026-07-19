@@ -153,7 +153,7 @@ export async function testFbConnection(): Promise<ActionResult & { pageName?: st
  * Generation-tuning save (Content Settings). Admin only (RLS also enforces).
  * Each numeric field accepts a value, or null to clear it back to the env/default
  * fallback. Ranges mirror the CHECK constraints in 0007_settings_controls.sql
- * and 0011 (video_share / mascot_frequency, 0–100).
+ * and 0011/0014 (video_share / mascot_frequency / text_share, 0–100).
  */
 const TUNING_RANGES = {
   max_regen_attempts: [1, 10],
@@ -162,6 +162,7 @@ const TUNING_RANGES = {
   generation_buffer_days: [1, 30],
   video_share: [0, 100],
   mascot_frequency: [0, 100],
+  text_share: [0, 100],
 } as const;
 
 export async function saveFbTuning(input: {
@@ -172,6 +173,7 @@ export async function saveFbTuning(input: {
   generation_buffer_days?: number | null;
   video_share?: number | null;
   mascot_frequency?: number | null;
+  text_share?: number | null;
 }): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.isAdmin) return { ok: false, error: "Admin only." };

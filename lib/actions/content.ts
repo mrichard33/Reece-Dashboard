@@ -48,12 +48,15 @@ async function approveComponent(
   const nextCopy = which === "copy" ? "approved" : p.copy_status;
   const nextImage = which === "image" ? "approved" : p.image_status;
   const nextVideo = which === "video" ? "approved" : p.video_status;
-  // Required components mirror the DB trigger (0011): a video post gates on copy + video
-  // (the image is the seed frame, not a gate); an image post gates on copy + image.
+  // Required components mirror the DB trigger (0011/0014): a video post gates on copy +
+  // video (the image is the seed frame, not a gate); a text post (no image) gates on copy
+  // alone; an image post gates on copy + image.
   const allApproved =
     p.media_type === "video"
       ? nextCopy === "approved" && nextVideo === "approved"
-      : nextCopy === "approved" && nextImage === "approved";
+      : p.media_type === "text"
+        ? nextCopy === "approved"
+        : nextCopy === "approved" && nextImage === "approved";
 
   // The DB trigger fb_sync_post_status() flips overall status to 'approved' when the
   // required components are approved — we only set the component + the name snapshot.
@@ -300,10 +303,18 @@ export async function reschedulePost(
 
 // ── n8n triggers (no-op offline) ─────────────────────────────────
 
-export async function generateNow(scheduledDate: string): Promise<ActionResult> {
+export async function generateNow(
+  scheduledDate: string,
+  mediaType?: "image" | "text",
+): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
-  const res = await postWebhook("fb-generate-now", { scheduled_date: scheduledDate });
+  // media_type overrides WF1's text_share rotation for this one generation: 'text' ships
+  // with no image at all; 'image' forces an image even on a text-rotation date.
+  const res = await postWebhook("fb-generate-now", {
+    scheduled_date: scheduledDate,
+    ...(mediaType ? { media_type: mediaType } : {}),
+  });
   return { ok: true, error: res.queued ? undefined : "Queued locally — n8n not connected yet." };
 }
 
