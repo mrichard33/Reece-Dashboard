@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sparkles, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/Button";
+import { Working } from "@/components/ui/Working";
 import { generateNow } from "@/lib/actions/content";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -69,11 +70,13 @@ export function GeneratePostButton({ defaultDate }: { defaultDate?: string }) {
         {pending ? "Generating…" : "Generate post"}
       </Button>
       {pending && (
-        <span className="text-xs text-slate-500">
-          {media === "text"
-            ? "Writing copy — text-only posts skip the image and finish faster."
-            : "Writing copy & image — this can take up to a minute."}
-        </span>
+        <Working
+          label={
+            media === "text"
+              ? "Writing copy — text-only posts skip the image (~15s)"
+              : "Writing copy & image — up to a minute"
+          }
+        />
       )}
       {!pending && msg && (
         <span className={msg.tone === "error" ? "text-xs text-rose-600" : "text-xs text-slate-500"}>
