@@ -50,6 +50,8 @@ export function PlanReview({
   const [pillar, setPillar] = useState(slot.pillar);
   const [archetype, setArchetype] = useState(slot.archetype);
   const [campaign, setCampaign] = useState(slot.campaign ?? "");
+  // Media choice for "Generate now": auto = WF1's settings-driven text/image mix.
+  const [genMedia, setGenMedia] = useState<"auto" | "image" | "text">("auto");
 
   // Resolve the linked subtopic for the "what this day covers" detail.
   const [sub, setSub] = useState<FbSubtopic | null>(null);
@@ -76,6 +78,18 @@ export function PlanReview({
 
   const busy = (key: string) => pending && activeKey === key;
   const brief = slot.brief;
+
+  // When the Strategist's brief lands (a router.refresh() delivers fresh slot props),
+  // swap the "running…" message for a done note so the click visibly completed.
+  useEffect(() => {
+    if (slot.brief_status !== "none") {
+      setMsg((m) =>
+        m?.text.startsWith("Strategist running")
+          ? { tone: "info", text: "Brief ready — review it below." }
+          : m,
+      );
+    }
+  }, [slot.brief_status]);
 
   // pollSeconds > 0 keeps refreshing after the action returns — used for Run Strategist,
   // whose brief lands asynchronously (n8n upserts it a few seconds later).
@@ -310,8 +324,8 @@ export function PlanReview({
               run(
                 "strategist",
                 () => runStrategist(slot.plan_date),
-                `Strategist running for ${slot.plan_date} — the brief will appear here shortly.`,
-                25,
+                `Strategist running for ${slot.plan_date} — takes about a minute; the brief will appear below.`,
+                90,
               )
             }
           >
@@ -322,6 +336,18 @@ export function PlanReview({
             )}{" "}
             {slot.brief_status === "none" ? "Run Strategist" : "Re-run Strategist"}
           </Button>
+          <span className="inline-flex items-center gap-1">
+          <select
+            value={genMedia}
+            onChange={(e) => setGenMedia(e.target.value as "auto" | "image" | "text")}
+            aria-label="Media type for Generate now"
+            disabled={pending}
+            className="rounded-md border border-slate-300 px-1.5 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
+          >
+            <option value="auto">Auto</option>
+            <option value="image">With image</option>
+            <option value="text">Text only</option>
+          </select>
           <Button
             size="sm"
             variant="secondary"
@@ -329,7 +355,7 @@ export function PlanReview({
             onClick={() =>
               run(
                 "generate",
-                () => generateNow(slot.plan_date),
+                () => generateNow(slot.plan_date, genMedia === "auto" ? undefined : genMedia),
                 `Generating a draft for ${slot.plan_date} — it'll appear shortly.`,
               )
             }
@@ -341,6 +367,7 @@ export function PlanReview({
             )}{" "}
             Generate now
           </Button>
+          </span>
           <Button size="sm" variant="secondary" disabled={pending} onClick={() => setEditing((v) => !v)}>
             <Pencil className="h-3.5 w-3.5" /> {editing ? "Editing…" : "Edit slot"}
           </Button>

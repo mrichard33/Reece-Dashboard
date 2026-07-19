@@ -76,6 +76,44 @@ async function approveComponent(
   return { ok: true };
 }
 
+/**
+ * Convert a draft to a text-only post: drops the image (and any video) entirely, after
+ * which the post gates on copy approval alone (trigger 0014) and publishes to the Page
+ * feed with no media. Not allowed once posted.
+ */
+export async function makeTextOnly(postId: string): Promise<ActionResult> {
+  const ctx = await getAccessContext();
+  if (!ctx?.executive) return { ok: false, error: "Limited to executives." };
+
+  const supabase = await lpServer();
+  const { data: post, error: readErr } = await supabase
+    .from("fb_posts")
+    .select("status, media_type")
+    .eq("id", postId)
+    .maybeSingle();
+  if (readErr || !post) return { ok: false, error: readErr?.message ?? "Post not found." };
+  const p = post as { status: string; media_type: string };
+  if (p.status === "posted") return { ok: false, error: "Already posted — the media can't change." };
+  if (p.media_type === "text") return { ok: true };
+
+  const { error } = await supabase
+    .from("fb_posts")
+    .update({
+      media_type: "text",
+      image_url: null,
+      image_concept: null,
+      image_status: "approved", // neutralized — text posts gate on copy alone
+      video_concept: null,
+      video_url: null,
+      video_status: null,
+    })
+    .eq("id", postId);
+  if (error) return { ok: false, error: error.message };
+
+  refresh();
+  return { ok: true };
+}
+
 export async function approveCopy(postId: string): Promise<ActionResult> {
   return approveComponent(postId, "copy");
 }
