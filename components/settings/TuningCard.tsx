@@ -46,6 +46,12 @@ const FIELD_LABELS: Record<TuningKey, { label: string; help: string; min: number
     min: 0,
     max: 100,
   },
+  text_share: {
+    label: "Text-only share (%)",
+    help: "Share of auto-generated posts that ship as text with no image (0–100). 25 ≈ one in four.",
+    min: 0,
+    max: 100,
+  },
 };
 
 function sourceBadge(f: TuningFieldInfo) {

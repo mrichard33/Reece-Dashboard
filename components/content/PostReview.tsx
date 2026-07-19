@@ -72,6 +72,7 @@ export function PostReview({
 
   const groupUrl = process.env.NEXT_PUBLIC_FB_GROUP_URL;
   const isVideo = post.media_type === "video";
+  const isText = post.media_type === "text";
 
   // Scheduling badge: a set time reads "Posts at 9:00 AM ET", and once the post is
   // approved but the publish instant is still in the future it doubles as the queue
@@ -138,6 +139,7 @@ export function PostReview({
         <Badge tone={FB_STATUS_META[post.status].tone}>{FB_STATUS_META[post.status].label}</Badge>
         <Badge tone={TARGET_META[post.target].tone}>{TARGET_META[post.target].label}</Badge>
         {isVideo && <Badge tone={MEDIA_TYPE_META.video.tone}>{MEDIA_TYPE_META.video.label}</Badge>}
+        {isText && <Badge tone={MEDIA_TYPE_META.text.tone}>{MEDIA_TYPE_META.text.label}</Badge>}
         {post.pillar && <Badge tone={pillarTone(post.pillar)}>{pillarLabel(post.pillar)}</Badge>}
         {post.archetype && <Badge tone="slate">{archetypeLabel(post.archetype)}</Badge>}
         {timeLabel ? (
@@ -235,35 +237,37 @@ export function PostReview({
         )}
       </ComponentBlock>
 
-      {/* IMAGE */}
-      <ComponentBlock
-        title="Image"
-        status={post.image_status}
-        reasonCodes={IMAGE_REASON_CODES}
-        disabled={pending}
-        approving={busy("approve-image")}
-        rejecting={busy("reject-image")}
-        regenInFlight={post.image_status === "rejected" && !post.needs_manual}
-        isExecutive={isExecutive}
-        onApprove={() => run("approve-image", () => approveImage(post.id))}
-        onReject={(code, text) => run("reject-image", () => rejectComponent(post.id, "image", code, text))}
-      >
-        {post.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={post.image_url}
-            alt={post.image_concept ?? "Post image"}
-            className="max-h-64 w-full rounded-md object-cover"
-          />
-        ) : (
-          <p className="text-sm text-slate-400">No image yet.</p>
-        )}
-        {post.image_concept && (
-          <p className="mt-2 text-xs text-slate-500">
-            <span className="font-medium">Concept:</span> {post.image_concept}
-          </p>
-        )}
-      </ComponentBlock>
+      {/* IMAGE (hidden for text-only posts — they ship with no image and gate on copy alone) */}
+      {!isText && (
+        <ComponentBlock
+          title="Image"
+          status={post.image_status}
+          reasonCodes={IMAGE_REASON_CODES}
+          disabled={pending}
+          approving={busy("approve-image")}
+          rejecting={busy("reject-image")}
+          regenInFlight={post.image_status === "rejected" && !post.needs_manual}
+          isExecutive={isExecutive}
+          onApprove={() => run("approve-image", () => approveImage(post.id))}
+          onReject={(code, text) => run("reject-image", () => rejectComponent(post.id, "image", code, text))}
+        >
+          {post.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={post.image_url}
+              alt={post.image_concept ?? "Post image"}
+              className="max-h-64 w-full rounded-md object-cover"
+            />
+          ) : (
+            <p className="text-sm text-slate-400">No image yet.</p>
+          )}
+          {post.image_concept && (
+            <p className="mt-2 text-xs text-slate-500">
+              <span className="font-medium">Concept:</span> {post.image_concept}
+            </p>
+          )}
+        </ComponentBlock>
+      )}
 
       {/* VIDEO (video posts only — the image is the seed frame) */}
       {isVideo && (

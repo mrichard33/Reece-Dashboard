@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Capped batch fill. Pick up to MAX planned fb_content_plan slots (plan_date >= today, no\n// fb_posts row yet), oldest first, and pre-build each slot's generator prompt. All Supabase\n// reads happen here via this.helpers.httpRequest so PostgREST arrays don't fan out. Emits ONE\n// control item carrying the chosen slots array (empty array when there is nothing to fill).\nconst body = $('Webhook (fb-generate-batch)').first().json.body || {};\nconst MAX = 7;\nlet max = Number(body.max || MAX);\nif (!(max > 0)) max = MAX;\nmax = Math.min(max, MAX);\nconst today = $now.toFormat('yyyy-LL-dd');\nconst SB = '__SUPABASE_URL__';\nconst KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY';\nconst h = { apikey: KEY, Authorization: 'Bearer ' + KEY };\nconst planned = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_content_plan?status=eq.planned&plan_date=gte.' + today + '&select=id,plan_date,pillar,archetype,subtopic_id,brief,brief_status&order=plan_date.asc', headers: h, json: true });\nconst posts = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_posts?select=scheduled_date&scheduled_date=gte.' + today, headers: h, json: true });\nconst taken = new Set((posts || []).map(p => p.scheduled_date));\nconst subs = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_subtopics?select=id,subtopic,pillar,times_used', headers: h, json: true });\nconst subById = Object.fromEntries((subs || []).map(s => [s.id, s]));\nconst prompts = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_messaging_prompts?is_active=eq.true&select=name,body', headers: h, json: true });\nconst byName = Object.fromEntries((prompts || []).map(p => [p.name, p.body]));\nconst bankArr = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_message_bank?is_active=eq.true&select=variables&limit=1', headers: h, json: true });\nconst bank = (bankArr && bankArr[0] && bankArr[0].variables) || {};\nconst system = byName['style_guide'] || '';\nconst chosen = (planned || []).filter(s => !taken.has(s.plan_date)).slice(0, max);\nconst slots = chosen.map(s => {\n  const st = subById[s.subtopic_id] || {};\n  // Strategist brief (only when the slot carries an APPROVED brief); else Phase 1 image-only\n  // fallbacks. media_type forced to image / video_concept empty until the video branch lands.\n  const brief = (s.brief_status === 'approved' && s.brief) ? s.brief : null;\n  const pillarFinal = (brief && brief.pillar) ? brief.pillar : (s.pillar || st.pillar || '');\n  const buyerStage = (brief && brief.funnel_stage) ? brief.funnel_stage : '#1';\n  const buyerObjective = (brief && brief.buyer_objective) ? brief.buyer_objective : 'education';\n  const captionDirection = (brief && brief.caption_direction) ? brief.caption_direction : '';\n  const recommendedCta = (brief && brief.recommended_cta) ? brief.recommended_cta : 'soft: end with one engagement question';\n  const imageConcept = (brief && brief.image_concept) ? brief.image_concept : '';\n  const user = (byName['generator'] || '')\n    .replaceAll('{{style_guide}}', system)\n    .replaceAll('{{message_bank}}', JSON.stringify(bank))\n    .replaceAll('{{pillar}}', pillarFinal)\n    .replaceAll('{{archetype}}', s.archetype || '')\n    .replaceAll('{{subtopic}}', st.subtopic || '')\n    .replaceAll('{{buyer_stage}}', buyerStage)\n    .replaceAll('{{buyer_objective}}', buyerObjective)\n    .replaceAll('{{caption_direction}}', captionDirection)\n    .replaceAll('{{media_type}}', 'image')\n    .replaceAll('{{image_concept}}', imageConcept)\n    .replaceAll('{{video_concept}}', '')\n    .replaceAll('{{recommended_cta}}', recommendedCta)\n    .replace(/\\{\\{[^}]+\\}\\}/g, '');\n  return { plan_id: s.id, plan_date: s.plan_date, pillar: pillarFinal, archetype: s.archetype, subtopic_id: s.subtopic_id || null, times_used: st.times_used || 0, system, user };\n});\nreturn [{ json: { slots } }];"
+        "jsCode": "// Capped batch fill. Pick up to MAX planned fb_content_plan slots (plan_date >= today, no\n// fb_posts row yet), oldest first, and pre-build each slot's generator prompt. All Supabase\n// reads happen here via this.helpers.httpRequest so PostgREST arrays don't fan out. Emits ONE\n// control item carrying the chosen slots array (empty array when there is nothing to fill).\nconst body = $('Webhook (fb-generate-batch)').first().json.body || {};\nconst MAX = 7;\nlet max = Number(body.max || MAX);\nif (!(max > 0)) max = MAX;\nmax = Math.min(max, MAX);\nconst today = $now.toFormat('yyyy-LL-dd');\nconst SB = '__SUPABASE_URL__';\nconst KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY';\nconst h = { apikey: KEY, Authorization: 'Bearer ' + KEY };\nconst planned = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_content_plan?status=eq.planned&plan_date=gte.' + today + '&select=id,plan_date,pillar,archetype,subtopic_id,brief,brief_status&order=plan_date.asc', headers: h, json: true });\nconst posts = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_posts?select=scheduled_date&scheduled_date=gte.' + today, headers: h, json: true });\nconst taken = new Set((posts || []).map(p => p.scheduled_date));\nconst subs = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_subtopics?select=id,subtopic,pillar,times_used', headers: h, json: true });\nconst subById = Object.fromEntries((subs || []).map(s => [s.id, s]));\nconst prompts = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_messaging_prompts?is_active=eq.true&select=name,body', headers: h, json: true });\nconst byName = Object.fromEntries((prompts || []).map(p => [p.name, p.body]));\nconst bankArr = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_message_bank?is_active=eq.true&select=variables&limit=1', headers: h, json: true });\nconst bank = (bankArr && bankArr[0] && bankArr[0].variables) || {};\n\n// Visual variety: rotate the scene type by each slot's plan date, and remember recent\n// image concepts so the image stage can steer away from repeating the same scene.\nconst VISUAL_ANGLES = [\n  'extreme close-up of impact-glass or frame hardware detail — product macro, no people',\n  'a beautiful Florida home exterior with new impact windows — curb appeal, golden-hour light',\n  'a bright, light-filled interior room seen through large impact windows',\n  'a happy homeowner or family moment at home — relaxed, confident, smiling',\n  'an installer or craftsman fitting a window — skilled hands, pride in the work',\n  'a dramatic storm sky over a Florida neighborhood — homes standing strong, no people',\n  'a coastal Florida scene — palms, water, homes built for the climate',\n  'macro of rain streaming down impact glass while the interior beyond stays warm and dry'\n];\nlet recentRows = [];\ntry { recentRows = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_posts?select=image_concept&image_concept=not.is.null&order=created_at.desc&limit=8', headers: h, json: true }); } catch (e) {}\nconst recent_scenes = (recentRows || []).map(r => String(r.image_concept || '').slice(0, 140)).filter(Boolean).join(' ; ') || 'none yet';\n\n// Text-only mix: same deterministic fb_settings.text_share date rotation as WF1 (keyed to\n// plan_date, so nightly and batch fills agree on which dates go text-only).\nlet text_share = 25;\ntry { const ts = await this.helpers.httpRequest({ method: 'GET', url: SB + '/rest/v1/fb_settings?id=eq.1&select=text_share', headers: h, json: true }); if (ts && ts[0] && ts[0].text_share !== null && ts[0].text_share !== undefined) text_share = ts[0].text_share; } catch (e) {}\nconst system = byName['style_guide'] || '';\nconst chosen = (planned || []).filter(s => !taken.has(s.plan_date)).slice(0, max);\nconst slots = chosen.map(s => {\n  const st = subById[s.subtopic_id] || {};\n  // Strategist brief (only when the slot carries an APPROVED brief); else Phase 1 image-only\n  // fallbacks. media_type forced to image / video_concept empty until the video branch lands.\n  const brief = (s.brief_status === 'approved' && s.brief) ? s.brief : null;\n  const pillarFinal = (brief && brief.pillar) ? brief.pillar : (s.pillar || st.pillar || '');\n  const buyerStage = (brief && brief.funnel_stage) ? brief.funnel_stage : '#1';\n  const buyerObjective = (brief && brief.buyer_objective) ? brief.buyer_objective : 'education';\n  const captionDirection = (brief && brief.caption_direction) ? brief.caption_direction : '';\n  const recommendedCta = (brief && brief.recommended_cta) ? brief.recommended_cta : 'soft: end with one engagement question';\n  const imageConcept = (brief && brief.image_concept) ? brief.image_concept : '';\n  const angleDay = Math.floor(Date.parse(s.plan_date + 'T12:00:00Z') / 86400000);\n  const visual_angle = VISUAL_ANGLES[angleDay % VISUAL_ANGLES.length];\n  const media_type = (text_share > 0 && (angleDay % Math.max(2, Math.round(100 / text_share)) === 0)) ? 'text' : 'image';\n  // Image template per slot: resolve everything except {{image_concept}}/{{post_body}} —\n  // the image node fills those in after the generator returns them.\n  const image_template = (byName['image'] || '')\n    .replaceAll('{{visual_angle}}', visual_angle)\n    .replaceAll('{{recent_scenes}}', recent_scenes)\n    .replaceAll('{{image_feedback}}', 'none');\n  const user = (byName['generator'] || '')\n    .replaceAll('{{style_guide}}', system)\n    .replaceAll('{{message_bank}}', JSON.stringify(bank))\n    .replaceAll('{{pillar}}', pillarFinal)\n    .replaceAll('{{archetype}}', s.archetype || '')\n    .replaceAll('{{subtopic}}', st.subtopic || '')\n    .replaceAll('{{buyer_stage}}', buyerStage)\n    .replaceAll('{{buyer_objective}}', buyerObjective)\n    .replaceAll('{{caption_direction}}', captionDirection)\n    .replaceAll('{{media_type}}', media_type)\n    .replaceAll('{{image_concept}}', imageConcept)\n    .replaceAll('{{video_concept}}', '')\n    .replaceAll('{{recommended_cta}}', recommendedCta)\n    .replaceAll('{{visual_angle}}', visual_angle)\n    .replace(/\\{\\{[^}]+\\}\\}/g, '');\n  return { plan_id: s.id, plan_date: s.plan_date, pillar: pillarFinal, archetype: s.archetype, subtopic_id: s.subtopic_id || null, times_used: st.times_used || 0, system, user, visual_angle, image_template, media_type };\n});\nreturn [{ json: { slots } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -196,7 +196,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: '__ANTHROPIC_MODEL__', max_tokens: 400, messages: [ { role: 'user', content: 'Image prompt for: ' + $json.image_concept } ] }) }}"
+        "jsonBody": "={{ JSON.stringify({ model: '__ANTHROPIC_MODEL__', max_tokens: 500, messages: [ { role: 'user', content: ($('Loop Over Slots').item.json.image_template ? $('Loop Over Slots').item.json.image_template.replaceAll('{{image_concept}}', $json.image_concept || '').replaceAll('{{post_body}}', $json.post_body || '').replace(/\\{\\{[^}]+\\}\\}/g, '') : ('Image prompt for: ' + $json.image_concept)) } ] }) }}"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
@@ -469,6 +469,77 @@
       ],
       "id": "wfb-note-00018",
       "name": "About WF-Batch"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-text",
+              "leftValue": "={{ $('Loop Over Slots').item.json.media_type === 'text' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        528
+      ],
+      "name": "Text post?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=__SUPABASE_URL__/rest/v1/fb_posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ scheduled_date: $('Loop Over Slots').item.json.plan_date, target: 'both', pillar: $('Loop Over Slots').item.json.pillar, archetype: $('Loop Over Slots').item.json.archetype, subtopic_id: $('Loop Over Slots').item.json.subtopic_id, post_body: $('Parse JSON (tolerant)').item.json.post_body, first_comment: $('Parse JSON (tolerant)').item.json.first_comment, image_concept: null, image_url: null, media_type: 'text', copy_status: 'pending', image_status: 'approved', revision: 0 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2080,
+        560
+      ],
+      "name": "Insert fb_posts (text)"
     }
   ],
   "connections": {
@@ -585,7 +656,7 @@
       "main": [
         [
           {
-            "node": "Anthropic: Image Prompt",
+            "node": "Text post?",
             "type": "main",
             "index": 0
           }
@@ -674,6 +745,35 @@
         [
           {
             "node": "Loop Over Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text post?": {
+      "main": [
+        [
+          {
+            "node": "Insert fb_posts (text)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anthropic: Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert fb_posts (text)": {
+      "main": [
+        [
+          {
+            "node": "Mark Plan Generated",
             "type": "main",
             "index": 0
           }
