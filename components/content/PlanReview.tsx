@@ -4,6 +4,7 @@ import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, SkipForward, Loader2, Sparkles, Compass, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Working } from "@/components/ui/Working";
 import { Badge } from "@/components/ui/Badge";
 import {
   PLAN_STATUS_META,
@@ -356,7 +357,8 @@ export function PlanReview({
               run(
                 "generate",
                 () => generateNow(slot.plan_date, genMedia === "auto" ? undefined : genMedia),
-                `Generating a draft for ${slot.plan_date} — it'll appear shortly.`,
+                `Draft created for ${slot.plan_date} — it's on the calendar now. On text-rotation days (or with "Text only" selected) it's a text post with no image.`,
+                10,
               )
             }
           >
@@ -379,7 +381,18 @@ export function PlanReview({
         </div>
       )}
 
-      {msg && (
+      {pending && activeKey && (
+        <Working
+          label={
+            activeKey === "strategist"
+              ? "Running Strategist — writing a data-driven brief (about a minute)"
+              : activeKey === "generate"
+                ? "Generating draft — ~15s text-only, up to a minute with an image"
+                : "Working"
+          }
+        />
+      )}
+      {!pending && msg && (
         <p className={msg.tone === "error" ? "text-xs text-rose-600" : "text-xs text-slate-500"}>
           {msg.text}
         </p>

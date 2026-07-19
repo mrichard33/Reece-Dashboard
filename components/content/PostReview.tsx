@@ -14,6 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Working } from "@/components/ui/Working";
 import { Badge } from "@/components/ui/Badge";
 import {
   FB_STATUS_META,
@@ -161,8 +162,7 @@ export function PostReview({
 
       {regenInFlight && (
         <div className="rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
-          Regenerating in the background — the new draft appears here automatically
-          (~10s for copy, ~1–2 min when an image is rendering).
+          <Working label="Regenerating in the background — the new draft appears here automatically (~10s for copy, ~1–2 min when an image is rendering)" />
         </div>
       )}
 
@@ -346,7 +346,7 @@ export function PostReview({
                 if (res.ok && !res.error)
                   setMsg({
                     tone: "info",
-                    text: `Generating a fresh draft for ${post.scheduled_date} — it'll appear on the calendar shortly.`,
+                    text: `Fresh draft created for ${post.scheduled_date} — it's on the calendar now.`,
                   });
                 return res;
               })
@@ -486,7 +486,11 @@ export function PostReview({
         </div>
       )}
 
-      {msg && (
+      {pending && activeKey === "generate" && (
+        <Working label="Generating draft — ~15s text-only, up to a minute with an image" />
+      )}
+      {pending && activeKey === "make-text" && <Working label="Removing image — converting to a text-only post" />}
+      {!pending && msg && (
         <p className={msg.tone === "error" ? "text-xs text-rose-600" : "text-xs text-slate-500"}>
           {msg.text}
         </p>
