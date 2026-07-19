@@ -52,13 +52,16 @@ existing brief) and a daily 7:00 AM ET auto-run that targets the earliest upcomi
 slot without a brief and never overwrites a draft/approved brief.
 
 **Image variety (deployed 2026-07-19)** — WF1/WF-Batch/WF3 build the image prompt from the
-`fb_messaging_prompts` `image` template (v3, migration 0013) instead of the old bare
-`'Image prompt for: ' + image_concept` string. Each generation resolves `{{visual_angle}}`
-(an 8-scene rotation keyed to the post's scheduled date — product macros, exteriors,
-interiors, happy homeowners, installers, storm skies, coastal scenes, rain-on-glass) and
-`{{recent_scenes}}` (the last 8 posts' image concepts, passed as an avoid-list), and the
-template enforces a bright, confident mood — people never look sad or worried. WF3 shifts
-the angle by revision so a rejected image regenerates as a different scene.
+`fb_messaging_prompts` `image` template (v5, migration 0013) instead of the old bare
+`'Image prompt for: ' + image_concept` string — the template had existed since June but was
+never wired in, so DB prompt edits silently had no effect on images. Each generation
+resolves `{{visual_angle}}` (an 8-scene rotation keyed to the post's scheduled date —
+product macros, exteriors, interiors, happy homeowners, installers, storm skies, coastal
+scenes, rain-on-glass), `{{recent_scenes}}` (the last 8 posts' image concepts, passed as an
+avoid-list), and `{{post_body}}`/`{{image_feedback}}`. The template bans the overused
+scenes (hand-on-glass, lone window, split-screens) and enforces a positive emotional
+register — people never look sad or worried. WF3 shifts the angle by revision so a rejected
+image regenerates as a different scene.
 
 Current provider defaults (set as n8n credentials/values on import): **image** = OpenAI
 `gpt-image-1` (endpoint hardcoded to `https://api.openai.com/v1/images/generations`; swap the
