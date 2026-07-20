@@ -357,8 +357,8 @@ export function PlanReview({
               run(
                 "generate",
                 () => generateNow(slot.plan_date, genMedia === "auto" ? undefined : genMedia),
-                `Draft created for ${slot.plan_date} — it's on the calendar now. On text-rotation days (or with "Text only" selected) it's a text post with no image.`,
-                10,
+                `Draft generated for ${slot.plan_date} — check the calendar. On text-rotation days (or with "Text only" selected) it's a text post with no image.`,
+                100,
               )
             }
           >
