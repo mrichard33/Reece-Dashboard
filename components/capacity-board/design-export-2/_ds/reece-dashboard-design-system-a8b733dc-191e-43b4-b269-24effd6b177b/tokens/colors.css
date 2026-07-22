@@ -1,0 +1,117 @@
+/* Reece Dashboard — Color tokens
+   Source of truth: app/globals.css @theme in mrichard33/Reece-Dashboard.
+   Brand = navy "chrome" + brick red accent, on cool slate neutrals.
+   Status palette uses Tailwind emerald/amber/rose/sky (the dashboard's stack). */
+
+:root {
+  /* ---- Brand: Navy (the "chrome") ---- */
+  --color-navy: #122739;
+  --color-navy-50: #f0f4f9;
+  --color-navy-100: #d6e0ec;
+  --color-navy-200: #adc1d9;
+  --color-navy-300: #7d9bbf;
+  --color-navy-400: #4c6f9c;
+  --color-navy-500: #274560;
+  --color-navy-600: #1b3349;
+  --color-navy-700: #152a3d;
+  --color-navy-800: #122739;
+  --color-navy-900: #0c2340; /* Reece deep navy — primary brand navy */
+  --color-navy-950: #060f1c;
+
+  /* ---- Brand: Brick (the accent) ---- */
+  --color-brick: #ed1e24; /* Reece red */
+  --color-brick-dark: #c5141a;
+  --color-brick-50: #fef2f2;
+  --color-brick-100: #fde6e7;
+  --color-brick-200: #fbcccf;
+  --color-brick-500: #ed1e24;
+  --color-brick-600: #c5141a;
+  --color-brick-700: #9c1015;
+
+  /* ---- Neutrals: Slate (cool gray) ---- */
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  /* ---- Status: Emerald (healthy / positive) ---- */
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+
+  /* ---- Status: Amber (warning / watch) ---- */
+  --color-amber-50: #fffbeb;
+  --color-amber-200: #fde68a;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+
+  /* ---- Status: Rose (critical / error) ---- */
+  --color-rose-50: #fff1f2;
+  --color-rose-200: #fecdd3;
+  --color-rose-400: #fb7185;
+  --color-rose-500: #f43f5e;
+  --color-rose-600: #e11d48;
+  --color-rose-700: #be123c;
+
+  /* ---- Status: Sky (info / new) ---- */
+  --color-sky-50: #f0f9ff;
+  --color-sky-200: #bae6fd;
+  --color-sky-400: #38bdf8;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #0284c7;
+  --color-sky-700: #0369a1;
+
+  /* ---- Semantic aliases (light theme — the dashboard default) ---- */
+  --background: #f8fafc;        /* app canvas (slate-50) */
+  --foreground: #0f172a;        /* primary text (slate-900) */
+  --surface-card: #ffffff;      /* card background */
+  --card-foreground: #0f172a;
+  --border: #e2e8f0;            /* hairline border (slate-200) */
+  --border-soft: #f1f5f9;       /* inner card divider (slate-100) */
+  --muted: #f1f5f9;            /* muted surface (slate-100) */
+  --muted-foreground: #64748b;  /* secondary text (slate-500) */
+  --accent: #f1f5f9;
+  --ring: #122739;              /* focus ring (navy-800) */
+
+  /* ---- Semantic intent ---- */
+  --text-body: var(--foreground);
+  --text-muted: var(--muted-foreground);
+  --text-on-navy: #ffffff;
+  --primary: var(--color-navy-800);
+  --primary-hover: var(--color-navy-700);
+  --danger: var(--color-brick);
+  --danger-hover: var(--color-brick-dark);
+
+  --status-healthy: var(--color-emerald-500);
+  --status-warning: var(--color-amber-500);
+  --status-critical: var(--color-rose-500);
+  --status-neutral: var(--color-slate-400);
+}
+
+/* ---- Dark theme (toggled via .dark on <html>, persisted) ---- */
+.dark {
+  --background: #020617;        /* slate-950 */
+  --foreground: #f8fafc;
+  --surface-card: #0f172a;      /* slate-900 */
+  --card-foreground: #f8fafc;
+  --border: #1e293b;            /* slate-800 */
+  --border-soft: #1e293b;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;  /* slate-400 */
+  --accent: #1e293b;
+  --ring: #4c6f9c;              /* navy-400 */
+}

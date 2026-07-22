@@ -1,0 +1,44 @@
+/* Reece Dashboard — Spacing, radius, shadow & motion tokens
+   The dashboard is a dense ops tool: 4px base unit, p-4 cards, gap-4 grids,
+   rounded-md controls / rounded-lg cards, soft shadow-sm only. */
+
+:root {
+  /* ---- Spacing scale (4px base) ---- */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;   /* card header padding-y, button gap */
+  --space-4: 16px;   /* card content padding, grid gap — the workhorse */
+  --space-5: 20px;
+  --space-6: 24px;   /* page padding, section gaps */
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---- Radii ---- */
+  --radius-sm: 4px;    /* inner chips, small bars */
+  --radius-md: 6px;    /* buttons, inputs, badges-square */
+  --radius-lg: 8px;    /* cards, banners */
+  --radius-xl: 12px;
+  --radius-full: 9999px; /* pills, badges, avatars, status dots */
+
+  /* ---- Shadows (restrained — depth comes from borders, not heavy shadow) ---- */
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.10), 0 4px 6px -4px rgba(15, 23, 42, 0.05);
+  --shadow-popover: 0 8px 24px -6px rgba(12, 35, 64, 0.25);
+
+  /* ---- Borders ---- */
+  --border-width: 1px;
+
+  /* ---- Layout ---- */
+  --sidebar-width: 224px;       /* md:w-56 */
+  --sidebar-width-mobile: 256px;/* w-64 drawer */
+  --topbar-height: 57px;
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --duration-fast: 150ms;       /* @kind other */
+  --duration-base: 200ms;       /* @kind other */ /* sidebar drawer, hovers */
+  --duration-slow: 300ms;       /* @kind other */
+}
