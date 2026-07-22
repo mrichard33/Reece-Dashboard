@@ -80,9 +80,21 @@ const MARKET_ORDER = [
   "LAKE_MKT",
 ];
 
-const MONO = "'JetBrains Mono',monospace";
-const DISPLAY = "Montserrat,sans-serif";
-const HOPPER_RED = "#ed1e24";
+// next/font registers each face under a HASHED family name exposed only via
+// the CSS variables set on <html> in app/layout.tsx — the literal families
+// ("Montserrat", "JetBrains Mono") are never declared. Referencing the
+// literals meant the board silently rendered in wider fallback fonts, whose
+// nowrap rows blew the tile grid past the canvas and clipped the rightmost
+// box on the TV. Always go through the variables.
+const BODY = "var(--font-inter), Inter, system-ui, sans-serif";
+const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace";
+const DISPLAY = "var(--font-montserrat), Montserrat, sans-serif";
+// Hopper (set, not confirmed) accent — orange, distinct from the amber
+// NEEDS WORK and pink CRITICAL states (Mark, 2026-07-22: not red).
+const HOPPER = "#fb923c";
+// Overbooked = more confirmed than requested. Green text + green outline
+// (Mark, 2026-07-22) — it reads as a win, not an alarm.
+const OVERBOOK = "#34d399";
 
 function todayET(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -276,7 +288,7 @@ export default function CapacityBoard({
       overbooked, unresolved: false,
       pct: String(pct), unitTxt: "%", color: col(pct), stateWord: overbooked ? "OVERBOOKED" : word(pct),
       barW: Math.min(100, pct) + "%", // bar render caps at 100 — the number never does
-      border: overbooked ? "#9c1015" : pct < thCrit ? "#be123c" : "#1e293b",
+      border: overbooked ? OVERBOOK : pct < thCrit ? "#be123c" : "#1e293b",
       tileOpacity: 1, empty: false,
     };
   };
@@ -328,7 +340,7 @@ export default function CapacityBoard({
       </span>
     );
     return (
-      <div style={{ minHeight: "100dvh", background: "#020617", color: "#f8fafc", fontFamily: "Inter,system-ui,sans-serif", display: "flex", flexDirection: "column" }}>
+      <div style={{ minHeight: "100dvh", background: "#020617", color: "#f8fafc", fontFamily: BODY, display: "flex", flexDirection: "column" }}>
         <style>{`@keyframes rc-ping{0%{transform:scale(1);opacity:.8}70%,100%{transform:scale(2.4);opacity:0}}`}</style>
 
         {/* Sticky header: title + freshness, date nav */}
@@ -373,7 +385,7 @@ export default function CapacityBoard({
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-              <div style={{ fontFamily: DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: ".12em", color: totalOverbooked ? HOPPER_RED : totalColor }}>
+              <div style={{ fontFamily: DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: ".12em", color: totalColor }}>
                 {totalOverbooked ? "OVERBOOKED" : word(totalPct)}
               </div>
               <div style={{ fontSize: 13, color: "#94a3b8" }}>
@@ -381,7 +393,7 @@ export default function CapacityBoard({
                 {totalOverbooked ? "over requested capacity" : "appointments still to fill"}
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 24, fontWeight: 700, color: HOPPER_RED }}>{totalRisk}</span>
+                <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 24, fontWeight: 700, color: HOPPER }}>{totalRisk}</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8" }}>in the hopper — set, not confirmed</span>
               </div>
             </div>
@@ -393,7 +405,7 @@ export default function CapacityBoard({
               <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: 8, padding: "12px 14px", opacity: t.tileOpacity, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
                   <span style={{ fontFamily: DISPLAY, fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
-                  <span style={{ fontFamily: DISPLAY, fontSize: 9, fontWeight: 700, letterSpacing: ".06em", color: t.overbooked ? HOPPER_RED : t.color, whiteSpace: "nowrap" }}>{t.stateWord}</span>
+                  <span style={{ fontFamily: DISPLAY, fontSize: 9, fontWeight: 700, letterSpacing: ".06em", color: t.color, whiteSpace: "nowrap" }}>{t.stateWord}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
                   <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1, color: t.color }}>
@@ -409,8 +421,8 @@ export default function CapacityBoard({
                   <div style={{ fontSize: 12, color: "#64748b" }}>No slots requested</div>
                 ) : (
                   <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                    {t.overbooked && <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: HOPPER_RED }}>+{t.conf - t.req} OVER</span>}
-                    {t.risk > 0 && <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: HOPPER_RED }}>{t.risk} in hopper</span>}
+                    {t.overbooked && <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: OVERBOOK }}>+{t.conf - t.req} OVER</span>}
+                    {t.risk > 0 && <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: HOPPER }}>{t.risk} in hopper</span>}
                   </div>
                 )}
               </div>
@@ -471,7 +483,7 @@ export default function CapacityBoard({
         style={{
           width: u(1920), height: u(1080),
           background: "#020617", color: "#f8fafc",
-          fontFamily: "Inter,system-ui,sans-serif",
+          fontFamily: BODY,
           display: "flex", flexDirection: "column", overflow: "hidden",
         }}
       >
@@ -527,7 +539,7 @@ export default function CapacityBoard({
               <div style={{ flex: 1, background: "#0f172a", border: "1px solid #1e293b", borderRadius: u(8), display: "flex", flexDirection: "column", padding: `${u(26)} ${u(30)}`, minHeight: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <div style={{ fontFamily: DISPLAY, fontSize: u(16), fontWeight: 600, letterSpacing: ".14em", color: "#94a3b8" }}>ALL OFFICES — FILL</div>
-                  <div style={{ fontFamily: DISPLAY, fontSize: u(15), fontWeight: 700, letterSpacing: ".1em", color: totalOverbooked ? HOPPER_RED : totalColor }}>
+                  <div style={{ fontFamily: DISPLAY, fontSize: u(15), fontWeight: 700, letterSpacing: ".1em", color: totalColor }}>
                     {totalOverbooked ? "OVERBOOKED" : word(totalPct)}
                   </div>
                 </div>
@@ -551,7 +563,7 @@ export default function CapacityBoard({
                 <div style={{ display: "flex", justifyContent: "center", gap: u(10), alignItems: "baseline" }}>
                   {totalOverbooked ? (
                     <>
-                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: HOPPER_RED }}>+{totalConf - totalReq}</span>
+                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: OVERBOOK }}>+{totalConf - totalReq}</span>
                       <span style={{ fontSize: u(20), color: "#94a3b8" }}>over requested capacity</span>
                     </>
                   ) : (
@@ -562,10 +574,10 @@ export default function CapacityBoard({
                   )}
                 </div>
               </div>
-              <div style={{ flex: "none", background: "#0f172a", border: "1px solid #9c1015", borderRadius: u(8), padding: `${u(26)} ${u(30)}`, display: "flex", alignItems: "center", gap: u(28) }}>
-                <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(112), fontWeight: 700, lineHeight: 1, color: HOPPER_RED }}>{totalRisk}</div>
+              <div style={{ flex: "none", background: "#0f172a", border: "1px solid #1e293b", borderRadius: u(8), padding: `${u(26)} ${u(30)}`, display: "flex", alignItems: "center", gap: u(28) }}>
+                <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(112), fontWeight: 700, lineHeight: 1, color: HOPPER }}>{totalRisk}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: u(8) }}>
-                  <div style={{ fontFamily: DISPLAY, fontSize: u(16), fontWeight: 700, letterSpacing: ".12em", color: HOPPER_RED }}>IN THE HOPPER — SET, NOT CONFIRMED</div>
+                  <div style={{ fontFamily: DISPLAY, fontSize: u(16), fontWeight: 700, letterSpacing: ".12em", color: HOPPER }}>IN THE HOPPER — SET, NOT CONFIRMED</div>
                   <div style={{ fontSize: u(20), lineHeight: 1.4, color: "#94a3b8", textWrap: "pretty" }}>
                     Customer already said yes. Until confirmed, the rep is not dispatched. Call these first.
                   </div>
@@ -574,12 +586,12 @@ export default function CapacityBoard({
             </div>
 
             {/* Office tile grid */}
-            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gridTemplateRows: "1fr 1fr", gap: u(24), minHeight: 0 }}>
+            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gridTemplateRows: "repeat(2, minmax(0, 1fr))", gap: u(24), minHeight: 0, minWidth: 0 }}>
               {tiles.map((t) => (
-                <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: u(8), padding: `${u(24)} ${u(28)} ${u(22)}`, display: "flex", flexDirection: "column", minHeight: 0, opacity: t.tileOpacity }}>
+                <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: u(8), padding: `${u(24)} ${u(28)} ${u(22)}`, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, overflow: "hidden", opacity: t.tileOpacity }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: u(8) }}>
-                    <div style={{ fontFamily: DISPLAY, fontSize: u(18), fontWeight: 700, letterSpacing: ".08em", color: "#cbd5e1", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontFamily: DISPLAY, fontSize: u(14), fontWeight: 700, letterSpacing: ".08em", color: t.overbooked ? HOPPER_RED : t.color, whiteSpace: "nowrap" }}>{t.stateWord}</div>
+                    <div style={{ fontFamily: DISPLAY, fontSize: u(18), fontWeight: 700, letterSpacing: ".08em", color: "#cbd5e1", whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                    <div style={{ fontFamily: DISPLAY, fontSize: u(14), fontWeight: 700, letterSpacing: ".08em", color: t.color, whiteSpace: "nowrap" }}>{t.stateWord}</div>
                   </div>
                   {/* Confirmed is the hero number (design v2 + Mark, 2026-07-22);
                       requested rides beside it smaller; the fill % sits below. */}
@@ -595,7 +607,7 @@ export default function CapacityBoard({
                           /&#8202;{t.req}
                         </span>
                         {t.overbooked && (
-                          <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(22), fontWeight: 700, color: HOPPER_RED, whiteSpace: "nowrap", lineHeight: 1 }}>
+                          <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(22), fontWeight: 700, color: OVERBOOK, whiteSpace: "nowrap", lineHeight: 1 }}>
                             +{t.conf - t.req} OVER
                           </span>
                         )}
@@ -618,7 +630,7 @@ export default function CapacityBoard({
                   <div style={{ display: "flex", alignItems: "center", minHeight: u(48) }}>
                     {t.risk > 0 && (
                       <div style={{ display: "flex", alignItems: "baseline", gap: u(9), padding: `${u(8)} ${u(16)}`, borderRadius: 9999, background: "rgba(148,163,184,.06)", border: "1px solid #334155", whiteSpace: "nowrap" }}>
-                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: HOPPER_RED }}>{t.risk}</span>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: HOPPER }}>{t.risk}</span>
                         <span style={{ fontSize: u(20), fontWeight: 600, color: "#94a3b8" }}>in hopper</span>
                       </div>
                     )}
@@ -646,7 +658,7 @@ export default function CapacityBoard({
                   <span style={{ fontFamily: MONO, fontSize: u(20), color: "#94a3b8" }}>&lt; {thCrit}%</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: u(12) }}>
-                  <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: HOPPER_RED, flex: "none" }} />
+                  <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: HOPPER, flex: "none" }} />
                   <span style={{ fontSize: u(20), fontWeight: 600, color: "#e2e8f0", width: u(140) }}>In hopper</span>
                   <span style={{ fontSize: u(19), color: "#94a3b8" }}>set, not confirmed</span>
                 </div>
