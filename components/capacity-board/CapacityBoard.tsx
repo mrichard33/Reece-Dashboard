@@ -110,6 +110,12 @@ export type CapacityBoardProps = {
   onTrackAt?: number;
   /** Fill % below which a tile is CRITICAL for tomorrow (relaxes 8/day further out). */
   criticalBelow?: number;
+  /**
+   * "fit" (default): scale the 1920×1080 canvas to the real viewport,
+   * letterbox-centered, no scrollbars ever. "native": render at 1:1 for
+   * TV-side debugging (isolates overscan/zoom problems from our scaling).
+   */
+  scaleMode?: "fit" | "native";
 };
 
 type TileVM = {
@@ -130,23 +136,36 @@ type TileVM = {
   empty: boolean;
 };
 
-export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50 }: CapacityBoardProps) {
+export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scaleMode = "fit" }: CapacityBoardProps) {
   const [offset, setOffset] = useState(1); // default view: tomorrow
   const [data, setData] = useState<CapacityBoardResponse | null>(null);
   const [fetchFailed, setFetchFailed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const [scale, setScale] = useState(1);
+  const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
   const offsetRef = useRef(offset);
   offsetRef.current = offset;
 
-  // Scale-to-fit: the design is a fixed 1920×1080 canvas; scale it to the
-  // viewport so any TV/browser shows the whole board.
+  // Scale-to-fit: measure the REAL viewport. visualViewport reports the
+  // actually-visible area and tracks browser zoom ≠ 100% correctly, where
+  // innerWidth/innerHeight can lie; fall back to inner* where it's absent.
+  // Re-measure on resize AND orientationchange (TVs/sticks fire the latter).
   useEffect(() => {
-    const onResize = () =>
-      setScale(Math.min(window.innerWidth / 1920, window.innerHeight / 1080));
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const measure = () => {
+      const vv = window.visualViewport;
+      setViewport({
+        w: vv?.width ?? window.innerWidth,
+        h: vv?.height ?? window.innerHeight,
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
   }, []);
 
   useEffect(() => {
@@ -257,14 +276,30 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50 }: Ca
   const updatedAgo = ageMin === null ? "no sweep yet" : `${ageMin} min ago`;
   const freshColor = stale ? "#fb7185" : "#34d399";
 
+  // fit: uniform scale to the measured viewport, remainder letterbox-centered
+  // via top-left offsets (transform-origin top-left — percentage-centering
+  // plus scale() misplaces the canvas on some TV browsers). native: 1:1.
+  const scale =
+    scaleMode === "native" || !viewport
+      ? 1
+      : Math.min(viewport.w / 1920, viewport.h / 1080);
+  const offsetLeft = viewport ? Math.max(0, (viewport.w - 1920 * scale) / 2) : 0;
+  const offsetTop = viewport ? Math.max(0, (viewport.h - 1080 * scale) / 2) : 0;
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "#020617", overflow: "hidden" }}>
-      <style>{`@keyframes rc-ping{0%{transform:scale(1);opacity:.8}70%,100%{transform:scale(2.4);opacity:0}}`}</style>
+      <style>{`
+        html,body{overflow:hidden !important;height:100%;overscroll-behavior:none}
+        @keyframes rc-ping{0%{transform:scale(1);opacity:.8}70%,100%{transform:scale(2.4);opacity:0}}
+      `}</style>
       <div
         style={{
-          position: "absolute", left: "50%", top: "50%",
+          position: "absolute",
+          left: scaleMode === "native" ? 0 : offsetLeft,
+          top: scaleMode === "native" ? 0 : offsetTop,
           width: 1920, height: 1080,
-          transform: `translate(-50%, -50%) scale(${scale})`,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
           background: "#020617", color: "#f8fafc",
           fontFamily: "Inter,system-ui,sans-serif",
           display: "flex", flexDirection: "column", overflow: "hidden",
