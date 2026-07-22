@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/reece-dashboard-design-system-a8b733dc-191e-43b4-b269-24effd6b177b/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/reece-dashboard-design-system-a8b733dc-191e-43b4-b269-24effd6b177b/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/reece-dashboard-design-system-a8b733dc-191e-43b4-b269-24effd6b177b/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/reece-dashboard-design-system-a8b733dc-191e-43b4-b269-24effd6b177b/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/reece-dashboard-design-system-a8b733dc-191e-43b4-b269-24effd6b177b/styles.css">
+  <script src="_ds/reece-dashboard-design-system-a8b733dc-191e-43b4-b269-24effd6b177b/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:#020617}
+    a{color:#7d9bbf;text-decoration:none}a:hover{color:#adc1d9}
+    @keyframes rc-ping{0%{transform:scale(1);opacity:.8}70%,100%{transform:scale(2.4);opacity:0}}
+  </style>
+</helmet>
+<div data-screen-label="Capacity board" style="width:1920px;height:1080px;background:#020617;color:#f8fafc;font-family:Inter,system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden">
+  <div style="height:104px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 44px;border-bottom:1px solid #1e293b">
+    <div style="display:flex;align-items:center;gap:18px">
+      <img src="assets/reece-circle-logo.png" alt="Reece" style="width:56px;height:56px">
+      <div style="font-family:Montserrat,sans-serif;font-size:28px;font-weight:700;color:#f8fafc">Appointment Capacity</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:22px">
+      <button onClick="{{ prevDay }}" style="width:52px;height:52px;border:1px solid #1e293b;border-radius:6px;background:#0f172a;color:#94a3b8;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center">‹</button>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:3px;min-width:360px">
+        <div style="font-family:Montserrat,sans-serif;font-size:20px;font-weight:600;letter-spacing:.14em;color:#94a3b8">{{ dateRel }}</div>
+        <div style="font-family:Montserrat,sans-serif;font-size:32px;font-weight:600;color:#f8fafc;white-space:nowrap">{{ dateMain }}</div>
+      </div>
+      <button onClick="{{ nextDay }}" style="width:52px;height:52px;border:1px solid #1e293b;border-radius:6px;background:#0f172a;color:#94a3b8;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center">›</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;min-width:300px;justify-content:flex-end">
+      <span style="position:relative;width:14px;height:14px;flex:none">
+        <span style="position:absolute;inset:0;border-radius:9999px;background:{{ freshColor }};animation:rc-ping 1.4s cubic-bezier(0,0,.2,1) infinite"></span>
+        <span style="position:absolute;inset:0;border-radius:9999px;background:{{ freshColor }}"></span>
+      </span>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:{{ freshColor }};font-variant-numeric:tabular-nums">Updated {{ updatedTime }}</div>
+        <div style="font-size:20px;color:#94a3b8">{{ updatedAgo }}</div>
+      </div>
+    </div>
+  </div>
+  <sc-if value="{{ stale }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:none;background:#e11d48;color:#ffffff;display:flex;align-items:center;justify-content:center;gap:16px;height:64px;font-family:Montserrat,sans-serif;font-size:24px;font-weight:700;letter-spacing:.06em">
+      DATA STALE<span style="font-weight:500;font-size:20px;letter-spacing:0;opacity:.85">These numbers may be wrong. Check the sync.</span>
+    </div>
+  </sc-if>
+  <div style="flex:1;position:relative;min-height:0">
+    <div style="position:absolute;inset:0;display:flex;gap:26px;padding:30px 44px 38px;opacity:{{ mainOpacity }};filter:{{ mainFilter }}">
+      <div style="width:480px;flex:none;display:flex;flex-direction:column;gap:26px">
+        <div style="flex:1;background:#0f172a;border:1px solid #1e293b;border-radius:8px;display:flex;flex-direction:column;padding:26px 30px;min-height:0">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <div style="font-family:Montserrat,sans-serif;font-size:16px;font-weight:600;letter-spacing:.14em;color:#94a3b8">ALL OFFICES — FILL</div>
+            <div style="font-family:Montserrat,sans-serif;font-size:15px;font-weight:700;letter-spacing:.1em;color:{{ totalColor }}">{{ totalState }}</div>
+          </div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
+            <div style="position:relative;width:330px;height:330px">
+              <div style="position:absolute;inset:0;border-radius:50%;background:{{ gaugeBg }};-webkit-mask:radial-gradient(closest-side,transparent calc(100% - 28px),#000 calc(100% - 27px));mask:radial-gradient(closest-side,transparent calc(100% - 28px),#000 calc(100% - 27px))"></div>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+                <div style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:100px;font-weight:700;line-height:1;color:{{ totalColor }}">{{ totalPct }}<span style="font-size:46px;font-weight:600">%</span></div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-top:18px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:24px;color:#e2e8f0">{{ totalConf }} / {{ totalReq }}</span>
+                  <span style="font-size:20px;color:#94a3b8">confirmed</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:center;gap:10px;align-items:baseline">
+            <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:28px;font-weight:700;color:#e2e8f0">{{ totalGap }}</span>
+            <span style="font-size:20px;color:#94a3b8">appointments still to fill</span>
+          </div>
+        </div>
+        <div style="flex:none;background:#0f172a;border:1px solid #9c1015;border-radius:8px;padding:26px 30px;display:flex;align-items:center;gap:28px">
+          <div style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:112px;font-weight:700;line-height:1;color:#ed1e24">{{ totalRisk }}</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-family:Montserrat,sans-serif;font-size:16px;font-weight:700;letter-spacing:.12em;color:#ed1e24">IN THE HOPPER — SET, NOT CONFIRMED</div>
+            <div style="font-size:20px;line-height:1.4;color:#94a3b8;text-wrap:pretty">Customer already said yes. Until confirmed, the rep is not dispatched. Call these first.</div>
+          </div>
+        </div>
+      </div>
+      <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr;gap:24px;min-height:0">
+        <sc-for list="{{ offices }}" as="o" hint-placeholder-count="7">
+          <div style="background:#0f172a;border:1px solid {{ o.border }};border-radius:8px;padding:24px 28px 22px;display:flex;flex-direction:column;min-height:0;opacity:{{ o.tileOpacity }}">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+              <div style="font-family:Montserrat,sans-serif;font-size:18px;font-weight:700;letter-spacing:.08em;color:#cbd5e1;white-space:nowrap">{{ o.name }}</div>
+              <div style="font-family:Montserrat,sans-serif;font-size:14px;font-weight:700;letter-spacing:.08em;color:{{ o.color }};white-space:nowrap">{{ o.stateWord }}</div>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center">
+              <sc-if value="{{ o.notEmpty }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;align-items:flex-end;gap:10px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:112px;font-weight:700;line-height:.85;color:{{ o.color }}">{{ o.conf }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:34px;font-weight:600;color:#64748b;white-space:nowrap;line-height:1">/&#8202;{{ o.req }}</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ o.empty }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:22px;color:#64748b">No slots requested today</div>
+              </sc-if>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
+              <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:26px;font-weight:700;color:{{ o.color }}">{{ o.pct }}{{ o.unitTxt }}</span>
+              <span style="font-size:20px;color:#94a3b8">filled</span>
+            </div>
+            <div style="height:10px;border-radius:9999px;background:#1e293b;overflow:hidden;margin-bottom:16px">
+              <div style="height:100%;border-radius:9999px;background:{{ o.color }};width:{{ o.barW }}"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;min-height:48px">
+                <sc-if value="{{ o.hasRisk }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:baseline;gap:9px;padding:8px 16px;border-radius:9999px;background:rgba(148,163,184,.06);border:1px solid #334155;white-space:nowrap">
+                    <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:28px;font-weight:700;color:#ed1e24">{{ o.risk }}</span>
+                    <span style="font-size:20px;font-weight:600;color:#94a3b8">in hopper</span>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+        <div style="border:1px dashed #334155;border-radius:8px;padding:24px 28px;display:flex;flex-direction:column;gap:14px;justify-content:center">
+          <div style="font-family:Montserrat,sans-serif;font-size:15px;font-weight:700;letter-spacing:.14em;color:#94a3b8">COLOR = STATE</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="width:16px;height:16px;border-radius:9999px;background:#34d399;flex:none"></span>
+            <span style="font-size:20px;font-weight:600;color:#e2e8f0;width:140px">On track</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:20px;color:#94a3b8">≥ {{ thOk }}%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="width:16px;height:16px;border-radius:9999px;background:#fbbf24;flex:none"></span>
+            <span style="font-size:20px;font-weight:600;color:#e2e8f0;width:140px">Needs work</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:20px;color:#94a3b8">{{ thCrit }}–{{ thOkMinus }}%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="width:16px;height:16px;border-radius:9999px;background:#fb7185;flex:none"></span>
+            <span style="font-size:20px;font-weight:600;color:#e2e8f0;width:140px">Critical</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:20px;color:#94a3b8">&lt; {{ thCrit }}%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="width:16px;height:16px;border-radius:9999px;background:#ed1e24;flex:none"></span>
+            <span style="font-size:20px;font-weight:600;color:#e2e8f0;width:140px">In hopper</span>
+            <span style="font-size:19px;color:#94a3b8">set, not confirmed</span>
+          </div>
+          <div style="font-size:17px;line-height:1.45;color:#64748b;text-wrap:pretty">Thresholds tighten as the date gets closer.</div>
+        </div>
+      </div>
+    </div>
+    <sc-if value="{{ stale }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:rgba(2,6,23,.55)">
+        <div style="font-family:Montserrat,sans-serif;font-size:96px;font-weight:700;letter-spacing:.08em;color:#fb7185;line-height:1">DATA STALE</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:44px;font-weight:600;color:#f8fafc">Last update {{ updatedTime }} — {{ updatedAgo }}</div>
+        <div style="font-size:24px;color:#cbd5e1">The numbers below are frozen. Trigger a sync.</div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1920,&quot;height&quot;:1080},&quot;stale&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo states&quot;},&quot;emptyOffice&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo states&quot;},&quot;onTrackAt&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:70,&quot;min&quot;:50,&quot;max&quot;:95,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Thresholds (tomorrow)&quot;},&quot;criticalBelow&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:50,&quot;min&quot;:20,&quot;max&quot;:70,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Thresholds (tomorrow)&quot;}}">
+class Component extends DCLogic {
+  state = { offset: 1, now: Date.now() };
+  componentDidMount() { this.tick = setInterval(() => this.setState({ now: Date.now() }), 30000); }
+  componentWillUnmount() { clearInterval(this.tick); }
+  base() {
+    return [
+      { name: 'FT. LAUDERDALE', req: 25, conf: 23, risk: 2 },
+      { name: 'JACKSONVILLE',  req: 16, conf: 13, risk: 1 },
+      { name: 'ORLANDO',       req: 25, conf: 19, risk: 4 },
+      { name: 'ST. PETERSBURG',req: 19, conf: 13, risk: 0 },
+      { name: 'FORT MYERS',    req: 14, conf: 9,  risk: 3 },
+      { name: 'SARASOTA',      req: 12, conf: 7,  risk: 2 },
+      { name: 'LAKELAND',      req: 18, conf: 6,  risk: 5 },
+    ];
+  }
+  dataFor(off) {
+    let b = this.base();
+    if (this.props.emptyOffice ?? false) b = b.map(o => o.name === 'SARASOTA' ? { ...o, req: 0, conf: 0, risk: 0 } : o);
+    if (off === 1) return b;
+    return b.map((o, i) => {
+      if (o.req === 0) return o;
+      const f0 = o.conf / o.req;
+      let f = off === 0 ? Math.min(1, f0 + 0.18) : f0 - 0.11 * (off - 1) + (((i * 37 + off * 13) % 7) - 3) * 0.02;
+      f = Math.max(0.05, Math.min(1, f));
+      const conf = Math.round(o.req * f);
+      const risk = off === 0 ? Math.max(0, o.risk - 1) : (i * 5 + off * 3) % 5;
+      return { ...o, conf, risk };
+    });
+  }
+  renderVals() {
+    const off = this.state.offset;
+    const stale = this.props.stale ?? false;
+    const baseOk = this.props.onTrackAt ?? 70, baseCrit = this.props.criticalBelow ?? 50;
+    const relax = Math.max(0, off - 1) * 8;
+    const thOk = Math.max(45, baseOk - relax), thCrit = Math.max(25, baseCrit - relax);
+    const col = p => p >= thOk ? '#34d399' : p >= thCrit ? '#fbbf24' : '#fb7185';
+    const word = p => p >= thOk ? 'ON TRACK' : p >= thCrit ? 'NEEDS WORK' : 'CRITICAL';
+    const data = this.dataFor(off);
+    const offices = data.map(o => {
+      if (o.req === 0) return { name: o.name, conf: 0, req: 0, risk: 0, hasRisk: false,
+        pct: '\u2014', unitTxt: '', color: '#64748b', stateWord: 'NO SLOTS', barW: '0%',
+        border: '#1e293b', tileOpacity: 0.4, empty: true, notEmpty: false };
+      const pct = Math.round(100 * o.conf / o.req);
+      return { name: o.name, req: o.req, conf: o.conf, risk: o.risk, hasRisk: o.risk > 0,
+        pct, unitTxt: '%', color: col(pct), stateWord: word(pct), barW: Math.min(100, pct) + '%',
+        border: '#1e293b', tileOpacity: 1, empty: false, notEmpty: true };
+    });
+    const live = data.filter(o => o.req > 0);
+    const totalReq = live.reduce((s, o) => s + o.req, 0);
+    const totalConf = live.reduce((s, o) => s + o.conf, 0);
+    const totalRisk = live.reduce((s, o) => s + o.risk, 0);
+    const totalPct = totalReq ? Math.round(100 * totalConf / totalReq) : 0;
+    const totalColor = col(totalPct);
+    const deg = 270 * Math.min(100, totalPct) / 100;
+    const gaugeBg = `conic-gradient(from 225deg, ${totalColor} 0deg ${deg}deg, #1e293b ${deg}deg 270deg, transparent 270deg 360deg)`;
+    const d = new Date(); d.setDate(d.getDate() + off);
+    const dateMain = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const dateRel = off === 0 ? 'TODAY — CAPACITY ALREADY SPENT' : off === 1 ? 'TOMORROW' : 'IN ' + off + ' DAYS';
+    const ageMin = stale ? 9 : 2;
+    const upd = new Date(this.state.now - ageMin * 60000);
+    return {
+      offices, totalReq, totalConf, totalRisk, totalPct, totalColor, gaugeBg,
+      totalGap: totalReq - totalConf, totalState: word(totalPct),
+      thOk, thCrit, thOkMinus: thOk - 1,
+      dateMain, dateRel,
+      prevDay: () => this.setState(s => ({ offset: Math.max(0, s.offset - 1) })),
+      nextDay: () => this.setState(s => ({ offset: Math.min(7, s.offset + 1) })),
+      stale, staleMins: ageMin,
+      freshColor: stale ? '#fb7185' : '#34d399',
+      updatedTime: upd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      updatedAgo: ageMin + ' min ago',
+      mainOpacity: stale ? 0.4 : 1,
+      mainFilter: stale ? 'grayscale(.8)' : 'none',
+    };
+  }
+}
+</script>
+</body>
+</html>
