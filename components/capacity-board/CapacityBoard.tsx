@@ -3,20 +3,33 @@
 /**
  * Appointment Capacity Board — live TV component.
  *
- * Converted 1:1 from the reviewed Claude Design export in
- * ./design-export/export-src.dc.html (1920×1080, navy chrome, conic gauge,
+ * Converted 1:1 from the reviewed Claude Design export v2 in
+ * ./design-export-2/Capacity Board.dc.html (1920×1080 reference frame, navy
+ * chrome, conic gauge, confirmed-count hero tiles, "in the hopper" language,
  * day-relative thresholds, stale states), with the mock `base()` data replaced
  * by a 60s poll of the SAME-ORIGIN proxy /api/capacity-board — never the
  * LP-MCP Railway origin directly (CORS, and it would couple the TV to a
  * second host).
  *
+ * Scaling: the design's 1920×1080 px values are authored here through u(),
+ * which emits `min(Xvw, Yvh)` so every dimension is a pure-CSS fraction of
+ * the real viewport. The board mathematically cannot exceed 100vw/100vh —
+ * no JS viewport measurement, no resize events, nothing to go stale. This
+ * replaces the measured transform:scale() canvas that kept clipping the
+ * right edge on the wall TV whenever a resize signal was missed. If a TV
+ * still crops edges after this, that is hardware overscan — set the TV to
+ * "Just Scan"/"Fit to screen", or pass ?inset=N to shrink the board N% on
+ * every side as a software margin.
+ *
  * Additions over the export, per the binding business rules:
- *  - UNRESOLVED renders as its own visible tile whenever any of its counts
- *    are > 0 (rule 2 — it may never be hidden; it takes the legend's cell).
+ *  - UNRESOLVED renders as a full-width bottom safety strip whenever any of
+ *    its counts are > 0 (rule 2 — it may never be hidden).
  *  - fill % can legitimately exceed 100 (overbooking is real). The gauge arc
  *    and tile bars cap their RENDER at 100; the printed numbers are never
  *    clamped, and any tile with confirmed > requested shows an OVERBOOKED
  *    indicator (rule 4).
+ *  - "TODAY" plain, not the export's "TODAY — CAPACITY ALREADY SPENT"
+ *    (removed at Mark's request, 2026-07-22).
  *  - stale = upstream stale flag OR proxy fetch failure; poll failures freeze
  *    the last good numbers under the stale overlay and keep retrying — the
  *    kiosk never dies to a white screen.
@@ -69,6 +82,7 @@ const MARKET_ORDER = [
 
 const MONO = "'JetBrains Mono',monospace";
 const DISPLAY = "Montserrat,sans-serif";
+const HOPPER_RED = "#ed1e24";
 
 function todayET(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -111,11 +125,17 @@ export type CapacityBoardProps = {
   /** Fill % below which a tile is CRITICAL for tomorrow (relaxes 8/day further out). */
   criticalBelow?: number;
   /**
-   * "fit" (default): scale the 1920×1080 canvas to the real viewport,
-   * letterbox-centered, no scrollbars ever. "native": render at 1:1 for
+   * "fit" (default): pure-CSS proportional scale to the viewport, letterbox-
+   * centered, no scrollbars ever. "native": render at 1:1 (1920×1080) for
    * TV-side debugging (isolates overscan/zoom problems from our scaling).
    */
   scaleMode?: "fit" | "native";
+  /**
+   * Shrink the board this % on every side (0–10). Software margin for TVs
+   * whose hardware overscan crops the picture edge — the browser cannot see
+   * that cropping, so no layout math can avoid it without a margin.
+   */
+  safeInsetPct?: number;
 };
 
 type TileVM = {
@@ -136,7 +156,12 @@ type TileVM = {
   empty: boolean;
 };
 
-export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scaleMode = "fit" }: CapacityBoardProps) {
+export default function CapacityBoard({
+  onTrackAt = 70,
+  criticalBelow = 50,
+  scaleMode = "fit",
+  safeInsetPct = 0,
+}: CapacityBoardProps) {
   const [offset, setOffset] = useState(1); // default view: tomorrow
   const [data, setData] = useState<CapacityBoardResponse | null>(null);
   const [fetchFailed, setFetchFailed] = useState(false);
@@ -145,13 +170,11 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
   const offsetRef = useRef(offset);
   offsetRef.current = offset;
 
-  // Scale-to-fit: measure the REAL viewport on EVERY change. visualViewport
-  // reports the actually-visible area and tracks browser zoom ≠ 100%
-  // correctly, where innerWidth/innerHeight can lie; fall back to inner*
-  // where it's absent. A ResizeObserver on <html> catches viewport changes
-  // that fire no window resize event on TV browsers (overscan mode flips,
-  // UI chrome hiding); resize + orientationchange + visualViewport resize
-  // cover the rest. No fixed pixel assumptions outside the 1920×1080 frame.
+  // Viewport measurement is ONLY used to pick mobile vs TV layout (<900px
+  // wide). TV-layout sizing itself is pure CSS (see u() below) and does not
+  // depend on this. visualViewport tracks browser zoom correctly where
+  // innerWidth can lie; the listeners + 2s backstop make the mobile/TV
+  // switch converge even on browsers that drop resize events.
   useEffect(() => {
     const measure = () => {
       const vv = window.visualViewport;
@@ -164,18 +187,11 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
     window.addEventListener("resize", measure);
     window.addEventListener("orientationchange", measure);
     window.visualViewport?.addEventListener("resize", measure);
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    ro?.observe(document.documentElement);
-    // Belt-and-braces: some TV/kiosk browsers deliver NO event for certain
-    // viewport changes — a 2s re-measure guarantees the board always converges
-    // to the real screen size (observed live: right edge cut off after an
-    // event was missed). setState is a no-op when the size is unchanged.
     const backstop = setInterval(measure, 2_000);
     return () => {
       window.removeEventListener("resize", measure);
       window.removeEventListener("orientationchange", measure);
       window.visualViewport?.removeEventListener("resize", measure);
-      ro?.disconnect();
       clearInterval(backstop);
     };
   }, []);
@@ -345,7 +361,7 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
         )}
 
         <div style={{ flex: 1, padding: 14, display: "flex", flexDirection: "column", gap: 12, opacity: stale ? 0.5 : 1, filter: stale ? "grayscale(.7)" : "none" }}>
-          {/* Hero: gauge + at-risk */}
+          {/* Hero: gauge + hopper */}
           <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ position: "relative", width: 132, height: 132, flex: "none" }}>
               <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: gaugeBg, WebkitMask: "radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px))", mask: "radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px))" }} />
@@ -357,7 +373,7 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-              <div style={{ fontFamily: DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: ".12em", color: totalOverbooked ? "#ed1e24" : totalColor }}>
+              <div style={{ fontFamily: DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: ".12em", color: totalOverbooked ? HOPPER_RED : totalColor }}>
                 {totalOverbooked ? "OVERBOOKED" : word(totalPct)}
               </div>
               <div style={{ fontSize: 13, color: "#94a3b8" }}>
@@ -365,8 +381,8 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
                 {totalOverbooked ? "over requested capacity" : "appointments still to fill"}
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 24, fontWeight: 700, color: "#ed1e24" }}>{totalRisk}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8" }}>at risk — set, not confirmed</span>
+                <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 24, fontWeight: 700, color: HOPPER_RED }}>{totalRisk}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8" }}>in the hopper — set, not confirmed</span>
               </div>
             </div>
           </div>
@@ -377,7 +393,7 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
               <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: 8, padding: "12px 14px", opacity: t.tileOpacity, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
                   <span style={{ fontFamily: DISPLAY, fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
-                  <span style={{ fontFamily: DISPLAY, fontSize: 9, fontWeight: 700, letterSpacing: ".06em", color: t.overbooked ? "#ed1e24" : t.color, whiteSpace: "nowrap" }}>{t.stateWord}</span>
+                  <span style={{ fontFamily: DISPLAY, fontSize: 9, fontWeight: 700, letterSpacing: ".06em", color: t.overbooked ? HOPPER_RED : t.color, whiteSpace: "nowrap" }}>{t.stateWord}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
                   <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1, color: t.color }}>
@@ -393,8 +409,8 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
                   <div style={{ fontSize: 12, color: "#64748b" }}>No slots requested</div>
                 ) : (
                   <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                    {t.overbooked && <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: "#ed1e24" }}>+{t.conf - t.req} OVER</span>}
-                    {t.risk > 0 && <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: "#ed1e24" }}>{t.risk} at risk</span>}
+                    {t.overbooked && <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: HOPPER_RED }}>+{t.conf - t.req} OVER</span>}
+                    {t.risk > 0 && <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: HOPPER_RED }}>{t.risk} in hopper</span>}
                   </div>
                 )}
               </div>
@@ -417,134 +433,140 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
     );
   }
 
-  // Never paint the canvas unscaled: before the first measurement lands,
-  // render a plain black frame instead of a 1920px board that would show as
-  // a cut-off right edge on smaller screens (observed live).
+  // Never paint the TV canvas before the first viewport measurement lands —
+  // a phone would flash the TV layout for a frame before the mobile branch
+  // takes over. Render a plain black frame instead.
   if (scaleMode !== "native" && !viewport) {
     return <div style={{ position: "fixed", inset: 0, background: "#020617" }} />;
   }
 
-  // fit: uniform scale to the measured viewport, remainder letterbox-centered
-  // via top-left offsets (transform-origin top-left — percentage-centering
-  // plus scale() misplaces the canvas on some TV browsers). native: 1:1.
-  const scale =
-    scaleMode === "native" || !viewport
-      ? 1
-      : Math.min(viewport.w / 1920, viewport.h / 1080);
-  const offsetLeft = viewport ? Math.max(0, (viewport.w - 1920 * scale) / 2) : 0;
-  const offsetTop = viewport ? Math.max(0, (viewport.h - 1080 * scale) / 2) : 0;
+  // ─── Pure-CSS proportional units ──────────────────────────────────────────
+  // u(n) maps a design px (1920×1080 reference) to min(vw, vh) fractions of
+  // the real viewport: n/19.2 vw is the size when width binds, n/10.8 vh when
+  // height binds; min() picks whichever fits, so the whole board scales
+  // uniformly and can never exceed the screen in either axis. The outer flex
+  // container centers the letterbox remainder. safeInsetPct shrinks the board
+  // for TVs with hardware overscan.
+  const inset = Math.min(10, Math.max(0, safeInsetPct));
+  const k = (100 - 2 * inset) / 100;
+  const u = (n: number): string =>
+    scaleMode === "native"
+      ? `${n}px`
+      : `min(${+(n * k / 19.2).toFixed(4)}vw, ${+(n * k / 10.8).toFixed(4)}vh)`;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#020617", overflow: "hidden" }}>
+    <div
+      style={{
+        position: "fixed", inset: 0, background: "#020617", overflow: "hidden",
+        display: "flex",
+        alignItems: scaleMode === "native" ? "flex-start" : "center",
+        justifyContent: scaleMode === "native" ? "flex-start" : "center",
+      }}
+    >
       <style>{`
         html,body{overflow:hidden !important;height:100%;overscroll-behavior:none}
         @keyframes rc-ping{0%{transform:scale(1);opacity:.8}70%,100%{transform:scale(2.4);opacity:0}}
       `}</style>
       <div
         style={{
-          position: "absolute",
-          left: scaleMode === "native" ? 0 : offsetLeft,
-          top: scaleMode === "native" ? 0 : offsetTop,
-          width: 1920, height: 1080,
-          transform: `scale(${scale})`,
-          transformOrigin: "top left",
+          width: u(1920), height: u(1080),
           background: "#020617", color: "#f8fafc",
           fontFamily: "Inter,system-ui,sans-serif",
           display: "flex", flexDirection: "column", overflow: "hidden",
         }}
       >
         {/* ── Header ── */}
-        <div style={{ height: 104, flex: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 44px", borderBottom: "1px solid #1e293b" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- fixed-size kiosk canvas; next/image adds nothing here */}
-            <img src="/reece-circle-logo.png" alt="Reece" style={{ width: 56, height: 56 }} />
-            <div style={{ fontFamily: DISPLAY, fontSize: 28, fontWeight: 700, color: "#f8fafc" }}>Appointment Capacity</div>
+        <div style={{ height: u(104), flex: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: `0 ${u(44)}`, borderBottom: "1px solid #1e293b" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: u(18) }}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- fixed-ratio kiosk canvas; next/image adds nothing here */}
+            <img src="/reece-circle-logo.png" alt="Reece" style={{ width: u(56), height: u(56) }} />
+            <div style={{ fontFamily: DISPLAY, fontSize: u(28), fontWeight: 700, color: "#f8fafc" }}>Appointment Capacity</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: u(22) }}>
             <button
               onClick={() => setOffset((o) => Math.max(0, o - 1))}
-              style={{ width: 52, height: 52, border: "1px solid #1e293b", borderRadius: 6, background: "#0f172a", color: "#94a3b8", fontSize: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              style={{ width: u(52), height: u(52), border: "1px solid #1e293b", borderRadius: u(6), background: "#0f172a", color: "#94a3b8", fontSize: u(24), cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
               &#8249;
             </button>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 360 }}>
-              <div style={{ fontFamily: DISPLAY, fontSize: 20, fontWeight: 600, letterSpacing: ".14em", color: "#94a3b8" }}>{dateRel}</div>
-              <div style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 600, color: "#f8fafc", whiteSpace: "nowrap" }}>{dateMain}</div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: u(3), minWidth: u(360) }}>
+              <div style={{ fontFamily: DISPLAY, fontSize: u(20), fontWeight: 600, letterSpacing: ".14em", color: "#94a3b8" }}>{dateRel}</div>
+              <div style={{ fontFamily: DISPLAY, fontSize: u(32), fontWeight: 600, color: "#f8fafc", whiteSpace: "nowrap" }}>{dateMain}</div>
             </div>
             <button
               onClick={() => setOffset((o) => Math.min(maxOffset, o + 1))}
-              style={{ width: 52, height: 52, border: "1px solid #1e293b", borderRadius: 6, background: "#0f172a", color: "#94a3b8", fontSize: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              style={{ width: u(52), height: u(52), border: "1px solid #1e293b", borderRadius: u(6), background: "#0f172a", color: "#94a3b8", fontSize: u(24), cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
               &#8250;
             </button>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 300, justifyContent: "flex-end" }}>
-            <span style={{ position: "relative", width: 14, height: 14, flex: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: u(14), minWidth: u(300), justifyContent: "flex-end" }}>
+            <span style={{ position: "relative", width: u(14), height: u(14), flex: "none" }}>
               <span style={{ position: "absolute", inset: 0, borderRadius: 9999, background: freshColor, animation: "rc-ping 1.4s cubic-bezier(0,0,.2,1) infinite" }} />
               <span style={{ position: "absolute", inset: 0, borderRadius: 9999, background: freshColor }} />
             </span>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-              <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 600, color: freshColor, fontVariantNumeric: "tabular-nums" }}>Updated {updatedTime}</div>
-              <div style={{ fontSize: 20, color: "#94a3b8" }}>{updatedAgo}</div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: u(1) }}>
+              <div style={{ fontFamily: MONO, fontSize: u(22), fontWeight: 600, color: freshColor, fontVariantNumeric: "tabular-nums" }}>Updated {updatedTime}</div>
+              <div style={{ fontSize: u(20), color: "#94a3b8" }}>{updatedAgo}</div>
             </div>
           </div>
         </div>
 
         {/* ── Stale banner ── */}
         {stale && (
-          <div style={{ flex: "none", background: "#e11d48", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", gap: 16, height: 64, fontFamily: DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: ".06em" }}>
-            DATA STALE<span style={{ fontWeight: 500, fontSize: 20, letterSpacing: 0, opacity: 0.85 }}>These numbers may be wrong. Check the sync.</span>
+          <div style={{ flex: "none", background: "#e11d48", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", gap: u(16), height: u(64), fontFamily: DISPLAY, fontSize: u(24), fontWeight: 700, letterSpacing: ".06em" }}>
+            DATA STALE<span style={{ fontWeight: 500, fontSize: u(20), letterSpacing: 0, opacity: 0.85 }}>These numbers may be wrong. Check the sync.</span>
           </div>
         )}
 
         {/* ── Main ── */}
         <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
-          <div style={{ position: "absolute", inset: 0, display: "flex", gap: 26, padding: "30px 44px 38px", opacity: stale ? 0.4 : 1, filter: stale ? "grayscale(.8)" : "none" }}>
-            {/* Left column: total gauge + at-risk */}
-            <div style={{ width: 480, flex: "none", display: "flex", flexDirection: "column", gap: 26 }}>
-              <div style={{ flex: 1, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, display: "flex", flexDirection: "column", padding: "26px 30px", minHeight: 0 }}>
+          <div style={{ position: "absolute", inset: 0, display: "flex", gap: u(26), padding: `${u(30)} ${u(44)} ${u(38)}`, opacity: stale ? 0.4 : 1, filter: stale ? "grayscale(.8)" : "none" }}>
+            {/* Left column: total gauge + hopper */}
+            <div style={{ width: u(480), flex: "none", display: "flex", flexDirection: "column", gap: u(26) }}>
+              <div style={{ flex: 1, background: "#0f172a", border: "1px solid #1e293b", borderRadius: u(8), display: "flex", flexDirection: "column", padding: `${u(26)} ${u(30)}`, minHeight: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <div style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 600, letterSpacing: ".14em", color: "#94a3b8" }}>ALL OFFICES — FILL</div>
-                  <div style={{ fontFamily: DISPLAY, fontSize: 15, fontWeight: 700, letterSpacing: ".1em", color: totalOverbooked ? "#ed1e24" : totalColor }}>
+                  <div style={{ fontFamily: DISPLAY, fontSize: u(16), fontWeight: 600, letterSpacing: ".14em", color: "#94a3b8" }}>ALL OFFICES — FILL</div>
+                  <div style={{ fontFamily: DISPLAY, fontSize: u(15), fontWeight: 700, letterSpacing: ".1em", color: totalOverbooked ? HOPPER_RED : totalColor }}>
                     {totalOverbooked ? "OVERBOOKED" : word(totalPct)}
                   </div>
                 </div>
                 <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
-                  <div style={{ position: "relative", width: 330, height: 330 }}>
-                    <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: gaugeBg, WebkitMask: "radial-gradient(closest-side,transparent calc(100% - 28px),#000 calc(100% - 27px))", mask: "radial-gradient(closest-side,transparent calc(100% - 28px),#000 calc(100% - 27px))" }} />
+                  <div style={{ position: "relative", width: u(330), height: u(330) }}>
+                    <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: gaugeBg, WebkitMask: `radial-gradient(closest-side,transparent calc(100% - ${u(28)}),#000 calc(100% - ${u(27)}))`, mask: `radial-gradient(closest-side,transparent calc(100% - ${u(28)}),#000 calc(100% - ${u(27)}))` }} />
                     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                      <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 100, fontWeight: 700, lineHeight: 1, color: totalColor }}>
+                      <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(100), fontWeight: 700, lineHeight: 1, color: totalColor }}>
                         {totalPct}
-                        <span style={{ fontSize: 46, fontWeight: 600 }}>%</span>
+                        <span style={{ fontSize: u(46), fontWeight: 600 }}>%</span>
                       </div>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 18 }}>
-                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 24, color: "#e2e8f0" }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: u(8), marginTop: u(18) }}>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(24), color: "#e2e8f0" }}>
                           {totalConf} / {totalReq}
                         </span>
-                        <span style={{ fontSize: 20, color: "#94a3b8" }}>confirmed</span>
+                        <span style={{ fontSize: u(20), color: "#94a3b8" }}>confirmed</span>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "baseline" }}>
+                <div style={{ display: "flex", justifyContent: "center", gap: u(10), alignItems: "baseline" }}>
                   {totalOverbooked ? (
                     <>
-                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 28, fontWeight: 700, color: "#ed1e24" }}>+{totalConf - totalReq}</span>
-                      <span style={{ fontSize: 20, color: "#94a3b8" }}>over requested capacity</span>
+                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: HOPPER_RED }}>+{totalConf - totalReq}</span>
+                      <span style={{ fontSize: u(20), color: "#94a3b8" }}>over requested capacity</span>
                     </>
                   ) : (
                     <>
-                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 28, fontWeight: 700, color: "#e2e8f0" }}>{totalReq - totalConf}</span>
-                      <span style={{ fontSize: 20, color: "#94a3b8" }}>appointments still to fill</span>
+                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: "#e2e8f0" }}>{totalReq - totalConf}</span>
+                      <span style={{ fontSize: u(20), color: "#94a3b8" }}>appointments still to fill</span>
                     </>
                   )}
                 </div>
               </div>
-              <div style={{ flex: "none", background: "#0f172a", border: "1px solid #9c1015", borderRadius: 8, padding: "26px 30px", display: "flex", alignItems: "center", gap: 28 }}>
-                <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 112, fontWeight: 700, lineHeight: 1, color: "#ed1e24" }}>{totalRisk}</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 700, letterSpacing: ".12em", color: "#ed1e24" }}>AT RISK — SET, NOT CONFIRMED</div>
-                  <div style={{ fontSize: 20, lineHeight: 1.4, color: "#94a3b8", textWrap: "pretty" }}>
+              <div style={{ flex: "none", background: "#0f172a", border: "1px solid #9c1015", borderRadius: u(8), padding: `${u(26)} ${u(30)}`, display: "flex", alignItems: "center", gap: u(28) }}>
+                <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(112), fontWeight: 700, lineHeight: 1, color: HOPPER_RED }}>{totalRisk}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: u(8) }}>
+                  <div style={{ fontFamily: DISPLAY, fontSize: u(16), fontWeight: 700, letterSpacing: ".12em", color: HOPPER_RED }}>IN THE HOPPER — SET, NOT CONFIRMED</div>
+                  <div style={{ fontSize: u(20), lineHeight: 1.4, color: "#94a3b8", textWrap: "pretty" }}>
                     Customer already said yes. Until confirmed, the rep is not dispatched. Call these first.
                   </div>
                 </div>
@@ -552,98 +574,95 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
             </div>
 
             {/* Office tile grid */}
-            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gridTemplateRows: "1fr 1fr", gap: 24, minHeight: 0 }}>
+            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gridTemplateRows: "1fr 1fr", gap: u(24), minHeight: 0 }}>
               {tiles.map((t) => (
-                <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: 8, padding: "24px 28px 22px", display: "flex", flexDirection: "column", minHeight: 0, opacity: t.tileOpacity }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                    <div style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 700, letterSpacing: ".08em", color: "#cbd5e1", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontFamily: DISPLAY, fontSize: 14, fontWeight: 700, letterSpacing: ".08em", color: t.overbooked ? "#ed1e24" : t.color, whiteSpace: "nowrap" }}>{t.stateWord}</div>
+                <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: u(8), padding: `${u(24)} ${u(28)} ${u(22)}`, display: "flex", flexDirection: "column", minHeight: 0, opacity: t.tileOpacity }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: u(8) }}>
+                    <div style={{ fontFamily: DISPLAY, fontSize: u(18), fontWeight: 700, letterSpacing: ".08em", color: "#cbd5e1", whiteSpace: "nowrap" }}>{t.name}</div>
+                    <div style={{ fontFamily: DISPLAY, fontSize: u(14), fontWeight: 700, letterSpacing: ".08em", color: t.overbooked ? HOPPER_RED : t.color, whiteSpace: "nowrap" }}>{t.stateWord}</div>
                   </div>
-                  {/* Confirmed is the hero number (Mark, 2026-07-22); requested
-                      rides beside it smaller; the fill % moves below. */}
-                  <div style={{ flex: 1, display: "flex", alignItems: "baseline", gap: 14 }}>
-                    <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 104, fontWeight: 700, lineHeight: 1, color: t.color }}>
-                      {t.empty ? "—" : t.conf}
-                    </span>
-                    {!t.empty && (
-                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 46, fontWeight: 600, color: "#94a3b8", whiteSpace: "nowrap" }}>
-                        / {t.req}
-                      </span>
-                    )}
-                    {t.overbooked && (
-                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 22, fontWeight: 700, color: "#ed1e24", whiteSpace: "nowrap" }}>
-                        +{t.conf - t.req} OVER
-                      </span>
+                  {/* Confirmed is the hero number (design v2 + Mark, 2026-07-22);
+                      requested rides beside it smaller; the fill % sits below. */}
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {t.empty ? (
+                      <div style={{ fontSize: u(22), color: "#64748b" }}>No slots requested today</div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "flex-end", gap: u(10) }}>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(112), fontWeight: 700, lineHeight: 0.85, color: t.color }}>
+                          {t.conf}
+                        </span>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(34), fontWeight: 600, color: "#64748b", whiteSpace: "nowrap", lineHeight: 1 }}>
+                          /&#8202;{t.req}
+                        </span>
+                        {t.overbooked && (
+                          <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(22), fontWeight: 700, color: HOPPER_RED, whiteSpace: "nowrap", lineHeight: 1 }}>
+                            +{t.conf - t.req} OVER
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: u(8), marginBottom: u(10), minHeight: u(30) }}>
                     {!t.empty && (
                       <>
-                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 28, fontWeight: 700, color: t.color }}>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(26), fontWeight: 700, color: t.color }}>
                           {t.pct}{t.unitTxt}
                         </span>
-                        <span style={{ fontSize: 19, color: "#94a3b8" }}>filled</span>
+                        <span style={{ fontSize: u(20), color: "#94a3b8" }}>filled</span>
                       </>
                     )}
                   </div>
-                  <div style={{ height: 10, borderRadius: 9999, background: "#1e293b", overflow: "hidden", marginBottom: 16 }}>
+                  <div style={{ height: u(10), borderRadius: 9999, background: "#1e293b", overflow: "hidden", marginBottom: u(16) }}>
                     <div style={{ height: "100%", borderRadius: 9999, background: t.color, width: t.barW }} />
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 44 }}>
-                    {t.empty && (
-                      <div style={{ fontSize: 22, color: "#64748b" }}>No slots requested today</div>
+                  <div style={{ display: "flex", alignItems: "center", minHeight: u(48) }}>
+                    {t.risk > 0 && (
+                      <div style={{ display: "flex", alignItems: "baseline", gap: u(9), padding: `${u(8)} ${u(16)}`, borderRadius: 9999, background: "rgba(148,163,184,.06)", border: "1px solid #334155", whiteSpace: "nowrap" }}>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: HOPPER_RED }}>{t.risk}</span>
+                        <span style={{ fontSize: u(20), fontWeight: 600, color: "#94a3b8" }}>in hopper</span>
+                      </div>
                     )}
-                    <div style={{ display: "flex", alignItems: "center", minHeight: 48 }}>
-                      {t.risk > 0 && (
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "8px 16px", borderRadius: 9999, background: "rgba(148,163,184,.06)", border: "1px solid #334155", whiteSpace: "nowrap" }}>
-                          <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 28, fontWeight: 700, color: "#ed1e24" }}>{t.risk}</span>
-                          <span style={{ fontSize: 20, fontWeight: 600, color: "#94a3b8" }}>at risk</span>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 </div>
               ))}
 
-              {/* Legend cell — UNRESOLVED lives in the bottom safety strip now,
-                  so the legend always renders. */}
-              {(
-                <div style={{ border: "1px dashed #334155", borderRadius: 8, padding: "24px 28px", display: "flex", flexDirection: "column", gap: 14, justifyContent: "center" }}>
-                  <div style={{ fontFamily: DISPLAY, fontSize: 15, fontWeight: 700, letterSpacing: ".14em", color: "#94a3b8" }}>COLOR = STATE</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ width: 16, height: 16, borderRadius: 9999, background: "#34d399", flex: "none" }} />
-                    <span style={{ fontSize: 20, fontWeight: 600, color: "#e2e8f0", width: 140 }}>On track</span>
-                    <span style={{ fontFamily: MONO, fontSize: 20, color: "#94a3b8" }}>&#8805; {thOk}%</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ width: 16, height: 16, borderRadius: 9999, background: "#fbbf24", flex: "none" }} />
-                    <span style={{ fontSize: 20, fontWeight: 600, color: "#e2e8f0", width: 140 }}>Needs work</span>
-                    <span style={{ fontFamily: MONO, fontSize: 20, color: "#94a3b8" }}>{thCrit}&#8211;{thOk - 1}%</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ width: 16, height: 16, borderRadius: 9999, background: "#fb7185", flex: "none" }} />
-                    <span style={{ fontSize: 20, fontWeight: 600, color: "#e2e8f0", width: 140 }}>Critical</span>
-                    <span style={{ fontFamily: MONO, fontSize: 20, color: "#94a3b8" }}>&lt; {thCrit}%</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ width: 16, height: 16, borderRadius: 9999, background: "#ed1e24", flex: "none" }} />
-                    <span style={{ fontSize: 20, fontWeight: 600, color: "#e2e8f0", width: 140 }}>At risk</span>
-                    <span style={{ fontSize: 19, color: "#94a3b8" }}>set, not confirmed</span>
-                  </div>
-                  <div style={{ fontSize: 17, lineHeight: 1.45, color: "#64748b", textWrap: "pretty" }}>Thresholds tighten as the date gets closer.</div>
+              {/* Legend cell — UNRESOLVED lives in the bottom safety strip, so
+                  the legend always renders. */}
+              <div style={{ border: "1px dashed #334155", borderRadius: u(8), padding: `${u(24)} ${u(28)}`, display: "flex", flexDirection: "column", gap: u(14), justifyContent: "center" }}>
+                <div style={{ fontFamily: DISPLAY, fontSize: u(15), fontWeight: 700, letterSpacing: ".14em", color: "#94a3b8" }}>COLOR = STATE</div>
+                <div style={{ display: "flex", alignItems: "center", gap: u(12) }}>
+                  <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: "#34d399", flex: "none" }} />
+                  <span style={{ fontSize: u(20), fontWeight: 600, color: "#e2e8f0", width: u(140) }}>On track</span>
+                  <span style={{ fontFamily: MONO, fontSize: u(20), color: "#94a3b8" }}>&#8805; {thOk}%</span>
                 </div>
-              )}
+                <div style={{ display: "flex", alignItems: "center", gap: u(12) }}>
+                  <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: "#fbbf24", flex: "none" }} />
+                  <span style={{ fontSize: u(20), fontWeight: 600, color: "#e2e8f0", width: u(140) }}>Needs work</span>
+                  <span style={{ fontFamily: MONO, fontSize: u(20), color: "#94a3b8" }}>{thCrit}&#8211;{thOk - 1}%</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: u(12) }}>
+                  <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: "#fb7185", flex: "none" }} />
+                  <span style={{ fontSize: u(20), fontWeight: 600, color: "#e2e8f0", width: u(140) }}>Critical</span>
+                  <span style={{ fontFamily: MONO, fontSize: u(20), color: "#94a3b8" }}>&lt; {thCrit}%</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: u(12) }}>
+                  <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: HOPPER_RED, flex: "none" }} />
+                  <span style={{ fontSize: u(20), fontWeight: 600, color: "#e2e8f0", width: u(140) }}>In hopper</span>
+                  <span style={{ fontSize: u(19), color: "#94a3b8" }}>set, not confirmed</span>
+                </div>
+                <div style={{ fontSize: u(17), lineHeight: 1.45, color: "#64748b", textWrap: "pretty" }}>Thresholds tighten as the date gets closer.</div>
+              </div>
             </div>
           </div>
 
           {/* ── Stale overlay ── */}
           {stale && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, background: "rgba(2,6,23,.55)" }}>
-              <div style={{ fontFamily: DISPLAY, fontSize: 96, fontWeight: 700, letterSpacing: ".08em", color: "#fb7185", lineHeight: 1 }}>DATA STALE</div>
-              <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 44, fontWeight: 600, color: "#f8fafc" }}>
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: u(18), background: "rgba(2,6,23,.55)" }}>
+              <div style={{ fontFamily: DISPLAY, fontSize: u(96), fontWeight: 700, letterSpacing: ".08em", color: "#fb7185", lineHeight: 1 }}>DATA STALE</div>
+              <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(44), fontWeight: 600, color: "#f8fafc" }}>
                 Last update {updatedTime} — {updatedAgo}
               </div>
-              <div style={{ fontSize: 24, color: "#cbd5e1" }}>
+              <div style={{ fontSize: u(24), color: "#cbd5e1" }}>
                 {data ? "The numbers below are frozen. Trigger a sync." : "No data yet — retrying automatically."}
               </div>
             </div>
@@ -652,9 +671,9 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
 
         {/* ── UNRESOLVED safety strip — the anti-silent-drop guarantee ── */}
         {unresolvedVisible && (
-          <div style={{ flex: "none", height: 56, display: "flex", alignItems: "center", justifyContent: "center", gap: 14, background: "rgba(180,83,9,.18)", borderTop: "1px solid #b45309" }}>
-            <span style={{ fontSize: 26, lineHeight: 1 }}>⚠</span>
-            <span style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, color: "#fbbf24", letterSpacing: ".02em" }}>
+          <div style={{ flex: "none", height: u(56), display: "flex", alignItems: "center", justifyContent: "center", gap: u(14), background: "rgba(180,83,9,.18)", borderTop: "1px solid #b45309" }}>
+            <span style={{ fontSize: u(26), lineHeight: 1 }}>⚠</span>
+            <span style={{ fontFamily: DISPLAY, fontSize: u(22), fontWeight: 700, color: "#fbbf24", letterSpacing: ".02em" }}>
               {unresolvedAppts > 0
                 ? `${unresolvedAppts} appointment${unresolvedAppts === 1 ? "" : "s"} unassigned to an office — check mapping`
                 : `${unresolvedSlots} capacity slot${unresolvedSlots === 1 ? "" : "s"} unmapped to an office — check mapping`}
