@@ -145,10 +145,13 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
   const offsetRef = useRef(offset);
   offsetRef.current = offset;
 
-  // Scale-to-fit: measure the REAL viewport. visualViewport reports the
-  // actually-visible area and tracks browser zoom ≠ 100% correctly, where
-  // innerWidth/innerHeight can lie; fall back to inner* where it's absent.
-  // Re-measure on resize AND orientationchange (TVs/sticks fire the latter).
+  // Scale-to-fit: measure the REAL viewport on EVERY change. visualViewport
+  // reports the actually-visible area and tracks browser zoom ≠ 100%
+  // correctly, where innerWidth/innerHeight can lie; fall back to inner*
+  // where it's absent. A ResizeObserver on <html> catches viewport changes
+  // that fire no window resize event on TV browsers (overscan mode flips,
+  // UI chrome hiding); resize + orientationchange + visualViewport resize
+  // cover the rest. No fixed pixel assumptions outside the 1920×1080 frame.
   useEffect(() => {
     const measure = () => {
       const vv = window.visualViewport;
@@ -161,10 +164,13 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
     window.addEventListener("resize", measure);
     window.addEventListener("orientationchange", measure);
     window.visualViewport?.addEventListener("resize", measure);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(document.documentElement);
     return () => {
       window.removeEventListener("resize", measure);
       window.removeEventListener("orientationchange", measure);
       window.visualViewport?.removeEventListener("resize", measure);
+      ro?.disconnect();
     };
   }, []);
 
@@ -215,21 +221,12 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
     return a.market.localeCompare(b.market);
   });
 
-  const tileFor = (name: string, b: BoardBucket, isUnresolved = false): TileVM => {
-    if (b.requested === 0 && !isUnresolved) {
+  const tileFor = (name: string, b: BoardBucket): TileVM => {
+    if (b.requested === 0) {
       return {
         key: name, name, req: 0, conf: 0, risk: 0, overbooked: false, unresolved: false,
         pct: "—", unitTxt: "", color: "#64748b", stateWord: "NO SLOTS", barW: "0%",
         border: "#1e293b", tileOpacity: 0.4, empty: true,
-      };
-    }
-    // UNRESOLVED has no meaningful fill % target — it's a mapping gap to clear.
-    if (isUnresolved) {
-      return {
-        key: name, name, req: b.requested, conf: b.confirmed, risk: b.set_pending,
-        overbooked: false, unresolved: true,
-        pct: String(b.confirmed + b.set_pending), unitTxt: "", color: "#fbbf24",
-        stateWord: "CHECK MAPPING", barW: "100%", border: "#b45309", tileOpacity: 1, empty: false,
       };
     }
     const pct = Math.round((100 * b.confirmed) / b.requested);
@@ -247,12 +244,15 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
   const tiles: TileVM[] = orderedOffices.map((o) =>
     tileFor(o.office_label.toUpperCase(), o),
   );
-  const unresolvedVisible =
-    !!data &&
-    (data.unresolved.requested > 0 ||
-      data.unresolved.confirmed > 0 ||
-      data.unresolved.set_pending > 0);
-  if (unresolvedVisible && data) tiles.push(tileFor("UNRESOLVED", data.unresolved, true));
+
+  // UNRESOLVED safety strip (fix-pass 2): no longer a grid tile — it has no
+  // slot capacity, so a tile rendered a nonsense "7 / 0 confirmed". Instead:
+  // all-zero → nothing renders (the normal state); any count > 0 → a slim
+  // full-width warning strip that CANNOT be configured away. An empty bucket
+  // is invisible; a non-empty one is impossible to miss.
+  const unresolvedAppts = data ? data.unresolved.confirmed + data.unresolved.set_pending : 0;
+  const unresolvedSlots = data?.unresolved.requested ?? 0;
+  const unresolvedVisible = unresolvedAppts > 0 || unresolvedSlots > 0;
 
   const totalReq = data?.totals.requested ?? 0;
   const totalConf = data?.totals.confirmed ?? 0;
@@ -448,9 +448,9 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
                 </div>
               ))}
 
-              {/* Legend cell — yields its slot to the UNRESOLVED tile (rule 2:
-                  the bucket may never be hidden; the legend is decorative). */}
-              {!unresolvedVisible && (
+              {/* Legend cell — UNRESOLVED lives in the bottom safety strip now,
+                  so the legend always renders. */}
+              {(
                 <div style={{ border: "1px dashed #334155", borderRadius: 8, padding: "24px 28px", display: "flex", flexDirection: "column", gap: 14, justifyContent: "center" }}>
                   <div style={{ fontFamily: DISPLAY, fontSize: 15, fontWeight: 700, letterSpacing: ".14em", color: "#94a3b8" }}>COLOR = STATE</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -492,6 +492,18 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
             </div>
           )}
         </div>
+
+        {/* ── UNRESOLVED safety strip — the anti-silent-drop guarantee ── */}
+        {unresolvedVisible && (
+          <div style={{ flex: "none", height: 56, display: "flex", alignItems: "center", justifyContent: "center", gap: 14, background: "rgba(180,83,9,.18)", borderTop: "1px solid #b45309" }}>
+            <span style={{ fontSize: 26, lineHeight: 1 }}>⚠</span>
+            <span style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, color: "#fbbf24", letterSpacing: ".02em" }}>
+              {unresolvedAppts > 0
+                ? `${unresolvedAppts} appointment${unresolvedAppts === 1 ? "" : "s"} unassigned to an office — check mapping`
+                : `${unresolvedSlots} capacity slot${unresolvedSlots === 1 ? "" : "s"} unmapped to an office — check mapping`}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
