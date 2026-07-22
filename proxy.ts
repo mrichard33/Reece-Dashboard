@@ -36,9 +36,16 @@ export async function proxy(request: NextRequest) {
   const isLogin = pathname === "/login" || pathname.startsWith("/login/");
   const isAuthCallback = pathname.startsWith("/auth/callback");
   const isResetPassword = pathname.startsWith("/auth/reset-password");
+  // TV kiosk surface — deliberately unauthenticated. The page reads only the
+  // same-origin /api/capacity-board proxy, whose payload is per-market
+  // appointment COUNTS (zero PII). A kiosk browser can't complete a login.
+  const isKiosk =
+    pathname === "/board/tv" ||
+    pathname.startsWith("/board/tv/") ||
+    pathname === "/api/capacity-board";
 
   // Unauthenticated users are bounced to /login (except for the login flow itself).
-  if (!user && !isLogin && !isAuthCallback && !isResetPassword) {
+  if (!user && !isLogin && !isAuthCallback && !isResetPassword && !isKiosk) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("from", pathname);
