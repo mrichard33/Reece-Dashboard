@@ -265,8 +265,7 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
 
   const viewDate = addDays(todayET(), offset);
   const dateMain = longDate(viewDate);
-  const dateRel =
-    offset === 0 ? "TODAY — CAPACITY ALREADY SPENT" : offset === 1 ? "TOMORROW" : `IN ${offset} DAYS`;
+  const dateRel = offset === 0 ? "TODAY" : offset === 1 ? "TOMORROW" : `IN ${offset} DAYS`;
 
   const lastSweepMs = data?.last_sweep_at ? new Date(data.last_sweep_at).getTime() : null;
   const ageMin = lastSweepMs ? Math.max(0, Math.round((now - lastSweepMs) / 60_000)) : null;
@@ -275,6 +274,122 @@ export default function CapacityBoard({ onTrackAt = 70, criticalBelow = 50, scal
     : "—";
   const updatedAgo = ageMin === null ? "no sweep yet" : `${ageMin} min ago`;
   const freshColor = stale ? "#fb7185" : "#34d399";
+
+  // Small screens get a native responsive layout instead of a shrunken
+  // 1920×1080 canvas (unreadable on a phone). ?scale=native still forces the
+  // TV canvas for debugging.
+  const isMobile = scaleMode !== "native" && !!viewport && viewport.w < 900;
+
+  if (isMobile) {
+    const freshDot = (
+      <span style={{ position: "relative", width: 10, height: 10, flex: "none" }}>
+        <span style={{ position: "absolute", inset: 0, borderRadius: 9999, background: freshColor, animation: "rc-ping 1.4s cubic-bezier(0,0,.2,1) infinite" }} />
+        <span style={{ position: "absolute", inset: 0, borderRadius: 9999, background: freshColor }} />
+      </span>
+    );
+    return (
+      <div style={{ minHeight: "100dvh", background: "#020617", color: "#f8fafc", fontFamily: "Inter,system-ui,sans-serif", display: "flex", flexDirection: "column" }}>
+        <style>{`@keyframes rc-ping{0%{transform:scale(1);opacity:.8}70%,100%{transform:scale(2.4);opacity:0}}`}</style>
+
+        {/* Sticky header: title + freshness, date nav */}
+        <div style={{ position: "sticky", top: 0, zIndex: 10, background: "#020617", borderBottom: "1px solid #1e293b", padding: "10px 14px 8px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark */}
+              <img src="/reece-circle-logo.png" alt="Reece" style={{ width: 26, height: 26 }} />
+              <span style={{ fontFamily: DISPLAY, fontSize: 15, fontWeight: 700 }}>Appointment capacity</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              {freshDot}
+              <span style={{ fontFamily: MONO, fontSize: 12, color: freshColor, fontVariantNumeric: "tabular-nums" }}>{updatedTime}</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+            <button onClick={() => setOffset((o) => Math.max(0, o - 1))} style={{ width: 40, height: 40, border: "1px solid #1e293b", borderRadius: 6, background: "#0f172a", color: "#94a3b8", fontSize: 18 }}>&#8249;</button>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: DISPLAY, fontSize: 11, fontWeight: 600, letterSpacing: ".14em", color: "#94a3b8" }}>{dateRel}</div>
+              <div style={{ fontFamily: DISPLAY, fontSize: 17, fontWeight: 600, whiteSpace: "nowrap" }}>{dateMain}</div>
+            </div>
+            <button onClick={() => setOffset((o) => Math.min(maxOffset, o + 1))} style={{ width: 40, height: 40, border: "1px solid #1e293b", borderRadius: 6, background: "#0f172a", color: "#94a3b8", fontSize: 18 }}>&#8250;</button>
+          </div>
+        </div>
+
+        {stale && (
+          <div style={{ background: "#e11d48", color: "#fff", padding: "8px 14px", fontFamily: DISPLAY, fontSize: 13, fontWeight: 700, letterSpacing: ".05em", textAlign: "center" }}>
+            DATA STALE — last update {updatedTime} ({updatedAgo})
+          </div>
+        )}
+
+        <div style={{ flex: 1, padding: 14, display: "flex", flexDirection: "column", gap: 12, opacity: stale ? 0.5 : 1, filter: stale ? "grayscale(.7)" : "none" }}>
+          {/* Hero: gauge + at-risk */}
+          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ position: "relative", width: 132, height: 132, flex: "none" }}>
+              <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: gaugeBg, WebkitMask: "radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px))", mask: "radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px))" }} />
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1, color: totalColor }}>
+                  {totalPct}<span style={{ fontSize: 17, fontWeight: 600 }}>%</span>
+                </div>
+                <div style={{ fontFamily: MONO, fontSize: 12, color: "#e2e8f0", marginTop: 4 }}>{totalConf} / {totalReq}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+              <div style={{ fontFamily: DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: ".12em", color: totalOverbooked ? "#ed1e24" : totalColor }}>
+                {totalOverbooked ? "OVERBOOKED" : word(totalPct)}
+              </div>
+              <div style={{ fontSize: 13, color: "#94a3b8" }}>
+                <span style={{ fontFamily: MONO, fontWeight: 700, color: "#e2e8f0" }}>{totalOverbooked ? `+${totalConf - totalReq}` : totalReq - totalConf}</span>{" "}
+                {totalOverbooked ? "over requested capacity" : "appointments still to fill"}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 24, fontWeight: 700, color: "#ed1e24" }}>{totalRisk}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8" }}>at risk — set, not confirmed</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Office cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+            {tiles.map((t) => (
+              <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: 8, padding: "12px 14px", opacity: t.tileOpacity, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                  <span style={{ fontFamily: DISPLAY, fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
+                  <span style={{ fontFamily: DISPLAY, fontSize: 9, fontWeight: 700, letterSpacing: ".06em", color: t.overbooked ? "#ed1e24" : t.color, whiteSpace: "nowrap" }}>{t.stateWord}</span>
+                </div>
+                <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1, color: t.color }}>
+                  {t.pct}<span style={{ fontSize: 16, fontWeight: 600 }}>{t.unitTxt}</span>
+                </div>
+                <div style={{ height: 6, borderRadius: 9999, background: "#1e293b", overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 9999, background: t.color, width: t.barW }} />
+                </div>
+                {t.empty ? (
+                  <div style={{ fontSize: 12, color: "#64748b" }}>No slots requested</div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 14, fontWeight: 600, color: "#e2e8f0" }}>{t.conf} / {t.req}</span>
+                    <span style={{ fontSize: 11, color: "#94a3b8" }}>confirmed</span>
+                    {t.overbooked && <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: "#ed1e24" }}>+{t.conf - t.req} OVER</span>}
+                    {t.risk > 0 && <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: "#ed1e24" }}>{t.risk} at risk</span>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* UNRESOLVED safety strip — same guarantee, sticky on mobile */}
+        {unresolvedVisible && (
+          <div style={{ position: "sticky", bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 14px", background: "rgba(180,83,9,.95)", color: "#fff", fontFamily: DISPLAY, fontSize: 13, fontWeight: 700 }}>
+            <span>⚠</span>
+            <span>
+              {unresolvedAppts > 0
+                ? `${unresolvedAppts} appointment${unresolvedAppts === 1 ? "" : "s"} unassigned — check mapping`
+                : `${unresolvedSlots} slot${unresolvedSlots === 1 ? "" : "s"} unmapped — check mapping`}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // fit: uniform scale to the measured viewport, remainder letterbox-centered
   // via top-left offsets (transform-origin top-left — percentage-centering
