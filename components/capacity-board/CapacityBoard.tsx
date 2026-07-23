@@ -288,7 +288,9 @@ export default function CapacityBoard({
       overbooked, unresolved: false,
       pct: String(pct), unitTxt: "%", color: col(pct), stateWord: overbooked ? "OVERBOOKED" : word(pct),
       barW: Math.min(100, pct) + "%", // bar render caps at 100 — the number never does
-      border: overbooked ? OVERBOOK : pct < thCrit ? "#be123c" : "#1e293b",
+      // 100%+ = green outline (Mark, 2026-07-22) — full counts as done, not
+      // just overbooked.
+      border: pct >= 100 ? OVERBOOK : pct < thCrit ? "#be123c" : "#1e293b",
       tileOpacity: 1, empty: false,
     };
   };
@@ -374,7 +376,7 @@ export default function CapacityBoard({
 
         <div style={{ flex: 1, padding: 14, display: "flex", flexDirection: "column", gap: 12, opacity: stale ? 0.5 : 1, filter: stale ? "grayscale(.7)" : "none" }}>
           {/* Hero: gauge + hopper */}
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ background: "#0f172a", border: `1px solid ${totalPct >= 100 ? OVERBOOK : "#1e293b"}`, borderRadius: 8, padding: 16, display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ position: "relative", width: 132, height: 132, flex: "none" }}>
               <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: gaugeBg, WebkitMask: "radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px))", mask: "radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px))" }} />
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
@@ -536,7 +538,7 @@ export default function CapacityBoard({
           <div style={{ position: "absolute", inset: 0, display: "flex", gap: u(26), padding: `${u(30)} ${u(44)} ${u(38)}`, opacity: stale ? 0.4 : 1, filter: stale ? "grayscale(.8)" : "none" }}>
             {/* Left column: total gauge + hopper */}
             <div style={{ width: u(480), flex: "none", display: "flex", flexDirection: "column", gap: u(26) }}>
-              <div style={{ flex: 1, background: "#0f172a", border: "1px solid #1e293b", borderRadius: u(8), display: "flex", flexDirection: "column", padding: `${u(26)} ${u(30)}`, minHeight: 0 }}>
+              <div style={{ flex: 1, background: "#0f172a", border: `1px solid ${totalPct >= 100 ? OVERBOOK : "#1e293b"}`, borderRadius: u(8), display: "flex", flexDirection: "column", padding: `${u(26)} ${u(30)}`, minHeight: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <div style={{ fontFamily: DISPLAY, fontSize: u(16), fontWeight: 600, letterSpacing: ".14em", color: "#94a3b8" }}>ALL OFFICES — FILL</div>
                   <div style={{ fontFamily: DISPLAY, fontSize: u(15), fontWeight: 700, letterSpacing: ".1em", color: totalColor }}>
