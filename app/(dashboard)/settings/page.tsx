@@ -1,12 +1,14 @@
 import { requireExecAdmin } from "@/components/shell/RoleGate";
 import { getHealthSnapshot } from "@/lib/queries/health";
 import { listFbWorkflows } from "@/lib/actions/settings";
+import { listDashboardUsers } from "@/lib/actions/users";
 import { listExecutives } from "@/lib/queries/approvals";
 import { lpUrlConfigured, lpTokenConfigured } from "@/lib/mcp/lpClient";
 import { hlUrlConfigured, hlTokenConfigured } from "@/lib/mcp/hlClient";
 import { ConnectionsPanel, type ServiceConfig } from "@/components/settings/ConnectionsPanel";
 import { AutomationControls } from "@/components/settings/AutomationControls";
 import { TeamCard } from "@/components/settings/TeamCard";
+import { UsersCard } from "@/components/settings/UsersCard";
 
 export const dynamic = "force-dynamic";
 
@@ -46,10 +48,11 @@ export default async function SettingsPage() {
   // Admin-only (Mark). Non-admin executives are redirected to /approvals.
   const ctx = await requireExecAdmin();
 
-  const [health, workflows, execs] = await Promise.all([
+  const [health, workflows, execs, dashboardUsers] = await Promise.all([
     getHealthSnapshot(),
     listFbWorkflows(),
     listExecutives(),
+    listDashboardUsers(),
   ]);
 
   const n8nConfigured = !!process.env.N8N_BASE_URL && !!process.env.N8N_WEBHOOK_SECRET;
@@ -88,6 +91,7 @@ export default async function SettingsPage() {
 
       <div className="space-y-6">
         <ConnectionsPanel services={services} n8nConfigured={n8nConfigured} />
+        <UsersCard users={dashboardUsers} selfEmail={ctx.email} />
         <AutomationControls initial={workflows} />
         <TeamCard
           executives={execs}

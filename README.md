@@ -99,6 +99,21 @@ allowlist. Self-signup is disabled; accounts are provisioned out-of-band.
 
 ### Adding a new user
 
+**Preferred — in the app (admins only).** Go to **Settings → Dashboard Users**,
+enter the email, pick a role (`operator` = full backend, `team` = trimmed
+pipeline view), and choose how they get in:
+
+- **Set a temporary password** — hand it to them directly. Most reliable; works
+  even when reset emails aren't being delivered.
+- **Email a set-password link** — requires SMTP to be configured in Supabase
+  (see below).
+
+This creates the Supabase Auth login **and** the `dashboard_users` allowlist row
+in one step — no Supabase console or SQL required. The same card lets you switch
+a user's role, re-send a setup link, or remove access.
+
+**Manual fallback (no admin access to the app yet):**
+
 1. In **LP Supabase → Authentication → Users → Add user**: enter the user's
    email and toggle **Send password reset email** ON. (Or supply a temporary
    password if email delivery is unreliable.)
@@ -115,6 +130,12 @@ allowlist. Self-signup is disabled; accounts are provisioned out-of-band.
    pipeline view.
 3. The user clicks the email link, lands on `/auth/reset-password`, sets
    their password, and is redirected to `/overview`.
+
+> **Password-reset emails not arriving?** Supabase's default mailer is
+> rate-limited and unreliable for real inboxes. Configure a custom SMTP provider
+> under **Supabase → Project Settings → Authentication → SMTP Settings** so
+> "Forgot password" / set-password links actually deliver. Until then, use the
+> **Set a temporary password** option above.
 
 ### Existing users migrating from magic-link
 
