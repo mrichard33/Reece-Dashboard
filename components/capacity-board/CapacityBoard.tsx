@@ -89,9 +89,9 @@ const MARKET_ORDER = [
 const BODY = "var(--font-inter), Inter, system-ui, sans-serif";
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace";
 const DISPLAY = "var(--font-montserrat), Montserrat, sans-serif";
-// Hopper (set, not confirmed) accent — orange, distinct from the amber
-// NEEDS WORK and pink CRITICAL states (Mark, 2026-07-22: not red).
-const HOPPER = "#fb923c";
+// Hopper (set, not confirmed) accent — pale cream, per design v3. Distinct
+// from the amber NEEDS WORK and pink CRITICAL states (Mark: not red).
+const HOPPER = "#FAF0C9";
 // Overbooked = more confirmed than requested. Green text + green outline
 // (Mark, 2026-07-22) — it reads as a win, not an alarm.
 const OVERBOOK = "#34d399";
@@ -381,9 +381,9 @@ export default function CapacityBoard({
               <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: gaugeBg, WebkitMask: "radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px))", mask: "radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px))" }} />
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                 <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1, color: totalColor }}>
-                  {totalPct}<span style={{ fontSize: 17, fontWeight: 600 }}>%</span>
+                  {totalConf}
                 </div>
-                <div style={{ fontFamily: MONO, fontSize: 12, color: "#e2e8f0", marginTop: 4 }}>{totalConf} / {totalReq}</div>
+                <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 15, fontWeight: 600, color: totalColor, marginTop: 2 }}>{totalPct}%</div>
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -392,7 +392,7 @@ export default function CapacityBoard({
               </div>
               <div style={{ fontSize: 13, color: "#94a3b8" }}>
                 <span style={{ fontFamily: MONO, fontWeight: 700, color: "#e2e8f0" }}>{totalOverbooked ? `+${totalConf - totalReq}` : totalReq - totalConf}</span>{" "}
-                {totalOverbooked ? "over requested capacity" : "appointments still to fill"}
+                {totalOverbooked ? "overbooked" : "still to fill"} · <span style={{ fontFamily: MONO, fontWeight: 700, color: "#e2e8f0" }}>{totalReq}</span> requested
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                 <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: 24, fontWeight: 700, color: HOPPER }}>{totalRisk}</span>
@@ -549,34 +549,42 @@ export default function CapacityBoard({
                   <div style={{ position: "relative", width: u(330), height: u(330) }}>
                     <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: gaugeBg, WebkitMask: `radial-gradient(closest-side,transparent calc(100% - ${u(28)}),#000 calc(100% - ${u(27)}))`, mask: `radial-gradient(closest-side,transparent calc(100% - ${u(28)}),#000 calc(100% - ${u(27)}))` }} />
                     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                      {/* Design v3: confirmed COUNT is the gauge hero, fill %
+                          below it, then the 'confirmed' label. */}
                       <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(100), fontWeight: 700, lineHeight: 1, color: totalColor }}>
-                        {totalPct}
-                        <span style={{ fontSize: u(46), fontWeight: 600 }}>%</span>
+                        {totalConf}
                       </div>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: u(8), marginTop: u(18) }}>
-                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(24), color: "#e2e8f0" }}>
-                          {totalConf} / {totalReq}
-                        </span>
-                        <span style={{ fontSize: u(20), color: "#94a3b8" }}>confirmed</span>
+                      <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(40), fontWeight: 600, color: totalColor, marginTop: u(10) }}>
+                        {totalPct}%
                       </div>
+                      <div style={{ fontSize: u(22), color: "#94a3b8", marginTop: u(6) }}>confirmed</div>
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "center", gap: u(10), alignItems: "baseline" }}>
-                  {totalOverbooked ? (
-                    <>
-                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: OVERBOOK }}>+{totalConf - totalReq}</span>
-                      <span style={{ fontSize: u(20), color: "#94a3b8" }}>over requested capacity</span>
-                    </>
-                  ) : (
-                    <>
-                      <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: "#e2e8f0" }}>{totalReq - totalConf}</span>
-                      <span style={{ fontSize: u(20), color: "#94a3b8" }}>appointments still to fill</span>
-                    </>
-                  )}
+                {/* Footer: two stats — 'still to fill | requested' (design v3).
+                    When overbooked, the left stat shows the overbook in green. */}
+                <div style={{ display: "flex", justifyContent: "center", gap: u(24), alignItems: "baseline" }}>
+                  <div style={{ display: "flex", gap: u(9), alignItems: "baseline" }}>
+                    {totalOverbooked ? (
+                      <>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: OVERBOOK }}>+{totalConf - totalReq}</span>
+                        <span style={{ fontSize: u(20), color: "#94a3b8" }}>overbooked</span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: "#e2e8f0" }}>{totalReq - totalConf}</span>
+                        <span style={{ fontSize: u(20), color: "#94a3b8" }}>still to fill</span>
+                      </>
+                    )}
+                  </div>
+                  <span style={{ color: "#334155" }}>|</span>
+                  <div style={{ display: "flex", gap: u(9), alignItems: "baseline" }}>
+                    <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: "#e2e8f0" }}>{totalReq}</span>
+                    <span style={{ fontSize: u(20), color: "#94a3b8" }}>requested</span>
+                  </div>
                 </div>
               </div>
-              <div style={{ flex: "none", background: "#0f172a", border: "1px solid #1e293b", borderRadius: u(8), padding: `${u(26)} ${u(30)}`, display: "flex", alignItems: "center", gap: u(28) }}>
+              <div style={{ flex: "none", background: "#0f172a", border: "1px solid #334155", borderRadius: u(8), padding: `${u(26)} ${u(30)}`, display: "flex", alignItems: "center", gap: u(28) }}>
                 <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(112), fontWeight: 700, lineHeight: 1, color: HOPPER }}>{totalRisk}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: u(8) }}>
                   <div style={{ fontFamily: DISPLAY, fontSize: u(16), fontWeight: 700, letterSpacing: ".12em", color: HOPPER }}>IN THE HOPPER — SET, NOT CONFIRMED</div>
