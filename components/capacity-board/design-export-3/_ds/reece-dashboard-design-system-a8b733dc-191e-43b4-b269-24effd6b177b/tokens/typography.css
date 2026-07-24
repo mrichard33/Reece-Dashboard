@@ -1,0 +1,42 @@
+/* Reece Dashboard — Typography tokens
+   Four families from the Next.js build:
+   - Inter        → UI text / body (--font-sans)
+   - Montserrat   → display headings, uppercase tracked labels (--font-display)
+   - JetBrains Mono → numbers, IDs, code (--font-mono, tabular)
+   - Nunito Sans  → content / marketing surface (--font-content)
+
+   The UI runs SMALL and dense — base body is 14px (text-sm). Display headings
+   are semibold with uppercase + wide tracking on labels. */
+
+:root {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Montserrat", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-content: "Nunito Sans", "Inter", system-ui, sans-serif;
+
+  /* ---- Type scale (px → rem-ish; matches Tailwind text-* used in app) ---- */
+  --text-2xs: 10px;   /* role chips, P1/P2 badges, eyebrow on dark */
+  --text-xs: 11px;    /* tile labels, captions, meta — common */
+  --text-sm: 14px;    /* body default */
+  --text-base: 16px;  /* card titles */
+  --text-lg: 18px;    /* topbar page title */
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;   /* stat tile headline numbers */
+  --text-4xl: 36px;
+
+  /* ---- Weights ---- */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---- Line heights ---- */
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+
+  /* ---- Tracking ---- */
+  --tracking-wide: 0.025em;   /* uppercase labels */
+  --tracking-wider: 0.05em;   /* eyebrow / role tags */
+}
