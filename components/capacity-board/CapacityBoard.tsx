@@ -30,9 +30,11 @@
  *    indicator (rule 4).
  *  - "TODAY" plain, not the export's "TODAY — CAPACITY ALREADY SPENT"
  *    (removed at Mark's request, 2026-07-22).
- *  - stale = upstream stale flag OR proxy fetch failure; poll failures freeze
- *    the last good numbers under the stale overlay and keep retrying — the
- *    kiosk never dies to a white screen.
+ *  - stale = upstream stale flag OR 3 CONSECUTIVE proxy fetch failures
+ *    (~3 min at POLL_MS). A single dropped poll used to black out the whole
+ *    board; the streak tolerance keeps the last good numbers on screen through
+ *    a blip and still surfaces a genuinely dead feed. Either way the poll keeps
+ *    retrying — the kiosk never dies to a white screen.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -59,6 +61,7 @@ export type CapacityBoardResponse = {
   sweep_interval_ms: number;
   forward_days: number;
   stale: boolean;
+  stale_after_ms?: number;
   offices: BoardOffice[];
   unresolved: BoardBucket;
   totals: BoardBucket & { fill_pct: number | null };
@@ -176,7 +179,7 @@ export default function CapacityBoard({
 }: CapacityBoardProps) {
   const [offset, setOffset] = useState(1); // default view: tomorrow
   const [data, setData] = useState<CapacityBoardResponse | null>(null);
-  const [fetchFailed, setFetchFailed] = useState(false);
+  const [failStreak, setFailStreak] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
   const offsetRef = useRef(offset);
@@ -223,15 +226,16 @@ export default function CapacityBoard({
       // must not clobber the active view.
       if (offsetRef.current === off) {
         setData(body);
-        setFetchFailed(false);
+        setFailStreak(0);
       }
     } catch {
-      if (offsetRef.current === off) setFetchFailed(true);
+      if (offsetRef.current === off) setFailStreak((n) => n + 1);
     }
   }, []);
 
-  // Fetch on day change, then poll every 60s. Failures set fetchFailed (→
-  // stale overlay) and the interval keeps retrying unattended.
+  // Fetch on day change, then poll every 60s. Failures increment failStreak
+  // (→ stale overlay only once POLL_FAIL_TOLERANCE consecutive polls miss) and
+  // the interval keeps retrying unattended.
   useEffect(() => {
     load(offset);
     const poll = setInterval(() => load(offsetRef.current), POLL_MS);
@@ -259,7 +263,11 @@ export default function CapacityBoard({
   const maxOffset = data?.forward_days ?? 14;
 
   // ─── Derive view state (mirrors the export's renderVals) ──────────────────
-  const stale = fetchFailed || !data || data.stale;
+  // Tolerate transient poll failures: one dropped fetch is not stale data.
+  // 3 consecutive misses ≈ 3 min at POLL_MS, still well inside the server's
+  // own freshness window.
+  const POLL_FAIL_TOLERANCE = 3;
+  const stale = failStreak >= POLL_FAIL_TOLERANCE || !data || data.stale;
   const relax = Math.max(0, offset - 1) * 8;
   const thOk = Math.max(45, onTrackAt - relax);
   const thCrit = Math.max(25, criticalBelow - relax);
