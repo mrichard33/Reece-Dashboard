@@ -34,10 +34,16 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
   const projTone: Kpi["tone"] = p.monthlyGoal <= 0 ? "plain" : balTone;
   const signed = (v: number) => (v >= 0 ? "+" : "") + usd(v);
 
-  // Transparency: how NSLI / average sale were computed (window + contracts).
+  // Transparency: how NSLI / average sale / issue rate were computed (window +
+  // contracts + the period-scoped anchor month the window ends before).
+  const anchorLabel = p.rateAnchorMonth
+    ? ` · anchored ${p.rateAnchorMonth.slice(0, 7)}${p.ratePeriodScoped ? " (period-scoped)" : ""}`
+    : "";
   const rateTitle = p.rateWindow
-    ? `Basis: ${windowLabel(p.rateWindow)} · ${p.rateSampleN ?? 0} contracts`
+    ? `Basis: ${windowLabel(p.rateWindow)} · ${p.rateSampleN ?? 0} contracts${anchorLabel}`
     : undefined;
+  // Issue rate rides the NSLI tile (no 9th KPI — it would orphan the 2/4/8 grid).
+  const issuePct = p.issueRate != null ? ` · issue ${(p.issueRate * 100).toFixed(0)}%` : "";
 
   // Single month → "Monthly Goal / full month"; multi-month → "Period Goal / full period".
   const goalLabel = vm.isSingleMonth ? "Monthly Goal" : "Period Goal";
@@ -61,7 +67,7 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
     },
     { label: "Elapsed / Working Days", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
     { label: "Average Sale", sub: "trailing net ÷ sales", value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle },
-    { label: "NSLI", sub: "trailing net ÷ leads issued", value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle },
+    { label: "NSLI", sub: `trailing net ÷ leads issued${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle },
   ];
 
   const toneCls = (t: Kpi["tone"]) =>

@@ -1,6 +1,7 @@
 import { num } from "@/lib/utils";
 import { pct } from "./format";
 import { ScSection } from "./ScSection";
+import { InfoPopover } from "@/components/help/InfoPopover";
 import type { ScorecardView } from "@/lib/queries/scorecard";
 
 /**
@@ -18,6 +19,8 @@ type Row = {
   actual: string;
   paceLabel: string | null;
   paceCls: string;
+  /** helpContent key for an (i) popover on the metric label. */
+  infoKey?: string;
 };
 
 const r0 = (v: number) => Math.round(v);
@@ -36,7 +39,7 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
 
   // ── count rows: goal = per-day target × days (target-to-date) or × selling days (monthly).
   //    A miss on a volume row is amber (recoverable), matching the approved design.
-  const countRow = (metric: string, actual: number, perDay: number | null): Row => {
+  const countRow = (metric: string, actual: number, perDay: number | null, infoKey?: string): Row => {
     const ttd = perDay == null ? null : r0(perDay * daysElapsed);
     const monthly = perDay == null ? null : r0(perDay * sellingDays);
     const paceVal = ttd == null ? null : actual - ttd;
@@ -47,6 +50,7 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
       actual: num(actual),
       paceLabel: paceVal == null ? null : `${paceVal >= 0 ? "+" : ""}${num(paceVal)} vs pace`,
       paceCls: paceVal == null ? MUTE : paceVal >= 0 ? EMERALD : AMBER,
+      infoKey,
     };
   };
 
@@ -71,7 +75,9 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
   };
 
   const rows: Row[] = [
-    countRow("Leads", a.leads, null),
+    // Leads goal is DERIVED (ruled 2026-08-04): issues-needed ÷ historical
+    // issue rate — it moves when the trailing issue rate moves, hence the (i).
+    countRow("Leads", a.leads, d.target_leads_per_day, "scorecard.leadsGoal"),
     countRow("Issued", a.issued, d.target_issued_per_day),
     countRow("Demos", a.demos, d.target_demoed_per_day),
     countRow("Sales", a.sales, d.target_closed_per_day),
@@ -125,7 +131,16 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
                 key={row.metric}
                 className={`border-t border-slate-50 dark:border-slate-900 ${i === 4 ? "border-t-2 border-t-slate-200 dark:border-t-slate-700" : ""}`}
               >
-                <td className="px-2 py-2 font-sans font-medium text-slate-700 dark:text-slate-200 sm:px-3">{row.metric}</td>
+                <td className="px-2 py-2 font-sans font-medium text-slate-700 dark:text-slate-200 sm:px-3">
+                  {row.infoKey ? (
+                    <span className="inline-flex items-center gap-1">
+                      {row.metric}
+                      <InfoPopover helpKey={row.infoKey} align="left" />
+                    </span>
+                  ) : (
+                    row.metric
+                  )}
+                </td>
                 <td className="hidden px-3 py-2 text-right text-slate-500 dark:text-slate-400 sm:table-cell">{row.monthly ?? "—"}</td>
                 <td className="px-2 py-2 text-right text-slate-500 dark:text-slate-400 sm:px-3">{row.targetToDate ?? "—"}</td>
                 <td className="px-2 py-2 text-right font-semibold text-slate-900 dark:text-slate-100 sm:px-3">{row.actual}</td>

@@ -267,6 +267,20 @@ export const helpContent: Record<string, HelpEntry> = {
       "`lp_market_scorecard_daily` (latest snapshot, written daily by the LP-MCP job from the live LP API — NOT the lp_leads cache) joined at read time to the editable `scorecard_goals`. Goal columns / pace / variance are computed in `lib/queries/scorecard.ts`.",
     fix: "If a number looks wrong, run the backfill for a closed window (`POST /n8n/admin/goal-scorecard-run`) and reconcile to the Reece Monday-a.m. export. Edit the goal targets via the admin Goals editor on this page. The PROVISIONAL banner clears once a market is reconciled.",
   },
+  "scorecard.leadsGoal": {
+    title: "Leads goal (derived)",
+    what: "The Leads goal is NOT entered anywhere — it is derived: issues-needed (period goal ÷ NSLI) ÷ the market's historical issue rate (issued ÷ leads, from actuals). Because the issue rate is observed history, this goal MOVES with performance: if the issue rate declines, the Leads goal RISES (more leads needed per issue) rather than showing a miss on Issued. That is correct for a derived data point — read a rising Leads goal as a conversion change, not a demand change.",
+    where:
+      "Issue rate comes from `lp_market_scorecard_daily` trailing months via `computeTrailingRates` in `lib/queries/scorecard.ts` — the SAME widened window (and visible basis) as NSLI and Average Sale, anchored to the selected period (period-scoped). Company row = Σ of the per-office chains, never a blended rate. Distinct from % Issue, which is issued ÷ sets.",
+    fix: "If the Leads goal looks off, check the NSLI/issue-rate basis tooltip on the Goal & Pace header (window + contracts + anchor month). Thin history widens the window automatically; a market with zero leads history shows '—'. The dollar goal itself is edited in the Goals editor — the Leads figure always follows it through the chain.",
+  },
+  "scorecard.issueRate": {
+    title: "Issue rate (calculated)",
+    what: "Issued ÷ leads over the trailing rate window — the observed share of leads that become issued appointments. A DERIVED data point (never a target ops sets); it turns issues-needed into leads-needed in the goal chain. Not the same as % Issue (issued ÷ sets).",
+    where:
+      "Computed in `computeTrailingRates` (`lib/queries/scorecard.ts`) from `lp_market_scorecard_daily`, sharing the NSLI window and its widening/fallback rules, anchored to the selected period.",
+    fix: "A null issue rate means the window has zero leads — check the warehouse rows for the market's trailing months. The basis tooltip on the NSLI tile shows which window produced it.",
+  },
   "scorecard.header": {
     title: "Goal & pace header",
     what: "Selling days, days elapsed, prorated goal-to-date, average sale, NSLI, gross/pending dollars and per-day pace. Everything is on a SELLING-DAY basis (Mon–Sat minus Reece closures). MTD Goal = monthly goal × (selling days elapsed ÷ selling days in the month). Pace targets derive from the monthly goal $ ÷ trailing NSLI ÷ selling days (provisional).",

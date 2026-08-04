@@ -4,6 +4,9 @@
  *
  * Locked chain (per office, per period):
  *   issues_needed = period_goal ÷ office NSLI
+ *   leads_needed  = issues_needed ÷ office issue rate   (issued ÷ leads, from
+ *                   historical actuals — a DERIVED data point, never entered;
+ *                   ruled 2026-08-04. Distinct from % Issue = issued ÷ sets.)
  *   demos_needed  = issues_needed × target demo (sit) rate
  *   sales_needed  = period_goal ÷ office NET average sale
  *   *_per_day     = *_needed ÷ selling days in the period   (target side)
@@ -27,15 +30,20 @@ export type TargetChainInput = {
   avgSale: number | null;
   /** Target demo (sit) rate, 0–100. */
   targetDemoPct: number;
+  /** Historical issue rate (issued ÷ leads, 0–1 fraction); null/0 → leads
+   *  target null (rendered "—"), never NaN/Infinity. */
+  issueRate: number | null;
 };
 
 export type TargetTotals = {
+  leads: number | null;
   issued: number | null;
   demoed: number | null;
   closed: number | null;
 };
 
 export type PerDayTargets = {
+  leadsPerDay: number | null;
   issuedPerDay: number | null;
   demoedPerDay: number | null;
   closedPerDay: number | null;
@@ -44,9 +52,10 @@ export type PerDayTargets = {
 /** Full-period target counts for one office via the locked NSLI chain. */
 export function targetTotals(i: TargetChainInput): TargetTotals {
   const issued = i.nsli != null && i.nsli > 0 ? i.periodGoal / i.nsli : null;
+  const leads = issued != null && i.issueRate != null && i.issueRate > 0 ? issued / i.issueRate : null;
   const demoed = issued != null ? issued * (i.targetDemoPct / 100) : null;
   const closed = i.avgSale != null && i.avgSale > 0 ? i.periodGoal / i.avgSale : null;
-  return { issued, demoed, closed };
+  return { leads, issued, demoed, closed };
 }
 
 /** Total ÷ period selling days, rounded to 0.1. Null on missing total or 0 days. */
@@ -57,6 +66,7 @@ export function perDayTarget(total: number | null, periodDays: number): number |
 
 export function perDayTargets(t: TargetTotals, periodDays: number): PerDayTargets {
   return {
+    leadsPerDay: perDayTarget(t.leads, periodDays),
     issuedPerDay: perDayTarget(t.issued, periodDays),
     demoedPerDay: perDayTarget(t.demoed, periodDays),
     closedPerDay: perDayTarget(t.closed, periodDays),
@@ -84,6 +94,7 @@ export function sumPerDayTargets(offices: PerDayTargets[]): PerDayTargets {
     return any ? round1(sum) : null;
   };
   return {
+    leadsPerDay: sumOf((o) => o.leadsPerDay),
     issuedPerDay: sumOf((o) => o.issuedPerDay),
     demoedPerDay: sumOf((o) => o.demoedPerDay),
     closedPerDay: sumOf((o) => o.closedPerDay),
@@ -104,7 +115,12 @@ export function sumTargetTotals(list: TargetTotals[]): TargetTotals {
     }
     return any ? sum : null;
   };
-  return { issued: sumOf((t) => t.issued), demoed: sumOf((t) => t.demoed), closed: sumOf((t) => t.closed) };
+  return {
+    leads: sumOf((t) => t.leads),
+    issued: sumOf((t) => t.issued),
+    demoed: sumOf((t) => t.demoed),
+    closed: sumOf((t) => t.closed),
+  };
 }
 
 /**
