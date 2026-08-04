@@ -38,6 +38,26 @@ export function todayET(): string {
   }).format(new Date());
 }
 
+/** First of the current ET month, YYYY-MM-DD — the ONLY correct "current month"
+ *  anchor for business logic. Never use getUTCMonth()/browser-local dates: between
+ *  ~20:00 ET and midnight on the last day of a month, UTC has already rolled to
+ *  the next month. */
+export function firstOfMonthET(): string {
+  return `${todayET().slice(0, 7)}-01`;
+}
+
+/** ET year-to-date month starts (first-of-month), newest first. */
+export function yearToDateMonthsET(): string[] {
+  const today = todayET();
+  const y = today.slice(0, 4);
+  const currentMonth = Number(today.slice(5, 7));
+  const out: string[] = [];
+  for (let m = currentMonth; m >= 1; m--) {
+    out.push(`${y}-${String(m).padStart(2, "0")}-01`);
+  }
+  return out;
+}
+
 /** Add N calendar days to a YYYY-MM-DD (noon-UTC anchor avoids DST edges). */
 export function addDays(ymd: string, n: number): string {
   const p = ymd.split("-");

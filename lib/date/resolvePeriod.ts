@@ -215,7 +215,10 @@ export function resolvePeriod(
     }
   }
 
-  // Default / fallback: month-to-date snapshot.
+  // Default / fallback: month-to-date snapshot. The label always spells out the
+  // resolved completed-day range ("Aug 1–3") so the active window is never
+  // ambiguous; on the 1st (no completed selling days yet) it says so instead.
   const start = monthStart(today);
-  return make("month", start, lastDone, "snapshot", `${monthLabel(start)} (MTD)`);
+  const range = lastDone >= start ? fmtRange(start, lastDone) : "no completed days yet";
+  return make("month", start, lastDone, "snapshot", `${monthLabel(start)} (MTD) · ${range}`);
 }

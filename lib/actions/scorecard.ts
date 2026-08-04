@@ -5,7 +5,8 @@ import { lpService } from "@/lib/supabase/lp";
 import { getAccessContext } from "@/lib/auth";
 import { GoalSchema } from "@/lib/scorecard/goalSchema";
 import { getBaselineNetSales, getTrailingRates } from "@/lib/queries/scorecard";
-import { SCORECARD_MARKETS } from "@/lib/scorecard/markets";
+import { OFFICE_SOURCE_CODES } from "@/lib/scorecard/markets";
+import { firstOfMonthET } from "@/lib/date/sellingDays";
 
 /**
  * Admin-gated editor for the scorecard goal targets. Writes go through the
@@ -21,8 +22,9 @@ import { SCORECARD_MARKETS } from "@/lib/scorecard/markets";
 
 export type ScorecardActionResult = { ok: boolean; error?: string };
 
-/** The office codes whose goals roll up into the company (REECE) total. */
-const OFFICE_CODES = SCORECARD_MARKETS.map((m) => m.code);
+/** The office SOURCE codes whose goals roll up into the company (REECE) total —
+ *  every warehouse code, so Orlando contributes both its ORL and LAKE goal rows. */
+const OFFICE_CODES = [...OFFICE_SOURCE_CODES];
 
 type Sb = ReturnType<typeof lpService>;
 
@@ -157,9 +159,9 @@ async function rollupCompanyGoal(
   return null;
 }
 
-/** First-of-month (UTC) for today — the default freeze target when none is given. */
+/** First-of-month (ET) for today — the default freeze target when none is given.
+ *  ET, not UTC: between ~20:00 ET and midnight on a month's last day, UTC has
+ *  already rolled into the next month and would freeze the wrong row. */
 function firstOfCurrentMonth(): string {
-  const d = new Date();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${m}-01`;
+  return firstOfMonthET();
 }

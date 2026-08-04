@@ -5,15 +5,21 @@ import type { ScorecardActuals } from "@/lib/queries/scorecard";
  * safe to unit-test in a plain node env). The DB wrapper lives in
  * lib/queries/scorecardAggregate.ts.
  *
- * Strategy: take the LATEST snapshot per month (max as_of_date per period_start)
- * so each month is counted once at its final state, SUM the count/$ numerators,
- * and RE-DERIVE every ratio from the summed numerators/denominators — never average
- * percentages (NSLI = Σreleased ÷ Σissued, not the mean of monthly NSLIs).
+ * Strategy: take the LATEST snapshot per (market, month) — max as_of_date per
+ * (market, period_start) — so each month of each source market is counted once at
+ * its final state, SUM the count/$ numerators, and RE-DERIVE every ratio from the
+ * summed numerators/denominators — never average percentages (NSLI = Σreleased ÷
+ * Σissued, not the mean of monthly NSLIs).
+ *
+ * Keying by (market, period_start) makes the same function serve two jobs:
+ * multi-month aggregates (3-Month / YTD) AND multi-source display markets
+ * (Orlando = ORL_MKT + LAKE_MKT rows summed), including both at once.
  */
 
 export type MonthlySnapshotRow = {
   period_start: string;
   as_of_date: string;
+  market?: unknown;
   [k: string]: unknown;
 };
 
@@ -46,12 +52,14 @@ export function money(numr: number, den: number): number | null {
 }
 
 export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx): ScorecardActuals {
-  // Keep the latest snapshot per month.
+  // Keep the latest snapshot per (market, month) so multi-source display markets
+  // (Orlando = ORL_MKT + LAKE_MKT) sum correctly alongside multi-month ranges.
   const latestPerMonth = new Map<string, MonthlySnapshotRow>();
   for (const r of rows) {
-    const prev = latestPerMonth.get(r.period_start);
+    const key = `${String(r.market ?? "")}|${r.period_start}`;
+    const prev = latestPerMonth.get(key);
     if (!prev || String(r.as_of_date) > String(prev.as_of_date)) {
-      latestPerMonth.set(r.period_start, r);
+      latestPerMonth.set(key, r);
     }
   }
   const months = [...latestPerMonth.values()];
