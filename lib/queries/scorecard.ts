@@ -147,17 +147,28 @@ export type ScorecardDerived = {
   rate_window: RateWindow | null;
   /** Sales-count sample (contracts) behind the chosen rate window. */
   rate_sample_n: number | null;
+  /** First-of-month the rate window ends BEFORE (period-scoped D3 anchor). */
+  rate_anchor_month: string | null;
+  /** True when the anchor came from the selected period (vs the current-month
+   *  fallback for period-less reads). */
+  rate_period_scoped: boolean;
+  /** Historical issue rate (issued ÷ leads, 0–1) behind the Leads goal — a
+   *  derived data point that MOVES with performance; surfaced, never entered. */
+  issue_rate: number | null;
   /** % gap between the goal-anchored sales target (goal ÷ avg sale) and the funnel
    *  flow (demos × close%). A material value flags inconsistent office assumptions;
    *  null when either side is uncomputable. */
   sales_target_divergence_pct: number | null;
   // ⚠ TIE-OUT pace targets (per-office NSLI chain: period goal ÷ NSLI ÷ period
   // selling days; company = Σ office per-day targets, never blended NSLI).
+  // Leads = issues-needed ÷ historical issue rate (derived, ruled 2026-08-04).
+  target_leads_per_day: number | null;
   target_issued_per_day: number | null;
   target_demoed_per_day: number | null;
   target_closed_per_day: number | null;
   /** Actual ÷ elapsed COMPLETED selling days. Null when 0 days have completed
    *  (first of the month) — rendered "—", never a division by zero. */
+  actual_leads_per_day: number | null;
   actual_issued_per_day: number | null;
   actual_demoed_per_day: number | null;
   actual_closed_per_day: number | null;
@@ -281,7 +292,7 @@ export async function getBaselineNetSales(
   const sources = sourcesOverride ?? marketSources(market);
   const { data: rows } = await sb
     .from("lp_market_scorecard_daily")
-    .select("market, net_sales, issued, sales, period_start, as_of_date")
+    .select("market, net_sales, issued, sales, leads, period_start, as_of_date")
     .in("market", sources as string[])
     .lt("period_start", periodStart)
     .order("period_start", { ascending: false })
@@ -322,6 +333,12 @@ export type RateWindow = "trailing_3" | "trailing_6" | "trailing_12" | "company"
 export type TrailingRates = {
   nsli: number | null;
   avgSale: number | null;
+  /** Historical issue rate = issued ÷ leads over the SAME window (0–1 fraction).
+   *  A DERIVED data point (ruled 2026-08-04), never entered by hand — it turns
+   *  issues-needed into leads-needed (leads = issues ÷ this). DISTINCT from the
+   *  existing pct_issue actual, which is issued ÷ SETS. Null when the window has
+   *  zero leads. */
+  issueRate: number | null;
   /** Which window produced the rates (null only when there's no data at all). */
   window: RateWindow | null;
   /** Sales-count sample behind the chosen window (contracts). */
@@ -329,16 +346,24 @@ export type TrailingRates = {
 };
 
 /** Latest snapshot per completed month, aggregated to the fields the rates need. */
-export type RateMonth = { period_start: string; net: number; issued: number; sales: number };
+export type RateMonth = { period_start: string; net: number; issued: number; sales: number; leads: number };
 
 const MIN_WIDEN = 30; // widen the window below this sales count …
 const MIN_USE = 20; //   … but never divide by a window under this many contracts.
 
-/** Σ net/issued/sales over the k most recent months (months MUST be latest-first). */
-function sumWindow(months: RateMonth[], k: number): { net: number; issued: number; sales: number } {
+/** Σ net/issued/sales/leads over the k most recent months (months MUST be latest-first). */
+function sumWindow(
+  months: RateMonth[],
+  k: number,
+): { net: number; issued: number; sales: number; leads: number } {
   return months.slice(0, k).reduce(
-    (a, r) => ({ net: a.net + r.net, issued: a.issued + r.issued, sales: a.sales + r.sales }),
-    { net: 0, issued: 0, sales: 0 },
+    (a, r) => ({
+      net: a.net + r.net,
+      issued: a.issued + r.issued,
+      sales: a.sales + r.sales,
+      leads: a.leads + r.leads,
+    }),
+    { net: 0, issued: 0, sales: 0, leads: 0 },
   );
 }
 
@@ -351,9 +376,15 @@ export function computeTrailingRates(
   companyMonths: RateMonth[],
 ): TrailingRates {
   const rate = (n: number, d: number): number | null => (d > 0 ? Math.round(n / d) : null);
-  const at = (w: { net: number; issued: number; sales: number }, window: RateWindow): TrailingRates => ({
+  const at = (
+    w: { net: number; issued: number; sales: number; leads: number },
+    window: RateWindow,
+  ): TrailingRates => ({
     nsli: rate(w.net, w.issued),
     avgSale: rate(w.net, w.sales),
+    // Same window as nsli/avgSale — one window, one internally consistent
+    // chain. 4-dp fraction; zero leads → null (renders "—", never Infinity).
+    issueRate: w.leads > 0 ? Math.round((w.issued / w.leads) * 10000) / 10000 : null,
     window,
     sampleN: w.sales,
   });
@@ -369,7 +400,7 @@ export function computeTrailingRates(
   const c3 = sumWindow(companyMonths, 3);
   if (c3.sales > 0) return at(c3, "company");
   // No usable data anywhere (brand-new market, empty warehouse).
-  return { nsli: null, avgSale: null, window: null, sampleN: 0 };
+  return { nsli: null, avgSale: null, issueRate: null, window: null, sampleN: 0 };
 }
 
 /**
@@ -390,12 +421,14 @@ function latestRateMonths(rows: Record<string, unknown>[]): RateMonth[] {
     const net = Number(r.net_sales) || 0;
     const issued = Number(r.issued) || 0;
     const sales = Number(r.sales) || 0;
+    const leads = Number(r.leads) || 0;
     if (acc) {
       acc.net += net;
       acc.issued += issued;
       acc.sales += sales;
+      acc.leads += leads;
     } else {
-      byMonth.set(ps, { period_start: ps, net, issued, sales });
+      byMonth.set(ps, { period_start: ps, net, issued, sales, leads });
     }
   }
   return [...byMonth.values()]; // desc month order preserved from the query
@@ -415,7 +448,7 @@ export async function getTrailingRates(
   const query = (codes: readonly string[]) =>
     sb
       .from("lp_market_scorecard_daily")
-      .select("market, net_sales, issued, sales, period_start, as_of_date")
+      .select("market, net_sales, issued, sales, leads, period_start, as_of_date")
       .in("market", codes as string[])
       .lt("period_start", anchorMonth)
       .order("period_start", { ascending: false })
@@ -436,6 +469,29 @@ export async function getTrailingRates(
   );
 }
 
+/**
+ * PERIOD-SCOPED rate anchor (the "D3" fix): rates price a period from the
+ * months strictly BEFORE that period's first month.
+ *
+ *   • The period's own (possibly partial) months are never included — a
+ *     period's performance must not move its own goal (circularity).
+ *   • Start-anchoring makes a period's targets stable no matter when it is
+ *     viewed: June's rates seen in August are June's rates as they stood
+ *     entering June.
+ *   • MTD (anchors at this month) and YTD (anchors at January) therefore
+ *     price with DIFFERENT windows — both reprice when the period changes.
+ *
+ * No resolved period → the current ET month (the pre-D3 behavior, kept for
+ * callers that plan the current month, e.g. the goal editor).
+ */
+export function resolveRateAnchor(resolved?: ResolvedPeriod): {
+  anchorMonth: string;
+  periodScoped: boolean;
+} {
+  if (!resolved?.periodStart) return { anchorMonth: firstOfMonthET(), periodScoped: false };
+  return { anchorMonth: `${resolved.periodStart.slice(0, 7)}-01`, periodScoped: true };
+}
+
 function pts(actual: number | null, target: number | null): number | null {
   if (actual == null || target == null) return null;
   return Math.round((actual - target) * 10) / 10;
@@ -452,6 +508,7 @@ function derive(
   periodGoalOverride?: number | null,
   periodGoalFull?: number | null,
   rates?: TrailingRates,
+  anchor?: { anchorMonth: string; periodScoped: boolean },
 ): ScorecardDerived {
   const avgSaleTarget = rates?.avgSale ?? null;
   // Selling-day basis (both sides): the FULL period's selling days for target
@@ -491,10 +548,15 @@ function derive(
     avg_sale_target: avgSaleTarget ?? null,
     rate_window: rates?.window ?? null,
     rate_sample_n: rates?.sampleN ?? null,
+    rate_anchor_month: anchor?.anchorMonth ?? null,
+    rate_period_scoped: anchor?.periodScoped ?? false,
+    issue_rate: rates?.issueRate ?? null,
     sales_target_divergence_pct,
+    target_leads_per_day: targets.perDay.leadsPerDay,
     target_issued_per_day: targets.perDay.issuedPerDay,
     target_demoed_per_day: targets.perDay.demoedPerDay,
     target_closed_per_day: targets.perDay.closedPerDay,
+    actual_leads_per_day: perDayActual(actuals.leads, elapsed),
     actual_issued_per_day: perDayActual(actuals.issued, elapsed),
     actual_demoed_per_day: perDayActual(actuals.demos, elapsed),
     actual_closed_per_day: perDayActual(actuals.sales, elapsed),
@@ -594,7 +656,7 @@ async function fetchPriorMonthsBySource(
 ): Promise<Map<string, RateMonth[]>> {
   const { data } = await sb
     .from("lp_market_scorecard_daily")
-    .select("market, net_sales, issued, sales, period_start, as_of_date")
+    .select("market, net_sales, issued, sales, leads, period_start, as_of_date")
     .in("market", codes as string[])
     .lt("period_start", anchorMonth)
     .order("period_start", { ascending: false })
@@ -614,6 +676,7 @@ async function fetchPriorMonthsBySource(
       net: Number(r.net_sales) || 0,
       issued: Number(r.issued) || 0,
       sales: Number(r.sales) || 0,
+      leads: Number(r.leads) || 0,
     });
     out.set(mkt, list);
   }
@@ -630,6 +693,7 @@ function combineRateMonths(lists: RateMonth[][]): RateMonth[] {
         acc.net += m.net;
         acc.issued += m.issued;
         acc.sales += m.sales;
+        acc.leads += m.leads;
       } else {
         byMonth.set(m.period_start, { ...m });
       }
@@ -659,10 +723,11 @@ async function buildView(
   const isCompany = market === "REECE";
   const displaySources = marketSources(market);
   const cal = resolveSellingCalendar();
-  // NSLI/avg-sale anchor: the current ET month, so every period view uses one
-  // current planning rate. (Was getUTCMonth() — wrong for a few hours at each
-  // ET month boundary.)
-  const anchorMonth = firstOfMonthET();
+  // PERIOD-SCOPED rate anchor (D3): NSLI, avg sale, and issue rate price the
+  // SELECTED period from the months before it — MTD and YTD reprice together
+  // when the period changes. Period-less reads keep the current ET month.
+  const anchor = resolveRateAnchor(resolved);
+  const anchorMonth = anchor.anchorMonth;
 
   const goalCodes = isCompany ? ["REECE", ...OFFICE_SOURCE_CODES] : [...displaySources];
   const priorCodes = isCompany
@@ -781,6 +846,7 @@ async function buildView(
       nsli: uRates.nsli,
       avgSale: uRates.avgSale,
       targetDemoPct: demoPct,
+      issueRate: uRates.issueRate,
     });
   });
   const targets: ResolvedTargets = {
@@ -808,6 +874,7 @@ async function buildView(
       periodGoalToDate,
       isAggregate ? periodGoalFull : null,
       rates,
+      anchor,
     ),
   };
 }
@@ -1061,6 +1128,9 @@ export type MarketGoalEntry = {
    *  surfaced so a small-market figure is explainable. */
   rateWindow: RateWindow | null;
   rateSampleN: number;
+  /** CALCULATED historical issue rate (issued ÷ leads, 0–1) — turns issues-needed
+   *  into leads-needed. Derived from actuals (ruled 2026-08-04), never editable. */
+  issueRate: number | null;
 };
 
 export type ScorecardGoalsEditorData = {
@@ -1129,6 +1199,7 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         avgSale: rates.avgSale,
         rateWindow: rates.window,
         rateSampleN: rates.sampleN,
+        issueRate: rates.issueRate,
       };
     }),
   );

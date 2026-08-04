@@ -10,6 +10,7 @@ export const SC_GLOSSARY: GlossaryGroup[] = [
   {
     group: "Funnel & counts",
     items: [
+      { term: "Leads", def: "Raw leads received — the very top of the funnel. Its GOAL is derived from the historical issue rate (issues-needed ÷ issue rate), never entered." },
       { term: "Set", def: "Appointments set with prospects — the top of the funnel." },
       { term: "Issued", def: "Leads issued to reps to go work." },
       { term: "Net Issue", def: "Issued leads after removing cancellations and duplicates." },
@@ -24,6 +25,7 @@ export const SC_GLOSSARY: GlossaryGroup[] = [
       { term: "Close %", def: "Sold ÷ demos — the gross close rate." },
       { term: "% Net Close", def: "Net closes ÷ demos — closes that stuck." },
       { term: "Demo %", def: "Demos ÷ net issued — how many issued leads demo." },
+      { term: "Issue Rate", def: "Issued ÷ leads over the trailing rate window — calculated from history, drives the derived Leads goal. Distinct from % Issue (issued ÷ sets)." },
       { term: "Good Rate %", def: "Share of sold dollars that survive (aren’t cancelled) — (sold − cancelled) ÷ sold." },
       { term: "KO %", def: "Knock-off rate — jobs cancelled after the sale. Lower is better." },
     ],

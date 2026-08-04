@@ -112,6 +112,12 @@ export type ScorecardVM = {
      *  for the "how was this computed" tooltip. */
     rateWindow: string | null;
     rateSampleN: number | null;
+    /** Historical issue rate (issued ÷ leads, 0–1) from the same window — drives
+     *  the derived Leads goal; surfaced on the NSLI tile. Null = no leads history. */
+    issueRate: number | null;
+    /** Period-scoped rate anchor (first-of-month the window ends before). */
+    rateAnchorMonth: string | null;
+    ratePeriodScoped: boolean;
     daysElapsed: number;
     sellingDays: number;
   };
@@ -332,6 +338,9 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
       nsli: g.trailing_nsli ?? 0,
       rateWindow: d.rate_window,
       rateSampleN: d.rate_sample_n,
+      issueRate: d.issue_rate,
+      rateAnchorMonth: d.rate_anchor_month,
+      ratePeriodScoped: d.rate_period_scoped,
       daysElapsed,
       sellingDays,
     },

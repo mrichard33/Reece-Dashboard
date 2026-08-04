@@ -142,9 +142,17 @@ export function GoalEditor({
   // close %, which drifts off the dollar goal).
   const nsli = entry?.nsli ?? 0;
   const avgSale = entry?.avgSale ?? 0;
+  const issueRate = entry?.issueRate ?? null;
   const demoPct = Number(w.target_demo_pct) || 0;
-  const leadsNeeded = nsli > 0 ? Math.round(effectiveGoal / nsli) : null;
-  const issuedPerDay = leadsNeeded != null ? leadsNeeded / wd : null;
+  // goal ÷ NSLI is ISSUES needed (the old `leadsNeeded` name was a mislabel);
+  // leads needed = issues ÷ the historical issue rate (issued ÷ leads, derived).
+  const issuesNeeded = nsli > 0 ? Math.round(effectiveGoal / nsli) : null;
+  const leadsNeeded =
+    issuesNeeded != null && issueRate != null && issueRate > 0
+      ? Math.round(issuesNeeded / issueRate)
+      : null;
+  const issuedPerDay = issuesNeeded != null ? issuesNeeded / wd : null;
+  const leadsPerDay = leadsNeeded != null ? leadsNeeded / wd : null;
   const demoedPerDay = issuedPerDay != null ? issuedPerDay * (demoPct / 100) : null;
   const closedPerDay = avgSale > 0 ? effectiveGoal / avgSale / wd : null;
 
@@ -304,12 +312,23 @@ export function GoalEditor({
             {entry?.rateWindow && (
               <span className="text-[10.5px] text-slate-400"> ({rateWindowLabel(entry.rateWindow)} · n={entry.rateSampleN})</span>
             )}
-            {" · leads needed "}
-            <span className="font-mono font-semibold">{leadsNeeded != null ? num(leadsNeeded) : "—"}</span>
-            {nsli <= 0 && <span className="ml-2 text-amber-600">no issued history yet — leads / pace unavailable</span>}
+            {" · issues needed "}
+            <span className="font-mono font-semibold">{issuesNeeded != null ? num(issuesNeeded) : "—"}</span>
+            {nsli <= 0 && <span className="ml-2 text-amber-600">no issued history yet — issues / pace unavailable</span>}
           </p>
           <p className="mt-1 text-slate-600 dark:text-slate-300">
-            Required / day — issued <span className="font-mono">{n1(issuedPerDay)}</span>, demoed <span className="font-mono">{n1(demoedPerDay)}</span>, closed <span className="font-mono">{n1(closedPerDay)}</span>
+            Issue rate{" "}
+            <span className="font-mono">{issueRate != null ? `${(issueRate * 100).toFixed(0)}%` : "—"}</span>{" "}
+            <span className="text-[10.5px] uppercase tracking-wider text-slate-400">calculated</span>
+            {entry?.rateWindow && issueRate != null && (
+              <span className="text-[10.5px] text-slate-400"> ({rateWindowLabel(entry.rateWindow)})</span>
+            )}
+            {" · leads needed "}
+            <span className="font-mono font-semibold">{leadsNeeded != null ? num(leadsNeeded) : "—"}</span>
+            {issueRate == null && <span className="ml-2 text-amber-600">no leads history yet — leads goal unavailable</span>}
+          </p>
+          <p className="mt-1 text-slate-600 dark:text-slate-300">
+            Required / day — leads <span className="font-mono">{n1(leadsPerDay)}</span>, issued <span className="font-mono">{n1(issuedPerDay)}</span>, demoed <span className="font-mono">{n1(demoedPerDay)}</span>, closed <span className="font-mono">{n1(closedPerDay)}</span>
           </p>
         </div>
 
