@@ -14,8 +14,16 @@
  *
  * Branch→market resolution itself lives upstream in LP Supabase
  * (lp_branch_market_map) + LP-MCP's market-resolver; the dashboard only ever sees
- * *_MKT codes. Note BOCA/MIAMI/RFED branches map to FTLAU_MKT upstream, so Fort
- * Lauderdale includes Boca Raton.
+ * *_MKT codes.
+ *
+ * RECONCILIATION GROUPING RULE (ruling, 2026-08-04): BOCA, MIAMI, and RFED
+ * branches all roll into FTLAU_MKT upstream — intended behavior, not a defect.
+ * LP reports (e.g. Jobs by Milestone Date) still print those branch codes
+ * separately; when comparing report totals to dashboard totals, compare
+ * BOCA + FTLAU + MIAMI + RFED from the report against the single Fort
+ * Lauderdale market here. Likewise the LAKE branch: every LAKE number rolls
+ * into Orlando and Lakeland is never a display entity anywhere on the
+ * dashboard.
  */
 
 export type ScorecardMarket = {

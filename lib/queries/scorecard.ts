@@ -271,11 +271,14 @@ export async function getBaselineNetSales(
   sb: Sb,
   market: string,
   periodStart: string,
+  sourcesOverride?: readonly string[],
 ): Promise<{ value: number; source: GoalBaselineSource }> {
   // One query (prior-year-same-month is within period_start < periodStart), then the
   // shared pure resolver. Multi-source display markets (Orlando = ORL+LAKE) sum the
-  // latest snapshot per source-month before resolving.
-  const sources = marketSources(market);
+  // latest snapshot per source-month before resolving. `sourcesOverride` lets a
+  // caller pin the exact source rows (e.g. a SECONDARY source row like LAKE_MKT
+  // resolves per-source, not against the combined display-market baseline).
+  const sources = sourcesOverride ?? marketSources(market);
   const { data: rows } = await sb
     .from("lp_market_scorecard_daily")
     .select("market, net_sales, issued, sales, period_start, as_of_date")
@@ -688,12 +691,24 @@ async function buildView(
   const baselineFor = (srcs: readonly string[], atMonth: string) =>
     computeBaselineFromRows(rateMonthsToBaselineRows(monthsFor(srcs)), atMonth);
 
-  /** Live effective $ goal for ONE source code (growth mode resolved per source). */
+  // A merged market's PRIMARY source row carries the WHOLE market's goal
+  // (ruling: Orlando's entire goal lives in ORL_MKT; LAKE_MKT's live goal is
+  // zeroed). So a primary row in growth mode resolves against the COMBINED
+  // display-market baseline — ORL at +15% means "Orlando grows 15% over the
+  // Orlando (ORL+LAKE) baseline", not over ORL's slice alone. Secondary rows
+  // keep per-source resolution (they hold dollars-0 and contribute nothing;
+  // if one were ever set back to growth mode, per-source resolution avoids
+  // double-counting the combined baseline).
+  const growthBaselineSources = new Map<string, readonly string[]>();
+  for (const m of SCORECARD_MARKETS) growthBaselineSources.set(m.sources[0] ?? m.code, m.sources);
+
+  /** Live effective $ goal for ONE source code (growth mode resolved per the rule above). */
   const liveEffectiveFor = (src: string, atMonth: string): number => {
     const row = goalsBySource.get(src);
     if (!row) return 0;
     if (row.goal_mode === "growth_pct" && row.growth_pct != null) {
-      return Math.round(baselineFor([src], atMonth).value * (1 + Number(row.growth_pct) / 100));
+      const baseSrcs = growthBaselineSources.get(src) ?? [src];
+      return Math.round(baselineFor(baseSrcs, atMonth).value * (1 + Number(row.growth_pct) / 100));
     }
     return Number(row.monthly_goal_dollars) || 0;
   };
@@ -729,11 +744,16 @@ async function buildView(
     ? SCORECARD_MARKETS.map((m) => m.sources)
     : [displaySources];
 
+  // Growth-mode frozen rows resolve their baseline under the same primary-
+  // source rule as live rows.
+  const baselineForSource = (src: string, atMonth: string) =>
+    baselineFor(growthBaselineSources.get(src) ?? [src], atMonth);
+
   const isAggregate = resolved?.source === "aggregate";
   const unitGoals = isAggregate
     ? await Promise.all(
         units.map((srcs) =>
-          resolvePeriodGoalForSources(sb, srcs, resolved!, cal, liveEffectiveFor, baselineFor),
+          resolvePeriodGoalForSources(sb, srcs, resolved!, cal, liveEffectiveFor, baselineForSource),
         ),
       )
     : units.map((srcs) => ({
@@ -823,7 +843,7 @@ async function resolvePeriodGoalForSources(
   resolved: ResolvedPeriod,
   cal: SellingCalendar,
   liveEffectiveFor: (src: string, atMonth: string) => number,
-  baselineFor: (srcs: readonly string[], atMonth: string) => { value: number },
+  baselineForSource: (src: string, atMonth: string) => { value: number },
 ): Promise<{ toDate: number; full: number; estimated: boolean }> {
   const months = monthsInRange(resolved.periodStart, resolved.periodEnd);
 
@@ -854,7 +874,7 @@ async function resolvePeriodGoalForSources(
       if (row) {
         monthGoal +=
           row.goal_mode === "growth_pct" && row.growth_pct != null
-            ? Math.round(baselineFor([src], monthStart).value * (1 + row.growth_pct / 100))
+            ? Math.round(baselineForSource(src, monthStart).value * (1 + row.growth_pct / 100))
             : Number(row.goal_dollars) || 0;
       } else {
         monthGoal += liveEffectiveFor(src, monthStart);
@@ -1086,8 +1106,14 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         .eq("market", market)
         .maybeSingle();
       const goals = (data as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
+      // Primary source rows (and REECE) resolve growth against their display
+      // market's combined baseline; secondary rows (LAKE_MKT) per-source, so a
+      // merged market's whole goal lives on the primary row without
+      // double-counting.
+      const isPrimary =
+        market === "REECE" || SCORECARD_MARKETS.some((m) => (m.sources[0] ?? m.code) === market);
       const [baseline, rates] = await Promise.all([
-        getBaselineNetSales(sb, market, defaultMonth),
+        getBaselineNetSales(sb, market, defaultMonth, isPrimary ? undefined : [market]),
         getTrailingRates(sb, market, defaultMonth),
       ]);
       const effectiveGoal =
