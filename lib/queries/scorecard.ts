@@ -649,7 +649,7 @@ type LiveGoalRow = ScorecardGoals & Record<string, unknown>;
  * so baselines/rates can be computed for any display market or office without
  * re-querying. One query serves the whole view build.
  */
-async function fetchPriorMonthsBySource(
+export async function fetchPriorMonthsBySource(
   sb: Sb,
   codes: readonly string[],
   anchorMonth: string,
@@ -684,7 +684,7 @@ async function fetchPriorMonthsBySource(
 }
 
 /** Sum several sources' month lists into one combined list (desc month order). */
-function combineRateMonths(lists: RateMonth[][]): RateMonth[] {
+export function combineRateMonths(lists: RateMonth[][]): RateMonth[] {
   const byMonth = new Map<string, RateMonth>();
   for (const list of lists) {
     for (const m of list) {
@@ -1133,6 +1133,16 @@ export type MarketGoalEntry = {
   issueRate: number | null;
 };
 
+/** Latest distribution run per month (audit row summary for the editor UI). */
+export type GoalDistributionSummary = {
+  distributionId: string;
+  companyGoalCents: number;
+  basis: string;
+  createdAt: string;
+  /** display-market code → allocated cents (the run's full allocation map). */
+  allocations: Record<string, number>;
+};
+
 export type ScorecardGoalsEditorData = {
   markets: MarketGoalEntry[];
   /** Frozen per-month rows for all editor markets — repopulates the form per month. */
@@ -1141,6 +1151,12 @@ export type ScorecardGoalsEditorData = {
   months: string[];
   /** Current month, first-of-month — the default freeze target. */
   defaultMonth: string;
+  /** Top-down distribution state. `available` is false until migration 0017 is
+   *  applied (the distributor UI hides itself — graceful pre-migration). */
+  distributions: {
+    available: boolean;
+    latestByMonth: Record<string, GoalDistributionSummary>;
+  };
 };
 
 /**
@@ -1213,5 +1229,36 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
     e.market === "REECE" ? { ...e, effectiveGoal: officeSum } : e,
   );
 
-  return { markets, monthly, months, defaultMonth };
+  // Latest distribution run per month. A failed read (table absent — migration
+  // 0017 not applied yet) degrades to available:false and hides the distributor.
+  const distributions: ScorecardGoalsEditorData["distributions"] = {
+    available: false,
+    latestByMonth: {},
+  };
+  try {
+    const { data: distRows, error: distErr } = await sb
+      .from("scorecard_goal_distributions")
+      .select("distribution_id, goal_month, company_goal_cents, basis, allocations, created_at")
+      .in("goal_month", months)
+      .order("created_at", { ascending: false });
+    if (!distErr) {
+      distributions.available = true;
+      for (const r of (distRows ?? []) as Record<string, unknown>[]) {
+        const month = String(r.goal_month).slice(0, 10);
+        if (!distributions.latestByMonth[month]) {
+          distributions.latestByMonth[month] = {
+            distributionId: String(r.distribution_id),
+            companyGoalCents: Number(r.company_goal_cents) || 0,
+            basis: String(r.basis ?? "trailing_net"),
+            createdAt: String(r.created_at ?? ""),
+            allocations: (r.allocations ?? {}) as Record<string, number>,
+          };
+        }
+      }
+    }
+  } catch {
+    // graceful pre-migration: distributor stays hidden
+  }
+
+  return { markets, monthly, months, defaultMonth, distributions };
 }

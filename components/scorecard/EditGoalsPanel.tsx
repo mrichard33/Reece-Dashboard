@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 import { GoalEditor } from "./GoalEditor";
+import { GoalDistributor } from "./GoalDistributor";
 import type { ScorecardGoalsEditorData } from "@/lib/queries/scorecard";
 
 /**
@@ -56,7 +57,10 @@ export function EditGoalsPanel({
             >
               <X size={16} />
             </button>
-            <GoalEditor data={data} initialMarket={initialMarket} />
+            <div className="space-y-4">
+              <GoalDistributor data={data} />
+              <GoalEditor data={data} initialMarket={initialMarket} />
+            </div>
           </div>
         </div>
       )}
