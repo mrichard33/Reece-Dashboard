@@ -148,22 +148,14 @@ export function GoalEditor({
   const demoedPerDay = issuedPerDay != null ? issuedPerDay * (demoPct / 100) : null;
   const closedPerDay = avgSale > 0 ? effectiveGoal / avgSale / wd : null;
 
-  // Company (All Markets) goal = Σ of EVERY office goal row (including legacy
-  // source rows like Lakeland's, which sum into Orlando), using the in-form value
-  // for the row being edited — shown read-only; never edited directly.
+  // Company (All Markets) goal = Σ of EVERY office goal row (a merged market's
+  // primary row carries its whole goal; legacy secondary source rows are zeroed
+  // but still summed for safety), using the in-form value for the row being
+  // edited — shown read-only; never edited directly.
   const companyTotal = data.markets.reduce((a, e) => {
     if (e.market === "REECE") return a;
     return a + (e.market === market ? effectiveGoal : e.effectiveGoal);
   }, 0);
-
-  // Merged display market (Orlando = ORL + LAKE): this form edits the PRIMARY
-  // source row; any secondary rows' goals still count into the displayed totals.
-  const marketDef = SCORECARD_MARKETS.find((m) => m.code === market);
-  const secondarySources = (marketDef?.sources ?? []).filter((s) => s !== market);
-  const secondaryGoal = secondarySources.reduce(
-    (a, s) => a + (byMarket.get(s)?.effectiveGoal ?? 0),
-    0,
-  );
 
   const dirty = Object.keys(initial).some((k) => (w[k] ?? "") !== (initial[k] ?? ""));
 
@@ -243,18 +235,6 @@ export function GoalEditor({
           </span>
         </div>
 
-        {/* Merged market note — Orlando displays ORL + LAKE goal rows summed. */}
-        {secondarySources.length > 0 && secondaryGoal > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
-            <Info size={15} className="mt-0.5 shrink-0" />
-            <span>
-              {marketLabel(market)} is a combined market — this form edits its primary
-              goal row, and a legacy secondary row (Lakeland) currently adds{" "}
-              <span className="font-mono font-semibold">{usd(secondaryGoal)}</span> to the
-              displayed {marketLabel(market)} totals.
-            </span>
-          </div>
-        )}
 
         {/* Goal mode + primary goal */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

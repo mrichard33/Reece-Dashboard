@@ -38,6 +38,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SCORECARD_MARKETS } from "@/lib/scorecard/markets";
+import { mergeBoardOffices } from "@/lib/scorecard/boardOffices";
 
 // ─── Proxy response shape (verbatim from LP-MCP /board/capacity) ─────────────
 
@@ -72,16 +74,21 @@ export type CapacityBoardResponse = {
 const ET = "America/New_York";
 const POLL_MS = 60_000;
 
-// Display order from the reviewed design; unknown markets append alphabetically.
-const MARKET_ORDER = [
+// Display order from the reviewed design, membership-checked against the
+// canonical market list (lib/scorecard/markets). Lakeland is NOT a market —
+// LAKE_MKT rows sum into the Orlando tile via mergeBoardOffices; unknown
+// markets append alphabetically.
+const BOARD_DESIGN_ORDER = [
   "FTLAU_MKT",
   "JAX_MKT",
   "ORL_MKT",
   "STPET_MKT",
   "FTMYR_MKT",
   "SAR_MKT",
-  "LAKE_MKT",
 ];
+const MARKET_ORDER = BOARD_DESIGN_ORDER.filter((c) =>
+  SCORECARD_MARKETS.some((m) => m.code === c),
+);
 
 // next/font registers each face under a HASHED family name exposed only via
 // the CSS variables set on <html> in app/layout.tsx — the literal families
@@ -276,7 +283,7 @@ export default function CapacityBoard({
   const col = (p: number) => (p >= thOk ? "#34d399" : p >= thCrit ? "#fbbf24" : "#fb7185");
   const word = (p: number) => (p >= thOk ? "ON TRACK" : p >= thCrit ? "NEEDS WORK" : "CRITICAL");
 
-  const orderedOffices = [...(data?.offices ?? [])].sort((a, b) => {
+  const orderedOffices = mergeBoardOffices(data?.offices ?? []).sort((a, b) => {
     const ia = MARKET_ORDER.indexOf(a.market);
     const ib = MARKET_ORDER.indexOf(b.market);
     if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
