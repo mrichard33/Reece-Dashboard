@@ -1,23 +1,78 @@
 /**
  * Scorecard market codes + label helper — a plain module (NOT "use client") so both
  * the server scorecard page and the client MarketPicker/GoalEditor can import it.
- * These previously lived in MarketPicker.tsx, but that file is "use client", which
- * turned `marketLabel` into a client reference and made calling it from the server
- * page throw ("Attempted to call marketLabel() from the server"). The 7 codes map to
- * the per-market snapshot rows written by the LP-MCP per-market writer.
+ *
+ * THE single source of truth for the dashboard's market list. Every other list
+ * (By-Market rows, editor markets, company rollup, capacity-board order) derives
+ * from SCORECARD_MARKETS — do not hardcode market codes elsewhere.
+ *
+ * Each display market maps to one or more warehouse source codes (the per-market
+ * snapshot rows written by the LP-MCP per-market writer). Orlando is the combined
+ * ORL_MKT + LAKE_MKT market: Lakeland's rows still exist in the warehouse, but the
+ * dashboard reads, sums, and renders them as one Orlando market everywhere —
+ * actuals, goals, filters, and pace.
+ *
+ * Branch→market resolution itself lives upstream in LP Supabase
+ * (lp_branch_market_map) + LP-MCP's market-resolver; the dashboard only ever sees
+ * *_MKT codes. Note BOCA/MIAMI/RFED branches map to FTLAU_MKT upstream, so Fort
+ * Lauderdale includes Boca Raton.
  */
 
-export const SCORECARD_MARKETS = [
-  { code: "STPET_MKT", label: "St. Petersburg" },
-  { code: "ORL_MKT", label: "Orlando" },
-  { code: "FTMYR_MKT", label: "Fort Myers" },
-  { code: "JAX_MKT", label: "Jacksonville" },
-  { code: "SAR_MKT", label: "Sarasota" },
-  { code: "FTLAU_MKT", label: "Fort Lauderdale" },
-  { code: "LAKE_MKT", label: "Lakeland" },
+export type ScorecardMarket = {
+  /** Display/query code — what `?market=` carries and what rows key on. */
+  code: string;
+  label: string;
+  /** Warehouse market codes whose rows sum into this display market. */
+  sources: readonly string[];
+};
+
+export const SCORECARD_MARKETS: readonly ScorecardMarket[] = [
+  { code: "STPET_MKT", label: "St. Petersburg", sources: ["STPET_MKT"] },
+  { code: "ORL_MKT", label: "Orlando", sources: ["ORL_MKT", "LAKE_MKT"] },
+  { code: "FTMYR_MKT", label: "Fort Myers", sources: ["FTMYR_MKT"] },
+  { code: "JAX_MKT", label: "Jacksonville", sources: ["JAX_MKT"] },
+  { code: "SAR_MKT", label: "Sarasota", sources: ["SAR_MKT"] },
+  { code: "FTLAU_MKT", label: "Fort Lauderdale", sources: ["FTLAU_MKT"] },
 ] as const;
+
+/** Every warehouse office code that rolls into the company (REECE) total. */
+export const OFFICE_SOURCE_CODES: readonly string[] = SCORECARD_MARKETS.flatMap(
+  (m) => m.sources,
+);
+
+/** Utility warehouse rows that are never a market but must surface visibly. */
+export const UTILITY_MARKETS = [
+  { code: "UNASSIGNED", label: "Unassigned" },
+  { code: "OUT_OF_AREA", label: "Out of Area" },
+] as const;
+
+/**
+ * Normalize an incoming market code: legacy/source codes collapse onto their
+ * display market (LAKE_MKT → ORL_MKT). Unknown codes pass through untouched so
+ * they surface visibly instead of silently merging into another market.
+ */
+export function normalizeMarketCode(code: string | null | undefined): string {
+  const c = (code ?? "").trim().toUpperCase();
+  if (!c) return "";
+  for (const m of SCORECARD_MARKETS) {
+    if (m.code === c || m.sources.includes(c)) return m.code;
+  }
+  return c;
+}
+
+/** The warehouse source codes behind a display market (REECE → its own row). */
+export function marketSources(code: string): readonly string[] {
+  if (!code || code === "REECE") return ["REECE"];
+  const m = SCORECARD_MARKETS.find((x) => x.code === normalizeMarketCode(code));
+  return m ? m.sources : [code];
+}
 
 export function marketLabel(code: string | null | undefined): string {
   if (!code || code === "REECE") return "All Markets";
-  return SCORECARD_MARKETS.find((m) => m.code === code)?.label ?? code;
+  const norm = normalizeMarketCode(code);
+  return (
+    SCORECARD_MARKETS.find((m) => m.code === norm)?.label ??
+    UTILITY_MARKETS.find((m) => m.code === norm)?.label ??
+    code
+  );
 }
