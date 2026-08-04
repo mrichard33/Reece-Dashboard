@@ -46,11 +46,14 @@ export async function saveScorecardGoals(
   const sb = lpService();
 
   // NSLI is CALCULATED from the market's trailing actuals (min-sample window rule +
-  // company fallback); the client value (if any) is ignored. Falls back to the
-  // submitted number only if there's no history to compute from at all.
-  const nsli = (await getTrailingRates(sb, goal.market, month)).nsli ?? goal.trailing_nsli ?? 0;
+  // company fallback); the client value is ALWAYS ignored — the stored column is a
+  // write-through cache, never a read source (ruled 2026-08-04). No history → 0 in
+  // the cache; read paths compute their own value and render "—".
+  const nsli = (await getTrailingRates(sb, goal.market, month)).nsli ?? 0;
 
   // Live row — the current, editable target for the market (drives today's view).
+  // target_issue_pct is deliberately NOT written: issue % is derived from history
+  // (ruled 2026-08-04) and the column is unused.
   const { error: liveErr } = await sb
     .from("scorecard_goals")
     .upsert({ ...goal, trailing_nsli: nsli, updated_by: editor, updated_at: now }, { onConflict: "market" });

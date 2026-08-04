@@ -27,7 +27,8 @@ const FIELDS: FieldSpec[] = [
 
 /** Short label for the trailing rate window (transparency for the NSLI figure). */
 const rateWindowLabel = (w: string | null): string =>
-  w === "trailing_3" ? "trailing 3mo"
+  w === "rolling_90d" ? "rolling 90d"
+  : w === "trailing_3" ? "trailing 3mo"
   : w === "trailing_6" ? "trailing 6mo"
   : w === "trailing_12" ? "trailing 12mo"
   : w === "company" ? "company-wide" : "—";
@@ -39,7 +40,7 @@ const s = (v: number | string | null | undefined) =>
 const EMPTY_FORM: Record<string, string> = {
   goal_mode: "dollars", monthly_goal_dollars: "", growth_pct: "", working_days: "",
   trailing_nsli: "", target_close_pct: "", target_demo_pct: "", target_good_rate_pct: "",
-  target_ko_pct: "", target_issue_pct: "", target_net_close_pct: "",
+  target_ko_pct: "", target_net_close_pct: "",
 };
 
 /** Form values for a (market, month) — prefers the frozen monthly row, else the live goal. */
@@ -63,8 +64,9 @@ function formValuesFor(
     target_demo_pct: s(frozen ? frozen.target_demo_pct ?? g.target_demo_pct : g.target_demo_pct),
     target_good_rate_pct: s(frozen ? frozen.target_good_rate_pct ?? g.target_good_rate_pct : g.target_good_rate_pct),
     target_ko_pct: s(frozen ? frozen.target_ko_pct ?? g.target_ko_pct : g.target_ko_pct),
-    // Optional funnel targets aren't month-frozen — always from the live row.
-    target_issue_pct: s(g.target_issue_pct),
+    // Optional funnel target isn't month-frozen — always from the live row.
+    // (No target_issue_pct input: issue % is DERIVED from history, ruled
+    // 2026-08-04 — the observed rate shows read-only in the preview below.)
     target_net_close_pct: s(g.target_net_close_pct),
   };
 }
@@ -167,6 +169,19 @@ export function GoalEditor({
 
   const dirty = Object.keys(initial).some((k) => (w[k] ?? "") !== (initial[k] ?? ""));
 
+  // ── visible goal-state warnings (ruled 2026-08-04: never silently zero) ──
+  // A goal resolving to $0 (unset dollars, or growth mode with no baseline)
+  // makes every derived target for the market render "—" on the scorecard.
+  const zeroGoalMarkets = data.markets.filter(
+    (e) => e.market !== "REECE" && (e.market === market ? effectiveGoal : e.effectiveGoal) <= 0,
+  );
+  // The stored REECE row is never read by the dashboard (company = Σ offices,
+  // derived on read) — but while it disagrees with the office sum, say so, so
+  // an external consumer of the raw table isn't silently misled.
+  const reeceStored = byMarket.get("REECE")?.goals.monthly_goal_dollars ?? null;
+  const reeceMismatch =
+    reeceStored != null && Math.round(reeceStored) !== Math.round(companyTotal);
+
   const onSubmit = handleSubmit((raw) => {
     setMsg(null);
     const m = raw.goal_mode === "growth_pct" ? "growth_pct" : "dollars";
@@ -184,7 +199,6 @@ export function GoalEditor({
       target_demo_pct: Number(raw.target_demo_pct),
       target_good_rate_pct: Number(raw.target_good_rate_pct),
       target_ko_pct: Number(raw.target_ko_pct),
-      target_issue_pct: raw.target_issue_pct === "" ? null : Number(raw.target_issue_pct),
       target_net_close_pct: raw.target_net_close_pct === "" ? null : Number(raw.target_net_close_pct),
     };
     const parsed = GoalSchema.safeParse(candidate);
@@ -243,6 +257,33 @@ export function GoalEditor({
           </span>
         </div>
 
+        {/* Goal-state warnings — visible, never a silent zero (ruled 2026-08-04). */}
+        {zeroGoalMarkets.length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+            <Info size={15} className="mt-0.5 shrink-0" />
+            <span>
+              <span className="font-semibold">
+                {zeroGoalMarkets.length === 1 ? "1 market resolves" : `${zeroGoalMarkets.length} markets resolve`} to a $0 goal:
+              </span>{" "}
+              {zeroGoalMarkets.map((e) => marketLabel(e.market)).join(", ")}. Every derived target
+              (Leads, Issued, Demos, Sales, pace) renders &ldquo;—&rdquo; until a goal is set — a
+              growth-% goal with no baseline history also lands here. Set dollar goals directly or
+              run the distributor above.
+            </span>
+          </div>
+        )}
+        {reeceMismatch && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+            <Info size={15} className="mt-0.5 shrink-0" />
+            <span>
+              The stored company row reads <span className="font-mono font-semibold">{usd(reeceStored ?? 0)}</span> but
+              the offices sum to <span className="font-mono font-semibold">{usd(companyTotal)}</span>. The dashboard
+              always displays the office sum (company goal is derived on read); the stored row updates on the next
+              office save. Until they agree, don&apos;t trust the raw table value.
+            </span>
+          </div>
+        )}
+
 
         {/* Goal mode + primary goal */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -278,11 +319,9 @@ export function GoalEditor({
             </label>
           ))}
 
-          {/* Optional funnel-stage targets (blank = no target) */}
-          <label className={fieldWrap}>
-            <span className={labelCls}>Target Issue % <span className="normal-case text-slate-400">(optional)</span></span>
-            <input type="number" step="0.1" min="0" max="100" inputMode="decimal" placeholder="no target" className={inputCls} {...register("target_issue_pct")} />
-          </label>
+          {/* Optional funnel-stage target (blank = no target). There is no
+              Target Issue % input: issue rate is DERIVED from history (ruled
+              2026-08-04) — see the calculated figure in the preview below. */}
           <label className={fieldWrap}>
             <span className={labelCls}>Target Net Close % <span className="normal-case text-slate-400">(optional)</span></span>
             <input type="number" step="0.1" min="0" max="100" inputMode="decimal" placeholder="no target" className={inputCls} {...register("target_net_close_pct")} />

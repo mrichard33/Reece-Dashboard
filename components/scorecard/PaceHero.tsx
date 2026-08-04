@@ -7,11 +7,12 @@ import type { ScorecardVM } from "@/lib/scorecard/viewModel";
  * KPIs (no gauge). Projected Pace and Balance are colored vs the monthly goal.
  */
 
-type Kpi = { label: string; sub: string; value: string; tone?: "pos" | "neg" | "plain"; title?: string };
+type Kpi = { label: string; sub: string; value: string; tone?: "pos" | "neg" | "plain"; title?: string; flag?: boolean };
 
 /** Human label for the trailing rate window (transparency tooltip). */
 function windowLabel(w: string | null): string {
   switch (w) {
+    case "rolling_90d": return "rolling 90 days";
     case "trailing_3": return "trailing 3 mo";
     case "trailing_6": return "trailing 6 mo";
     case "trailing_12": return "trailing 12 mo";
@@ -66,8 +67,8 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
       tone: balTone,
     },
     { label: "Elapsed / Working Days", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
-    { label: "Average Sale", sub: "trailing net ÷ sales", value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle },
-    { label: "NSLI", sub: `trailing net ÷ leads issued${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle },
+    { label: "Average Sale", sub: "trailing net ÷ sales", value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle, flag: p.rateWidened },
+    { label: "NSLI", sub: `trailing net ÷ leads issued${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
   ];
 
   const toneCls = (t: Kpi["tone"]) =>
@@ -93,7 +94,14 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
             <div className={`mt-1.5 truncate font-mono text-[15px] font-semibold leading-none tabular sm:text-[18px] ${toneCls(k.tone)}`}>
               {k.value}
             </div>
-            <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{k.sub}</div>
+            <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
+              {k.sub}
+              {/* Widened-window fallback is VISIBLE, never a silent substitution
+                  (thin history → the basis tooltip names the wider window). */}
+              {k.flag ? (
+                <span className="ml-1 font-semibold text-amber-600 dark:text-amber-400">· widened window</span>
+              ) : null}
+            </div>
           </div>
         ))}
       </div>
