@@ -11,6 +11,8 @@ import {
   type MonthlySnapshotRow,
 } from "@/lib/queries/scorecardAggregate.core";
 import { composeReportHeroNet, type HeroMonthRow } from "@/lib/scorecard/reportRtp";
+import { firstOfMonthET } from "@/lib/date/sellingDays";
+import { marketSources } from "@/lib/scorecard/markets";
 
 /**
  * DB wrapper for the pure aggregator (scorecardAggregate.core). Queries the stored
@@ -31,10 +33,13 @@ export async function getAggregateActuals(
   const sb = await lpServer();
   const cal = resolveSellingCalendar();
 
+  // A display market may span several warehouse source codes (Orlando =
+  // ORL_MKT + LAKE_MKT); the aggregation core sums per (market, month).
+  const sources = marketSources(market);
   const { data, error } = await sb
     .from("lp_market_scorecard_daily")
     .select("*")
-    .eq("market", market)
+    .in("market", sources as string[])
     .gte("period_start", resolved.periodStart)
     .lte("period_start", resolved.periodEnd)
     .order("as_of_date", { ascending: true });
@@ -73,18 +78,28 @@ export async function getAggregateActuals(
   // current month, the warehouse's legacy released figure for that month
   // overstates RTP; recompose the headline net from the closed months
   // (net_report_rtp) plus the report's exact RTP-to-date for the open month.
-  const heroNet = composeReportHeroNet(latestPerMonth(rows), market);
-  if (heroNet != null) actuals.released_dollars = heroNet;
+  // Gated on the constant matching the current ET month — a stale constant
+  // deactivates (with a console.error) instead of overriding with old data.
+  const heroNet = composeReportHeroNet(latestPerMonth(rows), market, firstOfMonthET());
+  if (heroNet != null) {
+    actuals.released_dollars = heroNet;
+    // Keep the Net (Good Business) breakdown's Released line on the same figure
+    // as the hero — the bucket tally would otherwise shadow this override.
+    if (actuals.raw_inputs?.bucket_tally) {
+      actuals.raw_inputs.bucket_tally.released_dollars = heroNet;
+    }
+  }
 
   return actuals;
 }
 
-/** Latest snapshot per month (max as_of_date per period_start). */
+/** Latest snapshot per (market, month) — max as_of_date per source-month. */
 function latestPerMonth(rows: MonthlySnapshotRow[]): HeroMonthRow[] {
   const latest = new Map<string, MonthlySnapshotRow>();
   for (const r of rows) {
-    const prev = latest.get(r.period_start);
-    if (!prev || String(r.as_of_date) > String(prev.as_of_date)) latest.set(r.period_start, r);
+    const key = `${String(r.market ?? "")}|${r.period_start}`;
+    const prev = latest.get(key);
+    if (!prev || String(r.as_of_date) > String(prev.as_of_date)) latest.set(key, r);
   }
   return [...latest.values()] as unknown as HeroMonthRow[];
 }

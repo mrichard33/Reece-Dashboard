@@ -1,19 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 
-export function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+/**
+ * The theme lives OUTSIDE React — it's the `dark` class on <html>, applied
+ * pre-hydration by ThemeScript. useSyncExternalStore subscribes to that class
+ * (via MutationObserver), so the icon always reflects the real applied theme
+ * without a setState-in-effect hydration dance.
+ */
+function subscribe(onChange: () => void): () => void {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  return () => observer.disconnect();
+}
 
-  useEffect(() => {
-    const isDark = document.documentElement.classList.contains("dark");
-    setTheme(isDark ? "dark" : "light");
-  }, []);
+const getTheme = (): "light" | "dark" =>
+  document.documentElement.classList.contains("dark") ? "dark" : "light";
+
+// Server snapshot: light (matches the pre-ThemeScript initial HTML).
+const getServerTheme = (): "light" | "dark" => "light";
+
+export function ThemeToggle() {
+  const theme = useSyncExternalStore(subscribe, getTheme, getServerTheme);
 
   function toggle() {
     const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
     if (next === "dark") document.documentElement.classList.add("dark");
     else document.documentElement.classList.remove("dark");
     localStorage.setItem("theme", next);

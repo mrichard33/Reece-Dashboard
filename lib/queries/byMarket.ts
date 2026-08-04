@@ -5,6 +5,11 @@ import {
 } from "@/lib/queries/scorecard";
 import { lpServer } from "@/lib/supabase/lp";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
+import { prorateGoal } from "@/lib/scorecard/paceTargets";
+import {
+  SCORECARD_MARKETS,
+  UTILITY_MARKETS,
+} from "@/lib/scorecard/markets";
 
 /**
  * By-Market rollup for the scorecard ⑤ table. For the default month-to-date
@@ -15,21 +20,20 @@ import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
  * identical to lib/queries/scorecard (effective monthly goal × elapsed ÷ working
  * days), reusing the same baseline resolver. Aggregate / recompute periods keep the
  * per-market path (each call is wrapped so a bad market can never take down the page).
+ *
+ * The market list derives from lib/scorecard/markets (single source of truth):
+ * one row per DISPLAY market — Orlando sums its ORL_MKT + LAKE_MKT source rows —
+ * plus the Unassigned / Out-of-Area utility rows, which must surface visibly
+ * whenever they carry activity. The All-Markets total's goal is the Σ of the
+ * office rows' goals (derived, never the stored REECE goal row).
  */
 
-const MARKETS: { code: string; label: string; utility?: boolean }[] = [
-  { code: "STPET_MKT", label: "St. Petersburg" },
-  { code: "ORL_MKT", label: "Orlando" },
-  { code: "FTMYR_MKT", label: "Fort Myers" },
-  { code: "JAX_MKT", label: "Jacksonville" },
-  { code: "SAR_MKT", label: "Sarasota" },
-  { code: "FTLAU_MKT", label: "Fort Lauderdale" },
-  { code: "LAKE_MKT", label: "Lakeland" },
-  { code: "UNASSIGNED", label: "Unassigned", utility: true },
-  { code: "OUT_OF_AREA", label: "Out of Area", utility: true },
+const MARKETS: { code: string; label: string; sources: readonly string[]; utility?: boolean }[] = [
+  ...SCORECARD_MARKETS.map((m) => ({ code: m.code, label: m.label, sources: m.sources })),
+  ...UTILITY_MARKETS.map((m) => ({ code: m.code, label: m.label, sources: [m.code], utility: true })),
 ];
 
-const ALL_CODES = ["REECE", ...MARKETS.map((m) => m.code)];
+const ALL_CODES = ["REECE", ...MARKETS.flatMap((m) => m.sources)];
 
 export type ByMarketRow = {
   market: string;
@@ -69,7 +73,8 @@ type GoalRow = {
   working_days: unknown;
 };
 
-/** Prorated to-date goal $ for a market — mirrors derive() in lib/queries/scorecard. */
+/** Prorated to-date goal $ for ONE source market — mirrors derive() in
+ *  lib/queries/scorecard via the shared prorateGoal helper. */
 function mtdGoalFor(
   actualsRow: Record<string, unknown>,
   goalRow: GoalRow | undefined,
@@ -82,9 +87,10 @@ function mtdGoalFor(
     goalRow.goal_mode === "growth_pct" && growth != null
       ? Math.round(computeBaselineFromRows(baselineRows, periodStart).value * (1 + growth / 100))
       : numOr0(goalRow.monthly_goal_dollars);
-  const wd = numOrNull(actualsRow.working_days_in_period) ?? numOr0(goalRow.working_days) ?? 1;
-  const elapsed = numOr0(actualsRow.days_elapsed) || 1;
-  return Math.round(effective * (elapsed / (wd || 1)));
+  const wd = numOrNull(actualsRow.working_days_in_period) ?? numOr0(goalRow.working_days);
+  const elapsed = numOr0(actualsRow.days_elapsed);
+  const prorated = prorateGoal(effective, elapsed, wd ?? 0);
+  return prorated == null ? null : Math.round(prorated);
 }
 
 function rowFromActuals(
@@ -143,7 +149,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
       .limit(1000),
   ]);
 
-  // Latest snapshot per market (rows are as_of desc).
+  // Latest snapshot per SOURCE market (rows are as_of desc).
   const latest = new Map<string, Record<string, unknown>>();
   for (const r of (actualsRows ?? []) as Record<string, unknown>[]) {
     if (!latest.has(String(r.market))) latest.set(String(r.market), r);
@@ -157,16 +163,52 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     else baseByMarket.set(r.market, [r]);
   }
 
-  const buildRow = (code: string, label: string, utility: boolean): ByMarketRow | null => {
-    const a = latest.get(code);
+  /** Sum a display market's source rows into one pseudo-actuals row. */
+  const combinedActuals = (sources: readonly string[]): Record<string, unknown> | null => {
+    const found = sources
+      .map((s) => latest.get(s))
+      .filter((r): r is Record<string, unknown> => !!r);
+    if (found.length === 0) return null;
+    if (found.length === 1) return found[0] ?? null;
+    const sum = (f: string) => found.reduce((a, r) => a + numOr0(r[f]), 0);
+    const demos = sum("demos");
+    const sales = sum("sales");
+    return {
+      leads: sum("leads"),
+      issued: sum("issued"),
+      demos,
+      sales,
+      close_pct: demos > 0 ? Math.round((sales / demos) * 1000) / 10 : null,
+      gross_sales: sum("gross_sales"),
+      released_dollars: found.some((r) => r.released_dollars != null) ? sum("released_dollars") : null,
+      net_sales: sum("net_sales"),
+      days_elapsed: Math.max(...found.map((r) => numOr0(r.days_elapsed))),
+      working_days_in_period: Math.max(...found.map((r) => numOr0(r.working_days_in_period))) || null,
+    };
+  };
+
+  const buildRow = (
+    code: string,
+    label: string,
+    utility: boolean,
+    sources: readonly string[],
+  ): ByMarketRow | null => {
+    const a = combinedActuals(sources);
     if (!a) return null;
-    const goal = utility ? null : mtdGoalFor(a, goals.get(code), baseByMarket.get(code) ?? [], periodStart);
+    // Goal = Σ of the source markets' prorated goals (Orlando = ORL + LAKE).
+    let goal: number | null = null;
+    if (!utility) {
+      for (const src of sources) {
+        const g = mtdGoalFor(a, goals.get(src), baseByMarket.get(src) ?? [], periodStart);
+        if (g != null) goal = (goal ?? 0) + g;
+      }
+    }
     return rowFromActuals(code, label, utility, a, goal);
   };
 
   const rows: ByMarketRow[] = [];
   for (const m of MARKETS) {
-    const row = buildRow(m.code, m.label, !!m.utility);
+    const row = buildRow(m.code, m.label, !!m.utility, m.sources);
     if (!row) continue;
     // Utility rows only when they carry activity.
     if (m.utility && row.leads + row.issued + row.demos + row.sales + row.gross_sales === 0) continue;
@@ -174,7 +216,14 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   }
   rows.sort((x, y) => Number(x.utility) - Number(y.utility) || y.net_sales - x.net_sales);
 
-  const total = buildRow("REECE", "All Markets", false);
+  // The All-Markets row keeps REECE's actuals, but its goal is DERIVED — the Σ of
+  // the office rows' goals — so the total always equals the sum of its parts.
+  const total = buildRow("REECE", "All Markets", false, ["REECE"]);
+  if (total) {
+    const officeGoalSum = rows.reduce((a, r) => (r.utility ? a : a + (r.goal ?? 0)), 0);
+    total.goal = officeGoalSum > 0 ? officeGoalSum : null;
+    total.pctToGoal = total.goal ? Math.round((total.net_sales / total.goal) * 1000) / 10 : null;
+  }
   return { rows, total };
 }
 

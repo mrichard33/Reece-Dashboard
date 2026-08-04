@@ -17,7 +17,8 @@ import { EditGoalsPanel } from "@/components/scorecard/EditGoalsPanel";
 import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries/scorecard";
 import { getByMarket } from "@/lib/queries/byMarket";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
-import { resolveSellingCalendar } from "@/lib/date/sellingDays";
+import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
+import { normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
 import { usDate } from "@/lib/utils";
 
@@ -36,9 +37,13 @@ export default async function ScorecardPage({
     searchParams,
   ]);
   const isAdmin = ctx?.isAdmin ?? false;
-  const MARKET = market || "REECE";
+  // Legacy/source codes (LAKE_MKT) collapse onto their display market (Orlando).
+  const MARKET = market ? normalizeMarketCode(market) || "REECE" : "REECE";
 
   const resolved = resolvePeriod(period, { start, end }, SELLING_CAL);
+  // ET current month (YYYY-MM) — seeds the client month dropdown so it never
+  // derives "this month" from the browser's local clock.
+  const currentMonthET = todayET().slice(0, 7);
 
   const [view, byMarket] = await Promise.all([
     getScorecardForPeriod(MARKET, resolved).catch((err) => {
@@ -59,16 +64,29 @@ export default async function ScorecardPage({
       })
     : null;
 
+  // The snapshot may legitimately trail the resolved as-of by a day (job timing);
+  // anything older gets an amber "data through" chip so staleness is visible.
+  const dataThrough = view?.actuals.as_of_date ?? null;
+  const isStale = !!(dataThrough && dataThrough < resolved.asOf);
+
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
       <MarketPicker />
-      <PeriodPicker />
+      <PeriodPicker currentMonth={currentMonthET} />
       {view && (
         <span
-          className="inline-flex h-8 items-center rounded-md bg-slate-100 px-2.5 font-mono text-[11px] font-medium tabular text-slate-500 dark:bg-slate-800 dark:text-slate-400 sm:h-7"
-          title="Data current through this date."
+          className={`inline-flex h-8 items-center rounded-md px-2.5 font-mono text-[11px] font-medium tabular sm:h-7 ${
+            isStale
+              ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+          }`}
+          title={
+            isStale
+              ? `Snapshot trails the selected range — data through ${usDate(dataThrough!)}, range ends ${usDate(resolved.asOf)}.`
+              : "Data current through this date."
+          }
         >
-          as of {usDate(view.actuals.as_of_date)}
+          {isStale ? "data through" : "as of"} {usDate(view.actuals.as_of_date)}
         </span>
       )}
       {view && (() => {
@@ -116,16 +134,24 @@ export default async function ScorecardPage({
         {!view ? (
           <Card>
             <CardContent>
-              <p className="py-8 text-center text-sm text-slate-500">
-                No data for {resolved.label}.{" "}
-                {resolved.source === "snapshot"
-                  ? "The daily job writes a snapshot each morning — or trigger a backfill via "
-                  : "No stored monthly snapshots fall in this range yet. Backfill via "}
-                <code className="break-words rounded bg-slate-100 px-1 dark:bg-slate-800">
-                  POST /n8n/admin/goal-scorecard-run
-                </code>{" "}
-                on the LP-MCP service.
-              </p>
+              {resolved.asOf < resolved.periodStart ? (
+                <p className="py-8 text-center text-sm text-slate-500">
+                  No completed selling days yet in {resolved.label} — pace and
+                  to-date figures start after the first completed day.
+                </p>
+              ) : (
+                <p className="py-8 text-center text-sm text-slate-500">
+                  No scorecard data for {resolved.label} yet.{" "}
+                  {resolved.source === "snapshot"
+                    ? "The daily job writes a snapshot each morning — if this persists, the LP-MCP job may be stalled; trigger a backfill via "
+                    : "No stored monthly snapshots fall in this range yet. Backfill via "}
+                  <code className="break-words rounded bg-slate-100 px-1 dark:bg-slate-800">
+                    POST /n8n/admin/goal-scorecard-run
+                  </code>{" "}
+                  on the LP-MCP service. Older months are unaffected — pick one
+                  from the Month menu.
+                </p>
+              )}
             </CardContent>
           </Card>
         ) : (

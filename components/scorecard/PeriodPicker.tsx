@@ -30,30 +30,38 @@ const SEGMENTS: { key: string; label: string }[] = [
   { key: "ytd", label: "YTD" },
 ];
 
-/** Trailing completed months (newest first): the 12 months before this month. */
-function completedMonths(): { ym: string; label: string }[] {
-  const now = new Date();
+/**
+ * Trailing completed months (newest first): the 12 months before `currentYm`.
+ * `currentYm` (YYYY-MM) comes from the SERVER page in ET — business "now" is
+ * never derived from the browser's local clock (a viewer west of ET near a
+ * month boundary would otherwise see the wrong month list).
+ */
+function completedMonths(currentYm: string): { ym: string; label: string }[] {
+  let y = Number(currentYm.slice(0, 4));
+  let m = Number(currentYm.slice(5, 7)); // 1-based
   const out: { ym: string; label: string }[] = [];
-  for (let i = 1; i <= 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const y = d.getFullYear();
-    const m = d.getMonth(); // 0-based
+  for (let i = 0; i < 12; i++) {
+    m -= 1;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    }
     out.push({
-      ym: `${y}-${String(m + 1).padStart(2, "0")}`,
-      label: `${MONTHS_LONG[m]} ${y}`,
+      ym: `${y}-${String(m).padStart(2, "0")}`,
+      label: `${MONTHS_LONG[m - 1]} ${y}`,
     });
   }
   return out;
 }
 
-export function PeriodPicker() {
+export function PeriodPicker({ currentMonth }: { currentMonth: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const active = params.get("period") || "month";
   const selectedMonth = params.get("start") || "";
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const months = useMemo(completedMonths, []);
+  const months = useMemo(() => completedMonths(currentMonth), [currentMonth]);
 
   useEffect(() => {
     if (!open) return;

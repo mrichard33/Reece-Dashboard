@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { NotificationBell } from "@/components/approvals/NotificationBell";
 import { useMobileNav } from "@/components/shell/MobileNav";
@@ -15,14 +16,18 @@ export function Sidebar({
   isExecutive,
   isAdmin,
   isExecOnly,
-  currentPath,
 }: {
   role: "operator" | "team";
   isExecutive: boolean;
   isAdmin: boolean;
   isExecOnly: boolean;
-  currentPath: string;
 }) {
+  // Active state derives from the LIVE client pathname. It used to come in as a
+  // prop from the shared (dashboard) layout, read off an x-pathname request
+  // header — but layouts don't re-render on client-side navigation, so the prop
+  // (and the red highlight) froze at whatever URL the first full page load had.
+  // usePathname() re-renders on every navigation, including back/forward.
+  const currentPath = usePathname();
   const { open, setOpen } = useMobileNav();
   const attention = useAttention();
   const [query, setQuery] = useState("");

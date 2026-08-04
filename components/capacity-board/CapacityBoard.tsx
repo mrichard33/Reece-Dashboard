@@ -183,6 +183,7 @@ export default function CapacityBoard({
   const [now, setNow] = useState(() => Date.now());
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
   const offsetRef = useRef(offset);
+  // eslint-disable-next-line react-hooks/refs -- latest-value mirror read only inside the poll interval, never during render
   offsetRef.current = offset;
 
   // Viewport measurement is ONLY used to pick mobile vs TV layout (<900px
@@ -237,6 +238,7 @@ export default function CapacityBoard({
   // (→ stale overlay only once POLL_FAIL_TOLERANCE consecutive polls miss) and
   // the interval keeps retrying unattended.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load() is the kiosk's data fetch; the immediate call seeds the first paint, the interval keeps it fresh
     load(offset);
     const poll = setInterval(() => load(offsetRef.current), POLL_MS);
     return () => clearInterval(poll);

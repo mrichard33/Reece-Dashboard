@@ -57,6 +57,9 @@ export type HeroMonthRow = {
  * in-progress month:  Σ(closed-month report net) + the report's RTP-to-date for
  * the open month. Returns null (→ keep the warehouse sum) unless ALL hold:
  *   • market is the company roll-up (REECE),
+ *   • the constant actually describes the CURRENT ET month (`currentMonthET`) —
+ *     a stale constant (last updated for a month that has since closed) must
+ *     never silently override live data; it deactivates and logs instead,
  *   • the report month is inside the aggregated range, and
  *   • that month is still LIVE (its warehouse row is not yet net_report_rtp).
  *
@@ -65,9 +68,17 @@ export type HeroMonthRow = {
 export function composeReportHeroNet(
   monthsLatest: HeroMonthRow[],
   market: string,
+  currentMonthET: string,
 ): number | null {
   if (market !== REPORT_MARKET) return null;
   const rc = CURRENT_MONTH_REPORT_RTP;
+  if (rc.month !== currentMonthET) {
+    // Surface the staleness visibly instead of silently applying a wrong figure.
+    console.error(
+      `[scorecard] CURRENT_MONTH_REPORT_RTP is stale (constant month ${rc.month}, current ET month ${currentMonthET}) — override skipped; update lib/scorecard/reportRtp.ts from the latest Net Report.`,
+    );
+    return null;
+  }
   const current = monthsLatest.find((r) => String(r.period_start).slice(0, 10) === rc.month);
   // Only override while the open month is present AND still on the legacy live basis.
   if (!current || String(current.computed_from) === "net_report_rtp") return null;

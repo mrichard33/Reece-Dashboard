@@ -1,18 +1,23 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+// eslint-config-next v16 ships flat-native configs — imported directly. The old
+// FlatCompat("next/core-web-vitals") wiring crashed under ESLint 9 + Next 16
+// (and `next lint` itself was removed in Next 16, so the lint script runs
+// eslint directly).
+import coreWebVitals from "eslint-config-next/core-web-vitals";
+import typescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...coreWebVitals,
+  ...typescript,
   {
-    ignores: ["prototype/**", "node_modules/**", ".next/**"],
+    ignores: [
+      "prototype/**",
+      "node_modules/**",
+      ".next/**",
+      "next-env.d.ts",
+      // Design-tool artifacts — generated bundles, not app code.
+      ".design-sync/**",
+      "components/capacity-board/design-export*/**",
+    ],
   },
 ];
 

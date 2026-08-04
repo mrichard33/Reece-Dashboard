@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { num, usd } from "@/lib/utils";
+import { num, usd, usDate } from "@/lib/utils";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /**
@@ -89,12 +89,12 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
         <SplitCard
           title="Sold this period"
           subtitle="Sold-date basis"
-          accent="border-t-2 border-t-[#0C2340] dark:border-t-slate-200"
+          accent="border-t-2 border-t-navy-900 dark:border-t-slate-200"
           lines={soldLines}
         />
         <SplitCard
           title="Net (Good Business) breakdown"
-          subtitle="Net-date basis"
+          subtitle={`Net-date basis · as of ${usDate(vm.snapshot.asOfDate)}`}
           accent="border-t-2 border-t-sky-400"
           lines={netLines}
         />

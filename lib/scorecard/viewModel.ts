@@ -10,6 +10,7 @@
  */
 import { usd, num } from "@/lib/utils";
 import { pct } from "@/components/scorecard/format";
+import { prorateGoal } from "@/lib/scorecard/paceTargets";
 import type { FunnelStage } from "@/components/scorecard/viz/Funnel";
 import type { RevenueBucket } from "@/components/scorecard/viz/RevenueStack";
 import type { RankedItem } from "@/components/scorecard/viz/RankedBars";
@@ -144,7 +145,9 @@ export type ScorecardVM = {
     salesCount: number;
     cancelledCount: number;
   };
-  perDay: { key: string; label: string; target: number; actual: number }[];
+  /** Null target/actual = not computable ("—"): no NSLI history, or 0 completed
+   *  selling days (first of the month). Never NaN/Infinity. */
+  perDay: { key: string; label: string; target: number | null; actual: number | null }[];
   status: { items: RankedItem[]; total: number; dropped: RankedItem[] };
   marketing: MarketingRow[];
 };
@@ -155,7 +158,9 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   const { actuals: a, goals: g, derived: d } = view;
   const abbr = abbrFor(resolved.key);
 
-  const daysElapsed = a.days_elapsed || 1;
+  // Elapsed COMPLETED selling days — 0 on the first day of a period ("no completed
+  // days yet"); never coerced to 1, so pace math can render "—" instead of lying.
+  const daysElapsed = a.days_elapsed ?? 0;
   // Period-total selling days — expands with the filter (whole year for YTD, whole
   // quarter for QTD, the month for a single-month view). Falls back to the monthly
   // denominator on single-month / recompute paths that don't set it.
@@ -267,9 +272,9 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
 
   // ── per-day pace ──
   const perDay = [
-    { key: "issued", label: "Issued / day", target: d.target_issued_per_day ?? 0, actual: d.actual_issued_per_day },
-    { key: "demoed", label: "Demoed / day", target: d.target_demoed_per_day ?? 0, actual: d.actual_demoed_per_day },
-    { key: "closed", label: "Closed / day", target: d.target_closed_per_day ?? 0, actual: d.actual_closed_per_day },
+    { key: "issued", label: "Issued / day", target: d.target_issued_per_day, actual: d.actual_issued_per_day },
+    { key: "demoed", label: "Demoed / day", target: d.target_demoed_per_day, actual: d.actual_demoed_per_day },
+    { key: "closed", label: "Closed / day", target: d.target_closed_per_day, actual: d.actual_closed_per_day },
   ];
 
   // ── status tally ──
@@ -291,7 +296,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   const headline = { behind, tone, sentence, sub, pctOfPace };
 
   // ── Marketing / Sales detail rows (the numbers behind the visuals) ──
-  const marketing = buildMarketing(view, daysElapsed, sellingDays, abbr);
+  const marketing = buildMarketing(view, daysElapsed, sellingDays);
 
   const isSingleMonth =
     resolved.key === "month" || resolved.key === "last_month" || resolved.key === "select_month";
@@ -343,7 +348,6 @@ function buildMarketing(
   view: ScorecardView,
   daysElapsed: number,
   sellingDays: number,
-  _abbr: string,
 ): MarketingRow[] {
   const { actuals: a, goals: g, derived: d } = view;
   // Target lead funnel (one direction from the NET goal): issued = goal ÷ NSLI →
@@ -353,7 +357,7 @@ function buildMarketing(
   const monthlyDemos = monthlyIssued != null ? monthlyIssued * (g.target_demo_pct / 100) : null;
   const monthlySales =
     d.avg_sale_target && d.avg_sale_target > 0 ? g.monthly_goal_dollars / d.avg_sale_target : null;
-  const prorate = (v: number | null) => (v == null ? null : v * (daysElapsed / (sellingDays || 1)));
+  const prorate = (v: number | null) => prorateGoal(v, daysElapsed, sellingDays);
   const issuePct = g.target_issue_pct;
   const netClosePct = g.target_net_close_pct;
   const monthlySet = issuePct != null && issuePct > 0 && monthlyIssued != null ? monthlyIssued / (issuePct / 100) : null;

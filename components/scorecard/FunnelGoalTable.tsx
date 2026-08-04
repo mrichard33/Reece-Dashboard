@@ -29,8 +29,10 @@ const MUTE = "text-slate-400";
 
 export function FunnelGoalTable({ view }: { view: ScorecardView }) {
   const { actuals: a, goals: g, derived: d } = view;
-  const daysElapsed = a.days_elapsed || 1;
-  const sellingDays = a.working_days_in_period ?? g.working_days ?? 26;
+  const daysElapsed = a.days_elapsed ?? 0;
+  // Same period-wide denominator as the ① hero (period_working_days first) so the
+  // "Monthly Goal" column and the pace strip never disagree on the day basis.
+  const sellingDays = a.period_working_days ?? a.working_days_in_period ?? g.working_days ?? 26;
 
   // ── count rows: goal = per-day target × days (target-to-date) or × selling days (monthly).
   //    A miss on a volume row is amber (recoverable), matching the approved design.
@@ -105,8 +107,8 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
           <thead>
             <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               <th className="px-2 py-2.5 text-left font-semibold sm:px-3">Metric</th>
-              {/* Monthly Goal is secondary — hidden on phones so Actual/Pace fit without scroll */}
-              <th className="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">Monthly Goal</th>
+              {/* Period Goal is secondary — hidden on phones so Actual/Pace fit without scroll */}
+              <th className="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">Period Goal</th>
               <th className="px-2 py-2.5 text-right font-semibold sm:px-3">
                 <span className="inline-flex items-center gap-1" title="Monthly goal scaled to selling days elapsed.">
                   Target to Date

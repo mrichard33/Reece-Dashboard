@@ -32,7 +32,7 @@ export function SyncFreshnessBanner({
         </p>
         <p className="mt-0.5 text-xs">
           LP cache last synced {relTime(lpLastSync)} · HL cache last synced{" "}
-          {relTime(hlLastSync)}. Click <strong>Sync now</strong> in the topbar.
+          {relTime(hlLastSync)}. Click <strong>Sync now</strong> on this page.
         </p>
       </div>
       <InfoPopover helpKey="shell.staleSync" />

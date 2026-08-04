@@ -11,7 +11,7 @@ import { getScorecardForPeriod } from "@/lib/queries/scorecard";
 import { getSourceScorecardForPeriod } from "@/lib/queries/sources";
 import { getLeadCostForPeriod } from "@/lib/queries/leadcost";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
-import { resolveSellingCalendar } from "@/lib/date/sellingDays";
+import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
 import { usDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -70,7 +70,7 @@ export default async function ScorecardSourcesPage({
               >
                 <ArrowLeft size={13} /> Scorecard
               </Link>
-              <PeriodPicker />
+              <PeriodPicker currentMonth={todayET().slice(0, 7)} />
             </div>
           }
         />

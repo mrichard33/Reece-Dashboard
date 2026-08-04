@@ -1,38 +1,25 @@
-import { cn } from "@/lib/utils";
+import { UserCircle2 } from "lucide-react";
 
 /**
- * Operator / Team segmented control shown in the top bar. The active segment
- * reflects the signed-in account's role — role is granted by the account, not
- * chosen here, so the control is presentational (it announces "which view am I
- * in", matching the Mission Control design).
+ * Current-view badge shown in the top bar. The view (Operator / Team) reflects
+ * the signed-in account's role — role is granted by the account (Settings →
+ * Users), not chosen here, so this is a read-only STATUS, deliberately styled
+ * as a single labeled badge rather than a segmented control: the old two-pill
+ * design looked like clickable tabs, and "the Operator/Team tabs don't work"
+ * was the predictable bug report. Admins change roles in Settings.
  */
 export function RoleToggle({ role }: { role: "operator" | "team" }) {
-  const segments: Array<{ value: "operator" | "team"; label: string }> = [
-    { value: "operator", label: "Operator" },
-    { value: "team", label: "Team" },
-  ];
-
+  const label = role === "operator" ? "Operator" : "Team";
   return (
-    <div
-      className="hidden items-center rounded-md border border-slate-200 bg-slate-50 p-0.5 sm:flex dark:border-slate-700 dark:bg-slate-800"
-      role="group"
-      aria-label="Current view"
-      title="Your view is set by your account role"
+    <span
+      className="hidden items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500 sm:inline-flex dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+      title="Your view is set by your account role — admins can change it in Settings → Users."
     >
-      {segments.map((s) => (
-        <span
-          key={s.value}
-          aria-current={role === s.value}
-          className={cn(
-            "rounded px-2.5 py-1 text-xs font-medium transition",
-            role === s.value
-              ? "bg-white text-navy-900 shadow-sm dark:bg-slate-900 dark:text-white"
-              : "text-slate-400 dark:text-slate-500",
-          )}
-        >
-          {s.label}
-        </span>
-      ))}
-    </div>
+      <UserCircle2 size={13} aria-hidden className="text-slate-400 dark:text-slate-500" />
+      <span>
+        View:{" "}
+        <span className="font-semibold text-navy-900 dark:text-white">{label}</span>
+      </span>
+    </span>
   );
 }

@@ -10,6 +10,7 @@ export function TopBar({
   role,
   title,
   actions,
+  syncNow = false,
 }: {
   email: string;
   role: "operator" | "team";
@@ -19,6 +20,11 @@ export function TopBar({
    *  carries the section description. */
   subtitle?: string;
   actions?: React.ReactNode;
+  /** Render the global Sync now button. Opt-in PER PAGE: pass true only on
+   *  pages whose data the LP/HL `sync_all_entities` runs actually refresh
+   *  (Overview, Pipelines, Workflows). Everywhere else the button was a no-op
+   *  that still fired two heavy MCP syncs. */
+  syncNow?: boolean;
 }) {
   return (
     <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
@@ -31,7 +37,7 @@ export function TopBar({
         {actions}
         <AttentionChips />
         <RoleToggle role={role} />
-        <SyncNowButton />
+        {syncNow && <SyncNowButton />}
         <ThemeToggle />
         <div className="flex items-center gap-2 border-l border-slate-200 pl-3 dark:border-slate-700">
           <div className="h-7 w-7 rounded-full bg-navy-700 text-center font-display text-xs font-semibold leading-7 text-white">

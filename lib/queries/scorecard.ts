@@ -1,11 +1,30 @@
 import { lpServer } from "@/lib/supabase/lp";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
 import { getAggregateActuals } from "@/lib/queries/scorecardAggregate";
+import { aggregateActuals } from "@/lib/queries/scorecardAggregate.core";
 import {
   resolveSellingCalendar,
   sellingDaysElapsed,
   sellingDaysInPeriod,
+  firstOfMonthET,
+  yearToDateMonthsET,
+  type SellingCalendar,
 } from "@/lib/date/sellingDays";
+import {
+  SCORECARD_MARKETS,
+  OFFICE_SOURCE_CODES,
+  marketSources,
+} from "@/lib/scorecard/markets";
+import {
+  targetTotals,
+  perDayTargets,
+  sumPerDayTargets,
+  sumTargetTotals,
+  perDayActual,
+  prorateGoal,
+  type PerDayTargets,
+  type TargetTotals,
+} from "@/lib/scorecard/paceTargets";
 
 /**
  * Goal/variance scorecard read layer.
@@ -132,13 +151,16 @@ export type ScorecardDerived = {
    *  flow (demos × close%). A material value flags inconsistent office assumptions;
    *  null when either side is uncomputable. */
   sales_target_divergence_pct: number | null;
-  // ⚠ TIE-OUT pace targets (goal $ ÷ trailing NSLI ÷ working days, then funnel %)
+  // ⚠ TIE-OUT pace targets (per-office NSLI chain: period goal ÷ NSLI ÷ period
+  // selling days; company = Σ office per-day targets, never blended NSLI).
   target_issued_per_day: number | null;
   target_demoed_per_day: number | null;
   target_closed_per_day: number | null;
-  actual_issued_per_day: number;
-  actual_demoed_per_day: number;
-  actual_closed_per_day: number;
+  /** Actual ÷ elapsed COMPLETED selling days. Null when 0 days have completed
+   *  (first of the month) — rendered "—", never a division by zero. */
+  actual_issued_per_day: number | null;
+  actual_demoed_per_day: number | null;
+  actual_closed_per_day: number | null;
   // ⚠ TIE-OUT variance bridge — dollarized + per-metric point gaps vs goal.
   variance: {
     dollars: number;
@@ -251,17 +273,24 @@ export async function getBaselineNetSales(
   periodStart: string,
 ): Promise<{ value: number; source: GoalBaselineSource }> {
   // One query (prior-year-same-month is within period_start < periodStart), then the
-  // shared pure resolver. Ordered latest-first so computeBaselineFromRows picks the
-  // final state of each month.
+  // shared pure resolver. Multi-source display markets (Orlando = ORL+LAKE) sum the
+  // latest snapshot per source-month before resolving.
+  const sources = marketSources(market);
   const { data: rows } = await sb
     .from("lp_market_scorecard_daily")
-    .select("net_sales, period_start, as_of_date")
-    .eq("market", market)
+    .select("market, net_sales, issued, sales, period_start, as_of_date")
+    .in("market", sources as string[])
     .lt("period_start", periodStart)
     .order("period_start", { ascending: false })
     .order("as_of_date", { ascending: false })
-    .limit(400);
-  return computeBaselineFromRows((rows ?? []) as BaselineRow[], periodStart);
+    .limit(800);
+  const months = latestRateMonths((rows ?? []) as Record<string, unknown>[]);
+  return computeBaselineFromRows(rateMonthsToBaselineRows(months), periodStart);
+}
+
+/** RateMonth list → BaselineRow list (already summed per month, latest-first). */
+function rateMonthsToBaselineRows(months: RateMonth[]): BaselineRow[] {
+  return months.map((m) => ({ period_start: m.period_start, net_sales: m.net }));
 }
 
 /**
@@ -340,50 +369,64 @@ export function computeTrailingRates(
   return { nsli: null, avgSale: null, window: null, sampleN: 0 };
 }
 
-/** Latest snapshot per completed month (rows MUST be period_start desc, as_of desc). */
+/**
+ * Latest snapshot per (market, month), SUMMED per month across source markets
+ * (rows MUST be period_start desc, as_of desc). Single-source markets behave as
+ * before; Orlando's ORL+LAKE rows collapse into combined months.
+ */
 function latestRateMonths(rows: Record<string, unknown>[]): RateMonth[] {
+  // First row seen per (market, month) is that source's latest as_of.
+  const seen = new Set<string>();
   const byMonth = new Map<string, RateMonth>();
   for (const r of rows) {
     const ps = String(r.period_start);
-    if (!byMonth.has(ps)) {
-      byMonth.set(ps, {
-        period_start: ps,
-        net: Number(r.net_sales) || 0,
-        issued: Number(r.issued) || 0,
-        sales: Number(r.sales) || 0,
-      });
+    const key = `${String(r.market ?? "")}|${ps}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const acc = byMonth.get(ps);
+    const net = Number(r.net_sales) || 0;
+    const issued = Number(r.issued) || 0;
+    const sales = Number(r.sales) || 0;
+    if (acc) {
+      acc.net += net;
+      acc.issued += issued;
+      acc.sales += sales;
+    } else {
+      byMonth.set(ps, { period_start: ps, net, issued, sales });
     }
   }
-  return [...byMonth.values()]; // desc order preserved from the query
+  return [...byMonth.values()]; // desc month order preserved from the query
 }
 
 /**
  * Trailing NSLI + NET average sale for a market as of `anchorMonth` (first-of-month),
  * with the min-sample window rule and company-wide fallback. One query for the
- * market, one for the company (REECE) — skipped when the market IS the company.
+ * market's source codes (Orlando = ORL+LAKE summed), one for the company (REECE) —
+ * skipped when the market IS the company.
  */
 export async function getTrailingRates(
   sb: Sb,
   market: string,
   anchorMonth: string,
 ): Promise<TrailingRates> {
-  const query = (m: string) =>
+  const query = (codes: readonly string[]) =>
     sb
       .from("lp_market_scorecard_daily")
-      .select("net_sales, issued, sales, period_start, as_of_date")
-      .eq("market", m)
+      .select("market, net_sales, issued, sales, period_start, as_of_date")
+      .in("market", codes as string[])
       .lt("period_start", anchorMonth)
       .order("period_start", { ascending: false })
       .order("as_of_date", { ascending: false })
-      .limit(400);
+      .limit(800);
 
   if (market === "REECE") {
-    const { data } = await query("REECE");
+    const { data } = await query(["REECE"]);
     const months = latestRateMonths((data ?? []) as Record<string, unknown>[]);
     return computeTrailingRates(months, months);
   }
 
-  const [mkt, company] = await Promise.all([query(market), query("REECE")]);
+  const sources = marketSources(market);
+  const [mkt, company] = await Promise.all([query(sources), query(["REECE"])]);
   return computeTrailingRates(
     latestRateMonths((mkt.data ?? []) as Record<string, unknown>[]),
     latestRateMonths((company.data ?? []) as Record<string, unknown>[]),
@@ -395,67 +438,47 @@ function pts(actual: number | null, target: number | null): number | null {
   return Math.round((actual - target) * 10) / 10;
 }
 
+/** Per-day targets + full-period totals, computed upstream (additive by office). */
+type ResolvedTargets = { perDay: PerDayTargets; totals: TargetTotals };
+
 function derive(
   actuals: ScorecardActuals,
   goals: ScorecardGoals,
   goalMeta: ScorecardDerived["goal"],
+  targets: ResolvedTargets,
   periodGoalOverride?: number | null,
   periodGoalFull?: number | null,
   rates?: TrailingRates,
 ): ScorecardDerived {
   const avgSaleTarget = rates?.avgSale ?? null;
-  // Selling-day basis: prefer the denominator the LP-MCP job persisted with the
-  // snapshot (working_days_in_period); fall back to the editable goal for
-  // pre-Step-1 rows. `elapsed` is now selling days (writer-side), so numerator
-  // and denominator share one basis.
-  const wd = actuals.working_days_in_period ?? goals.working_days ?? 1;
-  const elapsed = actuals.days_elapsed || 1;
+  // Selling-day basis (both sides): the FULL period's selling days for target
+  // proration, elapsed COMPLETED selling days for actual pace. "Today" is never
+  // an elapsed day (the writer/aggregator already exclude it).
+  const periodDays =
+    actuals.period_working_days ?? actuals.working_days_in_period ?? goals.working_days ?? 0;
+  const elapsed = actuals.days_elapsed ?? 0;
   // Aggregate periods (3 Months / YTD) sum the frozen monthly goals in range;
   // single-month snapshots prorate the live monthly goal by elapsed selling days.
   const mtd_goal_dollars =
     periodGoalOverride != null
       ? Math.round(periodGoalOverride)
-      : Math.round(goals.monthly_goal_dollars * (elapsed / wd));
+      : Math.round(prorateGoal(goals.monthly_goal_dollars, elapsed, periodDays) ?? 0);
   // Full (unprorated) goal for the whole period. Aggregate → Σ of every month's
   // goal in range; single month → the month's goal. Never the current-month goal
   // alone for a multi-month view.
   const period_goal_dollars =
     periodGoalFull != null ? Math.round(periodGoalFull) : goals.monthly_goal_dollars;
 
-  // Target lead funnel, one direction from the NET goal (goal is RTP net, so every
-  // divisor is net):
-  //   issued = goal ÷ NSLI  →  demos = issued × demo%  →  sales = goal ÷ NET avg sale
-  // Sales is anchored to the goal directly (goal ÷ avg sale), NOT back-derived from
-  // demos × close%, so it can't drift off the dollar goal.
-  const target_issued_total = goals.trailing_nsli > 0
-    ? goals.monthly_goal_dollars / goals.trailing_nsli
-    : null;
-  const target_issued_per_day = target_issued_total != null
-    ? Math.round((target_issued_total / wd) * 10) / 10
-    : null;
-  const target_demoed_total = target_issued_total != null
-    ? target_issued_total * (goals.target_demo_pct / 100)
-    : null;
-  const target_demoed_per_day = target_demoed_total != null
-    ? Math.round((target_demoed_total / wd) * 10) / 10
-    : null;
-  const target_closed_total = avgSaleTarget && avgSaleTarget > 0
-    ? goals.monthly_goal_dollars / avgSaleTarget
-    : null;
-  const target_closed_per_day = target_closed_total != null
-    ? Math.round((target_closed_total / wd) * 10) / 10
-    : null;
-
   // Consistency signal (surface, don't reconcile): the goal-anchored sales target
   // (goal ÷ avg sale) and the funnel-flow sales (demos × close%) should land in the
   // same neighborhood. A material gap means the office's demo%/close%/NSLI/avg-sale
   // assumptions are internally inconsistent.
-  const closed_via_flow = target_demoed_total != null
-    ? target_demoed_total * (goals.target_close_pct / 100)
+  const closed_via_flow = targets.totals.demoed != null
+    ? targets.totals.demoed * (goals.target_close_pct / 100)
     : null;
   const sales_target_divergence_pct =
-    target_closed_total != null && closed_via_flow != null && closed_via_flow > 0
-      ? Math.round((Math.abs(target_closed_total - closed_via_flow) / closed_via_flow) * 1000) / 10
+    targets.totals.closed != null && closed_via_flow != null && closed_via_flow > 0
+      ? Math.round((Math.abs(targets.totals.closed - closed_via_flow) / closed_via_flow) * 1000) / 10
       : null;
 
   return {
@@ -466,12 +489,12 @@ function derive(
     rate_window: rates?.window ?? null,
     rate_sample_n: rates?.sampleN ?? null,
     sales_target_divergence_pct,
-    target_issued_per_day,
-    target_demoed_per_day,
-    target_closed_per_day,
-    actual_issued_per_day: Math.round((actuals.issued / elapsed) * 10) / 10,
-    actual_demoed_per_day: Math.round((actuals.demos / elapsed) * 10) / 10,
-    actual_closed_per_day: Math.round((actuals.sales / elapsed) * 10) / 10,
+    target_issued_per_day: targets.perDay.issuedPerDay,
+    target_demoed_per_day: targets.perDay.demoedPerDay,
+    target_closed_per_day: targets.perDay.closedPerDay,
+    actual_issued_per_day: perDayActual(actuals.issued, elapsed),
+    actual_demoed_per_day: perDayActual(actuals.demos, elapsed),
+    actual_closed_per_day: perDayActual(actuals.sales, elapsed),
     variance: {
       dollars: Math.round(actuals.net_sales - mtd_goal_dollars), // ⚠ TIE-OUT
       close_pts: pts(actuals.close_pct, goals.target_close_pct),
@@ -485,36 +508,144 @@ function derive(
 }
 
 /**
- * Latest actuals snapshot for a market (or the snapshot on/just before `asOf`),
- * joined to its editable goals, with goal/pace/variance derived at read time.
- * Returns null when no actuals row exists yet (job hasn't run).
+ * Actuals snapshot for a market and RESOLVED period, joined to its editable
+ * goals, with goal/pace/variance derived at read time.
+ *
+ * The query is bounded to the resolved period on BOTH sides:
+ *   • `period_start` must equal the resolved period's start — a stale prior-month
+ *     row can never render under the current month's label (the old "25 elapsed
+ *     days in August" bug: the newest row in the warehouse was July's).
+ *   • `as_of_date` ≤ the resolved as-of.
+ * Returns null when no row matches (job hasn't run for this period yet — the
+ * page shows an explicit empty state instead of silently showing old data).
+ *
+ * Multi-source display markets (Orlando = ORL_MKT + LAKE_MKT) fetch every
+ * source's latest row and sum them via the aggregation core.
  */
 export async function getScorecard(
   market = "REECE",
-  asOf?: string,
+  resolved?: ResolvedPeriod,
 ): Promise<ScorecardView | null> {
   const sb = await lpServer();
+  const sources = marketSources(market);
 
   let q = sb
     .from("lp_market_scorecard_daily")
     .select("*")
-    .eq("market", market)
+    .in("market", sources as string[])
     .order("as_of_date", { ascending: false })
-    .limit(1);
-  if (asOf) q = q.lte("as_of_date", asOf);
+    .limit(sources.length * 40);
+  if (resolved) {
+    q = q.eq("period_start", resolved.periodStart).lte("as_of_date", resolved.asOf);
+  }
 
   const { data: actualsRows, error: actualsErr } = await q;
   if (actualsErr) throw actualsErr;
-  const actuals = (actualsRows?.[0] as ScorecardActuals | undefined) ?? null;
-  if (!actuals) return null;
+  const rows = (actualsRows ?? []) as (ScorecardActuals & Record<string, unknown>)[];
 
-  return buildView(sb, market, actuals);
+  // Latest row per source market (rows are as_of desc).
+  const latest = new Map<string, ScorecardActuals & Record<string, unknown>>();
+  for (const r of rows) {
+    if (!latest.has(String(r.market))) latest.set(String(r.market), r);
+  }
+  if (latest.size === 0) return null;
+
+  const latestRows = [...latest.values()];
+  let actuals: ScorecardActuals;
+  if (latestRows.length === 1) {
+    actuals = latestRows[0] as ScorecardActuals;
+  } else {
+    // Combine the source rows (Orlando): sum numerators, re-derive ratios. Days
+    // come from the freshest source; "as of" is the most conservative (oldest)
+    // so the stamp never overstates freshness.
+    const daysElapsed = Math.max(...latestRows.map((r) => Number(r.days_elapsed) || 0));
+    const workingDays = Math.max(...latestRows.map((r) => Number(r.working_days_in_period) || 0));
+    const asOf = latestRows.map((r) => String(r.as_of_date)).sort()[0] ?? "";
+    actuals = aggregateActuals(latestRows, {
+      market,
+      periodStart: resolved?.periodStart ?? String(latestRows[0]?.period_start ?? ""),
+      periodEnd: resolved?.asOf ?? String(latestRows[0]?.period_end ?? ""),
+      asOf,
+      daysElapsed,
+      workingDays,
+      periodWorkingDays: workingDays,
+      reconciled: latestRows.every((r) => r.reconciled === true),
+    });
+  }
+
+  return buildView(sb, market, actuals, resolved);
+}
+
+/** Goal row fields the derived-goal math needs (full row is fetched). */
+type LiveGoalRow = ScorecardGoals & Record<string, unknown>;
+
+/**
+ * Prior-months bundle: latest snapshot per (market, month), kept PER SOURCE code
+ * so baselines/rates can be computed for any display market or office without
+ * re-querying. One query serves the whole view build.
+ */
+async function fetchPriorMonthsBySource(
+  sb: Sb,
+  codes: readonly string[],
+  anchorMonth: string,
+): Promise<Map<string, RateMonth[]>> {
+  const { data } = await sb
+    .from("lp_market_scorecard_daily")
+    .select("market, net_sales, issued, sales, period_start, as_of_date")
+    .in("market", codes as string[])
+    .lt("period_start", anchorMonth)
+    .order("period_start", { ascending: false })
+    .order("as_of_date", { ascending: false })
+    .limit(4000);
+  const out = new Map<string, RateMonth[]>();
+  const seen = new Set<string>();
+  for (const r of (data ?? []) as Record<string, unknown>[]) {
+    const mkt = String(r.market ?? "");
+    const ps = String(r.period_start);
+    const key = `${mkt}|${ps}`;
+    if (seen.has(key)) continue; // first hit per (market, month) = latest as_of
+    seen.add(key);
+    const list = out.get(mkt) ?? [];
+    list.push({
+      period_start: ps,
+      net: Number(r.net_sales) || 0,
+      issued: Number(r.issued) || 0,
+      sales: Number(r.sales) || 0,
+    });
+    out.set(mkt, list);
+  }
+  return out;
+}
+
+/** Sum several sources' month lists into one combined list (desc month order). */
+function combineRateMonths(lists: RateMonth[][]): RateMonth[] {
+  const byMonth = new Map<string, RateMonth>();
+  for (const list of lists) {
+    for (const m of list) {
+      const acc = byMonth.get(m.period_start);
+      if (acc) {
+        acc.net += m.net;
+        acc.issued += m.issued;
+        acc.sales += m.sales;
+      } else {
+        byMonth.set(m.period_start, { ...m });
+      }
+    }
+  }
+  return [...byMonth.values()].sort((a, b) => (a.period_start < b.period_start ? 1 : -1));
 }
 
 /**
  * Merge an actuals row with its editable goals + derived goal/pace/variance into a
  * ScorecardView. Shared by every sourcing path (stored snapshot, LP recompute
  * preview, multi-month aggregate) so they render identically.
+ *
+ * Two structural invariants live here (not in the DB):
+ *   • The company (REECE) goal is DERIVED ON READ — always the Σ of the office
+ *     goals. The stored REECE rows are never trusted for dollar goals.
+ *   • Company per-day pace targets are the Σ of the per-office target chains
+ *     (each office's period goal ÷ its own NSLI), never company goal ÷ blended
+ *     NSLI. Orlando's chain runs on ORL+LAKE combined data.
  */
 async function buildView(
   sb: Sb,
@@ -522,49 +653,124 @@ async function buildView(
   actuals: ScorecardActuals,
   resolved?: ResolvedPeriod,
 ): Promise<ScorecardView> {
-  const { data: goalsRow } = await sb
-    .from("scorecard_goals")
-    .select("*")
-    .eq("market", market)
-    .maybeSingle();
-  const goals = (goalsRow as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
+  const isCompany = market === "REECE";
+  const displaySources = marketSources(market);
+  const cal = resolveSellingCalendar();
+  // NSLI/avg-sale anchor: the current ET month, so every period view uses one
+  // current planning rate. (Was getUTCMonth() — wrong for a few hours at each
+  // ET month boundary.)
+  const anchorMonth = firstOfMonthET();
 
-  // Always resolve the trailing baseline so growth mode and the GoalEditor preview
-  // are computable; in growth mode it also overrides the effective dollar goal.
-  const baseline = await getBaselineNetSales(sb, market, actuals.period_start);
-  const effectiveGoal =
-    goals.goal_mode === "growth_pct" && goals.growth_pct != null
-      ? Math.round(baseline.value * (1 + goals.growth_pct / 100))
-      : goals.monthly_goal_dollars;
+  const goalCodes = isCompany ? ["REECE", ...OFFICE_SOURCE_CODES] : [...displaySources];
+  const priorCodes = isCompany
+    ? ["REECE", ...OFFICE_SOURCE_CODES]
+    : [...new Set([...displaySources, "REECE"])];
 
-  // NSLI and NET average sale are CALCULATED trailing rates (never the stored/
-  // possibly-stale value), anchored to the current month so every period view uses
-  // one current planning rate. The min-sample window rule + company fallback keep a
-  // thin market from producing a nonsense divisor. They drive the target lead funnel
-  // (issued = goal ÷ NSLI, sales = goal ÷ avg sale) and the displayed KPIs.
-  const nsliAnchor = firstOfMonthUTC(new Date());
-  const rates = await getTrailingRates(sb, market, nsliAnchor);
-  const effectiveGoals: ScorecardGoals = {
-    ...goals,
-    monthly_goal_dollars: effectiveGoal,
-    trailing_nsli: rates.nsli ?? goals.trailing_nsli,
+  const [{ data: goalsRows }, prior] = await Promise.all([
+    sb.from("scorecard_goals").select("*").in("market", goalCodes),
+    fetchPriorMonthsBySource(sb, priorCodes, anchorMonth),
+  ]);
+  const goalsBySource = new Map<string, LiveGoalRow>();
+  for (const g of (goalsRows ?? []) as LiveGoalRow[]) goalsBySource.set(g.market, g);
+
+  // Percent targets / working days come from the scope's own row (REECE row for
+  // the company view, primary source row for a market view); dollar goals are
+  // always summed from the offices below.
+  const primaryGoals =
+    (isCompany ? goalsBySource.get("REECE") : goalsBySource.get(displaySources[0] ?? market)) ??
+    (goalsRows?.[0] as LiveGoalRow | undefined) ??
+    DEFAULT_GOALS(market);
+
+  const companyMonths = prior.get("REECE") ?? [];
+  const monthsFor = (srcs: readonly string[]): RateMonth[] =>
+    srcs.length === 1 ? prior.get(srcs[0] ?? "") ?? [] : combineRateMonths(srcs.map((s) => prior.get(s) ?? []));
+
+  const baselineFor = (srcs: readonly string[], atMonth: string) =>
+    computeBaselineFromRows(rateMonthsToBaselineRows(monthsFor(srcs)), atMonth);
+
+  /** Live effective $ goal for ONE source code (growth mode resolved per source). */
+  const liveEffectiveFor = (src: string, atMonth: string): number => {
+    const row = goalsBySource.get(src);
+    if (!row) return 0;
+    if (row.goal_mode === "growth_pct" && row.growth_pct != null) {
+      return Math.round(baselineFor([src], atMonth).value * (1 + Number(row.growth_pct) / 100));
+    }
+    return Number(row.monthly_goal_dollars) || 0;
   };
 
-  // Aggregate periods sum the frozen monthly goals across the range (D4); single
-  // months use the normal elapsed-day proration in derive().
-  let periodGoalOverride: number | null = null;
-  let periodGoalFull: number | null = null;
-  let estimated = false;
-  if (resolved && resolved.source === "aggregate") {
-    const pg = await resolveAggregatePeriodGoal(sb, market, resolved, goals, effectiveGoal);
-    periodGoalOverride = pg.mtd_goal_dollars;
-    periodGoalFull = pg.period_goal_dollars;
-    estimated = pg.estimated;
-  }
+  // Effective monthly goal for the viewed scope. Company = Σ offices (derived on
+  // read — the stored REECE row is ignored for dollars). Multi-source markets =
+  // Σ their sources (Orlando = ORL + LAKE goal rows).
+  const effectiveGoal = (isCompany ? OFFICE_SOURCE_CODES : displaySources).reduce(
+    (a, c) => a + liveEffectiveFor(c, actuals.period_start),
+    0,
+  );
+
+  const baseline = baselineFor(isCompany ? ["REECE"] : displaySources, actuals.period_start);
+
+  // Displayed trailing rates (KPI NSLI / average sale) for the viewed scope. The
+  // company KPI is the blended company rate — fine for DISPLAY; targets below
+  // never use it.
+  const rates = computeTrailingRates(
+    monthsFor(isCompany ? ["REECE"] : displaySources),
+    companyMonths,
+  );
+  const effectiveGoals: ScorecardGoals = {
+    ...primaryGoals,
+    market,
+    monthly_goal_dollars: effectiveGoal,
+    trailing_nsli: rates.nsli ?? primaryGoals.trailing_nsli,
+  };
+
+  // ── period goals, per target unit (each display market, or just this one) ──
+  // Unit = a display market's source codes. The company is the Σ of the units, so
+  // company figures are additive by construction.
+  const units: readonly (readonly string[])[] = isCompany
+    ? SCORECARD_MARKETS.map((m) => m.sources)
+    : [displaySources];
+
+  const isAggregate = resolved?.source === "aggregate";
+  const unitGoals = isAggregate
+    ? await Promise.all(
+        units.map((srcs) =>
+          resolvePeriodGoalForSources(sb, srcs, resolved!, cal, liveEffectiveFor, baselineFor),
+        ),
+      )
+    : units.map((srcs) => ({
+        toDate: null as number | null,
+        full: srcs.reduce((a, c) => a + liveEffectiveFor(c, actuals.period_start), 0),
+        estimated: false,
+      }));
+
+  const periodGoalFull = unitGoals.reduce((a, u) => a + u.full, 0);
+  const periodGoalToDate = isAggregate
+    ? unitGoals.reduce((a, u) => a + (u.toDate ?? 0), 0)
+    : null;
+  const estimated = unitGoals.some((u) => u.estimated);
+
+  // ── per-day pace targets: one NSLI chain per unit, then Σ ──
+  const periodDays =
+    actuals.period_working_days ?? actuals.working_days_in_period ?? primaryGoals.working_days ?? 0;
+  const unitChains = units.map((srcs, i) => {
+    const uRates = computeTrailingRates(monthsFor(srcs), companyMonths);
+    const demoPct = Number(
+      goalsBySource.get(srcs[0] ?? "")?.target_demo_pct ?? primaryGoals.target_demo_pct ?? 70,
+    );
+    return targetTotals({
+      periodGoal: unitGoals[i]?.full ?? 0,
+      nsli: uRates.nsli,
+      avgSale: uRates.avgSale,
+      targetDemoPct: demoPct,
+    });
+  });
+  const targets: ResolvedTargets = {
+    totals: sumTargetTotals(unitChains),
+    perDay: sumPerDayTargets(unitChains.map((c) => perDayTargets(c, periodDays))),
+  };
 
   const goalMeta: ScorecardDerived["goal"] = {
-    mode: goals.goal_mode,
-    growth_pct: goals.growth_pct,
+    mode: primaryGoals.goal_mode,
+    growth_pct: primaryGoals.growth_pct,
     baseline_net_sales: baseline.source === "none" ? null : baseline.value,
     baseline_source: baseline.source,
     effective_monthly_goal: effectiveGoal,
@@ -574,7 +780,15 @@ async function buildView(
   return {
     actuals,
     goals: effectiveGoals,
-    derived: derive(actuals, effectiveGoals, goalMeta, periodGoalOverride, periodGoalFull, rates),
+    derived: derive(
+      actuals,
+      effectiveGoals,
+      goalMeta,
+      targets,
+      periodGoalToDate,
+      isAggregate ? periodGoalFull : null,
+      rates,
+    ),
   };
 }
 
@@ -594,29 +808,33 @@ function monthsInRange(periodStart: string, periodEnd: string): string[] {
 }
 
 /**
- * Period goal for an aggregate range = Σ over each month of the goal in force that
- * month, with the month containing `asOf` prorated by elapsed selling days. Prefers
- * the frozen scorecard_goals_monthly row; falls back to the live goal (× 1 month,
- * flagged `estimated`) when a month has no frozen row.
+ * Period goal for an aggregate range = Σ over each month × each SOURCE market of
+ * the goal in force that month, with the month containing `asOf` prorated by
+ * elapsed selling days (the shared prorateGoal helper). Prefers the frozen
+ * scorecard_goals_monthly row per (source, month); falls back to that source's
+ * live effective goal (flagged `estimated`) when a month has no frozen row.
+ *
+ * Summing per source makes Orlando (ORL+LAKE) and the company (Σ all offices)
+ * exact sums of their parts — the stored REECE frozen rows are never used.
  */
-async function resolveAggregatePeriodGoal(
+async function resolvePeriodGoalForSources(
   sb: Sb,
-  market: string,
+  sources: readonly string[],
   resolved: ResolvedPeriod,
-  liveGoals: ScorecardGoals,
-  effectiveMonthlyGoal: number,
-): Promise<{ mtd_goal_dollars: number; period_goal_dollars: number; estimated: boolean }> {
-  const cal = resolveSellingCalendar();
+  cal: SellingCalendar,
+  liveEffectiveFor: (src: string, atMonth: string) => number,
+  baselineFor: (srcs: readonly string[], atMonth: string) => { value: number },
+): Promise<{ toDate: number; full: number; estimated: boolean }> {
   const months = monthsInRange(resolved.periodStart, resolved.periodEnd);
 
   const { data: frozenRows } = await sb
     .from("scorecard_goals_monthly")
     .select("*")
-    .eq("market", market)
+    .in("market", sources as string[])
     .in("goal_month", months);
   const frozen = new Map<string, ScorecardMonthlyGoal>();
   for (const r of (frozenRows ?? []) as ScorecardMonthlyGoal[]) {
-    frozen.set(String(r.goal_month).slice(0, 10), r);
+    frozen.set(`${r.market}|${String(r.goal_month).slice(0, 10)}`, r);
   }
 
   // `total` = Target to Date (current month prorated). `periodTotal` = Period Goal
@@ -629,17 +847,19 @@ async function resolveAggregatePeriodGoal(
     const mo = Number(monthStart.slice(5, 7));
     const monthEnd = new Date(Date.UTC(y, mo, 0, 12, 0, 0)).toISOString().slice(0, 10);
 
-    // Full-month dollar goal for this month.
-    const row = frozen.get(monthStart);
-    let monthGoal: number;
-    if (row) {
-      monthGoal =
-        row.goal_mode === "growth_pct" && row.growth_pct != null
-          ? Math.round((await getBaselineNetSales(sb, market, monthStart)).value * (1 + row.growth_pct / 100))
-          : Number(row.goal_dollars) || 0;
-    } else {
-      monthGoal = effectiveMonthlyGoal;
-      estimated = true;
+    // Full-month dollar goal for this month = Σ over the source markets.
+    let monthGoal = 0;
+    for (const src of sources) {
+      const row = frozen.get(`${src}|${monthStart}`);
+      if (row) {
+        monthGoal +=
+          row.goal_mode === "growth_pct" && row.growth_pct != null
+            ? Math.round(baselineFor([src], monthStart).value * (1 + row.growth_pct / 100))
+            : Number(row.goal_dollars) || 0;
+      } else {
+        monthGoal += liveEffectiveFor(src, monthStart);
+        estimated = true;
+      }
     }
 
     // Period Goal counts every month in range at full.
@@ -650,15 +870,14 @@ async function resolveAggregatePeriodGoal(
     if (resolved.asOf >= monthEnd) {
       total += monthGoal;
     } else if (resolved.asOf >= monthStart) {
-      const wd = sellingDaysInPeriod(monthStart, monthEnd, cal) || 1;
+      const wd = sellingDaysInPeriod(monthStart, monthEnd, cal);
       const elapsed = sellingDaysElapsed(monthStart, resolved.asOf, cal);
-      total += monthGoal * (elapsed / wd);
+      total += prorateGoal(monthGoal, elapsed, wd) ?? 0;
     }
   }
-  void liveGoals; // reserved: per-month live-goal history could refine the fallback
   return {
-    mtd_goal_dollars: Math.round(total),
-    period_goal_dollars: Math.round(periodTotal),
+    toDate: Math.round(total),
+    full: Math.round(periodTotal),
     estimated,
   };
 }
@@ -772,7 +991,7 @@ export async function getScorecardForPeriod(
   resolved: ResolvedPeriod,
 ): Promise<ScorecardView | null> {
   if (resolved.source === "snapshot") {
-    return getScorecard(market, resolved.asOf);
+    return getScorecard(market, resolved);
   }
 
   const sb = await lpServer();
@@ -800,17 +1019,10 @@ export async function getScorecardGoals(market = "REECE"): Promise<ScorecardGoal
   return (data as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
 }
 
-/** REECE + the 7 markets the per-market editor manages (mirrors MarketPicker). */
-export const EDITOR_MARKETS = [
-  "REECE",
-  "STPET_MKT",
-  "ORL_MKT",
-  "FTMYR_MKT",
-  "JAX_MKT",
-  "SAR_MKT",
-  "FTLAU_MKT",
-  "LAKE_MKT",
-] as const;
+/** REECE + every office source code the editor manages (derived from the single
+ *  market source of truth — includes LAKE_MKT so its legacy goal rows stay
+ *  visible inside the combined Orlando figures). */
+export const EDITOR_MARKETS: readonly string[] = ["REECE", ...OFFICE_SOURCE_CODES];
 
 export type MarketGoalEntry = {
   market: string;
@@ -822,6 +1034,9 @@ export type MarketGoalEntry = {
   /** CALCULATED trailing NSLI (net sales ÷ leads issued) for the market — drives the
    *  "leads needed to hit the goal" figure. Null when there's no issued history. */
   nsli: number | null;
+  /** CALCULATED trailing NET average sale — the closed-per-day divisor (goal ÷
+   *  avg sale), matching the server pace chain exactly. */
+  avgSale: number | null;
   /** Which trailing window produced the NSLI, and the sales-count sample behind it —
    *  surfaced so a small-market figure is explainable. */
   rateWindow: RateWindow | null;
@@ -838,22 +1053,6 @@ export type ScorecardGoalsEditorData = {
   defaultMonth: string;
 };
 
-/** Current month, first-of-month (UTC). */
-function firstOfMonthUTC(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
-}
-
-/** Current year's months, January through the current month, newest first. */
-function yearToDateMonths(now: Date): string[] {
-  const y = now.getUTCFullYear();
-  const currentMonth = now.getUTCMonth() + 1; // 1-12
-  const out: string[] = [];
-  for (let m = currentMonth; m >= 1; m--) {
-    out.push(`${y}-${String(m).padStart(2, "0")}-01`);
-  }
-  return out;
-}
-
 /**
  * Everything the admin GoalEditor needs to edit any OFFICE for the current year to
  * date: each market's live editable goal + growth baseline + effective $ goal +
@@ -866,10 +1065,10 @@ function yearToDateMonths(now: Date): string[] {
 export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditorData> {
   const sb = await lpServer();
 
-  // Month options = the current year, January through the current month, newest
-  // first (e.g. in July: Jul, Jun, … Jan). No future or prior-year months.
-  const months = yearToDateMonths(new Date());
-  const defaultMonth = months[0] ?? firstOfMonthUTC(new Date());
+  // Month options = the current ET year, January through the current ET month,
+  // newest first (e.g. in July: Jul, Jun, … Jan). No future or prior-year months.
+  const months = yearToDateMonthsET();
+  const defaultMonth = months[0] ?? firstOfMonthET();
 
   // Frozen monthly rows for the editor markets, limited to the selectable months.
   const { data: monthlyRows } = await sb
@@ -901,6 +1100,7 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         baselineNetSales: baseline.source === "none" ? null : baseline.value,
         effectiveGoal,
         nsli: rates.nsli,
+        avgSale: rates.avgSale,
         rateWindow: rates.window,
         rateSampleN: rates.sampleN,
       };

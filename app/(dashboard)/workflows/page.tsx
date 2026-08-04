@@ -20,6 +20,7 @@ export default async function WorkflowsPage() {
         role={user.role}
         title="Workflows"
         subtitle="GHL workflow inventory with canonical registry metadata"
+        syncNow
       />
 
       <div className="space-y-6 p-6">
