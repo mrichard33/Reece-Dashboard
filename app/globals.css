@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Class-based dark mode. Tailwind v4's default `dark:` variant compiles to
+   `@media (prefers-color-scheme: dark)`, but our ThemeToggle/ThemeScript switch
+   themes by toggling the `dark` class on <html> — without this variant override
+   every `dark:` utility in the app is inert (the theme toggle only flipped the
+   CSS-token backgrounds below, leaving cards/tables/badges light). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Reece brand — navy chrome */
   --color-navy: #122739;
@@ -42,6 +49,14 @@
     --muted-foreground: #64748b;
     --accent: #f1f5f9;
     --ring: #122739;
+    /* Chart chrome (recharts grid/ticks/series) — flips with the theme so charts
+       stay legible in dark mode. Primary lightens in dark (navy is invisible on
+       a near-black card); brick reads fine on both. */
+    --chart-grid: #e2e8f0;
+    --chart-tick: #64748b;
+    --chart-primary: #122739;
+    --chart-accent: #ED1E24;
+    --chart-positive: #16a34a;
   }
 
   .dark {
@@ -54,6 +69,11 @@
     --muted-foreground: #94a3b8;
     --accent: #1e293b;
     --ring: #4c6f9c;
+    --chart-grid: #1e293b;
+    --chart-tick: #94a3b8;
+    --chart-primary: #7d9bbf;
+    --chart-accent: #ED1E24;
+    --chart-positive: #4ade80;
   }
 
   * {

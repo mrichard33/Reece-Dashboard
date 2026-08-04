@@ -61,9 +61,11 @@ export function PlanReview({
   useEffect(() => {
     let active = true;
     if (!slot.subtopic_id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the previous slot's fetched detail when the id empties
       setSub(null);
       return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- standard fetch-status flag for the request this effect starts
     setSubLoading(true);
     getSubtopicDetail(slot.subtopic_id)
       .then((s) => {
@@ -84,6 +86,7 @@ export function PlanReview({
   // swap the "running…" message for a done note so the click visibly completed.
   useEffect(() => {
     if (slot.brief_status !== "none") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reacts to the refreshed server prop, functional update is a no-op unless the running note is showing
       setMsg((m) =>
         m?.text.startsWith("Strategist running")
           ? { tone: "info", text: "Brief ready — review it below." }

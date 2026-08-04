@@ -28,12 +28,15 @@ export default async function DashboardLayout({
   return (
     <MobileNavProvider>
       <div className="flex h-screen overflow-hidden">
+        {/* Sidebar derives its active-tab state from usePathname() client-side —
+            the x-pathname header above only serves the exec-only redirect (a
+            layout doesn't re-render on client navigation, so a header-derived
+            prop would freeze the red highlight at the first-loaded URL). */}
         <Sidebar
           role={ctx.role}
           isExecutive={ctx.isExecutive}
           isAdmin={ctx.isAdmin}
           isExecOnly={ctx.isExecOnly}
-          currentPath={pathname}
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <main className="flex-1 overflow-y-auto">{children}</main>

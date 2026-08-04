@@ -38,7 +38,9 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
   );
 
   // Mobile: one tappable card per market (the table is too wide to read at 390px).
-  const MobileCard = ({ r, strong }: { r: ByMarketRow; strong?: boolean }) => {
+  // Render helpers (NOT components — they close over `open`, and defining
+  // components during render resets their state; plain function calls don't).
+  const renderMobileCard = (r: ByMarketRow, strong?: boolean) => {
     const metrics: [string, string][] = [
       ["Leads", num(r.leads)],
       ["Issued", num(r.issued)],
@@ -49,6 +51,7 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
     ];
     return (
       <button
+        key={r.market + (strong ? "|total" : "")}
         type="button"
         onClick={() => open(r.market)}
         className={`block w-full rounded-lg border px-3.5 py-3 text-left transition active:bg-slate-50 dark:active:bg-slate-900/50 ${
@@ -85,8 +88,9 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
     );
   };
 
-  const Row = ({ r, strong }: { r: ByMarketRow; strong?: boolean }) => (
+  const renderRow = (r: ByMarketRow, strong?: boolean) => (
     <tr
+      key={r.market + (strong ? "|total" : "")}
       onClick={() => open(r.market)}
       className={`cursor-pointer border-t border-slate-50 transition hover:bg-slate-50 dark:border-slate-900 dark:hover:bg-slate-900/50 ${
         strong ? "border-t-2 border-t-slate-200 font-semibold dark:border-t-slate-700" : ""
@@ -125,10 +129,8 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
     <ScSection id="sc-bymarket" label="By Market" meta="Tap a market to open its scorecard">
       {/* Phone + tablet: stacked cards */}
       <div className="space-y-2 border-t border-slate-100 px-3 py-3 dark:border-slate-800/70 lg:hidden">
-        {rows.map((r) => (
-          <MobileCard key={r.market} r={r} />
-        ))}
-        {total && <MobileCard r={total} strong />}
+        {rows.map((r) => renderMobileCard(r))}
+        {total && renderMobileCard(total, true)}
       </div>
 
       {/* Desktop: full table */}
@@ -149,8 +151,8 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => <Row key={r.market} r={r} />)}
-            {total && <Row r={total} strong />}
+            {rows.map((r) => renderRow(r))}
+            {total && renderRow(total, true)}
           </tbody>
         </table>
       </div>

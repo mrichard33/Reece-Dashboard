@@ -17,7 +17,12 @@ export function ContentNav() {
   return (
     <nav className="flex gap-1 border-b border-slate-200 px-6 dark:border-slate-800">
       {TABS.map((t) => {
-        const active = t.href === "/content" ? path === "/content" : path.startsWith(t.href);
+        // Anchored prefix match: "/content/settings" must not light up for a
+        // sibling like "/content/settings-v2" — only exact or a "/" boundary.
+        const active =
+          t.href === "/content"
+            ? path === "/content"
+            : path === t.href || path.startsWith(t.href + "/");
         return (
           <Link
             key={t.href}

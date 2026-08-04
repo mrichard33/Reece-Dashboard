@@ -43,6 +43,7 @@ export default async function OverviewPage() {
         role={user.role}
         title="Mission Control"
         subtitle="System health, pipeline flow, and active alerts"
+        syncNow
       />
 
       <div className="space-y-6 p-6">
