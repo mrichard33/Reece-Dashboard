@@ -272,3 +272,70 @@ describe("formatters", () => {
     expect(scPts(-39.6)).toBe("-39.6%");
   });
 });
+
+// ── ③ report-facts fields (lp_report_facts) — the 2026-08-05 defect class ──
+
+import type { ReportFacts } from "@/lib/queries/reportFacts.core";
+
+const FACTS: ReportFacts = {
+  sold: {
+    basis: "control_totals",
+    asOf: "2026-08-05",
+    soldCount: 3344,
+    grossSoldDollars: 79_904_667.2,
+    cancelCount: 955,
+    cancelValueDollars: 23_010_879.77,
+    netAfterCancelsDollars: 56_893_787.43,
+  },
+  goodBusiness: {
+    asOf: "2026-08-05",
+    hoa: { count: 93, dollars: 2_008_759 },
+    permit: { count: 18, dollars: 343_564 },
+    otherPending: { count: 131, dollars: 3_794_614 },
+    excluded: { count: 698, dollars: 18_707_849.28 },
+    pendingTotalDollars: 2_008_759 + 343_564 + 3_794_614,
+    pendingTotalCount: 242,
+    openJobsTotal: 940,
+  },
+};
+
+describe("buildScorecardVM — revenue.facts (③ cards)", () => {
+  it("REGRESSION: cancellation value = GSA − NSA and ≠ gross sold", () => {
+    const vm = buildScorecardVM(makeView(), MONTH, FACTS);
+    const f = vm.revenue.facts;
+    expect(f.cancelValue).toBeCloseTo(23_010_879.77, 2);
+    expect(f.cancelValue).not.toBe(f.grossSold);
+    expect(f.cancelValue).toBeCloseTo(f.grossSold! - f.netAfterCancels!, 6);
+    expect(f.netAfterCancels).toBeGreaterThan(0);
+    expect(f.cancelCount).toBe(955);
+  });
+
+  it("pending buckets carry count + dollars and releasedRemaining = NSA − pending", () => {
+    const vm = buildScorecardVM(makeView(), MONTH, FACTS);
+    const f = vm.revenue.facts;
+    expect(f.pendingPermit).toEqual({ count: 18, dollars: 343_564 });
+    expect(f.pendingHoa).toEqual({ count: 93, dollars: 2_008_759 });
+    expect(f.releasedRemaining).toBeCloseTo(
+      56_893_787.43 - (2_008_759 + 343_564 + 3_794_614), 2);
+  });
+
+  it("no facts (zero net_sales month, empty raw_inputs) → nulls, never zeros", () => {
+    const v = makeView({ dropBuckets: true });
+    (v.actuals as { net_sales: number }).net_sales = 0;
+    const vm = buildScorecardVM(v, MONTH, null);
+    const f = vm.revenue.facts;
+    expect(f.soldCount).toBeNull();
+    expect(f.grossSold).toBeNull();
+    expect(f.cancelCount).toBeNull();
+    expect(f.cancelValue).toBeNull();     // the defect rendered gross here
+    expect(f.netAfterCancels).toBeNull(); // and $0 here
+    expect(f.pendingHoa).toBeNull();
+    expect(f.releasedRemaining).toBeNull();
+  });
+
+  it("omitting the reportFacts argument keeps every facts field null (no throw)", () => {
+    const vm = buildScorecardVM(makeView(), MONTH);
+    expect(vm.revenue.facts.soldBasis).toBeNull();
+    expect(vm.revenue.facts.pendingTotal).toBeNull();
+  });
+});

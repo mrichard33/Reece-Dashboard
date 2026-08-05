@@ -16,6 +16,7 @@ import type { RevenueBucket } from "@/components/scorecard/viz/RevenueStack";
 import type { RankedItem } from "@/components/scorecard/viz/RankedBars";
 import type { ScorecardView } from "@/lib/queries/scorecard";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
+import type { ReportFacts } from "@/lib/queries/reportFacts.core";
 
 // ── formatters specific to the scorecard visuals ────────────────────────────
 
@@ -154,6 +155,32 @@ export type ScorecardVM = {
     net: number;
     salesCount: number;
     cancelledCount: number;
+    /**
+     * Report-facts figures for the ③ cards (lp_report_facts, CSV-era sources).
+     * All `number | null`: null = "not yet sourced" and renders "—", NEVER $0.
+     * The old `impliedCancelled` residual (gross − net) is NOT a cancellation
+     * figure — when net_sales was 0 it equaled gross and collapsed surviving
+     * business to $0 (the 2026-08-05 defect). The card now renders cancels
+     * ONLY from these fields.
+     */
+    facts: {
+      /** null when no facts snapshot covers the resolved period */
+      soldBasis: "control_totals" | "lead_attributed" | null;
+      soldAsOf: string | null;
+      soldCount: number | null;
+      grossSold: number | null;
+      cancelCount: number | null;
+      cancelValue: number | null;
+      netAfterCancels: number | null;
+      /** open-pipeline stock (job_status_ytd) — null when never imported */
+      pendingAsOf: string | null;
+      pendingHoa: { count: number; dollars: number } | null;
+      pendingPermit: { count: number; dollars: number } | null;
+      pendingOther: { count: number; dollars: number } | null;
+      pendingTotal: number | null;
+      /** net after cancels − pending total; needs both sides sourced */
+      releasedRemaining: number | null;
+    };
   };
   /** Null target/actual = not computable ("—"): no NSLI history, or 0 completed
    *  selling days (first of the month). Never NaN/Infinity. */
@@ -164,7 +191,11 @@ export type ScorecardVM = {
 
 const r0 = (v: number) => Math.round(v);
 
-export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod): ScorecardVM {
+export function buildScorecardVM(
+  view: ScorecardView,
+  resolved: ResolvedPeriod,
+  reportFacts?: ReportFacts | null,
+): ScorecardVM {
   const { actuals: a, goals: g, derived: d } = view;
   const abbr = abbrFor(resolved.key);
 
@@ -262,6 +293,27 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   const bucketed = released + working + open;
   const unbucketed = Math.max(0, Math.round(net - bucketed));
   const impliedCancelled = Math.max(0, Math.round(gross - net));
+  // ③ card figures from lp_report_facts. Sold figures are period-gated (a YTD
+  // snapshot never answers an MTD view); pending buckets are the current
+  // open-pipeline stock. Missing → null → "—", never $0.
+  const sf = reportFacts?.sold ?? null;
+  const gb = reportFacts?.goodBusiness ?? null;
+  const facts = {
+    soldBasis: sf?.basis ?? null,
+    soldAsOf: sf?.asOf ?? null,
+    soldCount: sf?.soldCount ?? null,
+    grossSold: sf?.grossSoldDollars ?? null,
+    cancelCount: sf?.cancelCount ?? null,
+    cancelValue: sf?.cancelValueDollars ?? null,
+    netAfterCancels: sf?.netAfterCancelsDollars ?? null,
+    pendingAsOf: gb?.asOf ?? null,
+    pendingHoa: gb?.hoa ?? null,
+    pendingPermit: gb?.permit ?? null,
+    pendingOther: gb?.otherPending ?? null,
+    pendingTotal: gb?.pendingTotalDollars ?? null,
+    releasedRemaining:
+      sf != null && gb != null ? sf.netAfterCancelsDollars - gb.pendingTotalDollars : null,
+  };
   const revenue = {
     buckets,
     gross,
@@ -278,6 +330,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
     net,
     salesCount: sold,
     cancelledCount: a.ko_count ?? 0,
+    facts,
   };
 
   // ── per-day pace ──

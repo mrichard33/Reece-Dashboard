@@ -63,38 +63,70 @@ function SplitCard({
   );
 }
 
+/** count + dollars for a pending bucket; null → "not yet sourced", never $0. */
+const bucketValue = (b: { count: number; dollars: number } | null): string =>
+  b == null ? "not yet sourced" : `${num(b.count)} · ${usd(b.dollars)}`;
+
 export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode }) {
   const r = vm.revenue;
+  const f = r.facts;
 
+  // Sold this period — the five-line structure from the Marketing report:
+  //   count = NumSold · gross = GSA · cancels = (NumSold − NumNetSold) ·
+  //   (GSA − NSA) · net after cancels = NSA.
+  // Cancellation value is NEVER the gross−net residual (the 2026-08-05
+  // defect rendered cancellations equal to gross sold and surviving $0).
+  // Without a facts snapshot covering this period, count/gross fall back to
+  // the scorecard actuals and the cancel lines show "—" (usd/num null-safe).
+  const soldSourced = f.soldCount != null;
   const soldLines: Line[] = [
-    { label: "Sales count", value: num(r.salesCount) },
-    { label: "Gross sold", value: usd(r.gross) },
-    { label: "Cancellations", value: `${num(r.cancelledCount)} · ${usd(r.impliedCancelled)}`, tone: "red" },
-    { label: "Surviving good business", value: usd(r.net), strong: true },
+    { label: "Total sales count", value: num(soldSourced ? f.soldCount : r.salesCount) },
+    { label: "Gross sales value", value: usd(soldSourced ? f.grossSold : r.gross) },
+    {
+      label: "Cancellations",
+      value: f.cancelCount == null ? "not yet sourced" : `${num(f.cancelCount)} · ${usd(f.cancelValue)}`,
+      tone: "red",
+    },
+    { label: "Net sales after cancels", value: usd(f.netAfterCancels), strong: true },
   ];
 
+  // Net (Good Business) — gross → −cancels → net, then the open-pipeline
+  // holds (stock from the Job Status report: HOA / Permit / Other pending,
+  // each count · $), leaving released remaining. Buckets foot to total open
+  // jobs by construction; a missing source renders "not yet sourced".
   const netLines: Line[] = [
-    { label: "Released", note: "recognized", value: usd(r.released) },
-    { label: "Working", value: usd(r.working) },
-    { label: "Other", value: usd(r.other) },
-    ...(r.bucketsComplete
-      ? []
-      : [{ label: "Earlier months", note: "pre-bucket", value: usd(r.unbucketed) } as Line]),
-    { label: "Net (Good Business)", value: usd(r.net), strong: true },
+    { label: "Gross sales", value: usd(soldSourced ? f.grossSold : r.gross) },
+    {
+      label: "− Cancellations",
+      value: f.cancelValue == null ? "not yet sourced" : usd(f.cancelValue),
+      tone: "red",
+    },
+    { label: "= Net sold", value: usd(f.netAfterCancels), strong: true },
+    { label: "− Held: HOA", note: "pending", value: bucketValue(f.pendingHoa) },
+    { label: "− Held: Permit", note: "pending", value: bucketValue(f.pendingPermit) },
+    { label: "− Other pending", note: "pre-release", value: bucketValue(f.pendingOther) },
+    { label: "= Remaining net (released)", value: usd(f.releasedRemaining), strong: true },
   ];
+
+  const basisNote =
+    f.soldBasis === "control_totals"
+      ? "Company control totals (Marketing report)"
+      : f.soldBasis === "lead_attributed"
+        ? "Lead-attributed basis — market split from lead rows; company totals come from the Marketing report"
+        : "No report snapshot covers this period yet";
 
   return (
     <div className="space-y-3">
       <div className={`grid grid-cols-1 items-start gap-4 ${aside ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
         <SplitCard
           title="Sold this period"
-          subtitle="Sold-date basis"
+          subtitle={`Sold-date basis · ${basisNote}${f.soldAsOf ? ` · as of ${usDate(f.soldAsOf)}` : ""}`}
           accent="border-t-2 border-t-navy-900 dark:border-t-slate-200"
           lines={soldLines}
         />
         <SplitCard
           title="Net (Good Business) breakdown"
-          subtitle={`Net-date basis · as of ${usDate(vm.snapshot.asOfDate)}`}
+          subtitle={`Net-date basis · holds as of ${f.pendingAsOf ? usDate(f.pendingAsOf) : usDate(vm.snapshot.asOfDate)}`}
           accent="border-t-2 border-t-sky-400"
           lines={netLines}
         />
@@ -105,13 +137,9 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
         <span aria-hidden className="mt-px text-slate-400">ⓘ</span>
         <span>
           Net rarely equals Sold in the same period — jobs net when they release (HOA, permits,
-          financing, production), often months later.
-          {!r.bucketsComplete && (
-            <span className="mt-1 block text-slate-400">
-              Net buckets tracked from June 2026 — earlier months contribute to Net (Good Business)
-              but aren&apos;t split into Released / Working / Other.
-            </span>
-          )}
+          financing, production), often months later. Holds are the current open pipeline from the
+          Job Status report; &ldquo;not yet sourced&rdquo; means no report snapshot covers this view
+          yet — it is not a zero.
         </span>
       </p>
     </div>
