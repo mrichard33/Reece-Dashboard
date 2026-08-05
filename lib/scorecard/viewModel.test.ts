@@ -316,6 +316,8 @@ const FACTS: ReportFacts = {
   sold: {
     basis: "control_totals",
     asOf: "2026-08-05",
+    scope: "ytd",
+    netPendingReason: null,
     soldCount: 3344,
     grossSoldDollars: 79_904_667.2,
     cancelCount: 955,

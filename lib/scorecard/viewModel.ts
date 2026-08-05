@@ -176,11 +176,15 @@ export type ScorecardVM = {
       /** null when no facts snapshot covers the resolved period */
       soldBasis: "sales_efficiency" | "control_totals" | "lead_attributed" | null;
       soldAsOf: string | null;
+      /** Scope of the snapshot that answered — "mtd" / "ytd" / … */
+      soldScope: "mtd" | "ytd" | "month" | "custom" | null;
       soldCount: number | null;
       grossSold: number | null;
       cancelCount: number | null;
       cancelValue: number | null;
       netAfterCancels: number | null;
+      /** Why netAfterCancels is null despite a covering snapshot (cohort). */
+      netPendingReason: string | null;
       /** open-pipeline stock (job_status_ytd) — null when never imported */
       pendingAsOf: string | null;
       pendingHoa: { count: number; dollars: number } | null;
@@ -323,18 +327,24 @@ export function buildScorecardVM(
   const facts = {
     soldBasis: sf?.basis ?? null,
     soldAsOf: sf?.asOf ?? null,
+    soldScope: sf?.scope ?? null,
     soldCount: sf?.soldCount ?? null,
     grossSold: sf?.grossSoldDollars ?? null,
     cancelCount: sf?.cancelCount ?? null,
     cancelValue: sf?.cancelValueDollars ?? null,
     netAfterCancels: sf?.netAfterCancelsDollars ?? null,
+    netPendingReason: sf?.netPendingReason ?? null,
     pendingAsOf: gb?.asOf ?? null,
     pendingHoa: gb?.hoa ?? null,
     pendingPermit: gb?.permit ?? null,
     pendingOther: gb?.otherPending ?? null,
     pendingTotal: gb?.pendingTotalDollars ?? null,
+    // Both sides must be sourced — a cohort-immature net makes the remainder
+    // unknowable, not zero.
     releasedRemaining:
-      sf != null && gb != null ? sf.netAfterCancelsDollars - gb.pendingTotalDollars : null,
+      sf?.netAfterCancelsDollars != null && gb != null
+        ? sf.netAfterCancelsDollars - gb.pendingTotalDollars
+        : null,
   };
   const revenue = {
     buckets,

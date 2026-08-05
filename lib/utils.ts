@@ -59,6 +59,12 @@ export function monthLabelFull(ym: string | null | undefined): string {
   return `${MONTHS_FULL[Number(m) - 1] ?? m} ${y}`;
 }
 
+/**
+ * THE number formatter. Every displayed figure on the dashboard goes through
+ * `num` or `usd` (ruled 2026-08-05 §6) — thousands separators are not a
+ * per-component decision, and a raw `{value}` or `.toLocaleString()` in JSX is
+ * a bug, not a style choice.
+ */
 export function num(n: number | null | undefined, fallback = "—"): string {
   if (n === null || n === undefined || Number.isNaN(n)) return fallback;
   return new Intl.NumberFormat("en-US").format(n);
@@ -70,6 +76,49 @@ export function usd(n: number | null | undefined, fallback = "—"): string {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
+  }).format(n);
+}
+
+/** Currency WITH cents when the figure has them (goals, control totals). */
+export function usdExact(n: number | null | undefined, fallback = "—"): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return fallback;
+  const cents = Math.abs(Math.round(n * 100) % 100) > 0;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: cents ? 2 : 0,
+    maximumFractionDigits: cents ? 2 : 0,
+  }).format(n);
+}
+
+/**
+ * Parse a money figure a human typed: "2,731,306.68", "$2,731,306.68",
+ * " 2731306.68 " all mean the same amount. Returns null for blank or
+ * unparseable input so a caller can tell "not entered" from zero.
+ *
+ * Rounded to the cent — 2731306.68 must store as 2731306.68, not as the
+ * float artifact 2731306.6800000002.
+ */
+export function parseMoney(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "number") return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : null;
+  const cleaned = raw.replace(/[$,\s]/g, "").replace(/^\+/, "");
+  if (cleaned === "" || cleaned === "-" || cleaned === "." || cleaned === "-.") return null;
+  if (!/^-?\d*\.?\d*$/.test(cleaned)) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+/**
+ * Format a money figure for an INPUT field: comma-grouped, cents kept only
+ * when present, no currency symbol (the field renders its own "$" prefix).
+ */
+export function formatMoneyInput(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return "";
+  const cents = Math.abs(Math.round(n * 100) % 100) > 0;
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: cents ? 2 : 0,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 

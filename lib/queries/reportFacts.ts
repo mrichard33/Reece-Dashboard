@@ -17,7 +17,7 @@ export async function getReportFacts(
     const { data, error } = await sb
       .from("lp_report_facts")
       .select(
-        "report_type, period_start, period_end, as_of_date, market, branch_code_raw, metric, bucket, value_cents, value_count",
+        "report_type, period_start, period_end, as_of_date, scope, market, branch_code_raw, metric, bucket, value_cents, value_count",
       )
       .eq("is_current", true)
       .in("report_type", ["sales_efficiency", "source_cost", "lead_disposition", "job_status_ytd"])

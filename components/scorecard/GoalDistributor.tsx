@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Wand2, Check, RefreshCw } from "lucide-react";
-import { usd, num } from "@/lib/utils";
+import { usd, num, parseMoney } from "@/lib/utils";
 import { marketLabel, SCORECARD_MARKETS } from "@/lib/scorecard/markets";
 import {
   previewGoalDistribution,
@@ -12,6 +12,7 @@ import {
 } from "@/lib/actions/goalDistribution";
 import type { ScorecardGoalsEditorData } from "@/lib/queries/scorecard";
 import { ScCard } from "./ScCard";
+import { MoneyInput } from "./MoneyInput";
 
 /**
  * Top-down goal distribution (ruled 2026-08-04): Mark enters ONE company goal;
@@ -64,7 +65,7 @@ export function GoalDistributor({ data }: { data: ScorecardGoalsEditorData }) {
 
   const runPreview = () => {
     setMsg(null);
-    const dollars = Number(goalInput);
+    const dollars = parseMoney(goalInput) ?? 0;
     startTransition(async () => {
       const res = await previewGoalDistribution({ companyGoalDollars: dollars, goalMonth: month, windowMonths });
       setPreview(res);
@@ -118,15 +119,12 @@ export function GoalDistributor({ data }: { data: ScorecardGoalsEditorData }) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <label className="block">
             <span className={labelCls}>Company goal ($, month)</span>
-            <input
-              type="number"
-              min="0"
-              step="1000"
-              inputMode="decimal"
+            <MoneyInput
+              ariaLabel="Company goal dollars"
               className={inputCls}
-              value={goalInput}
-              onChange={(e) => setGoalInput(e.target.value)}
-              placeholder="e.g. 9000000"
+              value={parseMoney(goalInput)}
+              onChange={(next) => setGoalInput(next == null ? "" : String(next))}
+              placeholder="e.g. 9,000,000"
             />
           </label>
           <label className="block">
@@ -151,7 +149,7 @@ export function GoalDistributor({ data }: { data: ScorecardGoalsEditorData }) {
           <button
             type="button"
             onClick={runPreview}
-            disabled={pending || !(Number(goalInput) > 0)}
+            disabled={pending || !((parseMoney(goalInput) ?? 0) > 0)}
             className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-[12.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
           >
             <Wand2 size={14} /> {pending ? "Working…" : "Preview split"}

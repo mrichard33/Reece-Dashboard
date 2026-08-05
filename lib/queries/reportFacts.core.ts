@@ -15,6 +15,25 @@
  *    only when it covers the same window — same period_start and a period_end
  *    reaching the resolved as-of. A YTD backfill must not leak into an MTD
  *    view; daily MTD snapshots will satisfy MTD naturally once scheduled.
+ *  • SCOPE (2026-08-05 §1): several snapshots of one report type are current
+ *    at the same time — a YTD pull and an MTD pull are different reports about
+ *    different windows, not competing versions of one. Reads therefore choose
+ *    ONE snapshot per report type per view (scoreSnapshot below) instead of
+ *    summing every covering row, which would double-count the moment two
+ *    windows share a period_start.
+ *
+ *    METRIC → SCOPE MAPPING
+ *      Flow (issued · sat · sold count · gross sold · cancellations)
+ *        → the snapshot whose scope matches the view: mtd for a month view,
+ *          ytd for a year view. These accumulate within their own window and
+ *          are correct the day they are pulled.
+ *      Cohort-mature (net sold count · NSA · NSLI)
+ *        → only from a snapshot that actually carries them. An MTD Sales
+ *          Efficiency pull prints an EMPTY Net column (jobs sold this month
+ *          have not matured to net), so the MTD projection emits no net_sold
+ *          facts at all. Those figures then render "—" with a stated reason;
+ *          they are NEVER borrowed from the YTD snapshot, whose net answers a
+ *          different window and would silently overstate the month.
  *  • Pending buckets are a STOCK (current open pipeline from job_status_ytd,
  *    the point-in-time Job Status report) — they apply to any period view and
  *    carry their own as-of date. hoa / permit / other_pending each render
@@ -22,6 +41,9 @@
  */
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
 import { marketSources } from "@/lib/scorecard/markets";
+
+/** Snapshot scope, mirrored onto every fact row by the ingest layer. */
+export type FactScope = "mtd" | "ytd" | "month" | "custom";
 
 export type ReportFactRow = {
   report_type: string;
@@ -34,6 +56,8 @@ export type ReportFactRow = {
   bucket: string | null;
   value_cents: number | null;
   value_count: number;
+  /** Null only for rows ingested before the scope column existed. */
+  scope?: FactScope | null;
 };
 
 export type SoldFacts = {
@@ -47,11 +71,20 @@ export type SoldFacts = {
    */
   basis: "sales_efficiency" | "control_totals" | "lead_attributed";
   asOf: string;
+  /** Scope of the snapshot that answered — surfaced on the card. */
+  scope: FactScope | null;
   soldCount: number;
   grossSoldDollars: number;
-  cancelCount: number;
-  cancelValueDollars: number;
-  netAfterCancelsDollars: number;
+  /** Null when the answering snapshot carries no cancellations bucket. */
+  cancelCount: number | null;
+  cancelValueDollars: number | null;
+  /**
+   * Null when the answering snapshot is cohort-immature (an MTD Sales
+   * Efficiency pull with a blank Net column). `netPendingReason` says why, so
+   * the card can explain instead of showing a bare dash.
+   */
+  netAfterCancelsDollars: number | null;
+  netPendingReason: string | null;
 };
 
 export type PendingBucket = { count: number; dollars: number };
@@ -83,6 +116,50 @@ export function coversPeriod(f: ReportFactRow, resolved: ResolvedPeriod): boolea
   return f.period_start === resolved.periodStart && f.period_end >= needEnd;
 }
 
+/** The scope a view of this shape wants, in preference order. */
+export function preferredScopes(resolved: ResolvedPeriod): FactScope[] {
+  return resolved.key === "ytd"
+    ? ["ytd", "custom", "month", "mtd"]
+    : ["mtd", "month", "custom", "ytd"];
+}
+
+/**
+ * Identity of the snapshot a fact row came from. Facts do not carry
+ * snapshot_id, but (window, as-of, scope) separates any two simultaneously
+ * current snapshots of one report type.
+ */
+const snapshotKey = (f: ReportFactRow) =>
+  `${f.period_start}|${f.period_end}|${f.as_of_date}|${f.scope ?? ""}`;
+
+/**
+ * Choose ONE snapshot's rows out of every covering row of a report type.
+ * Preference: the scope this view wants, then the freshest as-of, then the
+ * tightest window. Summing across snapshots is never correct — two current
+ * snapshots are two reports, not two halves of one.
+ */
+function pickSnapshot(rows: ReportFactRow[], resolved: ResolvedPeriod): ReportFactRow[] {
+  if (!rows.length) return rows;
+  const order = preferredScopes(resolved);
+  const rank = (f: ReportFactRow) => {
+    const i = f.scope ? order.indexOf(f.scope) : -1;
+    return i < 0 ? order.length : i; // unknown/legacy scope sorts last, still usable
+  };
+  const groups = new Map<string, ReportFactRow[]>();
+  for (const r of rows) {
+    const k = snapshotKey(r);
+    const g = groups.get(k);
+    if (g) g.push(r);
+    else groups.set(k, [r]);
+  }
+  const best = [...groups.values()].sort((a, b) => {
+    const ra = rank(a[0]!), rb = rank(b[0]!);
+    if (ra !== rb) return ra - rb;
+    if (a[0]!.as_of_date !== b[0]!.as_of_date) return a[0]!.as_of_date < b[0]!.as_of_date ? 1 : -1;
+    return a[0]!.period_end < b[0]!.period_end ? -1 : 1; // tightest window wins ties
+  })[0]!;
+  return best;
+}
+
 /** Markets a fact row must belong to for a dashboard market code. */
 function marketFilter(marketCode: string): ((m: string) => boolean) {
   if (marketCode === "REECE") return () => true; // company = Σ everything, UNASSIGNED included
@@ -106,33 +183,46 @@ function sumMetric(rows: ReportFactRow[], metric: string) {
 function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: string): SoldFacts | null {
   // Report 137 first — authoritative for Issued/Sat/Sold/Cancelled/NSA by
   // market AND company (Σ markets). Cancellations come from its EXPLICIT
-  // bucket, not a sold−net inference. counts_only (MTD) snapshots carry no
-  // net_sold facts → netAfterCancels stays unsourced rather than fabricated,
-  // so we fall through to the older bases in that case.
+  // bucket, not a sold−net inference.
   const inMarket = marketFilter(marketCode);
-  const se = rows.filter(
-    (r) => r.report_type === "sales_efficiency" && inMarket(r.market) && coversPeriod(r, resolved),
+  const se = pickSnapshot(
+    rows.filter(
+      (r) => r.report_type === "sales_efficiency" && inMarket(r.market) && coversPeriod(r, resolved),
+    ),
+    resolved,
   );
   if (se.length) {
     const sold = sumMetric(se, "sold");
     const netSold = sumMetric(se, "net_sold");
     const cancelled = sumMetric(se, "cancelled");
-    if (sold.seen && netSold.seen && sold.cents != null && netSold.cents != null) {
+    if (sold.seen && sold.cents != null) {
+      // Cohort-mature figures come from THIS snapshot or not at all. An MTD
+      // pull carries no net_sold facts (blank Net column); the month's net is
+      // genuinely not yet knowable, and the YTD snapshot's net answers a
+      // different window.
+      const netSourced = netSold.seen && netSold.cents != null;
       return {
         basis: "sales_efficiency",
         asOf: se[0]!.as_of_date,
+        scope: se[0]!.scope ?? null,
         soldCount: sold.count,
         grossSoldDollars: dollars(sold.cents)!,
-        cancelCount: cancelled.seen ? cancelled.count : sold.count - netSold.count,
+        cancelCount: cancelled.seen ? cancelled.count : netSourced ? sold.count - netSold.count : null,
         cancelValueDollars: cancelled.seen && cancelled.cents != null
           ? dollars(cancelled.cents)!
-          : dollars(sold.cents - netSold.cents)!,
-        netAfterCancelsDollars: dollars(netSold.cents)!,
+          : netSourced ? dollars(sold.cents - netSold.cents!)! : null,
+        netAfterCancelsDollars: netSourced ? dollars(netSold.cents)! : null,
+        netPendingReason: netSourced
+          ? null
+          : "this period's Net column is still maturing — jobs sold this month have not netted yet",
       };
     }
   }
   if (marketCode === "REECE") {
-    const sc = rows.filter((r) => r.report_type === "source_cost" && coversPeriod(r, resolved));
+    const sc = pickSnapshot(
+      rows.filter((r) => r.report_type === "source_cost" && coversPeriod(r, resolved)),
+      resolved,
+    );
     if (!sc.length) return null;
     const sold = sumMetric(sc, "sold");
     const netSold = sumMetric(sc, "net_sold");
@@ -142,15 +232,20 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
     return {
       basis: "control_totals",
       asOf: sc[0]!.as_of_date,
+      scope: sc[0]!.scope ?? null,
       soldCount: sold.count,
       grossSoldDollars: dollars(gross.cents)!,
       cancelCount: sold.count - netSold.count,
       cancelValueDollars: dollars(gross.cents - nsa.cents)!,
       netAfterCancelsDollars: dollars(nsa.cents)!,
+      netPendingReason: null,
     };
   }
-  const ld = rows.filter(
-    (r) => r.report_type === "lead_disposition" && inMarket(r.market) && coversPeriod(r, resolved),
+  const ld = pickSnapshot(
+    rows.filter(
+      (r) => r.report_type === "lead_disposition" && inMarket(r.market) && coversPeriod(r, resolved),
+    ),
+    resolved,
   );
   if (!ld.length) return null;
   const sold = sumMetric(ld, "sold");
@@ -159,11 +254,13 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
   return {
     basis: "lead_attributed",
     asOf: ld[0]!.as_of_date,
+    scope: ld[0]!.scope ?? null,
     soldCount: sold.count,
     grossSoldDollars: dollars(sold.cents ?? 0)!,
     cancelCount: sold.count - netSold.count,
     cancelValueDollars: dollars((sold.cents ?? 0) - (netSold.cents ?? 0))!,
     netAfterCancelsDollars: dollars(netSold.cents ?? 0)!,
+    netPendingReason: null,
   };
 }
 
