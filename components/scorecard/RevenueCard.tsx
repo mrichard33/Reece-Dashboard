@@ -116,11 +116,13 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
   ];
 
   const basisNote =
-    f.soldBasis === "control_totals"
-      ? "Company control totals (Marketing report)"
-      : f.soldBasis === "lead_attributed"
-        ? "Lead-attributed basis — market split from lead rows; company totals come from the Marketing report"
-        : "No report snapshot covers this period yet";
+    f.soldBasis === "sales_efficiency"
+      ? "Sales Efficiency report (137) — authoritative per-market funnel, explicit cancellations"
+      : f.soldBasis === "control_totals"
+        ? "Company control totals (Marketing report) — fallback until a covering 137 snapshot exists"
+        : f.soldBasis === "lead_attributed"
+          ? "Lead-attributed basis (fallback) — company totals come from the Marketing report"
+          : "No report snapshot covers this period yet";
 
   return (
     <div className="space-y-3">
