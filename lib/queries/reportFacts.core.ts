@@ -37,8 +37,15 @@ export type ReportFactRow = {
 };
 
 export type SoldFacts = {
-  /** 'control_totals' = company source_cost report; 'lead_attributed' = per-market lead rows. */
-  basis: "control_totals" | "lead_attributed";
+  /**
+   * 'sales_efficiency' = report 137, the AUTHORITATIVE per-market (and
+   * company) funnel source with an explicit cancellations bucket;
+   * 'control_totals' = company source_cost report (fallback);
+   * 'lead_attributed' = per-market lead rows (fallback).
+   * Fallbacks apply only when no covering 137 snapshot exists — every
+   * non-authoritative source is otherwise a recon check, never a read path.
+   */
+  basis: "sales_efficiency" | "control_totals" | "lead_attributed";
   asOf: string;
   soldCount: number;
   grossSoldDollars: number;
@@ -97,6 +104,33 @@ function sumMetric(rows: ReportFactRow[], metric: string) {
 }
 
 function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: string): SoldFacts | null {
+  // Report 137 first — authoritative for Issued/Sat/Sold/Cancelled/NSA by
+  // market AND company (Σ markets). Cancellations come from its EXPLICIT
+  // bucket, not a sold−net inference. counts_only (MTD) snapshots carry no
+  // net_sold facts → netAfterCancels stays unsourced rather than fabricated,
+  // so we fall through to the older bases in that case.
+  const inMarket = marketFilter(marketCode);
+  const se = rows.filter(
+    (r) => r.report_type === "sales_efficiency" && inMarket(r.market) && coversPeriod(r, resolved),
+  );
+  if (se.length) {
+    const sold = sumMetric(se, "sold");
+    const netSold = sumMetric(se, "net_sold");
+    const cancelled = sumMetric(se, "cancelled");
+    if (sold.seen && netSold.seen && sold.cents != null && netSold.cents != null) {
+      return {
+        basis: "sales_efficiency",
+        asOf: se[0]!.as_of_date,
+        soldCount: sold.count,
+        grossSoldDollars: dollars(sold.cents)!,
+        cancelCount: cancelled.seen ? cancelled.count : sold.count - netSold.count,
+        cancelValueDollars: cancelled.seen && cancelled.cents != null
+          ? dollars(cancelled.cents)!
+          : dollars(sold.cents - netSold.cents)!,
+        netAfterCancelsDollars: dollars(netSold.cents)!,
+      };
+    }
+  }
   if (marketCode === "REECE") {
     const sc = rows.filter((r) => r.report_type === "source_cost" && coversPeriod(r, resolved));
     if (!sc.length) return null;
@@ -115,7 +149,6 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
       netAfterCancelsDollars: dollars(nsa.cents)!,
     };
   }
-  const inMarket = marketFilter(marketCode);
   const ld = rows.filter(
     (r) => r.report_type === "lead_disposition" && inMarket(r.market) && coversPeriod(r, resolved),
   );

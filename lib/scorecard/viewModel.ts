@@ -174,7 +174,7 @@ export type ScorecardVM = {
      */
     facts: {
       /** null when no facts snapshot covers the resolved period */
-      soldBasis: "control_totals" | "lead_attributed" | null;
+      soldBasis: "sales_efficiency" | "control_totals" | "lead_attributed" | null;
       soldAsOf: string | null;
       soldCount: number | null;
       grossSold: number | null;

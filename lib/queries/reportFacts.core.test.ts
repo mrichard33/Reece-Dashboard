@@ -150,6 +150,64 @@ describe("Net (Good Business) pending buckets", () => {
   });
 });
 
+describe("Sold This Period (report 137 authoritative — sales_efficiency)", () => {
+  const se = (market: string, branch: string, metric: string, value_cents: number | null, value_count: number): ReportFactRow => ({
+    ...base, report_type: "sales_efficiency", market, branch_code_raw: branch, metric, value_cents, value_count,
+  });
+  // Live 2026-08-05 YTD figures for Sarasota + the ORL/LAKE fold.
+  const ROWS: ReportFactRow[] = [
+    se("SAR_MKT", "SAR", "sold", 1_280_148_600, 485),
+    se("SAR_MKT", "SAR", "net_sold", 929_889_600, 338),
+    se("SAR_MKT", "SAR", "cancelled", 199_395_700, 73),
+    se("ORL_MKT", "ORL", "sold", 1_344_355_800, 682),
+    se("ORL_MKT", "ORL", "net_sold", 826_183_900, 408),
+    se("ORL_MKT", "ORL", "cancelled", 307_507_600, 150),
+    se("LAKE_MKT", "LAKE", "sold", 200_389_000, 107),
+    se("LAKE_MKT", "LAKE", "net_sold", 107_207_700, 60),
+    se("LAKE_MKT", "LAKE", "cancelled", 57_069_000, 29),
+  ];
+
+  test("§8.11 per-market sold populates from 137 with EXPLICIT cancellations", () => {
+    const { sold } = buildReportFacts(ROWS, YTD, "SAR_MKT");
+    expect(sold!.basis).toBe("sales_efficiency");
+    expect(sold!.soldCount).toBe(485);
+    expect(sold!.grossSoldDollars).toBeCloseTo(12_801_486, 2);
+    expect(sold!.cancelCount).toBe(73);
+    expect(sold!.cancelValueDollars).toBeCloseTo(1_993_957, 2);
+    expect(sold!.netAfterCancelsDollars).toBeCloseTo(9_298_896, 2);
+    // cancellations are the report's own bucket — NOT sold − net_sold
+    expect(sold!.cancelCount).not.toBe(485 - 338);
+  });
+
+  test("§8.11 Orlando folds ORL + LAKE per standing rules", () => {
+    const { sold } = buildReportFacts(ROWS, YTD, "ORL_MKT");
+    expect(sold!.soldCount).toBe(789);
+    expect(sold!.cancelCount).toBe(179);
+    expect(sold!.cancelValueDollars).toBeCloseTo(3_645_766, 2);
+    expect(sold!.netAfterCancelsDollars).toBeCloseTo(9_333_916, 2);
+  });
+
+  test("§8.12 cancellation value ≠ gross sold (the confirmed defect)", () => {
+    const { sold } = buildReportFacts(ROWS, YTD, "SAR_MKT");
+    expect(sold!.cancelValueDollars).not.toBe(sold!.grossSoldDollars);
+    expect(sold!.netAfterCancelsDollars).toBeGreaterThan(0);
+  });
+
+  test("137 beats the older bases when both cover the period; falls back when 137 absent", () => {
+    const withSc = [...ROWS, ...SOURCE_COST];
+    const company = buildReportFacts(withSc, YTD, "REECE");
+    expect(company.sold!.basis).toBe("sales_efficiency");
+    const fallback = buildReportFacts(SOURCE_COST, YTD, "REECE");
+    expect(fallback.sold!.basis).toBe("control_totals");
+  });
+
+  test("counts_only (MTD) 137 rows — no net_sold facts — fall through, never fabricate", () => {
+    const countsOnly = ROWS.filter((r) => r.metric !== "net_sold");
+    const { sold } = buildReportFacts(countsOnly, YTD, "SAR_MKT");
+    expect(sold).toBeNull(); // no fallback source for this market → "—", not $0
+  });
+});
+
 describe("coversPeriod", () => {
   const row = SOURCE_COST[0]!;
   test("same window, as-of inside → covered", () => {

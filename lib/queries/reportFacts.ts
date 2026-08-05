@@ -20,8 +20,8 @@ export async function getReportFacts(
         "report_type, period_start, period_end, as_of_date, market, branch_code_raw, metric, bucket, value_cents, value_count",
       )
       .eq("is_current", true)
-      .in("report_type", ["source_cost", "lead_disposition", "job_status_ytd"])
-      .limit(500);
+      .in("report_type", ["sales_efficiency", "source_cost", "lead_disposition", "job_status_ytd"])
+      .limit(1000);
     if (error) throw new Error(error.message);
     return buildReportFacts((data ?? []) as ReportFactRow[], resolved, marketCode);
   } catch (err) {
