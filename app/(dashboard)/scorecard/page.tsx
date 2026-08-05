@@ -16,6 +16,7 @@ import { ByMarketTable } from "@/components/scorecard/ByMarketTable";
 import { EditGoalsPanel } from "@/components/scorecard/EditGoalsPanel";
 import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries/scorecard";
 import { getByMarket } from "@/lib/queries/byMarket";
+import { getReportFacts } from "@/lib/queries/reportFacts";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
 import { normalizeMarketCode } from "@/lib/scorecard/markets";
@@ -45,7 +46,7 @@ export default async function ScorecardPage({
   // derives "this month" from the browser's local clock.
   const currentMonthET = todayET().slice(0, 7);
 
-  const [view, byMarket] = await Promise.all([
+  const [view, byMarket, reportFacts] = await Promise.all([
     getScorecardForPeriod(MARKET, resolved).catch((err) => {
       console.error(`[scorecard] view ${MARKET} failed:`, (err as Error)?.message ?? err);
       return null;
@@ -54,6 +55,9 @@ export default async function ScorecardPage({
       console.error("[scorecard] byMarket failed:", (err as Error)?.message ?? err);
       return { rows: [], total: null };
     }),
+    // ③ card figures (lp_report_facts) — getReportFacts never rejects; a
+    // failure yields nulls and the cards render "not yet sourced".
+    getReportFacts(MARKET, resolved),
   ]);
   // Admin-only editor data — never let its fan-out take down the page; the panel
   // simply hides if it can't load.
@@ -156,7 +160,7 @@ export default async function ScorecardPage({
           </Card>
         ) : (
           (() => {
-            const vm = buildScorecardVM(view, resolved);
+            const vm = buildScorecardVM(view, resolved, reportFacts);
             return (
               <>
                 {!view.derived.reconciled && (

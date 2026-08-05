@@ -63,51 +63,77 @@ function SplitCard({
   );
 }
 
+/** count + dollars for a pending bucket; null → "not yet sourced", never $0. */
+const bucketValue = (b: { count: number; dollars: number } | null): string =>
+  b == null ? "not yet sourced" : `${num(b.count)} · ${usd(b.dollars)}`;
+
 export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode }) {
   const r = vm.revenue;
-  // Pending period (no report has landed yet): dollar figures derived from net
-  // render "—", never $0 or a gross-minus-zero "cancellation" artifact. The
-  // sales count, gross, and cancellation COUNT are real and stay visible.
+  const f = r.facts;
+  // Pending period (no report has landed yet, main 2026-08-04): dollar figures
+  // derived from a missing net render "—", never $0. The facts fields carry
+  // their own nullability; `pending` guards the non-facts fallbacks below.
   const pending = r.reportPending;
 
+  // Sold this period — the five-line structure from the Marketing report:
+  //   count = NumSold · gross = GSA · cancels = (NumSold − NumNetSold) ·
+  //   (GSA − NSA) · net after cancels = NSA.
+  // Cancellation value is NEVER the gross−net residual (the 2026-08-05
+  // defect rendered cancellations equal to gross sold and surviving $0).
+  // Without a facts snapshot covering this period, count/gross fall back to
+  // the scorecard actuals and the cancel lines show "—" (usd/num null-safe).
+  const soldSourced = f.soldCount != null;
+  // In a pending period the legacy gross computes from zeroed buckets — a
+  // fabricated $0; fall back to "—" instead (usd(null)).
+  const fallbackGross = pending ? null : r.gross;
   const soldLines: Line[] = [
-    { label: "Sales count", value: num(r.salesCount) },
-    { label: "Gross sold", value: usd(r.gross) },
-    pending
-      ? { label: "Cancellations", note: "dollars pending report", value: `${num(r.cancelledCount)} · —`, tone: "red" }
-      : { label: "Cancellations", value: `${num(r.cancelledCount)} · ${usd(r.impliedCancelled ?? 0)}`, tone: "red" },
-    { label: "Surviving good business", note: pending ? "report pending" : undefined, value: pending ? "—" : usd(r.net ?? 0), strong: true },
+    { label: "Total sales count", value: num(soldSourced ? f.soldCount : r.salesCount) },
+    { label: "Gross sales value", value: usd(soldSourced ? f.grossSold : fallbackGross) },
+    {
+      label: "Cancellations",
+      value: f.cancelCount == null ? "not yet sourced" : `${num(f.cancelCount)} · ${usd(f.cancelValue)}`,
+      tone: "red",
+    },
+    { label: "Net sales after cancels", value: usd(f.netAfterCancels), strong: true },
   ];
 
-  const netLines: Line[] = pending
-    ? [
-        { label: "Released", note: "recognized", value: "—" },
-        { label: "Working", value: "—" },
-        { label: "Other", value: "—" },
-        { label: "Net (Good Business)", note: "report pending", value: "—", strong: true },
-      ]
-    : [
-        { label: "Released", note: "recognized", value: usd(r.released) },
-        { label: "Working", value: usd(r.working) },
-        { label: "Other", value: usd(r.other) },
-        ...(r.bucketsComplete
-          ? []
-          : [{ label: "Earlier months", note: "pre-bucket", value: usd(r.unbucketed) } as Line]),
-        { label: "Net (Good Business)", value: usd(r.net ?? 0), strong: true },
-      ];
+  // Net (Good Business) — gross → −cancels → net, then the open-pipeline
+  // holds (stock from the Job Status report: HOA / Permit / Other pending,
+  // each count · $), leaving released remaining. Buckets foot to total open
+  // jobs by construction; a missing source renders "not yet sourced".
+  const netLines: Line[] = [
+    { label: "Gross sales", value: usd(soldSourced ? f.grossSold : fallbackGross) },
+    {
+      label: "− Cancellations",
+      value: f.cancelValue == null ? "not yet sourced" : usd(f.cancelValue),
+      tone: "red",
+    },
+    { label: "= Net sold", value: usd(f.netAfterCancels), strong: true },
+    { label: "− Held: HOA", note: "pending", value: bucketValue(f.pendingHoa) },
+    { label: "− Held: Permit", note: "pending", value: bucketValue(f.pendingPermit) },
+    { label: "− Other pending", note: "pre-release", value: bucketValue(f.pendingOther) },
+    { label: "= Remaining net (released)", value: usd(f.releasedRemaining), strong: true },
+  ];
+
+  const basisNote =
+    f.soldBasis === "control_totals"
+      ? "Company control totals (Marketing report)"
+      : f.soldBasis === "lead_attributed"
+        ? "Lead-attributed basis — market split from lead rows; company totals come from the Marketing report"
+        : "No report snapshot covers this period yet";
 
   return (
     <div className="space-y-3">
       <div className={`grid grid-cols-1 items-start gap-4 ${aside ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
         <SplitCard
           title="Sold this period"
-          subtitle="Sold-date basis"
+          subtitle={`Sold-date basis · ${basisNote}${f.soldAsOf ? ` · as of ${usDate(f.soldAsOf)}` : ""}`}
           accent="border-t-2 border-t-navy-900 dark:border-t-slate-200"
           lines={soldLines}
         />
         <SplitCard
           title="Net (Good Business) breakdown"
-          subtitle={`Net-date basis · as of ${usDate(vm.snapshot.asOfDate)}`}
+          subtitle={`Net-date basis · holds as of ${f.pendingAsOf ? usDate(f.pendingAsOf) : usDate(vm.snapshot.asOfDate)}`}
           accent="border-t-2 border-t-sky-400"
           lines={netLines}
         />
@@ -118,20 +144,9 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
         <span aria-hidden className="mt-px text-slate-400">ⓘ</span>
         <span>
           Net rarely equals Sold in the same period — jobs net when they release (HOA, permits,
-          financing, production), often months later.
-          {pending && (
-            <span className="mt-1 block text-slate-400">
-              No report has been received for this period yet — Released / Working / Other,
-              cancellation dollars, and Net (Good Business) fill in with the first successful
-              report ingest. Pending is shown as &ldquo;—&rdquo;, never $0.
-            </span>
-          )}
-          {!pending && !r.bucketsComplete && (
-            <span className="mt-1 block text-slate-400">
-              Net buckets tracked from June 2026 — earlier months contribute to Net (Good Business)
-              but aren&apos;t split into Released / Working / Other.
-            </span>
-          )}
+          financing, production), often months later. Holds are the current open pipeline from the
+          Job Status report; &ldquo;not yet sourced&rdquo; and &ldquo;—&rdquo; mean no report covers
+          this view yet — neither is a zero.
         </span>
       </p>
     </div>

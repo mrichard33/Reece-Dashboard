@@ -54,6 +54,18 @@ export type ByMarketRow = {
 
 export type ByMarketView = { rows: ByMarketRow[]; total: ByMarketRow | null };
 
+/**
+ * Does a utility row (UNASSIGNED / OUT_OF_AREA) carry anything worth showing?
+ * Includes net_sales: the old count-only check silently dropped a utility row
+ * holding only dollars, hiding UNASSIGNED revenue from the table — UNASSIGNED
+ * must stay visible so it can be driven to zero (handoff 2026-08-05).
+ */
+export function rowHasActivity(row: ByMarketRow): boolean {
+  return (
+    row.leads + row.issued + row.demos + row.sales + row.gross_sales + row.net_sales !== 0
+  );
+}
+
 const numOr0 = (v: unknown): number => {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
@@ -214,7 +226,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     const row = buildRow(m.code, m.label, !!m.utility, m.sources);
     if (!row) continue;
     // Utility rows only when they carry activity.
-    if (m.utility && row.leads + row.issued + row.demos + row.sales + row.gross_sales === 0) continue;
+    if (m.utility && !rowHasActivity(row)) continue;
     rows.push(row);
   }
   rows.sort((x, y) => Number(x.utility) - Number(y.utility) || y.net_sales - x.net_sales);
@@ -259,7 +271,7 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
     const m = MARKETS[i];
     if (!v || !m) return;
     const row = toRow(m.code, m.label, !!m.utility, v);
-    if (m.utility && row.leads + row.issued + row.demos + row.sales + row.gross_sales === 0) return;
+    if (m.utility && !rowHasActivity(row)) return;
     rows.push(row);
   });
   rows.sort((x, y) => Number(x.utility) - Number(y.utility) || y.net_sales - x.net_sales);
