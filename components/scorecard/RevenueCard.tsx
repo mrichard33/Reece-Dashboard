@@ -65,23 +65,36 @@ function SplitCard({
 
 export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode }) {
   const r = vm.revenue;
+  // Pending period (no report has landed yet): dollar figures derived from net
+  // render "—", never $0 or a gross-minus-zero "cancellation" artifact. The
+  // sales count, gross, and cancellation COUNT are real and stay visible.
+  const pending = r.reportPending;
 
   const soldLines: Line[] = [
     { label: "Sales count", value: num(r.salesCount) },
     { label: "Gross sold", value: usd(r.gross) },
-    { label: "Cancellations", value: `${num(r.cancelledCount)} · ${usd(r.impliedCancelled)}`, tone: "red" },
-    { label: "Surviving good business", value: usd(r.net), strong: true },
+    pending
+      ? { label: "Cancellations", note: "dollars pending report", value: `${num(r.cancelledCount)} · —`, tone: "red" }
+      : { label: "Cancellations", value: `${num(r.cancelledCount)} · ${usd(r.impliedCancelled ?? 0)}`, tone: "red" },
+    { label: "Surviving good business", note: pending ? "report pending" : undefined, value: pending ? "—" : usd(r.net ?? 0), strong: true },
   ];
 
-  const netLines: Line[] = [
-    { label: "Released", note: "recognized", value: usd(r.released) },
-    { label: "Working", value: usd(r.working) },
-    { label: "Other", value: usd(r.other) },
-    ...(r.bucketsComplete
-      ? []
-      : [{ label: "Earlier months", note: "pre-bucket", value: usd(r.unbucketed) } as Line]),
-    { label: "Net (Good Business)", value: usd(r.net), strong: true },
-  ];
+  const netLines: Line[] = pending
+    ? [
+        { label: "Released", note: "recognized", value: "—" },
+        { label: "Working", value: "—" },
+        { label: "Other", value: "—" },
+        { label: "Net (Good Business)", note: "report pending", value: "—", strong: true },
+      ]
+    : [
+        { label: "Released", note: "recognized", value: usd(r.released) },
+        { label: "Working", value: usd(r.working) },
+        { label: "Other", value: usd(r.other) },
+        ...(r.bucketsComplete
+          ? []
+          : [{ label: "Earlier months", note: "pre-bucket", value: usd(r.unbucketed) } as Line]),
+        { label: "Net (Good Business)", value: usd(r.net ?? 0), strong: true },
+      ];
 
   return (
     <div className="space-y-3">
@@ -106,7 +119,14 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
         <span>
           Net rarely equals Sold in the same period — jobs net when they release (HOA, permits,
           financing, production), often months later.
-          {!r.bucketsComplete && (
+          {pending && (
+            <span className="mt-1 block text-slate-400">
+              No report has been received for this period yet — Released / Working / Other,
+              cancellation dollars, and Net (Good Business) fill in with the first successful
+              report ingest. Pending is shown as &ldquo;—&rdquo;, never $0.
+            </span>
+          )}
+          {!pending && !r.bucketsComplete && (
             <span className="mt-1 block text-slate-400">
               Net buckets tracked from June 2026 — earlier months contribute to Net (Good Business)
               but aren&apos;t split into Released / Working / Other.

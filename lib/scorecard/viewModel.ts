@@ -104,6 +104,9 @@ export type ScorecardVM = {
     elapsedPct: number;
     gap: number;
     netSales: number;
+    /** True when no report-sourced net exists for the period yet — the Net /
+     *  Projected / Balance tiles render "—" instead of a fabricated $0. */
+    netPending: boolean;
     paceGoal: number;
     monthlyGoal: number;
     avgSale: number;
@@ -150,8 +153,14 @@ export type ScorecardVM = {
     other: number;
     unbucketed: number;
     bucketsComplete: boolean;
-    impliedCancelled: number;
-    net: number;
+    /** True when NO net source exists for the period (net_sales AND
+     *  released_dollars null, no bucket tally) — no report has landed yet.
+     *  Pending is NOT zero (writer invariant): `net`/`impliedCancelled` are
+     *  null and must render "—", never $0 / gross-minus-zero artifacts
+     *  ("2 cancellations = gross sold", 2026-08-04). */
+    reportPending: boolean;
+    impliedCancelled: number | null;
+    net: number | null;
     salesCount: number;
     cancelledCount: number;
   };
@@ -182,6 +191,9 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   // gross → good-business → released/working/other breakdown); the ① hero and pace
   // track released vs goal. Falls back to net_sales only if a row predates the
   // released split.
+  // Pending (both null — no report yet): pace math runs on 0 for layout, but the
+  // hero tiles render "—" via `netPending` instead of a fabricated $0-behind-goal.
+  const netPending = a.released_dollars == null && a.net_sales == null;
   const netReleased = a.released_dollars ?? a.net_sales ?? 0;
   const paceGoal = d.mtd_goal_dollars ?? 0;
   // Full goal for the whole period (Σ of the months in range) — NOT the current
@@ -192,9 +204,13 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   const pctOfPace = paceGoal > 0 ? (netReleased / paceGoal) * 100 : 0;
   const pctOfFull = monthlyGoal > 0 ? Math.min(100, (netReleased / monthlyGoal) * 100) : 0;
   const elapsedPct = sellingDays > 0 ? Math.min(100, (daysElapsed / sellingDays) * 100) : 0;
-  const behind = gap < 0;
-  const tone: Tone = behind ? (pctOfPace < 75 ? "rose" : "amber") : "emerald";
-  const verdict = behind ? (pctOfPace < 75 ? "Behind pace" : "Slightly behind") : "On / ahead of pace";
+  const behind = !netPending && gap < 0;
+  const tone: Tone = netPending ? "amber" : behind ? (pctOfPace < 75 ? "rose" : "amber") : "emerald";
+  const verdict = netPending
+    ? "Report pending"
+    : behind
+      ? (pctOfPace < 75 ? "Behind pace" : "Slightly behind")
+      : "On / ahead of pace";
 
   // ── funnel ──
   const goalFor = (perDay: number | null): number | null =>
@@ -242,12 +258,17 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
 
   // ── revenue ──
   const bt = a.raw_inputs?.bucket_tally;
+  // No net source at all (no report has ever landed for this period): pending,
+  // NOT zero — the writer stores NULL precisely so this state is distinguishable.
+  // Coercing it to 0 fabricated "cancellations = entire gross" (2026-08-04).
+  const reportPending = a.net_sales == null && a.released_dollars == null && bt == null;
   const released = bt?.released_dollars ?? a.released_dollars ?? (a.net_sales ?? 0);
   const working = bt?.working_dollars ?? a.working_dollars ?? 0;
   const open = bt?.other_pending ?? 0;
   const gross = a.gross_sales ?? released + working + open;
-  // Cancelled: from the tally, else the gross residual (never negative).
-  const cancelled = bt?.cancelled_dollars ?? Math.max(0, gross - released - working - open);
+  // Cancelled: from the tally, else the gross residual (never negative) — but
+  // never a residual against a PENDING (null) net.
+  const cancelled = bt?.cancelled_dollars ?? (reportPending ? 0 : Math.max(0, gross - released - working - open));
   const buckets: RevenueBucket[] = [
     { key: "released", label: "Released (Net Sales)", value: released, tone: "navy" },
     { key: "working", label: "Working (held = Pending)", value: working, tone: "amber" },
@@ -258,10 +279,11 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
   // Net (Good Business) is the authoritative stored figure (= gross − cancellations).
   // The released/working/other split may be partial for pre-June-2026 months, so we
   // total ③ on `net` and surface any unbucketed remainder rather than a bucket sum.
-  const net = a.net_sales ?? released + working + open;
+  // Pending period (no report yet) → net/impliedCancelled are NULL, rendered "—".
+  const net = reportPending ? null : (a.net_sales ?? released + working + open);
   const bucketed = released + working + open;
-  const unbucketed = Math.max(0, Math.round(net - bucketed));
-  const impliedCancelled = Math.max(0, Math.round(gross - net));
+  const unbucketed = net == null ? 0 : Math.max(0, Math.round(net - bucketed));
+  const impliedCancelled = net == null ? null : Math.max(0, Math.round(gross - net));
   const revenue = {
     buckets,
     gross,
@@ -274,6 +296,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
     other: open,
     unbucketed,
     bucketsComplete: unbucketed <= 1,
+    reportPending,
     impliedCancelled,
     net,
     salesCount: sold,
@@ -299,10 +322,14 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
 
   // ── headline copy ──
   const left = Math.max(0, sellingDays - daysElapsed);
-  const sentence = behind
-    ? `Behind plan — released net is ${scMoneyShort(Math.abs(gap))} under the ${abbr} goal.`
-    : `On track — released net is ${scMoneyShort(gap)} ahead of the ${abbr} goal.`;
-  const sub = `That's ${Math.round(pctOfPace)}% of where you should be by today, with ${left} selling day${left === 1 ? "" : "s"} left in the period.`;
+  const sentence = netPending
+    ? `No report-sourced net for this period yet — released figures fill in after the first successful report ingest.`
+    : behind
+      ? `Behind plan — released net is ${scMoneyShort(Math.abs(gap))} under the ${abbr} goal.`
+      : `On track — released net is ${scMoneyShort(gap)} ahead of the ${abbr} goal.`;
+  const sub = netPending
+    ? `${left} selling day${left === 1 ? "" : "s"} left in the period.`
+    : `That's ${Math.round(pctOfPace)}% of where you should be by today, with ${left} selling day${left === 1 ? "" : "s"} left in the period.`;
   const headline = { behind, tone, sentence, sub, pctOfPace };
 
   // ── Marketing / Sales detail rows (the numbers behind the visuals) ──
@@ -333,6 +360,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
       elapsedPct,
       gap,
       netSales: netReleased, // headline Net = released to production (RTP)
+      netPending,
       paceGoal,
       monthlyGoal,
       // NSLI and Average Sale are the CALCULATED trailing rates (previous running
@@ -401,7 +429,7 @@ function buildMarketing(
     { metric: "# Net Close", monthGoal: count(monthlyNetClose), mtdGoal: count(prorate(monthlyNetClose)), actual: num(a.net_close), tone: "plain", warn: true },
     { metric: "% Net Close", monthGoal: netClosePct != null ? pct(netClosePct) : null, mtdGoal: netClosePct != null ? pct(netClosePct) : null, actual: pct(a.pct_net_close), tone: "plain", warn: true },
     { metric: "Gross Sale $", monthGoal: null, mtdGoal: null, actual: usd(a.gross_sales), tone: "plain" },
-    { metric: "Net Sales (Released)", monthGoal: usd(d.goal.effective_monthly_goal), mtdGoal: usd(d.mtd_goal_dollars), actual: usd(a.net_sales), tone: a.net_sales >= d.mtd_goal_dollars ? "pos" : "neg", warn: true },
+    { metric: "Net Sales (Released)", monthGoal: usd(d.goal.effective_monthly_goal), mtdGoal: usd(d.mtd_goal_dollars), actual: a.net_sales == null ? "—" : usd(a.net_sales), tone: a.net_sales == null ? "plain" : a.net_sales >= d.mtd_goal_dollars ? "pos" : "neg", warn: true },
     { metric: "Working Revenue", monthGoal: null, mtdGoal: null, actual: usd(a.working_dollars), tone: "plain", warn: true },
     { metric: "Open Quotes", monthGoal: null, mtdGoal: null, actual: usd(open), tone: "plain", warn: true },
     { metric: "GSLI", monthGoal: null, mtdGoal: null, actual: usd(a.gsli), tone: "plain" },

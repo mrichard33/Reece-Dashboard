@@ -68,7 +68,9 @@ export type ScorecardActuals = {
   good_business: number;
   gross_sales: number; // funnel SOLD gross (sold-basis, consistent across live + closed)
   rtp_gross_dollars?: number | null; // report RTP gross (revenue basis) — preserved, not displayed
-  net_sales: number;
+  /** NULL when no report has landed for the period (pending ≠ zero — the writer
+   *  invariant). Read paths must render pending as "—", never coerce to $0. */
+  net_sales: number | null;
   released_dollars: number | null;
   working_dollars: number | null;
   pending_total: number | null;
@@ -299,7 +301,7 @@ export async function getBaselineNetSales(
   const sources = sourcesOverride ?? marketSources(market);
   const { data: rows } = await sb
     .from("lp_market_scorecard_daily")
-    .select("market, net_sales, issued, sales, leads, period_start, as_of_date")
+    .select("market, net_sales, issued, sales, leads, raw_leads_in, period_start, as_of_date")
     .in("market", sources as string[])
     .lt("period_start", periodStart)
     .order("period_start", { ascending: false })
@@ -361,11 +363,15 @@ export function rolling90WindowStart(): string {
 export type TrailingRates = {
   nsli: number | null;
   avgSale: number | null;
-  /** Historical issue rate = issued ÷ leads over the SAME window (0–1 fraction).
-   *  A DERIVED data point (ruled 2026-08-04), never entered by hand — it turns
-   *  issues-needed into leads-needed (leads = issues ÷ this). DISTINCT from the
-   *  existing pct_issue actual, which is issued ÷ SETS. Null when the window has
-   *  zero leads. */
+  /** Historical issue rate = issued ÷ RAW LEADS IN over the SAME window (0–1
+   *  fraction). A DERIVED data point (ruled 2026-08-04), never entered by hand —
+   *  it turns issues-needed into leads-needed (leads = issues ÷ this). The
+   *  denominator is true top-of-funnel raw_leads_in (ruled 2026-08-05) — the
+   *  warehouse `leads` column is the appointment-set cohort and structurally
+   *  equals Sets. Months without raw_leads_in (pre-June-2026) are excluded from
+   *  BOTH sides of the ratio; a window with no raw-lead months → null (renders
+   *  "—", drives the visible widen/fallback path — never a silent substitute).
+   *  DISTINCT from the pct_issue actual, which is issued ÷ SETS. */
   issueRate: number | null;
   /** Which window produced the rates (null only when there's no data at all). */
   window: RateWindow | null;
@@ -373,25 +379,31 @@ export type TrailingRates = {
   sampleN: number;
 };
 
-/** Latest snapshot per completed month, aggregated to the fields the rates need. */
-export type RateMonth = { period_start: string; net: number; issued: number; sales: number; leads: number };
+/** Latest snapshot per completed month, aggregated to the fields the rates need.
+ *  rawLeads = raw_leads_in (true top-of-funnel); null/absent = untracked
+ *  (pre-June-2026) — such months are excluded from BOTH sides of the issue rate. */
+export type RateMonth = { period_start: string; net: number; issued: number; sales: number; leads: number; rawLeads?: number | null };
 
 const MIN_WIDEN = 30; // widen the window below this sales count …
 const MIN_USE = 20; //   … but never divide by a window under this many contracts.
 
-/** Σ net/issued/sales/leads over the k most recent months (months MUST be latest-first). */
+/** Σ net/issued/sales/leads over the k most recent months (months MUST be latest-first).
+ *  rawLeads / issuedRaw are the PAIRED issue-rate inputs: only months carrying
+ *  raw_leads_in contribute to either side, so pre-tracking months can't skew the rate. */
 function sumWindow(
   months: RateMonth[],
   k: number,
-): { net: number; issued: number; sales: number; leads: number } {
+): { net: number; issued: number; sales: number; leads: number; rawLeads: number; issuedRaw: number } {
   return months.slice(0, k).reduce(
     (a, r) => ({
       net: a.net + r.net,
       issued: a.issued + r.issued,
       sales: a.sales + r.sales,
       leads: a.leads + r.leads,
+      rawLeads: a.rawLeads + (r.rawLeads ?? 0),
+      issuedRaw: a.issuedRaw + (r.rawLeads != null ? r.issued : 0),
     }),
-    { net: 0, issued: 0, sales: 0, leads: 0 },
+    { net: 0, issued: 0, sales: 0, leads: 0, rawLeads: 0, issuedRaw: 0 },
   );
 }
 
@@ -409,14 +421,15 @@ export function computeTrailingRates(
 ): TrailingRates {
   const rate = (n: number, d: number): number | null => (d > 0 ? Math.round(n / d) : null);
   const at = (
-    w: { net: number; issued: number; sales: number; leads: number },
+    w: { net: number; issued: number; sales: number; leads: number; rawLeads: number; issuedRaw: number },
     window: RateWindow,
   ): TrailingRates => ({
     nsli: rate(w.net, w.issued),
     avgSale: rate(w.net, w.sales),
     // Same window as nsli/avgSale — one window, one internally consistent
-    // chain. 4-dp fraction; zero leads → null (renders "—", never Infinity).
-    issueRate: w.leads > 0 ? Math.round((w.issued / w.leads) * 10000) / 10000 : null,
+    // chain. Denominator = raw leads in (paired months only); 4-dp fraction;
+    // zero raw leads → null (renders "—", never Infinity).
+    issueRate: w.rawLeads > 0 ? Math.round((w.issuedRaw / w.rawLeads) * 10000) / 10000 : null,
     window,
     sampleN: w.sales,
   });
@@ -464,13 +477,15 @@ function latestRateMonths(rows: Record<string, unknown>[]): RateMonth[] {
     const issued = Number(r.issued) || 0;
     const sales = Number(r.sales) || 0;
     const leads = Number(r.leads) || 0;
+    const rawLeads = r.raw_leads_in == null ? null : Number(r.raw_leads_in) || 0;
     if (acc) {
       acc.net += net;
       acc.issued += issued;
       acc.sales += sales;
       acc.leads += leads;
+      if (rawLeads != null) acc.rawLeads = (acc.rawLeads ?? 0) + rawLeads;
     } else {
-      byMonth.set(ps, { period_start: ps, net, issued, sales, leads });
+      byMonth.set(ps, { period_start: ps, net, issued, sales, leads, rawLeads });
     }
   }
   return [...byMonth.values()]; // desc month order preserved from the query
@@ -492,7 +507,7 @@ export async function getTrailingRates(
   const query = (codes: readonly string[]) => {
     let q = sb
       .from("lp_market_scorecard_daily")
-      .select("market, net_sales, issued, sales, leads, period_start, as_of_date")
+      .select("market, net_sales, issued, sales, leads, raw_leads_in, period_start, as_of_date")
       .in("market", codes as string[]);
     q = live ? q.lte("period_start", anchorMonth) : q.lt("period_start", anchorMonth);
     return q
@@ -603,12 +618,15 @@ function derive(
     target_issued_per_day: targets.perDay.issuedPerDay,
     target_demoed_per_day: targets.perDay.demoedPerDay,
     target_closed_per_day: targets.perDay.closedPerDay,
-    actual_leads_per_day: perDayActual(actuals.leads, elapsed),
+    // Leads = raw leads in (true top-of-funnel; ruled 2026-08-05). The `leads`
+    // column is the appointment-set cohort (== sets) and stays off the display.
+    actual_leads_per_day:
+      actuals.raw_leads_in == null ? null : perDayActual(actuals.raw_leads_in, elapsed),
     actual_issued_per_day: perDayActual(actuals.issued, elapsed),
     actual_demoed_per_day: perDayActual(actuals.demos, elapsed),
     actual_closed_per_day: perDayActual(actuals.sales, elapsed),
     variance: {
-      dollars: Math.round(actuals.net_sales - mtd_goal_dollars), // ⚠ TIE-OUT
+      dollars: Math.round((actuals.net_sales ?? 0) - mtd_goal_dollars), // ⚠ TIE-OUT
       close_pts: pts(actuals.close_pct, goals.target_close_pct),
       demo_pts: pts(actuals.demo_pct, goals.target_demo_pct),
       good_rate_pts: pts(actuals.good_rate_pct, goals.target_good_rate_pct),
@@ -709,7 +727,7 @@ export async function fetchPriorMonthsBySource(
   // filters period_start < periodStart itself.
   let q = sb
     .from("lp_market_scorecard_daily")
-    .select("market, net_sales, issued, sales, leads, period_start, as_of_date")
+    .select("market, net_sales, issued, sales, leads, raw_leads_in, period_start, as_of_date")
     .in("market", codes as string[]);
   q = opts?.includeAnchorMonth ? q.lte("period_start", anchorMonth) : q.lt("period_start", anchorMonth);
   const { data } = await q
@@ -731,6 +749,7 @@ export async function fetchPriorMonthsBySource(
       issued: Number(r.issued) || 0,
       sales: Number(r.sales) || 0,
       leads: Number(r.leads) || 0,
+      rawLeads: r.raw_leads_in == null ? null : Number(r.raw_leads_in) || 0,
     });
     out.set(mkt, list);
   }
@@ -748,6 +767,8 @@ export function combineRateMonths(lists: RateMonth[][]): RateMonth[] {
         acc.issued += m.issued;
         acc.sales += m.sales;
         acc.leads += m.leads;
+        // rawLeads: null = untracked; Σ of the sources that carry it.
+        if (m.rawLeads != null) acc.rawLeads = (acc.rawLeads ?? 0) + m.rawLeads;
       } else {
         byMonth.set(m.period_start, { ...m });
       }
@@ -1065,7 +1086,7 @@ function mapRecomputedActuals(raw: Record<string, unknown>, market: string): Sco
     good_business: i(raw.good_business),
     gross_sales: i(raw.gross_sales),
     rtp_gross_dollars: n(raw.rtp_gross_dollars),
-    net_sales: i(raw.net_sales),
+    net_sales: n(raw.net_sales),
     released_dollars: n(raw.released_dollars),
     working_dollars: n(raw.working_dollars),
     pending_total: n(raw.pending_total),

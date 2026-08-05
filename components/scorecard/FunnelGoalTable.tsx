@@ -39,15 +39,15 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
 
   // ── count rows: goal = per-day target × days (target-to-date) or × selling days (monthly).
   //    A miss on a volume row is amber (recoverable), matching the approved design.
-  const countRow = (metric: string, actual: number, perDay: number | null, infoKey?: string): Row => {
+  const countRow = (metric: string, actual: number | null, perDay: number | null, infoKey?: string): Row => {
     const ttd = perDay == null ? null : r0(perDay * daysElapsed);
     const monthly = perDay == null ? null : r0(perDay * sellingDays);
-    const paceVal = ttd == null ? null : actual - ttd;
+    const paceVal = ttd == null || actual == null ? null : actual - ttd;
     return {
       metric,
       monthly: monthly == null ? null : num(monthly),
       targetToDate: ttd == null ? null : num(ttd),
-      actual: num(actual),
+      actual: actual == null ? "—" : num(actual),
       paceLabel: paceVal == null ? null : `${paceVal >= 0 ? "+" : ""}${num(paceVal)} vs pace`,
       paceCls: paceVal == null ? MUTE : paceVal >= 0 ? EMERALD : AMBER,
       infoKey,
@@ -77,7 +77,9 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
   const rows: Row[] = [
     // Leads goal is DERIVED (ruled 2026-08-04): issues-needed ÷ historical
     // issue rate — it moves when the trailing issue rate moves, hence the (i).
-    countRow("Leads", a.leads, d.target_leads_per_day, "scorecard.leadsGoal"),
+    // Actual = RAW LEADS IN (true top-of-funnel; ruled 2026-08-05) — the old
+    // a.leads figure was the appointment-set cohort (always equal to Sets).
+    countRow("Leads", a.raw_leads_in ?? null, d.target_leads_per_day, "scorecard.leadsGoal"),
     countRow("Issued", a.issued, d.target_issued_per_day),
     countRow("Demos", a.demos, d.target_demoed_per_day),
     countRow("Sales", a.sales, d.target_closed_per_day),
