@@ -269,17 +269,17 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.leadsGoal": {
     title: "Leads goal (derived)",
-    what: "The Leads goal is NOT entered anywhere — it is derived: issues-needed (period goal ÷ NSLI) ÷ the market's historical issue rate (issued ÷ leads, from actuals). Because the issue rate is observed history, this goal MOVES with performance: if the issue rate declines, the Leads goal RISES (more leads needed per issue) rather than showing a miss on Issued. That is correct for a derived data point — read a rising Leads goal as a conversion change, not a demand change.",
+    what: "The Leads goal is NOT entered anywhere — it is derived: issues-needed (period goal ÷ NSLI) ÷ the market's historical issue rate (issued ÷ RAW LEADS IN, from actuals). 'Leads' here means true top-of-funnel raw leads in (ruled 2026-08-05) — not the appointment-set cohort, which is the Sets figure. Because the issue rate is observed history, this goal MOVES with performance: if the issue rate declines, the Leads goal RISES (more leads needed per issue) rather than showing a miss on Issued. That is correct for a derived data point — read a rising Leads goal as a conversion change, not a demand change.",
     where:
-      "Issue rate comes from `lp_market_scorecard_daily` trailing months via `computeTrailingRates` in `lib/queries/scorecard.ts` — the SAME widened window (and visible basis) as NSLI and Average Sale, anchored to the selected period (period-scoped). Company row = Σ of the per-office chains, never a blended rate. Distinct from % Issue, which is issued ÷ sets.",
-    fix: "If the Leads goal looks off, check the NSLI/issue-rate basis tooltip on the Goal & Pace header (window + contracts + anchor month). Thin history widens the window automatically; a market with zero leads history shows '—'. The dollar goal itself is edited in the Goals editor — the Leads figure always follows it through the chain.",
+      "Issue rate comes from `lp_market_scorecard_daily` trailing months (`raw_leads_in` denominator; months before June 2026 lack it and are excluded from the ratio) via `computeTrailingRates` in `lib/queries/scorecard.ts` — the SAME widened window (and visible basis) as NSLI and Average Sale, anchored to the selected period (period-scoped). Company row = Σ of the per-office chains, never a blended rate. Distinct from % Issue, which is issued ÷ sets.",
+    fix: "If the Leads goal looks off, check the NSLI/issue-rate basis tooltip on the Goal & Pace header (window + contracts + anchor month). Thin history widens the window automatically; a market with no raw-leads history shows '—'. The dollar goal itself is edited in the Goals editor — the Leads figure always follows it through the chain.",
   },
   "scorecard.issueRate": {
     title: "Issue rate (calculated)",
-    what: "Issued ÷ leads over the trailing rate window — the observed share of leads that become issued appointments. A DERIVED data point (never a target ops sets); it turns issues-needed into leads-needed in the goal chain. Not the same as % Issue (issued ÷ sets).",
+    what: "Issued ÷ raw leads in over the trailing rate window — the observed share of TRUE top-of-funnel leads that become issued appointments (ruled 2026-08-05; the warehouse `leads` column is the appointment-set cohort and structurally equals Sets, so it is not the denominator). A DERIVED data point (never a target ops sets); it turns issues-needed into leads-needed in the goal chain. Not the same as % Issue (issued ÷ sets).",
     where:
-      "Computed in `computeTrailingRates` (`lib/queries/scorecard.ts`) from `lp_market_scorecard_daily`, sharing the NSLI window and its widening/fallback rules, anchored to the selected period.",
-    fix: "A null issue rate means the window has zero leads — check the warehouse rows for the market's trailing months. The basis tooltip on the NSLI tile shows which window produced it.",
+      "Computed in `computeTrailingRates` (`lib/queries/scorecard.ts`) from `lp_market_scorecard_daily.raw_leads_in` (tracked from June 2026 — earlier months are excluded from both sides of the ratio), sharing the NSLI window and its widening/fallback rules, anchored to the selected period.",
+    fix: "A null issue rate means the window has no raw-leads months — check the warehouse rows for the market's trailing months. The basis tooltip on the NSLI tile shows which window produced it.",
   },
   "scorecard.header": {
     title: "Goal & pace header",

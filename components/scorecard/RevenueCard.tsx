@@ -70,6 +70,10 @@ const bucketValue = (b: { count: number; dollars: number } | null): string =>
 export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode }) {
   const r = vm.revenue;
   const f = r.facts;
+  // Pending period (no report has landed yet, main 2026-08-04): dollar figures
+  // derived from a missing net render "—", never $0. The facts fields carry
+  // their own nullability; `pending` guards the non-facts fallbacks below.
+  const pending = r.reportPending;
 
   // Sold this period — the five-line structure from the Marketing report:
   //   count = NumSold · gross = GSA · cancels = (NumSold − NumNetSold) ·
@@ -79,9 +83,12 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
   // Without a facts snapshot covering this period, count/gross fall back to
   // the scorecard actuals and the cancel lines show "—" (usd/num null-safe).
   const soldSourced = f.soldCount != null;
+  // In a pending period the legacy gross computes from zeroed buckets — a
+  // fabricated $0; fall back to "—" instead (usd(null)).
+  const fallbackGross = pending ? null : r.gross;
   const soldLines: Line[] = [
     { label: "Total sales count", value: num(soldSourced ? f.soldCount : r.salesCount) },
-    { label: "Gross sales value", value: usd(soldSourced ? f.grossSold : r.gross) },
+    { label: "Gross sales value", value: usd(soldSourced ? f.grossSold : fallbackGross) },
     {
       label: "Cancellations",
       value: f.cancelCount == null ? "not yet sourced" : `${num(f.cancelCount)} · ${usd(f.cancelValue)}`,
@@ -95,7 +102,7 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
   // each count · $), leaving released remaining. Buckets foot to total open
   // jobs by construction; a missing source renders "not yet sourced".
   const netLines: Line[] = [
-    { label: "Gross sales", value: usd(soldSourced ? f.grossSold : r.gross) },
+    { label: "Gross sales", value: usd(soldSourced ? f.grossSold : fallbackGross) },
     {
       label: "− Cancellations",
       value: f.cancelValue == null ? "not yet sourced" : usd(f.cancelValue),
@@ -138,8 +145,8 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
         <span>
           Net rarely equals Sold in the same period — jobs net when they release (HOA, permits,
           financing, production), often months later. Holds are the current open pipeline from the
-          Job Status report; &ldquo;not yet sourced&rdquo; means no report snapshot covers this view
-          yet — it is not a zero.
+          Job Status report; &ldquo;not yet sourced&rdquo; and &ldquo;—&rdquo; mean no report covers
+          this view yet — neither is a zero.
         </span>
       </p>
     </div>

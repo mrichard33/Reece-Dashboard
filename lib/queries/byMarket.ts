@@ -120,7 +120,9 @@ function rowFromActuals(
     market,
     label,
     utility,
-    leads: numOr0(a.leads),
+    // Leads = RAW LEADS IN (true top-of-funnel; ruled 2026-08-05). a.leads is
+    // the appointment-set cohort and structurally equals Sets.
+    leads: numOr0(a.raw_leads_in),
     issued: numOr0(a.issued),
     demos: numOr0(a.demos),
     sales: numOr0(a.sales),
@@ -187,6 +189,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     const sales = sum("sales");
     return {
       leads: sum("leads"),
+      raw_leads_in: sum("raw_leads_in"),
       issued: sum("issued"),
       demos,
       sales,

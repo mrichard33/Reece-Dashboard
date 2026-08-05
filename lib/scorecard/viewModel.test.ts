@@ -249,6 +249,41 @@ describe("buildScorecardVM — aggregate (YTD) period-awareness", () => {
     }
   });
 
+  it("pending period (no report yet): net/cancelled-$ are NULL, never $0 or gross-minus-zero (2026-08-04 artifact)", () => {
+    // The August shape that produced "Cancellations 2 · $575,084 (= gross)":
+    // net_sales + released_dollars NULL by writer design, no bucket tally.
+    const v = makeView();
+    v.actuals.net_sales = null;
+    v.actuals.released_dollars = null;
+    v.actuals.raw_inputs = { status_tally: {} };
+    v.actuals.ko_count = 2;
+    const vm = buildScorecardVM(v, MONTH);
+
+    expect(vm.revenue.reportPending).toBe(true);
+    expect(vm.revenue.net).toBeNull(); // "Surviving good business" renders "—"
+    expect(vm.revenue.impliedCancelled).toBeNull(); // NEVER gross − 0
+    expect(vm.revenue.cancelledCount).toBe(2); // the real KO count stays
+    expect(vm.revenue.gross).toBe(8931546); // gross itself is real and stays
+
+    // Hero: pending, not "behind goal on $0".
+    expect(vm.pace.netPending).toBe(true);
+    expect(vm.pace.behind).toBe(false);
+    expect(vm.pace.verdict).toBe("Report pending");
+    expect(vm.headline.sentence).toMatch(/No report-sourced net/);
+  });
+
+  it("a period WITH any net source is never marked pending", () => {
+    // Bucket tally alone (no net_sales) still counts as a net source.
+    const v = makeView();
+    v.actuals.net_sales = null;
+    v.actuals.released_dollars = null; // tally present in default fixture
+    const vm = buildScorecardVM(v, MONTH);
+    expect(vm.revenue.reportPending).toBe(false);
+    expect(vm.revenue.net).not.toBeNull();
+    expect(buildScorecardVM(makeView(), MONTH).revenue.reportPending).toBe(false);
+    expect(buildScorecardVM(makeView(), MONTH).pace.netPending).toBe(false);
+  });
+
   it("zero/absent NSLI renders '—'-safe values — no NaN/Infinity anywhere in pace", () => {
     const v = makeView();
     v.goals.trailing_nsli = null;

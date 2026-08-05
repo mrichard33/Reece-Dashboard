@@ -44,17 +44,18 @@ describe("MTD vs YTD produce different rates on the same fixture data (test 23)"
   // 12 months of warehouse history where the recent months (May–Jul) perform
   // differently from the earlier ones (Oct–Dec 2025) — so the two anchors'
   // windows MUST price differently.
+  // rawLeads (true top-of-funnel) drives the issue rate — ruled 2026-08-05.
   const ALL_MONTHS: RateMonth[] = [
-    { period_start: "2026-07-01", net: 400_000, issued: 80, sales: 20, leads: 160 },
-    { period_start: "2026-06-01", net: 380_000, issued: 76, sales: 19, leads: 152 },
-    { period_start: "2026-05-01", net: 360_000, issued: 72, sales: 18, leads: 144 },
-    { period_start: "2026-04-01", net: 250_000, issued: 60, sales: 14, leads: 130 },
-    { period_start: "2026-03-01", net: 240_000, issued: 58, sales: 13, leads: 128 },
-    { period_start: "2026-02-01", net: 230_000, issued: 56, sales: 13, leads: 126 },
-    { period_start: "2026-01-01", net: 220_000, issued: 54, sales: 12, leads: 124 },
-    { period_start: "2025-12-01", net: 200_000, issued: 50, sales: 12, leads: 125 },
-    { period_start: "2025-11-01", net: 190_000, issued: 48, sales: 11, leads: 120 },
-    { period_start: "2025-10-01", net: 180_000, issued: 46, sales: 11, leads: 118 },
+    { period_start: "2026-07-01", net: 400_000, issued: 80, sales: 20, leads: 160, rawLeads: 320 },
+    { period_start: "2026-06-01", net: 380_000, issued: 76, sales: 19, leads: 152, rawLeads: 300 },
+    { period_start: "2026-05-01", net: 360_000, issued: 72, sales: 18, leads: 144, rawLeads: 290 },
+    { period_start: "2026-04-01", net: 250_000, issued: 60, sales: 14, leads: 130, rawLeads: 280 },
+    { period_start: "2026-03-01", net: 240_000, issued: 58, sales: 13, leads: 128, rawLeads: 275 },
+    { period_start: "2026-02-01", net: 230_000, issued: 56, sales: 13, leads: 126, rawLeads: 270 },
+    { period_start: "2026-01-01", net: 220_000, issued: 54, sales: 12, leads: 124, rawLeads: 265 },
+    { period_start: "2025-12-01", net: 200_000, issued: 50, sales: 12, leads: 125, rawLeads: 260 },
+    { period_start: "2025-11-01", net: 190_000, issued: 48, sales: 11, leads: 120, rawLeads: 250 },
+    { period_start: "2025-10-01", net: 180_000, issued: 46, sales: 11, leads: 118, rawLeads: 245 },
   ];
 
   /** Months strictly before the anchor — exactly what the anchored query returns. */
