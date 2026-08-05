@@ -7,6 +7,8 @@ import {
   sellingDaysElapsed,
   sellingDaysInPeriod,
   firstOfMonthET,
+  todayET,
+  addDays,
   yearToDateMonthsET,
   type SellingCalendar,
 } from "@/lib/date/sellingDays";
@@ -113,9 +115,14 @@ export type ScorecardGoals = {
   target_good_rate_pct: number;
   target_demo_pct: number;
   target_ko_pct: number;
-  trailing_nsli: number;
-  /** Optional funnel-stage targets (sql/033). When null the stage goal rows read
-   *  "no target" instead of a bare "—". */
+  /** COMPUTED trailing NSLI. The DB column of the same name is a write-through
+   *  cache only (refreshed on goal save, never read back — ruled 2026-08-04);
+   *  every read path carries the freshly computed value, null when the rate
+   *  window has no history. */
+  trailing_nsli: number | null;
+  /** Unused legacy column (ruled 2026-08-04: issue % is DERIVED from history,
+   *  never a hand-set target). Kept in the type for row-shape fidelity; no
+   *  read or write path uses it. */
   target_issue_pct: number | null;
   target_net_close_pct: number | null;
   updated_by: string | null;
@@ -228,7 +235,7 @@ const DEFAULT_GOALS = (market: string): ScorecardGoals => ({
   target_good_rate_pct: 70,
   target_demo_pct: 70,
   target_ko_pct: 10,
-  trailing_nsli: 0,
+  trailing_nsli: null,
   target_issue_pct: null,
   target_net_close_pct: null,
   updated_by: null,
@@ -318,17 +325,38 @@ function rateMonthsToBaselineRows(months: RateMonth[]): BaselineRow[] {
  * pricing metric with ~5% CV, so seasonal matching buys almost nothing, while a
  * single prior-year month carries full single-month noise and is 12 months stale on
  * data that wasn't backfilled before 2026):
- *   1. Primary: trailing 3 completed months.
- *   2. If its sales count < 30 → widen to trailing 6.
+ *   1. Primary — LIVE anchor (viewing the current month): ROLLING 90 DAYS ending
+ *      yesterday ET (ruled 2026-08-04: recomputed every day as new data lands,
+ *      never stored). At month grain that is every month whose last day falls
+ *      inside the window — the current MTD month plus the months covering the
+ *      trailing 90 days. Historical (period-scoped) anchors keep the trailing-3
+ *      completed months strictly before the period: a frozen period's targets
+ *      must not reprice from data that didn't exist yet.
+ *   2. If the primary's sales count < 30 → widen to trailing 6 months.
  *   3. If trailing-6 sales count < 30 → widen to trailing 12.
  *   4. If trailing-12 sales count < 20 → fall back to the COMPANY-WIDE rate.
  * A window is NEVER used as a divisor with fewer than 20 contracts. The window
- * actually used and the sales n behind it are surfaced for transparency.
+ * actually used and the sales n behind it are surfaced for transparency, and any
+ * widening beyond the primary window renders a VISIBLE flag — never a silent
+ * substitution.
  *
  * FUTURE (not built): if average sale ever develops real seasonality, apply a
  * seasonal INDEX to the trailing base rather than reverting to a noisy single month.
  */
-export type RateWindow = "trailing_3" | "trailing_6" | "trailing_12" | "company";
+export type RateWindow = "rolling_90d" | "trailing_3" | "trailing_6" | "trailing_12" | "company";
+
+/** Last calendar day of a YYYY-MM-01 month, as ISO. */
+function monthEndOf(monthStart: string): string {
+  const y = Number(monthStart.slice(0, 4));
+  const m = Number(monthStart.slice(5, 7));
+  const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  return addDays(next, -1);
+}
+
+/** First day of the rolling 90-day rate window: 90 days ending yesterday ET. */
+export function rolling90WindowStart(): string {
+  return addDays(todayET(), -90);
+}
 
 export type TrailingRates = {
   nsli: number | null;
@@ -369,11 +397,15 @@ function sumWindow(
 
 /**
  * Resolve the trailing rates + the window actually used. `marketMonths` and
- * `companyMonths` MUST be latest-first (most recent completed month first).
+ * `companyMonths` MUST be latest-first (most recent month first). With
+ * `opts.windowStart` (the live-anchor path) the primary window is the rolling
+ * 90 days — every month whose last day is on/after windowStart; without it,
+ * the trailing 3 completed months (historical/period-scoped anchors).
  */
 export function computeTrailingRates(
   marketMonths: RateMonth[],
   companyMonths: RateMonth[],
+  opts?: { windowStart?: string },
 ): TrailingRates {
   const rate = (n: number, d: number): number | null => (d > 0 ? Math.round(n / d) : null);
   const at = (
@@ -389,11 +421,21 @@ export function computeTrailingRates(
     sampleN: w.sales,
   });
 
-  const w3 = sumWindow(marketMonths, 3);
-  if (w3.sales >= MIN_WIDEN) return at(w3, "trailing_3");
-  const w6 = sumWindow(marketMonths, 6);
+  // Primary window: rolling 90 days (live anchor) or trailing 3 completed
+  // months (historical anchor). Months are latest-first, so the window's
+  // months are the leading run of the list.
+  let primaryK = 3;
+  let primaryLabel: RateWindow = "trailing_3";
+  if (opts?.windowStart) {
+    const ws = opts.windowStart;
+    primaryK = marketMonths.filter((m) => monthEndOf(m.period_start) >= ws).length;
+    primaryLabel = "rolling_90d";
+  }
+  const wp = sumWindow(marketMonths, primaryK);
+  if (primaryK > 0 && wp.sales >= MIN_WIDEN) return at(wp, primaryLabel);
+  const w6 = sumWindow(marketMonths, Math.max(6, primaryK));
   if (w6.sales >= MIN_WIDEN) return at(w6, "trailing_6");
-  const w12 = sumWindow(marketMonths, 12);
+  const w12 = sumWindow(marketMonths, Math.max(12, primaryK));
   if (w12.sales >= MIN_USE) return at(w12, "trailing_12");
 
   // Too thin to trust the market's own history — use the company-wide rate.
@@ -445,20 +487,24 @@ export async function getTrailingRates(
   market: string,
   anchorMonth: string,
 ): Promise<TrailingRates> {
-  const query = (codes: readonly string[]) =>
-    sb
+  const live = anchorMonth === firstOfMonthET();
+  const rateOpts = live ? { windowStart: rolling90WindowStart() } : undefined;
+  const query = (codes: readonly string[]) => {
+    let q = sb
       .from("lp_market_scorecard_daily")
       .select("market, net_sales, issued, sales, leads, period_start, as_of_date")
-      .in("market", codes as string[])
-      .lt("period_start", anchorMonth)
+      .in("market", codes as string[]);
+    q = live ? q.lte("period_start", anchorMonth) : q.lt("period_start", anchorMonth);
+    return q
       .order("period_start", { ascending: false })
       .order("as_of_date", { ascending: false })
       .limit(800);
+  };
 
   if (market === "REECE") {
     const { data } = await query(["REECE"]);
     const months = latestRateMonths((data ?? []) as Record<string, unknown>[]);
-    return computeTrailingRates(months, months);
+    return computeTrailingRates(months, months, rateOpts);
   }
 
   const sources = marketSources(market);
@@ -466,6 +512,7 @@ export async function getTrailingRates(
   return computeTrailingRates(
     latestRateMonths((mkt.data ?? []) as Record<string, unknown>[]),
     latestRateMonths((company.data ?? []) as Record<string, unknown>[]),
+    rateOpts,
   );
 }
 
@@ -653,12 +700,19 @@ export async function fetchPriorMonthsBySource(
   sb: Sb,
   codes: readonly string[],
   anchorMonth: string,
+  opts?: { includeAnchorMonth?: boolean },
 ): Promise<Map<string, RateMonth[]>> {
-  const { data } = await sb
+  // Live anchor (rolling-90-day rates): the anchor month's own MTD row joins
+  // the window so the rates move daily as data lands. Historical anchors stay
+  // strictly-before (a frozen period must not reprice from its own months).
+  // Growth baselines are unaffected either way — computeBaselineFromRows
+  // filters period_start < periodStart itself.
+  let q = sb
     .from("lp_market_scorecard_daily")
     .select("market, net_sales, issued, sales, leads, period_start, as_of_date")
-    .in("market", codes as string[])
-    .lt("period_start", anchorMonth)
+    .in("market", codes as string[]);
+  q = opts?.includeAnchorMonth ? q.lte("period_start", anchorMonth) : q.lt("period_start", anchorMonth);
+  const { data } = await q
     .order("period_start", { ascending: false })
     .order("as_of_date", { ascending: false })
     .limit(4000);
@@ -734,9 +788,16 @@ async function buildView(
     ? ["REECE", ...OFFICE_SOURCE_CODES]
     : [...new Set([...displaySources, "REECE"])];
 
+  // Live anchor → rolling-90-day rates that include the current MTD month
+  // (ruled 2026-08-04: NSLI/issue-rate recompute daily as data lands, so the
+  // derived Leads goal MOVES with observed performance). Period-scoped
+  // historical anchors keep strictly-before windows.
+  const liveAnchor = anchorMonth === firstOfMonthET();
+  const rateOpts = liveAnchor ? { windowStart: rolling90WindowStart() } : undefined;
+
   const [{ data: goalsRows }, prior] = await Promise.all([
     sb.from("scorecard_goals").select("*").in("market", goalCodes),
-    fetchPriorMonthsBySource(sb, priorCodes, anchorMonth),
+    fetchPriorMonthsBySource(sb, priorCodes, anchorMonth, { includeAnchorMonth: liveAnchor }),
   ]);
   const goalsBySource = new Map<string, LiveGoalRow>();
   for (const g of (goalsRows ?? []) as LiveGoalRow[]) goalsBySource.set(g.market, g);
@@ -794,12 +855,17 @@ async function buildView(
   const rates = computeTrailingRates(
     monthsFor(isCompany ? ["REECE"] : displaySources),
     companyMonths,
+    rateOpts,
   );
   const effectiveGoals: ScorecardGoals = {
     ...primaryGoals,
     market,
     monthly_goal_dollars: effectiveGoal,
-    trailing_nsli: rates.nsli ?? primaryGoals.trailing_nsli,
+    // COMPUTED only. The stored scorecard_goals.trailing_nsli column is a
+    // write-through cache (saveScorecardGoals refreshes it) and is NEVER read
+    // — no history in the window means null (renders "—" + the widened flag),
+    // never a stale stored number (ruled 2026-08-04).
+    trailing_nsli: rates.nsli,
   };
 
   // ── period goals, per target unit (each display market, or just this one) ──
@@ -837,7 +903,7 @@ async function buildView(
   const periodDays =
     actuals.period_working_days ?? actuals.working_days_in_period ?? primaryGoals.working_days ?? 0;
   const unitChains = units.map((srcs, i) => {
-    const uRates = computeTrailingRates(monthsFor(srcs), companyMonths);
+    const uRates = computeTrailingRates(monthsFor(srcs), companyMonths, rateOpts);
     const demoPct = Number(
       goalsBySource.get(srcs[0] ?? "")?.target_demo_pct ?? primaryGoals.target_demo_pct ?? 70,
     );

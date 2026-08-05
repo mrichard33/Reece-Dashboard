@@ -75,6 +75,74 @@ describe("computeTrailingRates — window rule + min-sample guard", () => {
   });
 });
 
+describe("rolling 90-day primary window (live anchor — ruled 2026-08-04, handoff test 9)", () => {
+  // Months list is latest-first; with windowStart the primary window is every
+  // month whose LAST day is on/after windowStart — the MTD month + the months
+  // covering the trailing 90 days.
+  const m90: RateMonth[] = [
+    { period_start: "2026-08-01", net: 100_000, issued: 30, sales: 12, leads: 90 }, // MTD (partial)
+    { period_start: "2026-07-01", net: 400_000, issued: 120, sales: 40, leads: 300 },
+    { period_start: "2026-06-01", net: 380_000, issued: 110, sales: 38, leads: 280 },
+    { period_start: "2026-05-01", net: 360_000, issued: 100, sales: 36, leads: 260 },
+    { period_start: "2026-04-01", net: 999_999, issued: 999, sales: 99, leads: 999 }, // outside window
+  ];
+
+  it("windowStart selects the months overlapping the last 90 days, INCLUDING the MTD month", () => {
+    // Window 2026-05-07 → 2026-08-04: May (month-end 5/31 ≥ 5/7), Jun, Jul, Aug-MTD; April is out.
+    const r = computeTrailingRates(m90, COMPANY, { windowStart: "2026-05-07" });
+    expect(r.window).toBe("rolling_90d");
+    const net = 100_000 + 400_000 + 380_000 + 360_000;
+    const issued = 30 + 120 + 110 + 100;
+    const leads = 90 + 300 + 280 + 260;
+    expect(r.sampleN).toBe(12 + 40 + 38 + 36);
+    expect(r.nsli).toBe(Math.round(net / issued)); // Σ numerators ÷ Σ denominators
+    expect(r.issueRate).toBeCloseTo(issued / leads, 4);
+  });
+
+  it("recomputes as the window slides: a later windowStart drops the oldest month", () => {
+    const r = computeTrailingRates(m90, COMPANY, { windowStart: "2026-06-03" });
+    expect(r.window).toBe("rolling_90d");
+    expect(r.sampleN).toBe(12 + 40 + 38); // May's month-end 5/31 < 6/03 → out
+  });
+
+  it("differs from the historical (period-scoped) window on the same data — periods reprice independently", () => {
+    const live = computeTrailingRates(m90, COMPANY, { windowStart: "2026-05-07" });
+    const historical = computeTrailingRates(m90, COMPANY); // trailing_3 of the list head
+    expect(historical.window).toBe("trailing_3");
+    expect(live.nsli).not.toBe(historical.nsli);
+  });
+
+  it("thin 90-day sample widens (VISIBLE via the window flag), never silently substitutes", () => {
+    const thin: RateMonth[] = [
+      { period_start: "2026-08-01", net: 30_000, issued: 8, sales: 3, leads: 20 },
+      { period_start: "2026-07-01", net: 90_000, issued: 25, sales: 9, leads: 60 },
+      { period_start: "2026-06-01", net: 85_000, issued: 24, sales: 8, leads: 55 },
+      { period_start: "2026-05-01", net: 80_000, issued: 22, sales: 8, leads: 50 },
+      { period_start: "2026-04-01", net: 82_000, issued: 23, sales: 8, leads: 52 },
+      { period_start: "2026-03-01", net: 84_000, issued: 23, sales: 8, leads: 53 },
+    ];
+    // 90-day window (Aug MTD + Jul + Jun + May) sales = 28 < 30 → widen to 6 months (44 ≥ 30).
+    const r = computeTrailingRates(thin, COMPANY, { windowStart: "2026-05-07" });
+    expect(r.window).toBe("trailing_6");
+    expect(r.sampleN).toBe(3 + 9 + 8 + 8 + 8 + 8);
+  });
+
+  it("Orlando-style summed months keep summed numerators/denominators through the 90-day window", () => {
+    // Two sources pre-combined per month (the multi-source path) — the window
+    // math must stay Σnet ÷ Σissued, never an average of two rates.
+    const combined: RateMonth[] = [
+      { period_start: "2026-08-01", net: 120_000 + 30_000, issued: 40 + 10, sales: 14 + 4, leads: 100 + 30 },
+      { period_start: "2026-07-01", net: 420_000 + 80_000, issued: 130 + 30, sales: 42 + 10, leads: 320 + 80 },
+      { period_start: "2026-06-01", net: 400_000 + 70_000, issued: 120 + 28, sales: 40 + 9, leads: 300 + 70 },
+    ];
+    const r = computeTrailingRates(combined, COMPANY, { windowStart: "2026-05-07" });
+    expect(r.window).toBe("rolling_90d");
+    const net = 150_000 + 500_000 + 470_000;
+    const issued = 50 + 160 + 148;
+    expect(r.nsli).toBe(Math.round(net / issued));
+  });
+});
+
 describe("issue rate — same window as NSLI, null-safe (handoff tests 20/24/25)", () => {
   it("issueRate = Σissued ÷ Σleads over the SAME window nsli/avgSale chose", () => {
     const m = months(6, 200_000, 60, 20, 150); // trailing_3

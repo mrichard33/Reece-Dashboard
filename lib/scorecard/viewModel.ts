@@ -111,6 +111,10 @@ export type ScorecardVM = {
     /** Trailing window that produced NSLI + avg sale, and its sales-count sample —
      *  for the "how was this computed" tooltip. */
     rateWindow: string | null;
+    /** True when the rates fell back to a WIDER window than the primary
+     *  (rolling-90d / trailing-3) because the sample was too thin — rendered
+     *  as a visible flag, never a silent substitution (ruled 2026-08-04). */
+    rateWidened: boolean;
     rateSampleN: number | null;
     /** Historical issue rate (issued ÷ leads, 0–1) from the same window — drives
      *  the derived Leads goal; surfaced on the NSLI tile. Null = no leads history. */
@@ -337,6 +341,7 @@ export function buildScorecardVM(view: ScorecardView, resolved: ResolvedPeriod):
       avgSale: d.avg_sale_target ?? 0,
       nsli: g.trailing_nsli ?? 0,
       rateWindow: d.rate_window,
+      rateWidened: d.rate_window != null && d.rate_window !== "rolling_90d" && d.rate_window !== "trailing_3",
       rateSampleN: d.rate_sample_n,
       issueRate: d.issue_rate,
       rateAnchorMonth: d.rate_anchor_month,
@@ -362,12 +367,16 @@ function buildMarketing(
   // Target lead funnel (one direction from the NET goal): issued = goal ÷ NSLI →
   // demos = issued × demo% → sales = goal ÷ NET average sale (NOT demos × close%,
   // so the sales target can't drift off the dollar goal).
-  const monthlyIssued = g.trailing_nsli > 0 ? g.monthly_goal_dollars / g.trailing_nsli : null;
+  const nsliRate = g.trailing_nsli ?? 0;
+  const monthlyIssued = nsliRate > 0 ? g.monthly_goal_dollars / nsliRate : null;
   const monthlyDemos = monthlyIssued != null ? monthlyIssued * (g.target_demo_pct / 100) : null;
   const monthlySales =
     d.avg_sale_target && d.avg_sale_target > 0 ? g.monthly_goal_dollars / d.avg_sale_target : null;
   const prorate = (v: number | null) => prorateGoal(v, daysElapsed, sellingDays);
-  const issuePct = g.target_issue_pct;
+  // Ruled 2026-08-04: issue % is DERIVED from history, never a hand-set target.
+  // The stored target_issue_pct column is unused — no read path consults it, so
+  // the Set / % Issue target cells render "—" rather than a configured number.
+  const issuePct: number | null = null;
   const netClosePct = g.target_net_close_pct;
   const monthlySet = issuePct != null && issuePct > 0 && monthlyIssued != null ? monthlyIssued / (issuePct / 100) : null;
   const monthlyNetClose = netClosePct != null && monthlyDemos != null ? monthlyDemos * (netClosePct / 100) : null;

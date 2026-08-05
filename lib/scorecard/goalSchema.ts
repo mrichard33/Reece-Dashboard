@@ -26,9 +26,9 @@ export const GoalSchema = z
     target_demo_pct: z.number().min(0).max(100),
     target_ko_pct: z.number().min(0).max(100),
     trailing_nsli: z.number().min(0),
-    // Optional funnel-stage targets (sql/033). Null = no target (rows render
-    // "no target" rather than a bare "—").
-    target_issue_pct: z.number().min(0).max(100).nullable().default(null),
+    // Optional funnel-stage target (sql/033). Null = no target (rows render
+    // "no target" rather than a bare "—"). target_issue_pct is NOT accepted:
+    // issue % is DERIVED from history (ruled 2026-08-04), never a set target.
     target_net_close_pct: z.number().min(0).max(100).nullable().default(null),
   })
   .superRefine((v, ctx) => {

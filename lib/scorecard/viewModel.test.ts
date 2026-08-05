@@ -234,6 +234,29 @@ describe("buildScorecardVM — aggregate (YTD) period-awareness", () => {
   it("flags a single-month view", () => {
     expect(buildScorecardVM(makeView(), MONTH).isSingleMonth).toBe(true);
   });
+
+  it("widened rate window is a VISIBLE flag; primary windows are not flagged", () => {
+    // Primary windows (rolling_90d live, trailing_3 historical) → no flag.
+    expect(buildScorecardVM(makeView(), MONTH).pace.rateWidened).toBe(false); // trailing_3 fixture
+    const live = makeView();
+    live.derived.rate_window = "rolling_90d";
+    expect(buildScorecardVM(live, MONTH).pace.rateWidened).toBe(false);
+    // Any widening/fallback → flagged (never a silent substitution).
+    for (const w of ["trailing_6", "trailing_12", "company"] as const) {
+      const v = makeView();
+      v.derived.rate_window = w;
+      expect(buildScorecardVM(v, MONTH).pace.rateWidened).toBe(true);
+    }
+  });
+
+  it("zero/absent NSLI renders '—'-safe values — no NaN/Infinity anywhere in pace", () => {
+    const v = makeView();
+    v.goals.trailing_nsli = null;
+    const vm = buildScorecardVM(v, MONTH);
+    expect(vm.pace.nsli).toBe(0); // tile renders "—" for 0
+    expect(Number.isFinite(vm.pace.nsli)).toBe(true);
+    expect(vm.revenue.trailingNSLI).toBe(0);
+  });
 });
 
 describe("formatters", () => {
