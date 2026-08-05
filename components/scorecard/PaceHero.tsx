@@ -50,21 +50,29 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
   const goalLabel = vm.isSingleMonth ? "Monthly Goal" : "Period Goal";
   const goalSub = vm.isSingleMonth ? "full month" : "full period";
 
+  // No report-sourced net yet → Net / Projected / Balance render "—" (pending is
+  // NOT zero; a fabricated $0 reads as "behind goal" and a full-gross cancellation).
+  const pending = p.netPending;
+
   const kpis: Kpi[] = [
     { label: goalLabel, sub: goalSub, value: usd(p.monthlyGoal) },
     {
       label: "Projected Pace",
-      sub: projTone === "neg" ? "behind goal" : "on / ahead of goal",
-      value: usd(projected),
-      tone: projTone,
+      sub: pending ? "report pending" : projTone === "neg" ? "behind goal" : "on / ahead of goal",
+      value: pending ? "—" : usd(projected),
+      tone: pending ? "plain" : projTone,
     },
     { label: "Target to Date", sub: "goal to date", value: usd(p.paceGoal) },
-    { label: `Net — Released ${vm.abbr}`, sub: vm.provisional ? "provisional · ties to report at close" : "released to production (RTP)", value: usd(p.netSales) },
+    {
+      label: `Net — Released ${vm.abbr}`,
+      sub: pending ? "report pending — no released figure yet" : vm.provisional ? "provisional · ties to report at close" : "released to production (RTP)",
+      value: pending ? "—" : usd(p.netSales),
+    },
     {
       label: "Balance",
-      sub: balance >= 0 ? "ahead of target" : "behind target",
-      value: signed(balance),
-      tone: balTone,
+      sub: pending ? "report pending" : balance >= 0 ? "ahead of target" : "behind target",
+      value: pending ? "—" : signed(balance),
+      tone: pending ? "plain" : balTone,
     },
     { label: "Elapsed / Working Days", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
     { label: "Average Sale", sub: "trailing net ÷ sales", value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle, flag: p.rateWidened },

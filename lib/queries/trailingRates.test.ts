@@ -1,8 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { computeTrailingRates, type RateMonth } from "./scorecard";
 
-/** Build `n` latest-first months each with the given per-month net/issued/sales/leads. */
-function months(n: number, net: number, issued: number, sales: number, leads = 0): RateMonth[] {
+/** Build `n` latest-first months each with the given per-month net/issued/sales/leads.
+ *  rawLeads defaults to `leads` so ratio expectations stay readable; pass
+ *  rawLeads explicitly (or null) to exercise the raw-leads rules. */
+function months(
+  n: number,
+  net: number,
+  issued: number,
+  sales: number,
+  leads = 0,
+  rawLeads: number | null = leads,
+): RateMonth[] {
   return Array.from({ length: n }, (_, i) => ({
     // period_start only needs to be distinct + latest-first; values drive the test.
     period_start: `2026-${String(12 - i).padStart(2, "0")}-01`,
@@ -10,6 +19,7 @@ function months(n: number, net: number, issued: number, sales: number, leads = 0
     issued,
     sales,
     leads,
+    rawLeads,
   }));
 }
 
@@ -80,11 +90,11 @@ describe("rolling 90-day primary window (live anchor — ruled 2026-08-04, hando
   // month whose LAST day is on/after windowStart — the MTD month + the months
   // covering the trailing 90 days.
   const m90: RateMonth[] = [
-    { period_start: "2026-08-01", net: 100_000, issued: 30, sales: 12, leads: 90 }, // MTD (partial)
-    { period_start: "2026-07-01", net: 400_000, issued: 120, sales: 40, leads: 300 },
-    { period_start: "2026-06-01", net: 380_000, issued: 110, sales: 38, leads: 280 },
-    { period_start: "2026-05-01", net: 360_000, issued: 100, sales: 36, leads: 260 },
-    { period_start: "2026-04-01", net: 999_999, issued: 999, sales: 99, leads: 999 }, // outside window
+    { period_start: "2026-08-01", net: 100_000, issued: 30, sales: 12, leads: 90, rawLeads: 180 }, // MTD (partial)
+    { period_start: "2026-07-01", net: 400_000, issued: 120, sales: 40, leads: 300, rawLeads: 600 },
+    { period_start: "2026-06-01", net: 380_000, issued: 110, sales: 38, leads: 280, rawLeads: 560 },
+    { period_start: "2026-05-01", net: 360_000, issued: 100, sales: 36, leads: 260, rawLeads: 520 },
+    { period_start: "2026-04-01", net: 999_999, issued: 999, sales: 99, leads: 999, rawLeads: 1998 }, // outside window
   ];
 
   it("windowStart selects the months overlapping the last 90 days, INCLUDING the MTD month", () => {
@@ -93,10 +103,10 @@ describe("rolling 90-day primary window (live anchor — ruled 2026-08-04, hando
     expect(r.window).toBe("rolling_90d");
     const net = 100_000 + 400_000 + 380_000 + 360_000;
     const issued = 30 + 120 + 110 + 100;
-    const leads = 90 + 300 + 280 + 260;
+    const rawLeads = 180 + 600 + 560 + 520;
     expect(r.sampleN).toBe(12 + 40 + 38 + 36);
     expect(r.nsli).toBe(Math.round(net / issued)); // Σ numerators ÷ Σ denominators
-    expect(r.issueRate).toBeCloseTo(issued / leads, 4);
+    expect(r.issueRate).toBeCloseTo(issued / rawLeads, 4);
   });
 
   it("recomputes as the window slides: a later windowStart drops the oldest month", () => {
@@ -143,12 +153,39 @@ describe("rolling 90-day primary window (live anchor — ruled 2026-08-04, hando
   });
 });
 
-describe("issue rate — same window as NSLI, null-safe (handoff tests 20/24/25)", () => {
-  it("issueRate = Σissued ÷ Σleads over the SAME window nsli/avgSale chose", () => {
-    const m = months(6, 200_000, 60, 20, 150); // trailing_3
+describe("issue rate — raw-leads denominator, same window as NSLI, null-safe", () => {
+  it("issueRate = Σissued ÷ Σraw_leads_in over the SAME window nsli/avgSale chose", () => {
+    const m = months(6, 200_000, 60, 20, 150); // trailing_3; rawLeads = leads = 150
     const r = computeTrailingRates(m, COMPANY);
     expect(r.window).toBe("trailing_3");
     expect(r.issueRate).toBeCloseTo((60 * 3) / (150 * 3), 4); // 0.4
+  });
+
+  it("the set-cohort `leads` column is NOT the denominator (ruled 2026-08-05)", () => {
+    // rawLeads = 2× the cohort figure — the rate must follow rawLeads.
+    const m = months(6, 200_000, 60, 20, 150, 300);
+    const r = computeTrailingRates(m, COMPANY);
+    expect(r.issueRate).toBeCloseTo((60 * 3) / (300 * 3), 4); // 0.2, not 0.4
+  });
+
+  it("months without raw_leads_in (pre-June-2026) are excluded from BOTH sides of the ratio", () => {
+    // 2 tracked months + 1 untracked in the trailing_3 window: the untracked
+    // month's issued must not inflate the numerator against a smaller denominator.
+    const m: RateMonth[] = [
+      { period_start: "2026-07-01", net: 200_000, issued: 60, sales: 20, leads: 150, rawLeads: 300 },
+      { period_start: "2026-06-01", net: 200_000, issued: 60, sales: 20, leads: 150, rawLeads: 300 },
+      { period_start: "2026-05-01", net: 200_000, issued: 999, sales: 20, leads: 150, rawLeads: null },
+    ];
+    const r = computeTrailingRates(m, COMPANY);
+    expect(r.window).toBe("trailing_3");
+    expect(r.issueRate).toBeCloseTo(120 / 600, 4); // May's 999 issued excluded
+  });
+
+  it("no raw-leads months anywhere in the window → issueRate null, never a silent cohort fallback", () => {
+    const m = months(6, 200_000, 60, 20, 150, null); // history predates tracking
+    const r = computeTrailingRates(m, COMPANY);
+    expect(r.nsli).not.toBeNull(); // NSLI unaffected
+    expect(r.issueRate).toBeNull();
   });
 
   it("moves with the widening: a trailing_6 window prices issue rate over 6 months too", () => {
