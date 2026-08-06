@@ -33,8 +33,8 @@ export async function getAggregateActuals(
   const sb = await lpServer();
   const cal = resolveSellingCalendar();
 
-  // A display market may span several warehouse source codes (Orlando =
-  // ORL_MKT + LAKE_MKT); the aggregation core sums per (market, month).
+  // A display market may span several warehouse source codes (Fort Lauderdale
+  // = FTLAU + BOCA + MIAMI + RFED); the core sums per (market, month).
   const sources = marketSources(market);
   const { data, error } = await sb
     .from("lp_market_scorecard_daily")
@@ -55,9 +55,9 @@ export async function getAggregateActuals(
   const anchorMonthEnd = new Date(Date.UTC(ay, am, 0, 12, 0, 0)).toISOString().slice(0, 10);
   // Anchor-month selling days — the per-day funnel-target basis (unchanged).
   const workingDays = sellingDaysInPeriod(anchorMonthStart, anchorMonthEnd, cal);
-  // Selling days in the ENTIRE selected period (whole year for YTD, whole quarter
-  // for QTD, the month for a single-month aggregate). This is what the
-  // WORKING/ELAPSED tile, elapsed-% and projected pace expand to.
+  // Selling days in the ENTIRE selected period — the whole months the period
+  // goal covers. This is what the WORKING/ELAPSED tile, elapsed-% and projected
+  // pace expand to, and it MUST be the same window the goal was summed over.
   const [fullStart, fullEnd] = fullPeriodBounds(resolved);
   const periodWorkingDays = sellingDaysInPeriod(fullStart, fullEnd, cal);
 
@@ -110,26 +110,33 @@ function latestPerMonth(rows: MonthlySnapshotRow[]): HeroMonthRow[] {
  * and the whole MONTH for a single-month aggregate (last_month / select_month).
  * Extends past `asOf` so "X% of period" reads as calendar progress, not 100%.
  */
-function fullPeriodBounds(resolved: ResolvedPeriod): [string, string] {
-  const start = resolved.periodStart;
-  const y = Number(start.slice(0, 4));
+export function fullPeriodBounds(resolved: ResolvedPeriod): [string, string] {
   const monthEndOf = (ymd: string): string => {
     const yy = Number(ymd.slice(0, 4));
     const mm = Number(ymd.slice(5, 7));
     return new Date(Date.UTC(yy, mm, 0, 12, 0, 0)).toISOString().slice(0, 10);
   };
-  switch (resolved.key) {
-    case "ytd":
-      return [`${y}-01-01`, `${y}-12-31`];
-    case "qtd": {
-      const qEndMonth = Number(start.slice(5, 7)) + 2; // quarter start month + 2
-      return [start, monthEndOf(`${y}-${String(qEndMonth).padStart(2, "0")}-01`)];
-    }
-    case "trailing_3m":
-      // Current + 2 prior full months → extend to the end of the current month.
-      return [start, monthEndOf(resolved.periodEnd)];
-    default:
-      // Single-month aggregate (last_month / select_month): the whole month.
-      return [start, monthEndOf(start)];
-  }
+  // ONE rule for every period key: the full period is the span of WHOLE MONTHS
+  // that the period goal sums over — the start month through the end month.
+  //
+  // This used to be a per-key switch, and YTD returned [Jan 1, Dec 31]: a
+  // twelve-month denominator against an eight-month goal. On 2026-08-06 that
+  // rendered Projected Pace as 53,044,056 ÷ 183 × 305 = $88,406,760 — ABOVE a
+  // $84.5M goal — while Balance correctly read −$22.5M on the same screen. Two
+  // elapsed fractions, one screen. QTD had the same defect in the same
+  // direction (it extended to the end of the quarter no matter how much of it
+  // the goal covered); trailing_3m was already right, and is now the rule.
+  //
+  // With the goal window and the clock window forced to agree, target-to-date
+  // and projected pace can no longer disagree by construction, and the §1
+  // invariant — totalUnits never exceeds what the resolved period end implies —
+  // holds for every key rather than being asserted key by key.
+  //
+  // Guard: on the first day of a period, before any selling day has completed,
+  // periodEnd is the last completed day and so lands in the PREVIOUS month
+  // (Aug 1 → Jul 31). Taking its month end would invert the range and report
+  // zero total selling days — a division by zero dressed up as data. The period
+  // still spans its own start month, so clamp to whichever end is later.
+  const end = resolved.periodEnd >= resolved.periodStart ? resolved.periodEnd : resolved.periodStart;
+  return [resolved.periodStart, monthEndOf(end)];
 }

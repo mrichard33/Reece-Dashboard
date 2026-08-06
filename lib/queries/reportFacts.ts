@@ -12,6 +12,16 @@ export async function getReportFacts(
   marketCode: string,
   resolved: ResolvedPeriod,
 ): Promise<ReportFacts> {
+  const rows = await fetchReportFactRows();
+  return buildReportFacts(rows, resolved, marketCode);
+}
+
+/**
+ * The raw current fact rows, fetched once. Exposed so a caller needing MANY
+ * markets (the By-Market table) projects them in memory instead of issuing one
+ * identical query per market.
+ */
+export async function fetchReportFactRows(): Promise<ReportFactRow[]> {
   try {
     const sb = await lpServer();
     const { data, error } = await sb
@@ -21,11 +31,11 @@ export async function getReportFacts(
       )
       .eq("is_current", true)
       .in("report_type", ["sales_efficiency", "source_cost", "lead_disposition", "job_status_ytd"])
-      .limit(1000);
+      .limit(5000);
     if (error) throw new Error(error.message);
-    return buildReportFacts((data ?? []) as ReportFactRow[], resolved, marketCode);
+    return (data ?? []) as ReportFactRow[];
   } catch (err) {
     console.error("[reportFacts] fetch failed:", (err as Error)?.message ?? err);
-    return { sold: null, goodBusiness: null };
+    return [];
   }
 }

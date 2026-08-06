@@ -209,7 +209,11 @@ describe("buildScorecardVM — aggregate (YTD) period-awareness", () => {
   function ytdView(): ScorecardView {
     const v = makeView();
     // Aggregate rows carry the whole-period selling days and Σ-of-months goals.
-    v.actuals.period_working_days = 305; // full 2026 selling days
+    // §1: the period is Jan 1 → Jul 11, so the full period is Jan 1 → Jul 31 —
+    // 179 selling days. It was 305 here (the whole of 2026) against a goal that
+    // summed only seven months, which is what put a 53%-elapsed denominator on
+    // the same screen as a 90%-elapsed target.
+    v.actuals.period_working_days = 179; // Jan 1 → Jul 31 selling days
     v.actuals.days_elapsed = 162; // Jan 1 → Jul 11 elapsed
     v.derived.period_goal_dollars = 54_461_538; // Σ Jan–Jul goals (Period Goal)
     v.derived.mtd_goal_dollars = 49_230_769; // Target to Date
@@ -218,10 +222,20 @@ describe("buildScorecardVM — aggregate (YTD) period-awareness", () => {
 
   it("uses the whole-period selling days, not the anchor month", () => {
     const vm = buildScorecardVM(ytdView(), YTD);
-    expect(vm.pace.sellingDays).toBe(305);
-    expect(vm.snapshot.sellingDays).toBe(305);
+    expect(vm.pace.sellingDays).toBe(179);
+    expect(vm.snapshot.sellingDays).toBe(179);
     expect(vm.snapshot.daysElapsed).toBe(162);
-    expect(Math.round(vm.pace.elapsedPct)).toBe(53); // 162 / 305
+    expect(Math.round(vm.pace.elapsedPct)).toBe(91); // 162 / 179
+  });
+
+  it("§1: elapsed % matches the fraction the goal was prorated by", () => {
+    // THE regression guard. Elapsed % and Target-to-Date ÷ Period Goal are two
+    // views of ONE fraction. They read 53% and 90% on 2026-08-06 because the
+    // projection divided by a full-year denominator while the goal summed eight
+    // months. Within a point of each other or the page is lying somewhere.
+    const vm = buildScorecardVM(ytdView(), YTD);
+    const goalFraction = (vm.pace.paceGoal / vm.pace.monthlyGoal) * 100;
+    expect(Math.abs(vm.pace.elapsedPct - goalFraction)).toBeLessThan(1);
   });
 
   it("shows the full Period Goal (Σ months), not a single month", () => {
@@ -334,6 +348,16 @@ const FACTS: ReportFacts = {
     pendingTotalCount: 242,
     openJobsTotal: 940,
   },
+  // Live 2026-08-05 YTD: 135 sums to 78,557 across its branch-grain rows and
+  // 136's company control total reads 78,561 — 4 apart, which IS report 135's
+  // validation gate (it has no footer total row of its own).
+  leads: {
+    leads: 78_557,
+    basis: "lead_disposition",
+    asOf: "2026-08-05",
+    reconLeads: 78_561,
+    reconDelta: -4,
+  },
 };
 
 describe("buildScorecardVM — revenue.facts (③ cards)", () => {
@@ -347,13 +371,24 @@ describe("buildScorecardVM — revenue.facts (③ cards)", () => {
     expect(f.cancelCount).toBe(955);
   });
 
-  it("pending buckets carry count + dollars and releasedRemaining = NSA − pending", () => {
+  it("pending buckets carry count + dollars and foot to their own total", () => {
     const vm = buildScorecardVM(makeView(), MONTH, FACTS);
     const f = vm.revenue.facts;
     expect(f.pendingPermit).toEqual({ count: 18, dollars: 343_564 });
     expect(f.pendingHoa).toEqual({ count: 93, dollars: 2_008_759 });
-    expect(f.releasedRemaining).toBeCloseTo(
-      56_893_787.43 - (2_008_759 + 343_564 + 3_794_614), 2);
+    // Open Backlog totals ITS OWN lines and nothing else.
+    expect(f.pendingTotal).toBeCloseTo(2_008_759 + 343_564 + 3_794_614, 2);
+    expect(f.pendingCount).toBe(242);
+  });
+
+  // §2: no arithmetic crosses panels.
+  it("no cross-basis subtraction survives — releasedRemaining is gone", () => {
+    const vm = buildScorecardVM(makeView(), MONTH, FACTS);
+    const f = vm.revenue.facts as Record<string, unknown>;
+    // It subtracted a point-in-time STOCK (open jobs, including ones sold in
+    // prior years) from a PERIOD FLOW (this period's sold-date net). The result
+    // meant nothing, and it is why the line rendered blank in MTD and 3-Month.
+    expect("releasedRemaining" in f).toBe(false);
   });
 
   it("no facts (zero net_sales month, empty raw_inputs) → nulls, never zeros", () => {
@@ -367,7 +402,8 @@ describe("buildScorecardVM — revenue.facts (③ cards)", () => {
     expect(f.cancelValue).toBeNull();     // the defect rendered gross here
     expect(f.netAfterCancels).toBeNull(); // and $0 here
     expect(f.pendingHoa).toBeNull();
-    expect(f.releasedRemaining).toBeNull();
+    expect(f.pendingTotal).toBeNull();
+    expect(f.leads).toBeNull();
   });
 
   it("omitting the reportFacts argument keeps every facts field null (no throw)", () => {

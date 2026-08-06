@@ -18,17 +18,18 @@ import { firstOfMonthET } from "@/lib/date/sellingDays";
 
 /**
  * Top-down goal distribution (ruled 2026-08-04): ONE company-wide goal, split
- * across the 6 display markets by trailing-Net-Sales share, largest-remainder
+ * across the display markets by trailing-Net-Sales share, largest-remainder
  * in cents (Σ office goals == company goal EXACTLY — asserted).
  *
  * PREVIEW NEVER WRITES — it runs on the read-only anon client (lpServer);
  * only commit/redistribute touch lpService. Commit recomputes the split
  * server-side (the client preview is display-only, never trusted).
  *
- * Orlando: the distribution operates on display markets — Orlando's trailing
- * share INPUT is ORL+LAKE combined actuals, but its allocated goal writes
- * entirely to the PRIMARY source row (ORL_MKT); LAKE_MKT's live goal stays
- * zeroed per the standing ruling.
+ * Lakeland (ruling 2026-08-06): Lakeland is its own display market, so it takes
+ * its own trailing share and its allocation writes to its own LAKE_MKT row.
+ * A market's allocation still writes to its PRIMARY source row — that matters
+ * only for Fort Lauderdale, whose BOCA/MIAMI/RFED rows arrive pre-folded as
+ * FTLAU_MKT upstream. No market's goal is zeroed.
  *
  * Overrides: after distribution Mark can still hand-edit an office — that row
  * becomes authoritative, the company figure stays derived Σ offices, and the
@@ -40,7 +41,7 @@ import { firstOfMonthET } from "@/lib/date/sellingDays";
 export type DistributionPreviewRow = {
   code: string;
   label: string;
-  /** Trailing net $ input over the basis window (ORL+LAKE combined for Orlando). */
+  /** Trailing net $ input over the basis window (summed across the market's sources). */
   trailingNetDollars: number;
   share: number;
   allocatedDollars: number;
@@ -183,7 +184,9 @@ async function writeDistribution(opts: {
   const distributionId = String(distRow.distribution_id);
 
   // Office rows: each display market's allocation lands ENTIRELY on its
-  // PRIMARY source row (Orlando → ORL_MKT; LAKE_MKT stays zeroed/untouched).
+  // PRIMARY source row. Every market except Fort Lauderdale is 1:1 with its
+  // code, and FTLAU's BOCA/MIAMI/RFED rows arrive pre-folded upstream — so in
+  // practice primary === m.code. No market is zeroed.
   for (const m of SCORECARD_MARKETS) {
     if (!opts.writeCodes.includes(m.code)) continue;
     const primary = m.sources[0] ?? m.code;

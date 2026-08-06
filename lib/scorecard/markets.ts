@@ -7,23 +7,29 @@
  * from SCORECARD_MARKETS — do not hardcode market codes elsewhere.
  *
  * Each display market maps to one or more warehouse source codes (the per-market
- * snapshot rows written by the LP-MCP per-market writer). Orlando is the combined
- * ORL_MKT + LAKE_MKT market: Lakeland's rows still exist in the warehouse, but the
- * dashboard reads, sums, and renders them as one Orlando market everywhere —
- * actuals, goals, filters, and pace.
+ * snapshot rows written by the LP-MCP per-market writer). Most markets are 1:1
+ * with their warehouse code; only Fort Lauderdale spans several (see the
+ * reconciliation rule below).
  *
  * Branch→market resolution itself lives upstream in LP Supabase
  * (lp_branch_market_map) + LP-MCP's market-resolver; the dashboard only ever sees
  * *_MKT codes.
+ *
+ * LAKELAND (ruling, 2026-08-06 — REVERSES the 2026-08-04 Orlando fold): Lakeland
+ * is its own market. LAKE_MKT is a first-class display entity everywhere — the
+ * scorecard, the By-Market rows, the goal editor, and the capacity board — and no
+ * LAKE number is ever summed into Orlando. This matches the warehouse, which has
+ * always kept them apart: lp_branch_market_map maps LAKE → LAKE_MKT → "Lakeland",
+ * and lp_report_facts stamps LAKE branch rows with market LAKE_MKT, never
+ * ORL_MKT. The fold was display-only, and it is gone.
  *
  * RECONCILIATION GROUPING RULE (ruling, 2026-08-04): BOCA, MIAMI, and RFED
  * branches all roll into FTLAU_MKT upstream — intended behavior, not a defect.
  * LP reports (e.g. Jobs by Milestone Date) still print those branch codes
  * separately; when comparing report totals to dashboard totals, compare
  * BOCA + FTLAU + MIAMI + RFED from the report against the single Fort
- * Lauderdale market here. Likewise the LAKE branch: every LAKE number rolls
- * into Orlando and Lakeland is never a display entity anywhere on the
- * dashboard.
+ * Lauderdale market here. LAKE is NOT such a case — it reconciles 1:1 against
+ * Lakeland.
  */
 
 export type ScorecardMarket = {
@@ -36,11 +42,12 @@ export type ScorecardMarket = {
 
 export const SCORECARD_MARKETS: readonly ScorecardMarket[] = [
   { code: "STPET_MKT", label: "St. Petersburg", sources: ["STPET_MKT"] },
-  { code: "ORL_MKT", label: "Orlando", sources: ["ORL_MKT", "LAKE_MKT"] },
+  { code: "ORL_MKT", label: "Orlando", sources: ["ORL_MKT"] },
   { code: "FTMYR_MKT", label: "Fort Myers", sources: ["FTMYR_MKT"] },
   { code: "JAX_MKT", label: "Jacksonville", sources: ["JAX_MKT"] },
   { code: "SAR_MKT", label: "Sarasota", sources: ["SAR_MKT"] },
   { code: "FTLAU_MKT", label: "Fort Lauderdale", sources: ["FTLAU_MKT"] },
+  { code: "LAKE_MKT", label: "Lakeland", sources: ["LAKE_MKT"] },
 ] as const;
 
 /** Every warehouse office code that rolls into the company (REECE) total. */
@@ -66,9 +73,8 @@ export const UTILITY_MARKETS: readonly ScorecardMarket[] = [
 export const UNASSIGNED_SOURCE_CODES: readonly string[] = UTILITY_MARKETS[0]!.sources;
 
 /**
- * The complete display-market list a tier renders: 6 markets + UNASSIGNED.
- * Nothing else is a market. Lakeland is never an entry — LAKE_MKT rolls into
- * Orlando via `sources` and has no display identity anywhere.
+ * The complete display-market list a tier renders: 7 markets + UNASSIGNED.
+ * Nothing else is a market. Lakeland is one of the seven (ruling 2026-08-06).
  */
 export const DISPLAY_MARKETS: readonly { code: string; label: string; sources: readonly string[]; utility: boolean }[] = [
   ...SCORECARD_MARKETS.map((m) => ({ code: m.code, label: m.label, sources: m.sources, utility: false })),
@@ -77,10 +83,10 @@ export const DISPLAY_MARKETS: readonly { code: string; label: string; sources: r
 
 /**
  * Collapse ANY warehouse market code onto its display entity — the one function
- * every tier read passes raw fact rows through. LAKE_MKT → ORL_MKT,
- * OUT_OF_AREA → UNASSIGNED, everything else to itself. Unknown codes pass
- * through untouched so a new warehouse code surfaces visibly rather than
- * silently vanishing into another market's total.
+ * every tier read passes raw fact rows through. OUT_OF_AREA → UNASSIGNED,
+ * everything else to itself. Unknown codes pass through untouched so a new
+ * warehouse code surfaces visibly rather than silently vanishing into another
+ * market's total.
  */
 export function displayMarketOf(code: string | null | undefined): string {
   const c = (code ?? "").trim().toUpperCase();
@@ -90,9 +96,10 @@ export function displayMarketOf(code: string | null | undefined): string {
 }
 
 /**
- * Normalize an incoming market code: legacy/source codes collapse onto their
- * display market (LAKE_MKT → ORL_MKT). Unknown codes pass through untouched so
- * they surface visibly instead of silently merging into another market.
+ * Normalize an incoming market code: source codes collapse onto their display
+ * market (BOCA/MIAMI/RFED-backed rows already arrive as FTLAU_MKT). Unknown
+ * codes pass through untouched so they surface visibly instead of silently
+ * merging into another market.
  */
 export function normalizeMarketCode(code: string | null | undefined): string {
   const c = (code ?? "").trim().toUpperCase();
@@ -103,11 +110,23 @@ export function normalizeMarketCode(code: string | null | undefined): string {
   return c;
 }
 
-/** The warehouse source codes behind a display market (REECE → its own row). */
+/**
+ * The warehouse source codes behind a display market (REECE → its own row).
+ *
+ * Utility rows are resolved too. `displayMarketOf` has always folded
+ * OUT_OF_AREA onto UNASSIGNED, but this function only consulted
+ * SCORECARD_MARKETS, so a read filtered to UNASSIGNED silently dropped every
+ * OUT_OF_AREA row — 1,084 YTD leads' worth. Two functions disagreeing about
+ * one cardinality ruling (2026-08-05 §7) is the same defect class the ruling
+ * exists to prevent.
+ */
 export function marketSources(code: string): readonly string[] {
   if (!code || code === "REECE") return ["REECE"];
-  const m = SCORECARD_MARKETS.find((x) => x.code === normalizeMarketCode(code));
-  return m ? m.sources : [code];
+  const norm = normalizeMarketCode(code);
+  const m = SCORECARD_MARKETS.find((x) => x.code === norm);
+  if (m) return m.sources;
+  const u = UTILITY_MARKETS.find((x) => x.code === norm || x.sources.includes(norm));
+  return u ? u.sources : [code];
 }
 
 export function marketLabel(code: string | null | undefined): string {

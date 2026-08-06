@@ -104,14 +104,22 @@ describe("Sold This Period (market = lead-attributed basis)", () => {
     ld("LAKE_MKT", "net_sold", 500_00, 1),
     ld("SAR_MKT", "sold", 999_00, 9),
   ];
-  test("Orlando folds ORL + LAKE sources and labels the basis", () => {
+  // LAKELAND RULING (2026-08-06): Orlando no longer absorbs LAKE_MKT.
+  test("Orlando reads ORL only and labels the basis", () => {
     const { sold } = buildReportFacts(rows, YTD, "ORL_MKT");
     expect(sold!.basis).toBe("lead_attributed");
-    expect(sold!.soldCount).toBe(3);
-    expect(sold!.grossSoldDollars).toBe(1500);
+    expect(sold!.soldCount).toBe(2);
+    expect(sold!.grossSoldDollars).toBe(1000);
     expect(sold!.cancelCount).toBe(1);
     expect(sold!.cancelValueDollars).toBe(300);
-    expect(sold!.netAfterCancelsDollars).toBe(1200);
+    expect(sold!.netAfterCancelsDollars).toBe(700);
+  });
+  test("Lakeland reads its own rows, never Orlando's", () => {
+    const { sold } = buildReportFacts(rows, YTD, "LAKE_MKT");
+    expect(sold!.soldCount).toBe(1);
+    expect(sold!.grossSoldDollars).toBe(500);
+    expect(sold!.cancelCount).toBe(0);
+    expect(sold!.netAfterCancelsDollars).toBe(500);
   });
   test("other markets' rows never leak in", () => {
     const { sold } = buildReportFacts(rows, YTD, "SAR_MKT");
@@ -154,7 +162,7 @@ describe("Sold This Period (report 137 authoritative — sales_efficiency)", () 
   const se = (market: string, branch: string, metric: string, value_cents: number | null, value_count: number): ReportFactRow => ({
     ...base, report_type: "sales_efficiency", market, branch_code_raw: branch, metric, value_cents, value_count,
   });
-  // Live 2026-08-05 YTD figures for Sarasota + the ORL/LAKE fold.
+  // Live 2026-08-05 YTD figures for Sarasota, Orlando and Lakeland.
   const ROWS: ReportFactRow[] = [
     se("SAR_MKT", "SAR", "sold", 1_280_148_600, 485),
     se("SAR_MKT", "SAR", "net_sold", 929_889_600, 338),
@@ -179,12 +187,23 @@ describe("Sold This Period (report 137 authoritative — sales_efficiency)", () 
     expect(sold!.cancelCount).not.toBe(485 - 338);
   });
 
-  test("§8.11 Orlando folds ORL + LAKE per standing rules", () => {
+  // LAKELAND RULING (2026-08-06): Orlando and Lakeland are separate markets.
+  test("§8.11 Orlando reads ORL only — Lakeland is not folded in", () => {
     const { sold } = buildReportFacts(ROWS, YTD, "ORL_MKT");
-    expect(sold!.soldCount).toBe(789);
-    expect(sold!.cancelCount).toBe(179);
-    expect(sold!.cancelValueDollars).toBeCloseTo(3_645_766, 2);
-    expect(sold!.netAfterCancelsDollars).toBeCloseTo(9_333_916, 2);
+    expect(sold!.soldCount).toBe(682);
+    expect(sold!.cancelCount).toBe(150);
+    expect(sold!.cancelValueDollars).toBeCloseTo(3_075_076, 2);
+    expect(sold!.netAfterCancelsDollars).toBeCloseTo(8_261_839, 2);
+  });
+
+  test("§8.11 Lakeland stands alone with its own 137 figures", () => {
+    const { sold } = buildReportFacts(ROWS, YTD, "LAKE_MKT");
+    expect(sold!.basis).toBe("sales_efficiency");
+    expect(sold!.soldCount).toBe(107);
+    expect(sold!.grossSoldDollars).toBeCloseTo(2_003_890, 2);
+    expect(sold!.cancelCount).toBe(29);
+    expect(sold!.cancelValueDollars).toBeCloseTo(570_690, 2);
+    expect(sold!.netAfterCancelsDollars).toBeCloseTo(1_072_077, 2);
   });
 
   test("§8.12 cancellation value ≠ gross sold (the confirmed defect)", () => {

@@ -13,7 +13,7 @@ import type { ScorecardActuals } from "@/lib/queries/scorecard";
  *
  * Keying by (market, period_start) makes the same function serve two jobs:
  * multi-month aggregates (3-Month / YTD) AND multi-source display markets
- * (Orlando = ORL_MKT + LAKE_MKT rows summed), including both at once.
+ * (Fort Lauderdale's folded branch rows summed), including both at once.
  */
 
 export type MonthlySnapshotRow = {
@@ -31,8 +31,10 @@ export type AggregateCtx = {
   daysElapsed: number;
   /** Selling days in the anchor (first) month — the per-day funnel-target basis. */
   workingDays: number;
-  /** Selling days in the ENTIRE period (whole year for YTD, whole quarter for QTD).
-   *  Drives the WORKING/ELAPSED tile, elapsed-% and projected-pace denominator. */
+  /** Selling days in the ENTIRE period — the span of whole months the period
+   *  goal sums over (start month through end month, for EVERY period key).
+   *  Drives the WORKING/ELAPSED tile, elapsed-% and the projected-pace
+   *  denominator, all of which must share this one number with target-to-date. */
   periodWorkingDays: number;
   reconciled: boolean;
 };
@@ -53,7 +55,7 @@ export function money(numr: number, den: number): number | null {
 
 export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx): ScorecardActuals {
   // Keep the latest snapshot per (market, month) so multi-source display markets
-  // (Orlando = ORL_MKT + LAKE_MKT) sum correctly alongside multi-month ranges.
+  // (Fort Lauderdale) sum correctly alongside multi-month ranges.
   const latestPerMonth = new Map<string, MonthlySnapshotRow>();
   for (const r of rows) {
     const key = `${String(r.market ?? "")}|${r.period_start}`;
