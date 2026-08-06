@@ -3,15 +3,28 @@ import { num, usd, usDate } from "@/lib/utils";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /**
- * Section ③ — Sold vs Net. Two equal cards that reconcile to the same number:
+ * Section ③ — THREE panels, each declaring its own basis, with NO arithmetic
+ * crossing between them (§2, ruled 2026-08-06).
  *
- *   SOLD THIS PERIOD (sold-date basis)  — Sales, Gross sold, Cancellations, and
- *      the surviving good business (= gross − cancellations).
- *   NET (GOOD BUSINESS) BREAKDOWN (net-date basis) — Released (the only slice
- *      recognized), Working, Other, totaling the same Net (Good Business).
+ *   SOLD THIS PERIOD      sold date · report 137 · respects the period filter
+ *   RELEASED THIS PERIOD  RTP milestone date · report 134 · respects the filter
+ *   OPEN BACKLOG          point-in-time · report 133 · IGNORES the period
+ *                         filter, honors the market filter, shows its as-of
  *
- * Both totals are identical by construction on reconciled data; the caption
- * explains why sold and net rarely coincide within one period.
+ * WHAT THIS REPLACES. The old second panel ran one subtraction down a single
+ * column: gross → −cancellations → net sold → −HOA → −permit → −other →
+ * "Remaining net (released)". The first three lines are a PERIOD FLOW
+ * (sold-date, this period). The last three are a POINT-IN-TIME STOCK from the
+ * Job Status report — open jobs, including ones sold in prior periods and prior
+ * YEARS. Subtracting a stock from a flow does not produce a smaller number, it
+ * produces a number that means nothing: in the 3-Month view it took YTD-wide
+ * holds off three months of sales, and in MTD off two days. It is also why
+ * "Remaining net (released)" rendered BLANK in MTD and 3-Month — the operation
+ * could not resolve.
+ *
+ * The rule now: a panel may total its own lines and nothing else. Open Backlog
+ * foots to total open jobs on its own terms; Sold nets its own cancellations.
+ * No line in one panel is an input to another.
  */
 
 type Line = { label: string; note?: string; value: string; tone?: "plain" | "red"; strong?: boolean };
@@ -105,22 +118,32 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
     { label: "Net sales after cancels", value: netValue, strong: true },
   ];
 
-  // Net (Good Business) — gross → −cancels → net, then the open-pipeline
-  // holds (stock from the Job Status report: HOA / Permit / Other pending,
-  // each count · $), leaving released remaining. Buckets foot to total open
-  // jobs by construction; a missing source renders "not yet sourced".
-  const netLines: Line[] = [
-    { label: "Gross sales", value: usd(soldSourced ? f.grossSold : fallbackGross) },
+  // RELEASED THIS PERIOD — RTP milestone date (report 134). One figure on its
+  // own basis; it is NOT gross-sold minus anything.
+  const releasedLines: Line[] = [
     {
-      label: "− Cancellations",
-      value: f.cancelValue == null ? "not yet sourced" : usd(f.cancelValue),
-      tone: "red",
+      label: "Net released",
+      value: pending ? usd(null) : usd(r.released),
+      strong: true,
     },
-    { label: "= Net sold", value: netValue, strong: true },
-    { label: "− Held: HOA", note: "pending", value: bucketValue(f.pendingHoa) },
-    { label: "− Held: Permit", note: "pending", value: bucketValue(f.pendingPermit) },
-    { label: "− Other pending", note: "pre-release", value: bucketValue(f.pendingOther) },
-    { label: "= Remaining net (released)", value: usd(f.releasedRemaining), strong: true },
+  ];
+
+  // OPEN BACKLOG — a point-in-time STOCK from the Job Status report. Every line
+  // here is an open job as of the report's own date, regardless of when it was
+  // sold. The buckets foot to Total open by construction. No minus signs: this
+  // panel subtracts nothing from anything.
+  const backlogLines: Line[] = [
+    { label: "Held — HOA", note: "pending", value: bucketValue(f.pendingHoa) },
+    { label: "Held — Permit", note: "pending", value: bucketValue(f.pendingPermit) },
+    { label: "Other pending", note: "pre-release", value: bucketValue(f.pendingOther) },
+    {
+      label: "= Total open",
+      value:
+        f.pendingTotal == null
+          ? "not yet sourced"
+          : `${num(f.pendingCount)} · ${usd(f.pendingTotal)}`,
+      strong: true,
+    },
   ];
 
   const scopeNote = f.soldScope === "mtd" ? "month-to-date pull"
@@ -138,18 +161,24 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
 
   return (
     <div className="space-y-3">
-      <div className={`grid grid-cols-1 items-start gap-4 ${aside ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+      <div className={`grid grid-cols-1 items-start gap-4 ${aside ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
         <SplitCard
           title="Sold this period"
-          subtitle={`Sold-date basis · ${basisNote}${f.soldAsOf ? ` · as of ${usDate(f.soldAsOf)}` : ""}`}
+          subtitle={`Basis: sold date · ${basisNote}${f.soldAsOf ? ` · as of ${usDate(f.soldAsOf)}` : ""}`}
           accent="border-t-2 border-t-navy-900 dark:border-t-slate-200"
           lines={soldLines}
         />
         <SplitCard
-          title="Net (Good Business) breakdown"
-          subtitle={`Net-date basis · holds as of ${f.pendingAsOf ? usDate(f.pendingAsOf) : usDate(vm.snapshot.asOfDate)}`}
+          title="Released this period"
+          subtitle={`Basis: RTP milestone date · report 134 · ${vm.abbr}`}
+          accent="border-t-2 border-t-emerald-500"
+          lines={releasedLines}
+        />
+        <SplitCard
+          title="Open backlog"
+          subtitle={`Basis: point-in-time · report 133 · as of ${f.pendingAsOf ? usDate(f.pendingAsOf) : usDate(vm.snapshot.asOfDate)}`}
           accent="border-t-2 border-t-sky-400"
-          lines={netLines}
+          lines={backlogLines}
         />
         {aside}
       </div>
@@ -157,11 +186,13 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
       <p className="flex items-start gap-1.5 px-1 text-[12px] leading-snug text-slate-500 dark:text-slate-400">
         <span aria-hidden className="mt-px text-slate-400">ⓘ</span>
         <span>
-          Net rarely equals Sold in the same period — jobs net when they release (HOA, permits,
-          financing, production), often months later. Holds are the current open pipeline from the
-          Job Status report; &ldquo;not yet sourced&rdquo; and &ldquo;—&rdquo; mean no report covers
-          this view yet — neither is a zero.
-          {f.netPendingReason ? ` Net reads "still maturing" here because ${f.netPendingReason}.` : ""}
+          Each panel states its own basis and totals only its own lines — no figure here is
+          subtracted from a figure in another panel. Sold and Released cover the selected period;
+          Open Backlog is the current open pipeline whatever period is selected, so it carries its
+          own as-of date and includes jobs sold in earlier periods.
+          &ldquo;Not yet sourced&rdquo; and &ldquo;—&rdquo; mean no report covers this view yet —
+          neither is a zero.
+          {f.netPendingReason ? ` Net sold reads "still maturing" here because ${f.netPendingReason}.` : ""}
         </span>
       </p>
     </div>

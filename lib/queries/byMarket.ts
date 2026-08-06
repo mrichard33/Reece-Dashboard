@@ -10,6 +10,8 @@ import {
   SCORECARD_MARKETS,
   UTILITY_MARKETS,
 } from "@/lib/scorecard/markets";
+import { fetchReportFactRows } from "@/lib/queries/reportFacts";
+import { buildReportFacts } from "@/lib/queries/reportFacts.core";
 
 /**
  * By-Market rollup for the scorecard ⑤ table. For the default month-to-date
@@ -46,7 +48,15 @@ export type ByMarketRow = {
   market: string;
   label: string;
   utility: boolean;
-  leads: number;
+  /**
+   * Leads from report 135 (lead_disposition), summed over the market's
+   * branch-grain fact rows. NULL means "not sourced for this period" and MUST
+   * render "—" with a reason. It used to read `raw_leads_in` off
+   * lp_market_scorecard_daily, which is NULL for every market — coerced through
+   * numOr0() that produced a confident 0 leads for every office while the
+   * company row showed a non-zero total (§4).
+   */
+  leads: number | null;
   issued: number;
   demos: number;
   sales: number;
@@ -69,7 +79,7 @@ export type ByMarketView = { rows: ByMarketRow[]; total: ByMarketRow | null };
  */
 export function rowHasActivity(row: ByMarketRow): boolean {
   return (
-    row.leads + row.issued + row.demos + row.sales + row.gross_sales + row.net_sales !== 0
+    (row.leads ?? 0) + row.issued + row.demos + row.sales + row.gross_sales + row.net_sales !== 0
   );
 }
 
@@ -118,6 +128,7 @@ function rowFromActuals(
   utility: boolean,
   a: Record<string, unknown>,
   goal: number | null,
+  leads: number | null,
 ): ByMarketRow {
   // Net = released to production (RTP), matching the ① hero and the Net Report basis;
   // falls back to net_sales only for rows predating the released split.
@@ -127,9 +138,9 @@ function rowFromActuals(
     market,
     label,
     utility,
-    // Leads = RAW LEADS IN (true top-of-funnel; ruled 2026-08-05). a.leads is
-    // the appointment-set cohort and structurally equals Sets.
-    leads: numOr0(a.raw_leads_in),
+    // Leads = report 135, passed in by the caller (see ByMarketRow.leads).
+    // NEVER a.raw_leads_in — that column is NULL for every market.
+    leads,
     issued: numOr0(a.issued),
     demos: numOr0(a.demos),
     sales: numOr0(a.sales),
@@ -146,7 +157,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   const sb = await lpServer();
   const periodStart = resolved.periodStart;
 
-  const [{ data: actualsRows }, { data: goalRows }, { data: baseRows }] = await Promise.all([
+  const [{ data: actualsRows }, { data: goalRows }, { data: baseRows }, factRows] = await Promise.all([
     // Every market's snapshots for this period; we keep the latest as_of per market.
     sb
       .from("lp_market_scorecard_daily")
@@ -168,7 +179,13 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
       .order("period_start", { ascending: false })
       .order("as_of_date", { ascending: false })
       .limit(1000),
+    // Report 135 leads — fetched ONCE and projected per market in memory.
+    fetchReportFactRows(),
   ]);
+
+  // Leads come from report 135 only (§3 authoritative source, §4 repoint).
+  const leadsFor = (code: string): number | null =>
+    buildReportFacts(factRows, resolved, code).leads?.leads ?? null;
 
   // Latest snapshot per SOURCE market (rows are as_of desc).
   const latest = new Map<string, Record<string, unknown>>();
@@ -225,7 +242,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
         if (g != null) goal = (goal ?? 0) + g;
       }
     }
-    return rowFromActuals(code, label, utility, a, goal);
+    return rowFromActuals(code, label, utility, a, goal, leadsFor(code));
   };
 
   const rows: ByMarketRow[] = [];
@@ -261,16 +278,21 @@ async function safeView(market: string, resolved: ResolvedPeriod) {
 
 /** Fan-out rollup for aggregate / recompute periods (uncommon; kept for exact parity). */
 async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView> {
-  const [reece, ...marketViews] = await Promise.all([
+  const [factRows, reece, ...marketViews] = await Promise.all([
+    // Report 135 leads — one fetch, projected per market in memory.
+    fetchReportFactRows(),
     safeView("REECE", resolved),
     ...MARKETS.map((m) => safeView(m.code, resolved)),
   ]);
+
+  const leadsFor = (code: string): number | null =>
+    buildReportFacts(factRows, resolved, code).leads?.leads ?? null;
 
   type V = NonNullable<Awaited<ReturnType<typeof getScorecardForPeriod>>>;
   const toRow = (market: string, label: string, utility: boolean, v: V): ByMarketRow => {
     const a = v.actuals as unknown as Record<string, unknown>;
     const goal = utility ? null : v.derived.mtd_goal_dollars || null;
-    return rowFromActuals(market, label, utility, a, goal);
+    return rowFromActuals(market, label, utility, a, goal, leadsFor(market));
   };
 
   const rows: ByMarketRow[] = [];

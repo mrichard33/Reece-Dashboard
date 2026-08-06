@@ -96,6 +96,30 @@ describe("marketSources / marketLabel", () => {
     expect([...marketSources("")]).toEqual(["REECE"]);
   });
 
+  it("resolves the utility row's BOTH source codes, not just its own", () => {
+    // marketSources used to consult only SCORECARD_MARKETS while
+    // displayMarketOf folded OUT_OF_AREA → UNASSIGNED. A facts read filtered to
+    // UNASSIGNED therefore dropped every OUT_OF_AREA row — 1,084 YTD leads.
+    // Two functions disagreeing about one cardinality ruling is exactly what
+    // that ruling exists to prevent.
+    expect([...marketSources("UNASSIGNED")]).toEqual(["UNASSIGNED", "OUT_OF_AREA"]);
+    expect([...marketSources("OUT_OF_AREA")]).toEqual(["UNASSIGNED", "OUT_OF_AREA"]);
+  });
+
+  it("marketSources and displayMarketOf agree for every code either knows", () => {
+    const codes = [
+      ...SCORECARD_MARKETS.map((m) => m.code),
+      ...UTILITY_MARKETS.flatMap((m) => [m.code, ...m.sources]),
+    ];
+    for (const c of codes) {
+      // Every source of a code's display market must itself resolve back to it.
+      const display = displayMarketOf(c);
+      for (const src of marketSources(display)) {
+        expect(displayMarketOf(src), `${src} → ${display}`).toBe(display);
+      }
+    }
+  });
+
   it("labels Lakeland as Lakeland — never Orlando", () => {
     expect(marketLabel("ORL_MKT")).toBe("Orlando");
     expect(marketLabel("LAKE_MKT")).toBe("Lakeland");

@@ -553,7 +553,7 @@ describe("Test 8 — Time-to-Net median and p75 per market", () => {
     const { markets } = timeToNetByMarket(rows, displayMarketOf);
     const orl = markets.find((m) => m.market === "ORL_MKT")!;
     expect(orl.medianDays.known).toBe(false);
-    expect(orl.medianDays.reason).toMatch(/too thin/);
+    if (!orl.medianDays.known) expect(orl.medianDays.reason).toMatch(/too thin/);
     const lake = markets.find((m) => m.market === "LAKE_MKT")!;
     expect(lake.medianDays.known).toBe(false);
   });

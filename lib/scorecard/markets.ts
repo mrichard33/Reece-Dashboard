@@ -110,11 +110,23 @@ export function normalizeMarketCode(code: string | null | undefined): string {
   return c;
 }
 
-/** The warehouse source codes behind a display market (REECE → its own row). */
+/**
+ * The warehouse source codes behind a display market (REECE → its own row).
+ *
+ * Utility rows are resolved too. `displayMarketOf` has always folded
+ * OUT_OF_AREA onto UNASSIGNED, but this function only consulted
+ * SCORECARD_MARKETS, so a read filtered to UNASSIGNED silently dropped every
+ * OUT_OF_AREA row — 1,084 YTD leads' worth. Two functions disagreeing about
+ * one cardinality ruling (2026-08-05 §7) is the same defect class the ruling
+ * exists to prevent.
+ */
 export function marketSources(code: string): readonly string[] {
   if (!code || code === "REECE") return ["REECE"];
-  const m = SCORECARD_MARKETS.find((x) => x.code === normalizeMarketCode(code));
-  return m ? m.sources : [code];
+  const norm = normalizeMarketCode(code);
+  const m = SCORECARD_MARKETS.find((x) => x.code === norm);
+  if (m) return m.sources;
+  const u = UTILITY_MARKETS.find((x) => x.code === norm || x.sources.includes(norm));
+  return u ? u.sources : [code];
 }
 
 export function marketLabel(code: string | null | undefined): string {

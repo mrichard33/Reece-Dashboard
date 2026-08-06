@@ -102,9 +102,26 @@ export type GoodBusinessFacts = {
   openJobsTotal: number;
 };
 
+/**
+ * Leads — report 135 (lead_disposition) is the ONE authoritative source, for
+ * every market AND the company. Report 136 (source_cost) carries a company
+ * leads figure too; it is a RECONCILIATION row here, never a second read path.
+ */
+export type LeadsFacts = {
+  /** Σ of the market's branch-grain rows. Null = not sourced → renders "—". */
+  leads: number | null;
+  basis: "lead_disposition";
+  asOf: string;
+  /** Company control total from 136, for display alongside — never instead. */
+  reconLeads: number | null;
+  /** 135 − 136. Expected |delta| ≤ 4 on the YTD pull (see §5 gate). */
+  reconDelta: number | null;
+};
+
 export type ReportFacts = {
   sold: SoldFacts | null;
   goodBusiness: GoodBusinessFacts | null;
+  leads: LeadsFacts | null;
 };
 
 const dollars = (cents: number | null | undefined): number | null =>
@@ -295,6 +312,56 @@ function buildGoodBusiness(rows: ReportFactRow[], marketCode: string): GoodBusin
   };
 }
 
+/**
+ * Leads for one dashboard market — report 135, and only report 135.
+ *
+ * TWO DEFECTS THIS REPLACES (§4, live 2026-08-06):
+ *
+ *  1. GRAIN. lp_report_facts is stored at BRANCH grain with `market` as a
+ *     rollup label — Fort Lauderdale carries five lead_disposition rows
+ *     (1,608 · 3,181 · 5,427 · 29 · 286). Anything that doesn't sum them
+ *     reports one branch's number, or nothing. `sumMetric` sums, so a market's
+ *     branches add up before anyone divides or displays.
+ *
+ *  2. WRONG SOURCE. By Market read `raw_leads_in` off lp_market_scorecard_daily,
+ *     which is NULL for every market — coerced through numOr0() it rendered a
+ *     confident 0 leads for every office while the company row showed a
+ *     non-zero total. Null is "not sourced" and must render "—" with a reason.
+ *
+ * Per-market leads sum to 78,557, matching lp_lead_disposition_history's row
+ * count exactly. Report 136's company figure (78,561) rides along as a
+ * reconciliation, 4 apart — which is precisely the tolerance §5 defines as
+ * report 135's validation gate, since 135 has no footer total row of its own.
+ */
+function buildLeads(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: string): LeadsFacts | null {
+  const inMarket = marketFilter(marketCode);
+  const ld = pickSnapshot(
+    rows.filter(
+      (r) => r.report_type === "lead_disposition" && inMarket(r.market) && coversPeriod(r, resolved),
+    ),
+    resolved,
+  );
+  if (!ld.length) return null;
+
+  const leads = sumMetric(ld, "leads");
+  if (!leads.seen) return null;
+
+  // Company control total from 136 — reconciliation only, never the read path.
+  const sc = pickSnapshot(
+    rows.filter((r) => r.report_type === "source_cost" && coversPeriod(r, resolved)),
+    resolved,
+  );
+  const recon = marketCode === "REECE" ? sumMetric(sc, "leads") : { seen: false, count: 0 };
+
+  return {
+    leads: leads.count,
+    basis: "lead_disposition",
+    asOf: ld[0]!.as_of_date,
+    reconLeads: recon.seen ? recon.count : null,
+    reconDelta: recon.seen ? leads.count - recon.count : null,
+  };
+}
+
 /** Project current fact rows into the card figures for one dashboard market. */
 export function buildReportFacts(
   rows: ReportFactRow[],
@@ -304,5 +371,6 @@ export function buildReportFacts(
   return {
     sold: buildSold(rows, resolved, marketCode),
     goodBusiness: buildGoodBusiness(rows, marketCode),
+    leads: buildLeads(rows, resolved, marketCode),
   };
 }

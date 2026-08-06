@@ -191,8 +191,19 @@ export type ScorecardVM = {
       pendingPermit: { count: number; dollars: number } | null;
       pendingOther: { count: number; dollars: number } | null;
       pendingTotal: number | null;
-      /** net after cancels − pending total; needs both sides sourced */
-      releasedRemaining: number | null;
+      pendingCount: number | null;
+      /**
+       * Leads — report 135 (lead_disposition) and ONLY 135, summed over the
+       * market's branch-grain rows. Null = not sourced → "—", never 0. This
+       * replaces `raw_leads_in`, which is NULL for every market and rendered a
+       * confident 0 leads per office (§4).
+       */
+      leads: number | null;
+      leadsAsOf: string | null;
+      /** Report 136's company control total — shown alongside, never instead. */
+      leadsRecon: number | null;
+      /** 135 − 136; |delta| ≤ 4 is report 135's validation gate (§5). */
+      leadsReconDelta: number | null;
     };
   };
   /** Null target/actual = not computable ("—"): no NSLI history, or 0 completed
@@ -324,6 +335,7 @@ export function buildScorecardVM(
   // open-pipeline stock. Missing → null → "—", never $0.
   const sf = reportFacts?.sold ?? null;
   const gb = reportFacts?.goodBusiness ?? null;
+  const lf = reportFacts?.leads ?? null;
   const facts = {
     soldBasis: sf?.basis ?? null,
     soldAsOf: sf?.asOf ?? null,
@@ -339,12 +351,22 @@ export function buildScorecardVM(
     pendingPermit: gb?.permit ?? null,
     pendingOther: gb?.otherPending ?? null,
     pendingTotal: gb?.pendingTotalDollars ?? null,
-    // Both sides must be sourced — a cohort-immature net makes the remainder
-    // unknowable, not zero.
-    releasedRemaining:
-      sf?.netAfterCancelsDollars != null && gb != null
-        ? sf.netAfterCancelsDollars - gb.pendingTotalDollars
-        : null,
+    pendingCount: gb?.pendingTotalCount ?? null,
+    leads: lf?.leads ?? null,
+    leadsAsOf: lf?.asOf ?? null,
+    leadsRecon: lf?.reconLeads ?? null,
+    leadsReconDelta: lf?.reconDelta ?? null,
+    // §2: `releasedRemaining` (net after cancels − pending total) IS DELETED,
+    // not moved. It subtracted a POINT-IN-TIME STOCK from a PERIOD FLOW: the
+    // holds come from the Job Status report and include jobs sold in prior
+    // periods — prior YEARS — while net-sold is this period's sold-date
+    // activity. In the 3-Month view it took YTD-wide holds off three months of
+    // sales; in MTD, off two days. The result was not a smaller number, it was
+    // a number that meant nothing, and it is why "Remaining net (released)"
+    // rendered blank in MTD and 3-Month — the operation could not resolve.
+    //
+    // The three panels now declare their own basis in their headers and no
+    // arithmetic crosses between them.
   };
   const revenue = {
     buckets,
