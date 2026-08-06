@@ -33,8 +33,8 @@ export async function getAggregateActuals(
   const sb = await lpServer();
   const cal = resolveSellingCalendar();
 
-  // A display market may span several warehouse source codes (Orlando =
-  // ORL_MKT + LAKE_MKT); the aggregation core sums per (market, month).
+  // A display market may span several warehouse source codes (Fort Lauderdale
+  // = FTLAU + BOCA + MIAMI + RFED); the core sums per (market, month).
   const sources = marketSources(market);
   const { data, error } = await sb
     .from("lp_market_scorecard_daily")

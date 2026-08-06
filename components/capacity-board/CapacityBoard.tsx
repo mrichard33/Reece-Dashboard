@@ -75,13 +75,15 @@ const ET = "America/New_York";
 const POLL_MS = 60_000;
 
 // Display order from the reviewed design, membership-checked against the
-// canonical market list (lib/scorecard/markets). Lakeland is NOT a market —
-// LAKE_MKT rows sum into the Orlando tile via mergeBoardOffices; unknown
+// canonical market list (lib/scorecard/markets). Lakeland IS its own market
+// (ruling 2026-08-06) and sits next to Orlando — the two are adjacent
+// territories and read together. Seven tiles fit the 4×2 TV grid; unknown
 // markets append alphabetically.
 const BOARD_DESIGN_ORDER = [
   "FTLAU_MKT",
   "JAX_MKT",
   "ORL_MKT",
+  "LAKE_MKT",
   "STPET_MKT",
   "FTMYR_MKT",
   "SAR_MKT",

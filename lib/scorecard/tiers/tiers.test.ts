@@ -63,12 +63,18 @@ const MILESTONE_NET: Record<string, [number, number]> = {
   STPET_MKT: [8, 16037500],
 };
 
+/**
+ * Post-carve goals (LAKELAND RULING 2026-08-06). Lakeland's goal used to be
+ * zeroed with its dollars sitting inside Orlando's row. It is now carved OUT of
+ * Orlando — 1,736,866.40 − 138,724 = 1,598,142.40 — so the company total is
+ * unchanged at exactly $10,400,000. Σ of the seven still foots to the company.
+ */
 const GOALS: Record<string, number> = {
   FTLAU_MKT: 443852.68,
   FTMYR_MKT: 3172850.13,
   JAX_MKT: 570923.12,
-  LAKE_MKT: 0,
-  ORL_MKT: 1736866.4,
+  LAKE_MKT: 138724,
+  ORL_MKT: 1598142.4,
   SAR_MKT: 1744200.99,
   STPET_MKT: 2731306.68,
 };
@@ -196,9 +202,10 @@ const timeToNetFixture = {
 describe("Test 1 — Tier 1 is Goal / Actual / Pace / Projected / Variance and nothing else", () => {
   const t1 = buildTier1(ROLLED, GOALS, T1_OPTS);
 
-  test("all 6 markets plus a company row", () => {
-    expect(t1.rows).toHaveLength(6);
+  test("all 7 markets plus a company row", () => {
+    expect(t1.rows).toHaveLength(7);
     expect(t1.rows.map((r) => r.market).sort()).toEqual(SCORECARD_MARKETS.map((m) => m.code).sort());
+    expect(t1.rows.map((r) => r.market)).toContain("LAKE_MKT");
     expect(t1.company.market).toBe("REECE");
   });
 
@@ -215,10 +222,26 @@ describe("Test 1 — Tier 1 is Goal / Actual / Pace / Projected / Variance and n
     expect(t1.company.actual.value).toBeCloseTo(702_506, 2);
   });
 
-  test("Orlando's goal sums ORL + LAKE and its actual folds LAKE in", () => {
+  // LAKELAND RULING (2026-08-06): Orlando's goal is its own carved figure and
+  // its actual is ORL's alone; Lakeland carries its own row.
+  test("Orlando's goal is its post-carve figure, its actual ORL's alone", () => {
     const orl = t1.rows.find((r) => r.market === "ORL_MKT")!;
-    expect(orl.goal.value).toBeCloseTo(1_736_866.4, 2);
+    expect(orl.goal.value).toBeCloseTo(1_598_142.4, 2);
     expect(orl.actual.value).toBeCloseTo(179_726, 2);
+  });
+
+  test("Lakeland is its own row, carrying the goal carved out of Orlando", () => {
+    const lake = t1.rows.find((r) => r.market === "LAKE_MKT")!;
+    expect(lake.label).toBe("Lakeland");
+    expect(lake.goal.value).toBeCloseTo(138_724, 2);
+    // No Lakeland RTP milestone rows this period — states a reason, never $0.
+    expect(lake.actual.known).toBe(false);
+  });
+
+  test("Σ of the seven office goals still foots to the company goal exactly", () => {
+    const sum = t1.rows.reduce((a, r) => a + (r.goal.value ?? 0), 0);
+    expect(sum).toBeCloseTo(t1.company.goal.value!, 2);
+    expect(sum).toBeCloseTo(10_400_000, 2);
   });
 
   test("pace prorates the goal; projection is the run rate; variance is projected − goal", () => {
@@ -267,14 +290,15 @@ describe("Test 2 — cascade reproduces YTD company rates", () => {
     expect(STAGES).toHaveLength(4);
   });
 
-  test("Orlando is a ratio of sums (ORL+LAKE), never an average of two rates", () => {
+  // LAKELAND RULING (2026-08-06): Orlando's rate is ORL's alone. The
+  // ratio-of-sums discipline is unchanged — it now applies within a market,
+  // over its branch-grain rows, rather than across two merged markets.
+  test("Orlando's issue rate is ORL's own, with Lakeland excluded", () => {
     const orl = t2.rows.find((r) => r.market === "ORL_MKT")!;
     const issue = orl.stages.find((s) => s.key === "issue")!;
-    // (2948 + 439) / (16555 + 2927) = 17.4% — averaging the two offices' rates
-    // would give 17.3%, a different number belonging to neither office.
-    expect(issue.actual.value).toBe(Math.round(((2948 + 439) / (16555 + 2927)) * 1000) / 10);
-    expect(issue.numerator).toBe(3387);
-    expect(issue.denominator).toBe(19482);
+    expect(issue.actual.value).toBe(Math.round((2948 / 16555) * 1000) / 10);
+    expect(issue.numerator).toBe(2948);
+    expect(issue.denominator).toBe(16555);
   });
 
   test("on a YTD view the company variance against its own YTD benchmark is zero", () => {
@@ -512,11 +536,26 @@ describe("Test 8 — Time-to-Net median and p75 per market", () => {
     expect(percentileCont([5, 6, 6, 28], 0.75)).toBe(11.5);
   });
 
-  test("LAKE folds into Orlando before the statistic is taken", () => {
+  // LAKELAND RULING (2026-08-06): a LAKE job is Lakeland's statistic, not
+  // Orlando's — it must not silently enlarge Orlando's sample. Splitting the
+  // markets makes both samples thinner, and the min-sample guard is what stops
+  // that turning into a confidently-published two-job median.
+  test("LAKE stays out of Orlando's sample and forms its own", () => {
     const { markets } = timeToNetByMarket(rows, displayMarketOf);
     const orl = markets.find((m) => m.market === "ORL_MKT")!;
-    expect(orl.n).toBe(3); // 5, 6 (from LAKE), 7
-    expect(orl.medianDays.value).toBe(6);
+    expect(orl.n).toBe(2); // jobs 5 and 6 only — job 4 is Lakeland's
+
+    const lake = markets.find((m) => m.market === "LAKE_MKT")!;
+    expect(lake.n).toBe(1); // job 4
+  });
+
+  test("a market that drops below the min sample says so instead of publishing", () => {
+    const { markets } = timeToNetByMarket(rows, displayMarketOf);
+    const orl = markets.find((m) => m.market === "ORL_MKT")!;
+    expect(orl.medianDays.known).toBe(false);
+    expect(orl.medianDays.reason).toMatch(/too thin/);
+    const lake = markets.find((m) => m.market === "LAKE_MKT")!;
+    expect(lake.medianDays.known).toBe(false);
   });
 
   test("duplicate job rows across re-ingested snapshots are deduped, not 7×'d", () => {
@@ -647,14 +686,21 @@ describe("Test 12 — one NSLI window, labelled identically", () => {
     expect(t4.sourceWindowLabel).toMatch(/rolling 90d/);
   });
 
-  test("Orlando NSLI sums ORL+LAKE numerator and denominator, never averages two rates", () => {
+  // LAKELAND RULING (2026-08-06): each market's NSLI is its own net ÷ its own
+  // issued. Lakeland's thin numbers no longer dilute Orlando's.
+  test("Orlando and Lakeland each carry their own NSLI, never a blended one", () => {
     const t4 = buildTier4(ROLLED, [], { markets: MARKET_CODES, sourceWindowLabel: "w", planningNsli: measured(1), nsliWindowLabel: "w" });
     const orl = t4.rows.find((r) => r.market === "ORL_MKT")!;
-    const expected = (826183900 + 107207700) / 100 / (2948 + 439);
-    expect(orl.nsli.value).toBeCloseTo(Math.round(expected * 100) / 100, 2);
-    // The average of the two offices' NSLIs is a different, wrong number.
-    const avgOfRates = (8261839 / 2948 + 1072077 / 439) / 2;
-    expect(orl.nsli.value).not.toBeCloseTo(avgOfRates, 0);
+    const orlExpected = 826183900 / 100 / 2948;
+    expect(orl.nsli.value).toBeCloseTo(Math.round(orlExpected * 100) / 100, 2);
+
+    const lake = t4.rows.find((r) => r.market === "LAKE_MKT")!;
+    const lakeExpected = 107207700 / 100 / 439;
+    expect(lake.nsli.value).toBeCloseTo(Math.round(lakeExpected * 100) / 100, 2);
+
+    // The old merged figure belonged to neither market.
+    const merged = (826183900 + 107207700) / 100 / (2948 + 439);
+    expect(orl.nsli.value).not.toBeCloseTo(merged, 0);
   });
 });
 
@@ -721,16 +767,16 @@ describe("Test 14 — one row per (snapshot, market, metric, bucket)", () => {
 
 // ── 15. Market cardinality ──────────────────────────────────────────────────
 
-describe("Test 15 — 6 markets + UNASSIGNED, no LAKE_MKT, no user-visible Lakeland", () => {
-  test("DISTINCT market over market-dimensioned rows is exactly the 7 display entities", () => {
+describe("Test 15 — 7 markets + UNASSIGNED, Lakeland among them", () => {
+  test("DISTINCT market over market-dimensioned rows is exactly the 8 display entities", () => {
     // Source & Cost is ingested WITHOUT a market dimension — its rows are the
     // company control total and legitimately key on REECE. Excluding it is the
     // difference between "which markets exist" and "which rows exist".
     const present = marketsPresent(ROLLED.filter((r) => r.report_type !== "source_cost"));
     expect(present.sort()).toEqual(
-      ["FTLAU_MKT", "FTMYR_MKT", "JAX_MKT", "ORL_MKT", "SAR_MKT", "STPET_MKT", "UNASSIGNED"].sort(),
+      ["FTLAU_MKT", "FTMYR_MKT", "JAX_MKT", "LAKE_MKT", "ORL_MKT", "SAR_MKT", "STPET_MKT", "UNASSIGNED"].sort(),
     );
-    expect(present).not.toContain("LAKE_MKT");
+    expect(present).toContain("LAKE_MKT");
     expect(present).not.toContain("OUT_OF_AREA");
     expect(present).not.toContain("REECE");
   });
@@ -740,8 +786,8 @@ describe("Test 15 — 6 markets + UNASSIGNED, no LAKE_MKT, no user-visible Lakel
     expect(reeceRows.every((r) => r.report_type === "source_cost")).toBe(true);
   });
 
-  test("the display list is 6 markets + one utility row", () => {
-    expect(DISPLAY_MARKETS.filter((m) => !m.utility)).toHaveLength(6);
+  test("the display list is 7 markets + one utility row", () => {
+    expect(DISPLAY_MARKETS.filter((m) => !m.utility)).toHaveLength(7);
     expect(DISPLAY_MARKETS.filter((m) => m.utility)).toHaveLength(1);
   });
 
@@ -753,10 +799,13 @@ describe("Test 15 — 6 markets + UNASSIGNED, no LAKE_MKT, no user-visible Lakel
     expect(un[0]!.value_count).toBe(2693 + 1084);
   });
 
-  test("Lakeland never appears as a label anywhere", () => {
-    expect(displayMarketOf("LAKE_MKT")).toBe("ORL_MKT");
-    expect(JSON.stringify(DISPLAY_MARKETS)).not.toMatch(/lakeland/i);
-    expect(JSON.stringify(ROLLED)).not.toMatch(/LAKE_MKT/);
+  test("Lakeland is a first-class display entity, never relabelled Orlando", () => {
+    expect(displayMarketOf("LAKE_MKT")).toBe("LAKE_MKT");
+    expect(JSON.stringify(DISPLAY_MARKETS)).toMatch(/lakeland/i);
+    expect(JSON.stringify(ROLLED)).toMatch(/LAKE_MKT/);
+    // and it never masquerades as Orlando
+    expect(DISPLAY_MARKETS.find((m) => m.code === "LAKE_MKT")!.label).toBe("Lakeland");
+    expect(DISPLAY_MARKETS.find((m) => m.code === "ORL_MKT")!.sources).not.toContain("LAKE_MKT");
   });
 
   test("an unknown warehouse code surfaces visibly instead of vanishing", () => {

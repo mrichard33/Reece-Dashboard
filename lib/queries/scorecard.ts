@@ -295,9 +295,9 @@ export async function getBaselineNetSales(
   sourcesOverride?: readonly string[],
 ): Promise<{ value: number; source: GoalBaselineSource }> {
   // One query (prior-year-same-month is within period_start < periodStart), then the
-  // shared pure resolver. Multi-source display markets (Orlando = ORL+LAKE) sum the
+  // shared pure resolver. Multi-source display markets (Fort Lauderdale) sum the
   // latest snapshot per source-month before resolving. `sourcesOverride` lets a
-  // caller pin the exact source rows (e.g. a SECONDARY source row like LAKE_MKT
+  // caller pin the exact source rows (e.g. a SECONDARY source row
   // resolves per-source, not against the combined display-market baseline).
   const sources = sourcesOverride ?? marketSources(market);
   const { data: rows } = await sb
@@ -462,7 +462,7 @@ export function computeTrailingRates(
 /**
  * Latest snapshot per (market, month), SUMMED per month across source markets
  * (rows MUST be period_start desc, as_of desc). Single-source markets behave as
- * before; Orlando's ORL+LAKE rows collapse into combined months.
+ * before; a multi-source market's rows collapse into combined months.
  */
 function latestRateMonths(rows: Record<string, unknown>[]): RateMonth[] {
   // First row seen per (market, month) is that source's latest as_of.
@@ -495,7 +495,7 @@ function latestRateMonths(rows: Record<string, unknown>[]): RateMonth[] {
 /**
  * Trailing NSLI + NET average sale for a market as of `anchorMonth` (first-of-month),
  * with the min-sample window rule and company-wide fallback. One query for the
- * market's source codes (Orlando = ORL+LAKE summed), one for the company (REECE) —
+ * market's source codes (summed), one for the company (REECE) —
  * skipped when the market IS the company.
  */
 export async function getTrailingRates(
@@ -690,7 +690,7 @@ function derive(
  * Returns null when no row matches (job hasn't run for this period yet — the
  * page shows an explicit empty state instead of silently showing old data).
  *
- * Multi-source display markets (Orlando = ORL_MKT + LAKE_MKT) fetch every
+ * Multi-source display markets (Fort Lauderdale) fetch every
  * source's latest row and sum them via the aggregation core.
  */
 export async function getScorecard(
@@ -828,7 +828,7 @@ export function combineRateMonths(lists: RateMonth[][]): RateMonth[] {
  *     goals. The stored REECE rows are never trusted for dollar goals.
  *   • Company per-day pace targets are the Σ of the per-office target chains
  *     (each office's period goal ÷ its own NSLI), never company goal ÷ blended
- *     NSLI. Orlando's chain runs on ORL+LAKE combined data.
+ *     NSLI. A multi-source market's chain runs on its combined data.
  */
 async function buildView(
   sb: Sb,
@@ -889,14 +889,15 @@ async function buildView(
   const baselineFor = (srcs: readonly string[], atMonth: string) =>
     computeBaselineFromRows(rateMonthsToBaselineRows(monthsFor(srcs)), atMonth);
 
-  // A merged market's PRIMARY source row carries the WHOLE market's goal
-  // (ruling: Orlando's entire goal lives in ORL_MKT; LAKE_MKT's live goal is
-  // zeroed). So a primary row in growth mode resolves against the COMBINED
-  // display-market baseline — ORL at +15% means "Orlando grows 15% over the
-  // Orlando (ORL+LAKE) baseline", not over ORL's slice alone. Secondary rows
-  // keep per-source resolution (they hold dollars-0 and contribute nothing;
-  // if one were ever set back to growth mode, per-source resolution avoids
-  // double-counting the combined baseline).
+  // A market's PRIMARY source row carries the WHOLE market's goal, so a primary
+  // row in growth mode resolves against the COMBINED display-market baseline —
+  // FTLAU at +15% means "Fort Lauderdale grows 15% over the FTLAU+BOCA+MIAMI+
+  // RFED baseline", not over one branch's slice. Since Lakeland became its own
+  // market (2026-08-06) every market is 1:1 with its code except Fort
+  // Lauderdale, whose sources arrive pre-folded upstream — so this map is
+  // effectively identity today. It stays because the merge is a real upstream
+  // possibility, and per-source resolution on a non-primary row is what stops a
+  // combined baseline being double-counted.
   const growthBaselineSources = new Map<string, readonly string[]>();
   for (const m of SCORECARD_MARKETS) growthBaselineSources.set(m.sources[0] ?? m.code, m.sources);
 
@@ -913,7 +914,7 @@ async function buildView(
 
   // Effective monthly goal for the viewed scope. Company = Σ offices (derived on
   // read — the stored REECE row is ignored for dollars). Multi-source markets =
-  // Σ their sources (Orlando = ORL + LAKE goal rows).
+  // Σ their sources (Fort Lauderdale = its folded branch goal rows).
   const effectiveGoal = (isCompany ? OFFICE_SOURCE_CODES : displaySources).reduce(
     (a, c) => a + liveEffectiveFor(c, actuals.period_start),
     0,
@@ -1048,7 +1049,7 @@ function monthsInRange(periodStart: string, periodEnd: string): string[] {
  * scorecard_goals_monthly row per (source, month); falls back to that source's
  * live effective goal (flagged `estimated`) when a month has no frozen row.
  *
- * Summing per source makes Orlando (ORL+LAKE) and the company (Σ all offices)
+ * Summing per source makes a multi-source market and the company (Σ all offices)
  * exact sums of their parts — the stored REECE frozen rows are never used.
  */
 async function resolvePeriodGoalForSources(
@@ -1254,8 +1255,8 @@ export async function getScorecardGoals(market = "REECE"): Promise<ScorecardGoal
 }
 
 /** REECE + every office source code the editor manages (derived from the single
- *  market source of truth — includes LAKE_MKT so its legacy goal rows stay
- *  visible inside the combined Orlando figures). */
+ *  market source of truth — Lakeland is one of them, editable in its own right
+ *  since 2026-08-06). */
 export const EDITOR_MARKETS: readonly string[] = ["REECE", ...OFFICE_SOURCE_CODES];
 
 export type MarketGoalEntry = {
@@ -1346,9 +1347,10 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         .maybeSingle();
       const goals = (data as ScorecardGoals | null) ?? DEFAULT_GOALS(market);
       // Primary source rows (and REECE) resolve growth against their display
-      // market's combined baseline; secondary rows (LAKE_MKT) per-source, so a
+      // market's combined baseline; any secondary row resolves per-source, so a
       // merged market's whole goal lives on the primary row without
-      // double-counting.
+      // double-counting. Every market is its own primary today — Lakeland
+      // included (ruling 2026-08-06).
       const isPrimary =
         market === "REECE" || SCORECARD_MARKETS.some((m) => (m.sources[0] ?? m.code) === market);
       const [baseline, rates] = await Promise.all([

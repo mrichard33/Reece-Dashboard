@@ -22,7 +22,7 @@ import {
  * per-market path (each call is wrapped so a bad market can never take down the page).
  *
  * The market list derives from lib/scorecard/markets (single source of truth):
- * one row per DISPLAY market — Orlando sums its ORL_MKT + LAKE_MKT source rows —
+ * one row per DISPLAY market — a merged market sums its source rows —
  * plus the Unassigned / Out-of-Area utility rows, which must surface visibly
  * whenever they carry activity. The All-Markets total's goal is the Σ of the
  * office rows' goals (derived, never the stored REECE goal row).
@@ -217,7 +217,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   ): ByMarketRow | null => {
     const a = combinedActuals(sources);
     if (!a) return null;
-    // Goal = Σ of the source markets' prorated goals (Orlando = ORL + LAKE).
+    // Goal = Σ of the source markets' prorated goals.
     let goal: number | null = null;
     if (!utility) {
       for (const src of sources) {
