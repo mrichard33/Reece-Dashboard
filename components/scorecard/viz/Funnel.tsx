@@ -1,4 +1,5 @@
 import { ArrowDown } from "lucide-react";
+import { num } from "@/lib/utils";
 import { SC_COLOR } from "./colors";
 import { Term } from "./Term";
 
@@ -50,14 +51,14 @@ export function Funnel({ stages }: { stages: FunnelStage[] }) {
                   }}
                 >
                   <span className="pl-2.5 font-mono text-[12.5px] font-semibold tabular text-white">
-                    {s.actual.toLocaleString()}
+                    {num(s.actual)}
                   </span>
                 </div>
                 {goalW != null && (
                   <div
                     className="absolute inset-y-0 w-px bg-slate-400 dark:bg-slate-500"
                     style={{ left: `${goalW}%` }}
-                    title={`Goal ${s.goal!.toLocaleString()}`}
+                    title={`Goal ${num(s.goal)}`}
                   >
                     <span className="absolute -top-0.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-slate-400 dark:bg-slate-500" />
                   </div>
@@ -69,7 +70,7 @@ export function Funnel({ stages }: { stages: FunnelStage[] }) {
                     className={`font-mono text-[11px] tabular ${behind ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
                   >
                     {behind ? "−" : "+"}
-                    {Math.abs(s.actual - s.goal).toLocaleString()} vs goal
+                    {num(Math.abs(s.actual - s.goal))} vs goal
                   </span>
                 ) : (
                   <span className="text-[11px] text-slate-400">entry</span>

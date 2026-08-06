@@ -72,7 +72,7 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
           <div className="mt-2 flex items-center gap-2">
             {goalBar(r.pctToGoal)}
             <span className="w-[52px] shrink-0 text-right font-mono text-[11px] tabular text-slate-500">
-              {Math.round(r.pctToGoal)}% goal
+              {num(Math.round(r.pctToGoal))}% goal
             </span>
           </div>
         )}
@@ -118,7 +118,7 @@ export function ByMarketTable({ data }: { data: ByMarketView }) {
                 style={{ width: `${Math.min(100, r.pctToGoal)}%` }}
               />
             </div>
-            <span className="w-11 text-right font-mono text-[12px] tabular text-slate-500">{Math.round(r.pctToGoal)}%</span>
+            <span className="w-11 text-right font-mono text-[12px] tabular text-slate-500">{num(Math.round(r.pctToGoal))}%</span>
           </div>
         )}
       </td>

@@ -86,6 +86,14 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
   // In a pending period the legacy gross computes from zeroed buckets — a
   // fabricated $0; fall back to "—" instead (usd(null)).
   const fallbackGross = pending ? null : r.gross;
+  // A covering snapshot can source the flow figures and still have no net —
+  // an MTD Sales Efficiency pull prints a blank Net column. Say why rather
+  // than showing a bare dash (and never a $0, which reads as "all cancelled").
+  const netValue = f.netAfterCancels != null
+    ? usd(f.netAfterCancels)
+    : f.netPendingReason
+      ? "still maturing"
+      : usd(null);
   const soldLines: Line[] = [
     { label: "Total sales count", value: num(soldSourced ? f.soldCount : r.salesCount) },
     { label: "Gross sales value", value: usd(soldSourced ? f.grossSold : fallbackGross) },
@@ -94,7 +102,7 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
       value: f.cancelCount == null ? "not yet sourced" : `${num(f.cancelCount)} · ${usd(f.cancelValue)}`,
       tone: "red",
     },
-    { label: "Net sales after cancels", value: usd(f.netAfterCancels), strong: true },
+    { label: "Net sales after cancels", value: netValue, strong: true },
   ];
 
   // Net (Good Business) — gross → −cancels → net, then the open-pipeline
@@ -108,16 +116,20 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
       value: f.cancelValue == null ? "not yet sourced" : usd(f.cancelValue),
       tone: "red",
     },
-    { label: "= Net sold", value: usd(f.netAfterCancels), strong: true },
+    { label: "= Net sold", value: netValue, strong: true },
     { label: "− Held: HOA", note: "pending", value: bucketValue(f.pendingHoa) },
     { label: "− Held: Permit", note: "pending", value: bucketValue(f.pendingPermit) },
     { label: "− Other pending", note: "pre-release", value: bucketValue(f.pendingOther) },
     { label: "= Remaining net (released)", value: usd(f.releasedRemaining), strong: true },
   ];
 
+  const scopeNote = f.soldScope === "mtd" ? "month-to-date pull"
+    : f.soldScope === "ytd" ? "year-to-date pull"
+    : f.soldScope === "month" ? "full-month pull"
+    : null;
   const basisNote =
     f.soldBasis === "sales_efficiency"
-      ? "Sales Efficiency report (137) — authoritative per-market funnel, explicit cancellations"
+      ? `Sales Efficiency report (137) — authoritative per-market funnel, explicit cancellations${scopeNote ? ` · ${scopeNote}` : ""}`
       : f.soldBasis === "control_totals"
         ? "Company control totals (Marketing report) — fallback until a covering 137 snapshot exists"
         : f.soldBasis === "lead_attributed"
@@ -149,6 +161,7 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
           financing, production), often months later. Holds are the current open pipeline from the
           Job Status report; &ldquo;not yet sourced&rdquo; and &ldquo;—&rdquo; mean no report covers
           this view yet — neither is a zero.
+          {f.netPendingReason ? ` Net reads "still maturing" here because ${f.netPendingReason}.` : ""}
         </span>
       </p>
     </div>

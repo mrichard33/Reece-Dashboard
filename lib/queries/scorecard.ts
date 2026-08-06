@@ -17,6 +17,7 @@ import {
   OFFICE_SOURCE_CODES,
   marketSources,
 } from "@/lib/scorecard/markets";
+import { issueRateFromFacts, type IssueRateFactRow } from "@/lib/scorecard/issueRate";
 import {
   targetTotals,
   perDayTargets,
@@ -532,6 +533,46 @@ export async function getTrailingRates(
 }
 
 /**
+ * Current report facts needed for the issue-rate fallback (§8): Sales
+ * Efficiency `issued` and Lead Disposition `leads` per market. Small result
+ * set (a few dozen rows); a failure degrades to no fallback, never to a wrong
+ * rate.
+ */
+export async function fetchIssueRateFacts(sb: Sb): Promise<IssueRateFactRow[]> {
+  try {
+    const { data, error } = await sb
+      .from("lp_report_facts")
+      .select("report_type, market, metric, value_count, scope")
+      .eq("is_current", true)
+      .in("report_type", ["sales_efficiency", "lead_disposition"])
+      .in("metric", ["issued", "leads"])
+      .limit(500);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as IssueRateFactRow[];
+  } catch (err) {
+    console.error("[scorecard] issue-rate facts fetch failed:", (err as Error)?.message ?? err);
+    return [];
+  }
+}
+
+/**
+ * The issue rate for a market: rolling-window history when it exists, else the
+ * current YTD report snapshots (§8). Returns the basis so the UI can say which
+ * one answered rather than presenting two different numbers under one label.
+ */
+export function resolveIssueRate(
+  trailing: number | null,
+  facts: IssueRateFactRow[],
+  sources: readonly string[],
+): { rate: number | null; basis: "trailing" | "report_ytd" | null } {
+  if (trailing != null) return { rate: trailing, basis: "trailing" };
+  const fromFacts = issueRateFromFacts(facts, sources);
+  return fromFacts.rate != null
+    ? { rate: fromFacts.rate, basis: "report_ytd" }
+    : { rate: null, basis: null };
+}
+
+/**
  * PERIOD-SCOPED rate anchor (the "D3" fix): rates price a period from the
  * months strictly BEFORE that period's first month.
  *
@@ -798,27 +839,37 @@ async function buildView(
   const isCompany = market === "REECE";
   const displaySources = marketSources(market);
   const cal = resolveSellingCalendar();
-  // PERIOD-SCOPED rate anchor (D3): NSLI, avg sale, and issue rate price the
-  // SELECTED period from the months before it — MTD and YTD reprice together
-  // when the period changes. Period-less reads keep the current ET month.
+  // The GROWTH-MODE BASELINE stays period-scoped (D3): a period's own months
+  // must never move its own dollar goal. The anchor below feeds the baseline
+  // and is reported for transparency.
   const anchor = resolveRateAnchor(resolved);
-  const anchorMonth = anchor.anchorMonth;
 
   const goalCodes = isCompany ? ["REECE", ...OFFICE_SOURCE_CODES] : [...displaySources];
   const priorCodes = isCompany
     ? ["REECE", ...OFFICE_SOURCE_CODES]
     : [...new Set([...displaySources, "REECE"])];
 
-  // Live anchor → rolling-90-day rates that include the current MTD month
-  // (ruled 2026-08-04: NSLI/issue-rate recompute daily as data lands, so the
-  // derived Leads goal MOVES with observed performance). Period-scoped
-  // historical anchors keep strictly-before windows.
-  const liveAnchor = anchorMonth === firstOfMonthET();
-  const rateOpts = liveAnchor ? { windowStart: rolling90WindowStart() } : undefined;
+  // RATES ARE ROLLING-90-DAY, EVERYWHERE (ruled 2026-08-05 §7).
+  //
+  // NSLI / average sale / issue rate previously used the rolling window only
+  // when the view's anchor happened to be the current month, so the scorecard
+  // header showed a YTD-anchored trailing-3 NSLI ($3,599) while the goal
+  // editor — which always plans the current month — showed the rolling-90-day
+  // one ($3,888). Two different numbers for one labeled quantity. They are
+  // conversion ratios, not period totals: the current 90 days is the honest
+  // basis for turning a dollar goal into funnel targets, whichever period is
+  // being viewed. The window and its sample size are labeled on the tile.
+  //
+  // Months are therefore always fetched through the CURRENT month; the
+  // baseline resolver ignores months at/after its own anchor, so widening the
+  // fetch cannot leak a period's own performance into its dollar goal.
+  const rateAnchorMonth = firstOfMonthET();
+  const rateOpts = { windowStart: rolling90WindowStart() };
 
-  const [{ data: goalsRows }, prior] = await Promise.all([
+  const [{ data: goalsRows }, prior, issueFacts] = await Promise.all([
     sb.from("scorecard_goals").select("*").in("market", goalCodes),
-    fetchPriorMonthsBySource(sb, priorCodes, anchorMonth, { includeAnchorMonth: liveAnchor }),
+    fetchPriorMonthsBySource(sb, priorCodes, rateAnchorMonth, { includeAnchorMonth: true }),
+    fetchIssueRateFacts(sb),
   ]);
   const goalsBySource = new Map<string, LiveGoalRow>();
   for (const g of (goalsRows ?? []) as LiveGoalRow[]) goalsBySource.set(g.market, g);
@@ -873,11 +924,17 @@ async function buildView(
   // Displayed trailing rates (KPI NSLI / average sale) for the viewed scope. The
   // company KPI is the blended company rate — fine for DISPLAY; targets below
   // never use it.
-  const rates = computeTrailingRates(
+  const trailingRates = computeTrailingRates(
     monthsFor(isCompany ? ["REECE"] : displaySources),
     companyMonths,
     rateOpts,
   );
+  const displayIssue = resolveIssueRate(
+    trailingRates.issueRate,
+    issueFacts,
+    isCompany ? OFFICE_SOURCE_CODES : displaySources,
+  );
+  const rates: TrailingRates = { ...trailingRates, issueRate: displayIssue.rate };
   const effectiveGoals: ScorecardGoals = {
     ...primaryGoals,
     market,
@@ -933,7 +990,10 @@ async function buildView(
       nsli: uRates.nsli,
       avgSale: uRates.avgSale,
       targetDemoPct: demoPct,
-      issueRate: uRates.issueRate,
+      // §8: offices carry no raw_leads_in history, so the trailing rate is
+      // null for every one of them — fall back to the current YTD snapshots
+      // (137 issued ÷ 135 leads) so the Leads goal resolves per office.
+      issueRate: resolveIssueRate(uRates.issueRate, issueFacts, srcs).rate,
     });
   });
   const targets: ResolvedTargets = {
@@ -1218,6 +1278,9 @@ export type MarketGoalEntry = {
   /** CALCULATED historical issue rate (issued ÷ leads, 0–1) — turns issues-needed
    *  into leads-needed. Derived from actuals (ruled 2026-08-04), never editable. */
   issueRate: number | null;
+  /** Which source answered: the rolling window, or the current YTD report
+   *  snapshots (§8 fallback while per-office lead history accumulates). */
+  issueRateBasis: "trailing" | "report_ytd" | null;
 };
 
 /** Latest distribution run per month (audit row summary for the editor UI). */
@@ -1271,6 +1334,9 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
     .in("goal_month", months);
   const monthly = (monthlyRows as ScorecardMonthlyGoal[] | null) ?? [];
 
+  // §8 fallback source — fetched once and shared by every market entry.
+  const issueFacts = await fetchIssueRateFacts(sb);
+
   const entries = await Promise.all(
     EDITOR_MARKETS.map(async (market): Promise<MarketGoalEntry> => {
       const { data } = await sb
@@ -1293,6 +1359,15 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         goals.goal_mode === "growth_pct" && goals.growth_pct != null
           ? Math.round(baseline.value * (1 + goals.growth_pct / 100))
           : goals.monthly_goal_dollars;
+      // §8: an office has no raw_leads_in history, so `rates.issueRate` is
+      // null for all of them and every Leads goal read "unavailable". The
+      // current YTD snapshots answer it (137 issued ÷ 135 leads); the basis is
+      // returned so the editor states which one it used.
+      const issue = resolveIssueRate(
+        rates.issueRate,
+        issueFacts,
+        market === "REECE" ? OFFICE_SOURCE_CODES : marketSources(market),
+      );
       return {
         market,
         goals,
@@ -1302,7 +1377,8 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         avgSale: rates.avgSale,
         rateWindow: rates.window,
         rateSampleN: rates.sampleN,
-        issueRate: rates.issueRate,
+        issueRate: issue.rate,
+        issueRateBasis: issue.basis,
       };
     }),
   );

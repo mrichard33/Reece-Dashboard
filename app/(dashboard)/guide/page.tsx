@@ -1,4 +1,5 @@
 import { requireUser } from "@/components/shell/RoleGate";
+import { num } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getPageMetrics, type DailyPoint } from "@/lib/queries/guideMetrics";
@@ -41,7 +42,7 @@ function BarRow({
         />
       </div>
       <span className="w-20 shrink-0 text-right text-xs font-medium text-slate-700 dark:text-slate-300">
-        {value.toLocaleString()}
+        {num(value)}
       </span>
     </div>
   );
@@ -115,17 +116,17 @@ export default async function PageMetricsPage() {
             Documented Home Protection Guide · /guide · last {m.windowDays} days
           </h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-            <Stat label="Page views" value={g.totalViews.toLocaleString()} />
-            <Stat label="Unique sessions" value={g.uniqueSessions.toLocaleString()} />
+            <Stat label="Page views" value={num(g.totalViews)} />
+            <Stat label="Unique sessions" value={num(g.uniqueSessions)} />
             <Stat
               label="Identified contacts"
-              value={g.identifiedContacts.toLocaleString()}
+              value={num(g.identifiedContacts)}
               sub="Resolved via t/cid token"
             />
             <Stat
               label="CTA clicks"
-              value={g.ctaClicks.toLocaleString()}
-              sub={`${g.ctaSessions.toLocaleString()} sessions`}
+              value={num(g.ctaClicks)}
+              sub={`${num(g.ctaSessions)} sessions`}
             />
             <Stat
               label="Session CTR"
@@ -176,14 +177,14 @@ export default async function PageMetricsPage() {
             Weakest Point journey · / → /find → /unlock → /report · last {m.windowDays} days
           </h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-            <Stat label="Film sessions" value={wp.filmSessions.toLocaleString()} />
+            <Stat label="Film sessions" value={num(wp.filmSessions)} />
             <Stat
               label="Gate completes"
-              value={wp.gateCompletes.toLocaleString()}
-              sub={`${wp.gateStarts.toLocaleString()} started`}
+              value={num(wp.gateCompletes)}
+              sub={`${num(wp.gateStarts)} started`}
             />
-            <Stat label="Film CTA clicks" value={wp.ctaClicks.toLocaleString()} />
-            <Stat label="Reports generated" value={wp.reportsReady.toLocaleString()} />
+            <Stat label="Film CTA clicks" value={num(wp.ctaClicks)} />
+            <Stat label="Reports generated" value={num(wp.reportsReady)} />
             <Stat
               label="Film → report rate"
               value={pct(wp.filmSessions > 0 ? wp.reportsReady / wp.filmSessions : 0)}

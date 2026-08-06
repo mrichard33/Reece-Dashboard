@@ -79,9 +79,9 @@ describe("Sold This Period (company = control totals)", () => {
     const { sold } = buildReportFacts(SOURCE_COST, YTD, "REECE");
     expect(sold!.cancelValueDollars).not.toBe(sold!.grossSoldDollars);
     expect(sold!.cancelValueDollars).toBeCloseTo(
-      sold!.grossSoldDollars - sold!.netAfterCancelsDollars, 6);
+      sold!.grossSoldDollars - sold!.netAfterCancelsDollars!, 6);
     // and surviving business does NOT collapse to zero
-    expect(sold!.netAfterCancelsDollars).toBeGreaterThan(0);
+    expect(sold!.netAfterCancelsDollars!).toBeGreaterThan(0);
   });
 
   test("period gate: a YTD snapshot never answers an MTD view → null → '—'", () => {
@@ -190,7 +190,7 @@ describe("Sold This Period (report 137 authoritative — sales_efficiency)", () 
   test("§8.12 cancellation value ≠ gross sold (the confirmed defect)", () => {
     const { sold } = buildReportFacts(ROWS, YTD, "SAR_MKT");
     expect(sold!.cancelValueDollars).not.toBe(sold!.grossSoldDollars);
-    expect(sold!.netAfterCancelsDollars).toBeGreaterThan(0);
+    expect(sold!.netAfterCancelsDollars!).toBeGreaterThan(0);
   });
 
   test("137 beats the older bases when both cover the period; falls back when 137 absent", () => {
@@ -201,10 +201,85 @@ describe("Sold This Period (report 137 authoritative — sales_efficiency)", () 
     expect(fallback.sold!.basis).toBe("control_totals");
   });
 
-  test("counts_only (MTD) 137 rows — no net_sold facts — fall through, never fabricate", () => {
+  test("counts_only 137 rows source the flow metrics and leave net unsourced", () => {
+    // An MTD pull prints a blank Net column: counts and cancellations are real,
+    // net is not yet knowable. It must NOT fall through to another basis (that
+    // would answer with a different window) and must NOT show $0.
     const countsOnly = ROWS.filter((r) => r.metric !== "net_sold");
     const { sold } = buildReportFacts(countsOnly, YTD, "SAR_MKT");
-    expect(sold).toBeNull(); // no fallback source for this market → "—", not $0
+    expect(sold!.basis).toBe("sales_efficiency");
+    expect(sold!.soldCount).toBe(485);
+    expect(sold!.grossSoldDollars).toBeCloseTo(12_801_486, 2);
+    expect(sold!.cancelCount).toBe(73);
+    expect(sold!.netAfterCancelsDollars).toBeNull();
+    expect(sold!.netPendingReason).toMatch(/maturing/);
+  });
+});
+
+// ── §1 SCOPE: two current snapshots of one report type coexist ──────────────
+describe("scope selection (2026-08-05 §1 regression)", () => {
+  const se = (
+    scope: "ytd" | "mtd",
+    period: [string, string],
+    asOf: string,
+    metric: string,
+    cents: number | null,
+    count: number,
+  ): ReportFactRow => ({
+    ...base,
+    report_type: "sales_efficiency",
+    market: "SAR_MKT",
+    branch_code_raw: "SAR",
+    period_start: period[0],
+    period_end: period[1],
+    as_of_date: asOf,
+    scope,
+    metric,
+    value_cents: cents,
+    value_count: count,
+  });
+
+  // What was live on 2026-08-05: a YTD CSV (Jan 1 → Sep 2, full Net) and an MTD
+  // PDF (Aug 1–31, counts only) — both is_current under the scope model.
+  const YTD_ROWS = [
+    se("ytd", ["2026-01-01", "2026-09-02"], "2026-08-05", "sold", 1_280_148_600, 485),
+    se("ytd", ["2026-01-01", "2026-09-02"], "2026-08-05", "net_sold", 929_889_600, 338),
+    se("ytd", ["2026-01-01", "2026-09-02"], "2026-08-05", "cancelled", 199_395_700, 73),
+  ];
+  const MTD_ROWS = [
+    se("mtd", ["2026-08-01", "2026-08-31"], "2026-08-05", "sold", 70_291_600, 30),
+    se("mtd", ["2026-08-01", "2026-08-31"], "2026-08-05", "cancelled", 12_414_100, 2),
+  ];
+  const AUG: ResolvedPeriod = {
+    ...YTD, key: "month", periodStart: "2026-08-01", periodEnd: "2026-08-31", source: "snapshot",
+  } as ResolvedPeriod;
+
+  test("the YTD view answers from the YTD snapshot, MTD rows present or not", () => {
+    const only = buildReportFacts(YTD_ROWS, YTD, "SAR_MKT");
+    const both = buildReportFacts([...YTD_ROWS, ...MTD_ROWS], YTD, "SAR_MKT");
+    expect(both.sold!.scope).toBe("ytd");
+    expect(both.sold!.soldCount).toBe(only.sold!.soldCount);
+    expect(both.sold!.netAfterCancelsDollars).toBeCloseTo(9_298_896, 2);
+  });
+
+  test("the month view answers from the MTD snapshot and never borrows YTD net", () => {
+    const { sold } = buildReportFacts([...YTD_ROWS, ...MTD_ROWS], AUG, "SAR_MKT");
+    expect(sold!.scope).toBe("mtd");
+    expect(sold!.soldCount).toBe(30);
+    expect(sold!.cancelCount).toBe(2);
+    // The YTD snapshot's $9.3M net must not leak into an August view.
+    expect(sold!.netAfterCancelsDollars).toBeNull();
+  });
+
+  test("two snapshots sharing a period_start are never summed", () => {
+    // A custom Jan 1 → Aug 5 pull alongside the Jan 1 → Sep 2 YTD: both cover
+    // the YTD view. Summing them would double every figure.
+    const custom = YTD_ROWS.map((r) => ({
+      ...r, scope: "custom" as const, period_end: "2026-08-05", as_of_date: "2026-08-04",
+    }));
+    const { sold } = buildReportFacts([...YTD_ROWS, ...custom], YTD, "SAR_MKT");
+    expect(sold!.scope).toBe("ytd");
+    expect(sold!.soldCount).toBe(485); // not 970
   });
 });
 

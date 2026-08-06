@@ -10,8 +10,9 @@ import type {
   MarketGoalEntry,
 } from "@/lib/queries/scorecard";
 import { marketLabel, SCORECARD_MARKETS } from "@/lib/scorecard/markets";
-import { usd, num, monthLabelFull } from "@/lib/utils";
+import { usd, usdExact, num, monthLabelFull, parseMoney } from "@/lib/utils";
 import { ScCard } from "./ScCard";
+import { MoneyInput } from "./MoneyInput";
 
 type FieldSpec = { name: string; label: string; step?: string; prefix?: string };
 
@@ -77,7 +78,8 @@ function effectiveFromForm(w: Record<string, string>, baseline: number | null): 
     const g = Number(w.growth_pct);
     return baseline != null && Number.isFinite(g) ? Math.round(baseline * (1 + g / 100)) : 0;
   }
-  return Number(w.monthly_goal_dollars) || 0;
+  // parseMoney, not Number(): the field may legitimately hold "2,731,306.68".
+  return parseMoney(w.monthly_goal_dollars) ?? 0;
 }
 
 /**
@@ -118,7 +120,7 @@ export function GoalEditor({
     [entry, month, data.monthly],
   );
 
-  const { register, handleSubmit, watch, reset } = useForm<Record<string, string>>({
+  const { register, handleSubmit, watch, reset, setValue } = useForm<Record<string, string>>({
     defaultValues: initial,
   });
 
@@ -145,6 +147,9 @@ export function GoalEditor({
   const nsli = entry?.nsli ?? 0;
   const avgSale = entry?.avgSale ?? 0;
   const issueRate = entry?.issueRate ?? null;
+  // Which source answered the issue rate — the rolling window, or the current
+  // YTD report snapshots (§8 fallback until per-office lead history exists).
+  const issueBasis = entry?.issueRateBasis ?? null;
   const demoPct = Number(w.target_demo_pct) || 0;
   // goal ÷ NSLI is ISSUES needed (the old `leadsNeeded` name was a mislabel);
   // leads needed = issues ÷ the historical issue rate (issued ÷ leads, derived).
@@ -189,7 +194,7 @@ export function GoalEditor({
       market,
       goal_month: month,
       goal_mode: m,
-      monthly_goal_dollars: Number(raw.monthly_goal_dollars) || 0,
+      monthly_goal_dollars: parseMoney(raw.monthly_goal_dollars) ?? 0,
       growth_pct: raw.growth_pct === "" ? null : Number(raw.growth_pct),
       working_days: Number(raw.working_days),
       // NSLI is calculated, not entered — send the computed value (the server
@@ -253,7 +258,7 @@ export function GoalEditor({
           <Info size={15} className="mt-0.5 shrink-0 text-slate-400" />
           <span>
             Company (All Markets) goal is the sum of the offices:{" "}
-            <span className="font-mono font-semibold">{usd(companyTotal)}</span>. Edit an office to change it — the company total isn&apos;t set directly.
+            <span className="font-mono font-semibold">{usdExact(companyTotal)}</span>. Edit an office to change it — the company total isn&apos;t set directly.
           </span>
         </div>
 
@@ -276,8 +281,8 @@ export function GoalEditor({
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
             <Info size={15} className="mt-0.5 shrink-0" />
             <span>
-              The stored company row reads <span className="font-mono font-semibold">{usd(reeceStored ?? 0)}</span> but
-              the offices sum to <span className="font-mono font-semibold">{usd(companyTotal)}</span>. The dashboard
+              The stored company row reads <span className="font-mono font-semibold">{usdExact(reeceStored ?? 0)}</span> but
+              the offices sum to <span className="font-mono font-semibold">{usdExact(companyTotal)}</span>. The dashboard
               always displays the office sum (company goal is derived on read); the stored row updates on the next
               office save. Until they agree, don&apos;t trust the raw table value.
             </span>
@@ -297,10 +302,18 @@ export function GoalEditor({
           {mode === "dollars" ? (
             <label className={fieldWrap}>
               <span className={labelCls}>Monthly Goal ($)</span>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 font-mono text-[13px] text-slate-400">$</span>
-                <input type="number" step="1000" min="0" inputMode="decimal" className={`${inputCls} pl-6`} {...register("monthly_goal_dollars")} />
-              </div>
+              {/* Any amount to the cent — see MoneyInput for why this is not a
+                  number input (step="1000" rejected $2,731,306.68). */}
+              <MoneyInput
+                ariaLabel="Monthly goal dollars"
+                className={inputCls}
+                value={parseMoney(w.monthly_goal_dollars)}
+                onChange={(next) =>
+                  setValue("monthly_goal_dollars", next == null ? "" : String(next), {
+                    shouldDirty: true,
+                  })
+                }
+              />
             </label>
           ) : (
             <label className={fieldWrap}>
@@ -333,23 +346,23 @@ export function GoalEditor({
           <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-slate-500">Preview — {marketLabel(market)} · {monthLabelFull(month)}</div>
           {mode === "growth_pct" && (
             <p className="text-slate-600 dark:text-slate-300">
-              Baseline net sales <span className="font-mono">{baseline != null ? usd(baseline) : "—"}</span>
+              Baseline net sales <span className="font-mono">{baseline != null ? usdExact(baseline) : "—"}</span>
               {" × "}
               <span className="font-mono">{Number.isFinite(growth) ? `${growth >= 0 ? "+" : ""}${growth}%` : "—"}</span>
               {" → goal "}
-              <span className="font-mono font-semibold">{usd(effectiveGoal)}</span>
+              <span className="font-mono font-semibold">{usdExact(effectiveGoal)}</span>
             </p>
           )}
           {mode === "dollars" && (
             <p className="text-slate-600 dark:text-slate-300">
-              Monthly goal <span className="font-mono font-semibold">{usd(effectiveGoal)}</span>
+              Monthly goal <span className="font-mono font-semibold">{usdExact(effectiveGoal)}</span>
             </p>
           )}
           <p className="mt-1 text-slate-600 dark:text-slate-300">
             NSLI <span className="font-mono">{nsli > 0 ? usd(nsli) : "—"}</span>{" "}
             <span className="text-[10.5px] uppercase tracking-wider text-slate-400">calculated</span>
             {entry?.rateWindow && (
-              <span className="text-[10.5px] text-slate-400"> ({rateWindowLabel(entry.rateWindow)} · n={entry.rateSampleN})</span>
+              <span className="text-[10.5px] text-slate-400"> ({rateWindowLabel(entry.rateWindow)} · n={num(entry.rateSampleN)})</span>
             )}
             {" · issues needed "}
             <span className="font-mono font-semibold">{issuesNeeded != null ? num(issuesNeeded) : "—"}</span>
@@ -357,14 +370,18 @@ export function GoalEditor({
           </p>
           <p className="mt-1 text-slate-600 dark:text-slate-300">
             Issue rate{" "}
-            <span className="font-mono">{issueRate != null ? `${(issueRate * 100).toFixed(0)}%` : "—"}</span>{" "}
+            <span className="font-mono">{issueRate != null ? `${num(Math.round(issueRate * 100))}%` : "—"}</span>{" "}
             <span className="text-[10.5px] uppercase tracking-wider text-slate-400">calculated</span>
-            {entry?.rateWindow && issueRate != null && (
-              <span className="text-[10.5px] text-slate-400"> ({rateWindowLabel(entry.rateWindow)})</span>
+            {issueRate != null && (
+              <span className="text-[10.5px] text-slate-400">
+                {" "}({issueBasis === "report_ytd"
+                  ? "YTD reports · issued ÷ leads"
+                  : rateWindowLabel(entry?.rateWindow ?? null)})
+              </span>
             )}
             {" · leads needed "}
             <span className="font-mono font-semibold">{leadsNeeded != null ? num(leadsNeeded) : "—"}</span>
-            {issueRate == null && <span className="ml-2 text-amber-600">no leads history yet — leads goal unavailable</span>}
+            {issueRate == null && <span className="ml-2 text-amber-600">no leads history and no covering report snapshot — leads goal unavailable</span>}
           </p>
           <p className="mt-1 text-slate-600 dark:text-slate-300">
             Required / day — leads <span className="font-mono">{n1(leadsPerDay)}</span>, issued <span className="font-mono">{n1(issuedPerDay)}</span>, demoed <span className="font-mono">{n1(demoedPerDay)}</span>, closed <span className="font-mono">{n1(closedPerDay)}</span>

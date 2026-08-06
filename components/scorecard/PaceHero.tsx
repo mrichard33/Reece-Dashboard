@@ -1,4 +1,4 @@
-import { usd } from "@/lib/utils";
+import { num, usd } from "@/lib/utils";
 import { ScSection } from "./ScSection";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
@@ -8,6 +8,18 @@ import type { ScorecardVM } from "@/lib/scorecard/viewModel";
  */
 
 type Kpi = { label: string; sub: string; value: string; tone?: "pos" | "neg" | "plain"; title?: string; flag?: boolean };
+
+/** Compact window label for the KPI sub-line — matches the goal editor's wording. */
+function shortWindowLabel(w: string | null): string {
+  switch (w) {
+    case "rolling_90d": return "rolling 90d";
+    case "trailing_3": return "trailing 3mo";
+    case "trailing_6": return "trailing 6mo";
+    case "trailing_12": return "trailing 12mo";
+    case "company": return "company-wide";
+    default: return "—";
+  }
+}
 
 /** Human label for the trailing rate window (transparency tooltip). */
 function windowLabel(w: string | null): string {
@@ -44,7 +56,14 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
     ? `Basis: ${windowLabel(p.rateWindow)} · ${p.rateSampleN ?? 0} contracts${anchorLabel}`
     : undefined;
   // Issue rate rides the NSLI tile (no 9th KPI — it would orphan the 2/4/8 grid).
-  const issuePct = p.issueRate != null ? ` · issue ${(p.issueRate * 100).toFixed(0)}%` : "";
+  const issuePct = p.issueRate != null ? ` · issue ${num(Math.round(p.issueRate * 100))}%` : "";
+  // §7: the window is part of the number. The header used to say only
+  // "trailing net ÷ leads issued" while the goal editor said "rolling 90d ·
+  // n=344" — two labels, two different values, no way to tell which was which.
+  // Both surfaces now name the same window and sample size.
+  const windowSub = p.rateWindow
+    ? `${shortWindowLabel(p.rateWindow)}${p.rateSampleN != null ? ` · n=${num(p.rateSampleN)}` : ""}`
+    : "no rate history";
 
   // Single month → "Monthly Goal / full month"; multi-month → "Period Goal / full period".
   const goalLabel = vm.isSingleMonth ? "Monthly Goal" : "Period Goal";
@@ -74,9 +93,9 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
       value: pending ? "—" : signed(balance),
       tone: pending ? "plain" : balTone,
     },
-    { label: "Elapsed / Working Days", sub: `${Math.round(p.elapsedPct)}% of period`, value: `${p.daysElapsed} / ${p.sellingDays}` },
-    { label: "Average Sale", sub: "trailing net ÷ sales", value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle, flag: p.rateWidened },
-    { label: "NSLI", sub: `trailing net ÷ leads issued${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
+    { label: "Elapsed / Working Days", sub: `${num(Math.round(p.elapsedPct))}% of period`, value: `${num(p.daysElapsed)} / ${num(p.sellingDays)}` },
+    { label: "Average Sale", sub: `net ÷ sales · ${windowSub}`, value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle, flag: p.rateWidened },
+    { label: "NSLI", sub: `net ÷ leads issued · ${windowSub}${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
   ];
 
   const toneCls = (t: Kpi["tone"]) =>
