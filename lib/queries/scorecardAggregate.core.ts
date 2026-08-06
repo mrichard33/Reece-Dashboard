@@ -31,8 +31,10 @@ export type AggregateCtx = {
   daysElapsed: number;
   /** Selling days in the anchor (first) month — the per-day funnel-target basis. */
   workingDays: number;
-  /** Selling days in the ENTIRE period (whole year for YTD, whole quarter for QTD).
-   *  Drives the WORKING/ELAPSED tile, elapsed-% and projected-pace denominator. */
+  /** Selling days in the ENTIRE period — the span of whole months the period
+   *  goal sums over (start month through end month, for EVERY period key).
+   *  Drives the WORKING/ELAPSED tile, elapsed-% and the projected-pace
+   *  denominator, all of which must share this one number with target-to-date. */
   periodWorkingDays: number;
   reconciled: boolean;
 };

@@ -37,7 +37,12 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
   const p = vm.pace;
 
   // Projected period-end net = current net run-rate × selling days in the whole
-  // period (whole year for YTD, the month for a month view).
+  // period. `sellingDays` and the `paceGoal` behind Target to Date now come off
+  // the SAME period window (the whole months the goal sums over) — see §1 in
+  // lib/queries/periodBasis.test.ts. Until 2026-08-06 this expanded a YTD
+  // run-rate over the whole calendar year while the goal covered eight months,
+  // which is how Projected Pace rendered $88.4M against an $84.5M goal on the
+  // same screen as a −$22.5M Balance.
   const projected = p.daysElapsed > 0 ? Math.round((p.netSales / p.daysElapsed) * p.sellingDays) : 0;
   // Balance = net vs the prorated target-to-date (dollars ahead of / behind pace).
   const balance = Math.round(p.gap);

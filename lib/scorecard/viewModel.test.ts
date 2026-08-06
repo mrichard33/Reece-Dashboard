@@ -209,7 +209,11 @@ describe("buildScorecardVM — aggregate (YTD) period-awareness", () => {
   function ytdView(): ScorecardView {
     const v = makeView();
     // Aggregate rows carry the whole-period selling days and Σ-of-months goals.
-    v.actuals.period_working_days = 305; // full 2026 selling days
+    // §1: the period is Jan 1 → Jul 11, so the full period is Jan 1 → Jul 31 —
+    // 179 selling days. It was 305 here (the whole of 2026) against a goal that
+    // summed only seven months, which is what put a 53%-elapsed denominator on
+    // the same screen as a 90%-elapsed target.
+    v.actuals.period_working_days = 179; // Jan 1 → Jul 31 selling days
     v.actuals.days_elapsed = 162; // Jan 1 → Jul 11 elapsed
     v.derived.period_goal_dollars = 54_461_538; // Σ Jan–Jul goals (Period Goal)
     v.derived.mtd_goal_dollars = 49_230_769; // Target to Date
@@ -218,10 +222,20 @@ describe("buildScorecardVM — aggregate (YTD) period-awareness", () => {
 
   it("uses the whole-period selling days, not the anchor month", () => {
     const vm = buildScorecardVM(ytdView(), YTD);
-    expect(vm.pace.sellingDays).toBe(305);
-    expect(vm.snapshot.sellingDays).toBe(305);
+    expect(vm.pace.sellingDays).toBe(179);
+    expect(vm.snapshot.sellingDays).toBe(179);
     expect(vm.snapshot.daysElapsed).toBe(162);
-    expect(Math.round(vm.pace.elapsedPct)).toBe(53); // 162 / 305
+    expect(Math.round(vm.pace.elapsedPct)).toBe(91); // 162 / 179
+  });
+
+  it("§1: elapsed % matches the fraction the goal was prorated by", () => {
+    // THE regression guard. Elapsed % and Target-to-Date ÷ Period Goal are two
+    // views of ONE fraction. They read 53% and 90% on 2026-08-06 because the
+    // projection divided by a full-year denominator while the goal summed eight
+    // months. Within a point of each other or the page is lying somewhere.
+    const vm = buildScorecardVM(ytdView(), YTD);
+    const goalFraction = (vm.pace.paceGoal / vm.pace.monthlyGoal) * 100;
+    expect(Math.abs(vm.pace.elapsedPct - goalFraction)).toBeLessThan(1);
   });
 
   it("shows the full Period Goal (Σ months), not a single month", () => {
