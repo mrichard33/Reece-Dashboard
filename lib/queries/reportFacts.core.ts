@@ -85,6 +85,21 @@ export type SoldFacts = {
    */
   netAfterCancelsDollars: number | null;
   netPendingReason: string | null;
+  /**
+   * Month starts this figure was COMPOSED from, when no single snapshot
+   * covered the period (§6). Null when one snapshot answered directly.
+   */
+  composedFrom?: string[] | null;
+};
+
+/**
+ * Why a multi-month view cannot be answered — surfaced verbatim, never
+ * approximated into a number (§6). `missingMonths` names the exact month
+ * starts with no snapshot, so the gap is actionable rather than a shrug.
+ */
+export type PeriodGap = {
+  reason: string;
+  missingMonths: string[];
 };
 
 export type PendingBucket = { count: number; dollars: number };
@@ -177,6 +192,106 @@ function pickSnapshot(rows: ReportFactRow[], resolved: ResolvedPeriod): ReportFa
   return best;
 }
 
+/** First-of-month for a YYYY-MM-DD. */
+const monthStartOf = (ymd: string): string => `${ymd.slice(0, 7)}-01`;
+
+/** Last day of the month containing a YYYY-MM-DD. */
+const monthEndOf = (ymd: string): string =>
+  new Date(Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)), 0, 12))
+    .toISOString()
+    .slice(0, 10);
+
+/**
+ * Every month start the resolved period touches, in order.
+ * YTD on Aug 6 → Jan…Aug. Trailing 3M → Jun, Jul, Aug.
+ */
+export function monthsInPeriod(resolved: ResolvedPeriod): string[] {
+  const out: string[] = [];
+  let cur = monthStartOf(resolved.periodStart);
+  const last = monthStartOf(resolved.periodEnd >= resolved.periodStart ? resolved.periodEnd : resolved.periodStart);
+  // Bounded: a period spanning more than five years is a bug, not a query.
+  for (let i = 0; i < 72 && cur <= last; i++) {
+    out.push(cur);
+    const y = Number(cur.slice(0, 4));
+    const m = Number(cur.slice(5, 7));
+    cur = new Date(Date.UTC(y, m, 1, 12)).toISOString().slice(0, 10);
+  }
+  return out;
+}
+
+/**
+ * Does the period start on a month boundary? A custom range that does not is
+ * NOT composable from month snapshots, and §6 requires saying so rather than
+ * silently approximating with whole months.
+ */
+export function isMonthAligned(resolved: ResolvedPeriod): boolean {
+  return resolved.periodStart.slice(8, 10) === "01";
+}
+
+/**
+ * COMPOSE a multi-month figure from per-month snapshots (§6).
+ *
+ * Reports 136 and 137 arrive PRE-AGGREGATED over whatever range LP was asked
+ * for, so a 3-month figure cannot be derived from a YTD aggregate by any query
+ * — which is why 3-Month cancellations read "not yet sourced" when only MTD and
+ * YTD snapshots existed. The fix is to store one snapshot per month (scope
+ * 'month') and add them up.
+ *
+ * The last month is the subtle one: it is usually PARTIAL. A month-scoped
+ * snapshot covers the whole month and would overstate a period ending on the
+ * 5th, so the current month is taken from its 'mtd' snapshot instead. Fully
+ * elapsed months take their 'month' snapshot; a 'ytd' snapshot is never a part,
+ * because it answers a different window.
+ *
+ * Fail-closed: if ANY month in the range has no usable snapshot, this returns
+ * the gap rather than a partial sum. A sum missing March is not a smaller
+ * number, it is a wrong one.
+ */
+export function composeMonthly(
+  rows: ReportFactRow[],
+  resolved: ResolvedPeriod,
+  match: (r: ReportFactRow) => boolean,
+): { parts: ReportFactRow[][]; months: string[] } | PeriodGap {
+  if (!isMonthAligned(resolved)) {
+    return {
+      reason: `this range starts mid-month (${resolved.periodStart}) — the source reports arrive pre-aggregated per month, so a range off month boundaries cannot be composed`,
+      missingMonths: [],
+    };
+  }
+  const months = monthsInPeriod(resolved);
+  const currentMonth = monthStartOf(resolved.periodEnd >= resolved.periodStart ? resolved.periodEnd : resolved.periodStart);
+
+  const parts: ReportFactRow[][] = [];
+  const missing: string[] = [];
+  for (const m of months) {
+    const isPartial = m === currentMonth && resolved.periodEnd < monthEndOf(m);
+    const wanted: FactScope[] = isPartial ? ["mtd", "month"] : ["month", "mtd"];
+    const candidates = rows.filter((r) => match(r) && r.period_start === m);
+    let chosen: ReportFactRow[] | null = null;
+    for (const scope of wanted) {
+      const group = candidates.filter((r) => r.scope === scope);
+      if (!group.length) continue;
+      // Newest as-of wins within a scope.
+      const asOf = group.reduce((a, r) => (r.as_of_date > a ? r.as_of_date : a), group[0]!.as_of_date);
+      chosen = group.filter((r) => r.as_of_date === asOf);
+      break;
+    }
+    if (chosen) parts.push(chosen);
+    else missing.push(m);
+  }
+
+  if (missing.length) {
+    return {
+      reason: `no snapshot for ${missing.length === 1 ? "one month" : `${missing.length} months`} in this range (${missing.join(", ")}) — reports 136 and 137 arrive pre-aggregated, so each month needs its own pull`,
+      missingMonths: missing,
+    };
+  }
+  return { parts, months };
+}
+
+export const isPeriodGap = (v: unknown): v is PeriodGap =>
+  !!v && typeof v === "object" && "missingMonths" in (v as Record<string, unknown>);
+
 /** Markets a fact row must belong to for a dashboard market code. */
 function marketFilter(marketCode: string): ((m: string) => boolean) {
   if (marketCode === "REECE") return () => true; // company = Σ everything, UNASSIGNED included
@@ -202,12 +317,23 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
   // market AND company (Σ markets). Cancellations come from its EXPLICIT
   // bucket, not a sold−net inference.
   const inMarket = marketFilter(marketCode);
-  const se = pickSnapshot(
-    rows.filter(
-      (r) => r.report_type === "sales_efficiency" && inMarket(r.market) && coversPeriod(r, resolved),
-    ),
-    resolved,
-  );
+  const seMatch = (r: ReportFactRow) => r.report_type === "sales_efficiency" && inMarket(r.market);
+  let se = pickSnapshot(rows.filter((r) => seMatch(r) && coversPeriod(r, resolved)), resolved);
+  let composedFrom: string[] | null = null;
+
+  // §6 — nothing covers this window as a single pull. Reports 136/137 arrive
+  // PRE-AGGREGATED over whatever range LP was asked for, so a 3-month figure
+  // cannot be derived from a YTD aggregate by any query: it has to be added up
+  // from per-month snapshots. This is why 3-Month cancellations read "not yet
+  // sourced" while MTD and YTD both answered.
+  if (!se.length && monthsInPeriod(resolved).length > 1) {
+    const composed = composeMonthly(rows, resolved, seMatch);
+    if (!isPeriodGap(composed)) {
+      se = composed.parts.flat();
+      composedFrom = composed.months;
+    }
+  }
+
   if (se.length) {
     const sold = sumMetric(se, "sold");
     const netSold = sumMetric(se, "net_sold");
@@ -218,10 +344,14 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
       // genuinely not yet knowable, and the YTD snapshot's net answers a
       // different window.
       const netSourced = netSold.seen && netSold.cents != null;
+      // A composed figure is as-of the NEWEST part, and its scope is the
+      // composition rather than any one snapshot's.
+      const asOf = se.reduce((a, r) => (r.as_of_date > a ? r.as_of_date : a), se[0]!.as_of_date);
       return {
         basis: "sales_efficiency",
-        asOf: se[0]!.as_of_date,
-        scope: se[0]!.scope ?? null,
+        asOf: composedFrom ? asOf : se[0]!.as_of_date,
+        scope: composedFrom ? "month" : (se[0]!.scope ?? null),
+        composedFrom,
         soldCount: sold.count,
         grossSoldDollars: dollars(sold.cents)!,
         cancelCount: cancelled.seen ? cancelled.count : netSourced ? sold.count - netSold.count : null,
