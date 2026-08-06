@@ -18,12 +18,18 @@ type FieldSpec = { name: string; label: string; step?: string; prefix?: string }
 
 // monthly_goal_dollars / growth_pct are handled in the Goal-mode section; these are
 // the always-numeric remaining inputs.
+/**
+ * `step` is "any" on every rate field: a browser number input REJECTS values
+ * that are not step multiples, which is exactly how the Monthly Goal field
+ * silently refused $2,731,306.68. A target of 32.75% is a real target and must
+ * be enterable. Working Days stays "1" because a fractional day is not a thing.
+ */
 const FIELDS: FieldSpec[] = [
   { name: "working_days", label: "Working Days", step: "1" },
-  { name: "target_close_pct", label: "Target Close %", step: "0.1" },
-  { name: "target_demo_pct", label: "Target Demo %", step: "0.1" },
-  { name: "target_good_rate_pct", label: "Target Good Rate %", step: "0.1" },
-  { name: "target_ko_pct", label: "Target KO %", step: "0.1" },
+  { name: "target_close_pct", label: "Target Close %", step: "any" },
+  { name: "target_demo_pct", label: "Target Demo %", step: "any" },
+  { name: "target_good_rate_pct", label: "Target Good Rate %", step: "any" },
+  { name: "target_ko_pct", label: "Target KO %", step: "any" },
 ];
 
 /** Short label for the trailing rate window (transparency for the NSLI figure). */
@@ -318,7 +324,10 @@ export function GoalEditor({
           ) : (
             <label className={fieldWrap}>
               <span className={labelCls}>Growth %</span>
-              <input type="number" step="0.1" inputMode="decimal" className={inputCls} {...register("growth_pct")} />
+              {/* step="any" — a browser number input REJECTS values that are not
+                  step multiples, which is how the goal field silently refused
+                  $2,731,306.68. A growth target of 12.75% must be enterable. */}
+              <input type="number" step="any" inputMode="decimal" className={inputCls} {...register("growth_pct")} />
             </label>
           )}
 
@@ -337,7 +346,7 @@ export function GoalEditor({
               2026-08-04) — see the calculated figure in the preview below. */}
           <label className={fieldWrap}>
             <span className={labelCls}>Target Net Close % <span className="normal-case text-slate-400">(optional)</span></span>
-            <input type="number" step="0.1" min="0" max="100" inputMode="decimal" placeholder="no target" className={inputCls} {...register("target_net_close_pct")} />
+            <input type="number" step="any" min="0" max="100" inputMode="decimal" placeholder="no target" className={inputCls} {...register("target_net_close_pct")} />
           </label>
         </div>
 

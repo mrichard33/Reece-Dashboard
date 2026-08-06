@@ -72,6 +72,12 @@ describe("marketSources / marketLabel", () => {
     expect(marketLabel(null)).toBe("All Markets");
     expect(marketLabel("UNASSIGNED")).toBe("Unassigned");
     expect(marketLabel("MYSTERY")).toBe("MYSTERY");
-    expect(UTILITY_MARKETS).toHaveLength(2);
+    // CARDINALITY RULING (2026-08-05 §7): UNASSIGNED and OUT_OF_AREA were two
+    // warehouse codes for one idea, and two labels for one concept made two
+    // tiers show two different market lists. They are now ONE utility entity
+    // with both codes as sources.
+    expect(UTILITY_MARKETS).toHaveLength(1);
+    expect([...UTILITY_MARKETS[0]!.sources]).toEqual(["UNASSIGNED", "OUT_OF_AREA"]);
+    expect(marketLabel("OUT_OF_AREA")).toBe("Unassigned");
   });
 });

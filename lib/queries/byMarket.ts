@@ -30,7 +30,14 @@ import {
 
 const MARKETS: { code: string; label: string; sources: readonly string[]; utility?: boolean }[] = [
   ...SCORECARD_MARKETS.map((m) => ({ code: m.code, label: m.label, sources: m.sources })),
-  ...UTILITY_MARKETS.map((m) => ({ code: m.code, label: m.label, sources: [m.code], utility: true })),
+  // Sources, not [code]: UNASSIGNED and OUT_OF_AREA are one display entity
+  // (§7 cardinality ruling), so both warehouse codes sum into the single row.
+  ...UTILITY_MARKETS.map((m) => ({
+    code: m.code,
+    label: m.label,
+    sources: m.sources as readonly string[],
+    utility: true,
+  })),
 ];
 
 const ALL_CODES = ["REECE", ...MARKETS.flatMap((m) => m.sources)];
