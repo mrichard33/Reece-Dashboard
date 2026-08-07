@@ -63,7 +63,8 @@ export const OFFICE_SOURCE_CODES: readonly string[] = SCORECARD_MARKETS.flatMap(
  * (Lead Disposition). Two labels for one concept means a reader comparing two
  * tiers sees two different market lists and concludes the page disagrees with
  * itself. They reconcile into ONE display entity here: `SELECT DISTINCT market`
- * over any rolled-up tier read returns exactly the 6 markets + UNASSIGNED.
+ * over any rolled-up tier read returns exactly the 7 markets + UNASSIGNED.
+ * (Seven, not six — Lakeland became its own market on 2026-08-06; see above.)
  */
 export const UTILITY_MARKETS: readonly ScorecardMarket[] = [
   { code: "UNASSIGNED", label: "Unassigned", sources: ["UNASSIGNED", "OUT_OF_AREA"] },

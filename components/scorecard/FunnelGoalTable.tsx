@@ -3,6 +3,7 @@ import { pct } from "./format";
 import { ScSection } from "./ScSection";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import type { ScorecardView } from "@/lib/queries/scorecard";
+import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /**
  * Section ② — Funnel vs Goal. Merges the old Funnel + Rates cards into one table:
@@ -30,8 +31,12 @@ const AMBER = "text-amber-600 dark:text-amber-400";
 const BRICK = "text-brick";
 const MUTE = "text-slate-400";
 
-export function FunnelGoalTable({ view }: { view: ScorecardView }) {
+export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: ScorecardVM }) {
   const { actuals: a, goals: g, derived: d } = view;
+  // Leads come from report 135, the same figure ⑤ By Market shows. Reusing the
+  // view model's already-resolved value rather than re-deriving it is what keeps
+  // the two sections from disagreeing on one page.
+  const leads = vm.revenue.facts.leads;
   const daysElapsed = a.days_elapsed ?? 0;
   // Same period-wide denominator as the ① hero (period_working_days first) so the
   // "Monthly Goal" column and the pace strip never disagree on the day basis.
@@ -77,9 +82,13 @@ export function FunnelGoalTable({ view }: { view: ScorecardView }) {
   const rows: Row[] = [
     // Leads goal is DERIVED (ruled 2026-08-04): issues-needed ÷ historical
     // issue rate — it moves when the trailing issue rate moves, hence the (i).
-    // Actual = RAW LEADS IN (true top-of-funnel; ruled 2026-08-05) — the old
-    // a.leads figure was the appointment-set cohort (always equal to Sets).
-    countRow("Leads", a.raw_leads_in ?? null, d.target_leads_per_day, "scorecard.leadsGoal"),
+    //
+    // Actual comes from report 135 (lead_disposition), NOT `a.raw_leads_in`.
+    // That column is NULL for every market, and numOr0() turned it into a
+    // confident zero — so this table showed 0 (or the company figure) while ⑤ By
+    // Market, already repointed at 135, showed the real per-office count. Two
+    // lead numbers on one page, and the wrong one here. Null now renders "—".
+    countRow("Leads", leads, d.target_leads_per_day, "scorecard.leadsGoal"),
     countRow("Issued", a.issued, d.target_issued_per_day),
     countRow("Demos", a.demos, d.target_demoed_per_day),
     countRow("Sales", a.sales, d.target_closed_per_day),

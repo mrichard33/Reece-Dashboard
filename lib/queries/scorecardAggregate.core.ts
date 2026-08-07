@@ -122,7 +122,12 @@ export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx):
     deposits: sum("deposits"),
     raw_leads_in,
     pct_issue: rate(issued, sets),
-    demo_pct: rate(demos, net_issue),
+    // Sit rate on GROSS issued, matching the writer (LP-MCP scorecard-metrics.js).
+    // Netting cancellations out of the denominator flatters it: the appointment
+    // was issued, so it belongs there whether or not it later cancelled. On the
+    // real January 2026 company numbers that is 77.2% gross against 87.7% net.
+    // LP's own printed rates are net-issue based and are never read here.
+    demo_pct: rate(demos, issued),
     close_pct: rate(sales, demos),
     pct_net_close: rate(net_close, demos),
     // Good Rate — single SOLD basis: (sold gross − cancellations) ÷ sold gross. The sold-net

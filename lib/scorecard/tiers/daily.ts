@@ -66,8 +66,8 @@ function pickField(r: DailySnapshotRow, f: Field): number | null {
  *
  * Rows may span several as-of dates; the two most recent WITHIN the newest
  * period_start are used. Markets are collapsed to display entities first, so
- * LAKE_MKT folds into Orlando and OUT_OF_AREA into UNASSIGNED before any
- * subtraction happens.
+ * OUT_OF_AREA folds into UNASSIGNED before any subtraction happens. LAKE_MKT
+ * does NOT fold — Lakeland is its own market (markets.ts, 2026-08-06).
  */
 export function buildDailyView(rows: readonly DailySnapshotRow[]): DailyView {
   if (!rows.length) {
