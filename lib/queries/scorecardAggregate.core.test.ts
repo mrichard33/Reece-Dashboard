@@ -100,6 +100,16 @@ describe("aggregateActuals", () => {
     expect(agg.good_rate_pct).toBe(91.2);
   });
 
+  it("sit rate divides by GROSS issued, never net issue", () => {
+    // Σdemos ÷ Σissued = 130 / 160 = 81.3%. On the net-issue denominator
+    // (90 + 54 = 144) the same demos would read 90.3% — the appointment was
+    // issued, so it stays in the denominator whether or not it later cancelled.
+    expect(agg.demo_pct).toBe(81.3);
+    expect(agg.demo_pct).not.toBe(90.3);
+    // net_issue is still carried, for audit and for LP-basis comparisons.
+    expect(agg.net_issue).toBe(144);
+  });
+
   it("Net Sales = Σ per-month net_sales (good business), not Σreleased", () => {
     // May final 950,000 + June 650,000 = 1,600,000 (NOT Σreleased 1,360,000, and
     // NOT the stale May-15 row's 480,000).

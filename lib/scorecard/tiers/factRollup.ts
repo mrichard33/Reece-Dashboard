@@ -13,9 +13,14 @@
  * bug recurs; the fix is structural: fact rows are rolled up ONCE, at the edge,
  * and nothing downstream ever sees a branch row.
  *
- * The rollup also collapses market codes onto display entities (LAKE_MKT →
- * ORL_MKT, OUT_OF_AREA → UNASSIGNED), so `DISTINCT market` over rolled-up rows
- * returns exactly 6 markets + UNASSIGNED and Lakeland has no display identity.
+ * The rollup also collapses market codes onto display entities (OUT_OF_AREA →
+ * UNASSIGNED), so `DISTINCT market` over rolled-up rows returns exactly the
+ * SEVEN markets + UNASSIGNED.
+ *
+ * Lakeland is one of the seven. This comment used to say LAKE_MKT folded into
+ * ORL_MKT and that Lakeland had no display identity; the 2026-08-06 ruling
+ * reversed that fold and the code followed, but the comment did not — see
+ * markets.ts for the standing rule.
  *
  * SNAPSHOT IDENTITY: fact rows do not carry `snapshot_id`, but
  * (period_start, period_end, as_of_date, scope) separates any two

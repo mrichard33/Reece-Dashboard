@@ -178,7 +178,7 @@ export default async function ScorecardPage({
                 <PaceHero vm={vm} />
 
                 {/* ② Funnel vs Goal */}
-                <FunnelGoalTable view={view} />
+                <FunnelGoalTable view={view} vm={vm} />
 
                 {/* ③ Sold vs Net + ④ Per-Day Pace — one row (Sold · Net · Per-Day) */}
                 <RevenueCard vm={vm} aside={<PerDayCard vm={vm} />} />

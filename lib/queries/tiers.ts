@@ -39,7 +39,7 @@ export type TierBundle = {
   nsliWindowLabel: string;
 };
 
-/** Display market codes a tier iterates: 6 markets + UNASSIGNED. */
+/** Display market codes a tier iterates: 7 markets + UNASSIGNED (Lakeland is one). */
 export const TIER_MARKET_CODES: readonly string[] = [
   ...SCORECARD_MARKETS.map((m) => m.code),
   ...UTILITY_MARKETS.map((m) => m.code),
