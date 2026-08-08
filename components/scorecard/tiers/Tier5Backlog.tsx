@@ -72,6 +72,33 @@ export function Tier5Backlog({ data }: { data: Tier5 }) {
               </td>
               <td className={CELL} />
             </tr>
+            {/* Terminal outcomes sit BELOW the total on purpose. Report 133 is a
+                contract-date cohort and carries them, but a paid or cancelled
+                job is not open backlog and must never be added into it. */}
+            <tr className="border-t border-slate-100 dark:border-slate-800">
+              <td className={LABEL_CELL}>
+                <div className="text-slate-500 dark:text-slate-400">Completed in cohort</div>
+                <div className={SECONDARY}>Paid in full. Closed — not open backlog.</div>
+              </td>
+              <td className={`${CELL} text-slate-500 dark:text-slate-400`}>
+                <Val m={data.completedCount} />
+              </td>
+              <td className={`${CELL} text-slate-500 dark:text-slate-400`}>
+                <Val m={data.completedDollars} kind="usd" />
+              </td>
+            </tr>
+            <tr className="border-t border-slate-100 dark:border-slate-800">
+              <td className={LABEL_CELL}>
+                <div className="text-slate-500 dark:text-slate-400">Lost in cohort</div>
+                <div className={SECONDARY}>Cancelled, credit decline or dead deal.</div>
+              </td>
+              <td className={`${CELL} text-slate-500 dark:text-slate-400`}>
+                <Val m={data.lostCount} />
+              </td>
+              <td className={`${CELL} text-slate-500 dark:text-slate-400`}>
+                <Val m={data.lostDollars} kind="usd" />
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>

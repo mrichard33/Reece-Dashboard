@@ -39,8 +39,14 @@ export type Tier5 = {
   /** Released / production-track open jobs — outside pending backlog. */
   excludedCount: Measured;
   excludedDollars: Measured;
-  /** pending + excluded — every open job. */
+  /** pending + excluded — every open job. Terminal outcomes are NOT in here. */
   openJobsTotal: Measured;
+  /** Paid In Full / PIF Survey Ready. Terminal — never pending backlog. */
+  completedCount: Measured;
+  completedDollars: Measured;
+  /** Cancelled / Cancelled By Mgt / Credit Decline / Dead Deal. Terminal. */
+  lostCount: Measured;
+  lostDollars: Measured;
   /** True when the buckets foot exactly to total open jobs. */
   foots: boolean;
   /** Present when Hold - Permit carries jobs — Mark's ruling is pending. */
@@ -62,6 +68,7 @@ const BUCKETS: readonly { key: BacklogBucket["key"]; label: string; note: string
 ];
 
 const NO_SNAP = "no Job Status snapshot for this market";
+const NO_COHORT = "this Job Status snapshot predates the 2026-08-07 cohort realign";
 
 export function buildTier5(rolled: readonly RolledFact[], marketCode: string): Tier5 {
   // Stock semantics: no period gate. Every current job_status_ytd row for the
@@ -91,9 +98,23 @@ export function buildTier5(rolled: readonly RolledFact[], marketCode: string): T
     dollars: r.dollars,
   }));
 
-  const exc = sumMetric(js, "pipeline_excluded", { bucket: "excluded" });
+  const exc = sumMetric(js, "pipeline_excluded", { bucket: "in_production" });
   const excludedCount = exc.seen ? measured(exc.count) : unmeasured(NO_SNAP);
   const excludedDollars = exc.seen ? measured(dollarsOf(exc.cents) ?? 0) : unmeasured(NO_SNAP);
+
+  // Terminal outcomes. Report 133 became a CONTRACT-DATE COHORT on 2026-08-07:
+  // it now carries every status, mostly terminal (March 2026: 331 completed and
+  // 167 lost against just 2 open holds). These are deliberately kept OUT of
+  // pendingCount / openJobsTotal — a completed or cancelled job is not open
+  // backlog — but they are read and shown, because cancellation and
+  // credit-decline volume by market is the reporting value of that export.
+  // Both are absent for periods ingested before the realign; unmeasured, not 0.
+  const comp = sumMetric(js, "cohort_completed", { bucket: "completed" });
+  const lost = sumMetric(js, "cohort_lost", { bucket: "lost" });
+  const completedCount = comp.seen ? measured(comp.count) : unmeasured(NO_COHORT);
+  const completedDollars = comp.seen ? measured(dollarsOf(comp.cents) ?? 0) : unmeasured(NO_COHORT);
+  const lostCount = lost.seen ? measured(lost.count) : unmeasured(NO_COHORT);
+  const lostDollars = lost.seen ? measured(dollarsOf(lost.cents) ?? 0) : unmeasured(NO_COHORT);
 
   const sumOf = (pick: (r: (typeof read5)[number]) => number | null): number | null =>
     read5.reduce<number | null>((acc, r) => {
@@ -141,6 +162,10 @@ export function buildTier5(rolled: readonly RolledFact[], marketCode: string): T
     excludedCount,
     excludedDollars,
     openJobsTotal,
+    completedCount,
+    completedDollars,
+    lostCount,
+    lostDollars,
     foots,
     permitFlag,
   };

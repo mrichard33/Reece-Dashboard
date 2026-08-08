@@ -180,7 +180,7 @@ function makeFacts(): ReportFactRow[] {
     js("ORL_MKT", "permit", 8, 14356400),
     js("STPET_MKT", "other_pending", 70, 200000000),
     js("ORL_MKT", "other_pending", 61, 179461400),
-    fact({ report_type: "job_status_ytd", market: "STPET_MKT", metric: "pipeline_excluded", bucket: "excluded", value_count: 698, value_cents: 1870784928, period_end: "2026-08-05" }),
+    fact({ report_type: "job_status_ytd", market: "STPET_MKT", metric: "pipeline_excluded", bucket: "in_production", value_count: 698, value_cents: 1870784928, period_end: "2026-08-05" }),
   );
 
   return rows;

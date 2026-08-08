@@ -429,7 +429,7 @@ function buildGoodBusiness(rows: ReportFactRow[], marketCode: string): GoodBusin
   const hoa = bucket("hoa");
   const permit = bucket("permit");
   const otherPending = bucket("other_pending");
-  const excluded = bucket("excluded");
+  const excluded = bucket("in_production");
   return {
     asOf: js[0]!.as_of_date,
     hoa,

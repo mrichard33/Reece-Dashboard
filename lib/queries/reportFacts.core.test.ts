@@ -49,7 +49,7 @@ const js = (market: string, bucket: string, value_cents: number, value_count: nu
   ...base,
   report_type: "job_status_ytd",
   market,
-  metric: bucket === "excluded" ? "pipeline_excluded" : "good_business_open",
+  metric: bucket === "in_production" ? "pipeline_excluded" : "good_business_open",
   bucket,
   value_cents,
   value_count,
@@ -132,8 +132,8 @@ describe("Net (Good Business) pending buckets", () => {
     js("ORL_MKT", "hoa", 100_000_00, 3),
     js("ORL_MKT", "permit", 50_000_00, 1),
     js("SAR_MKT", "other_pending", 25_000_00, 2),
-    js("SAR_MKT", "excluded", 900_000_00, 10),
-    js("UNASSIGNED", "excluded", 34_400_00, 2),
+    js("SAR_MKT", "in_production", 900_000_00, 10),
+    js("UNASSIGNED", "in_production", 34_400_00, 2),
   ];
   test("buckets carry count + dollars and foot to all open jobs (company)", () => {
     const { goodBusiness: gb } = buildReportFacts(rows, YTD, "REECE");
