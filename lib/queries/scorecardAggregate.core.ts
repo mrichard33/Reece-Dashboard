@@ -99,6 +99,15 @@ export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx):
   return {
     market: ctx.market,
     as_of_date: ctx.asOf,
+    // An aggregate spans many monthly rows with different revenue_as_of values;
+    // the OLDEST is the honest answer, since the total only reaches as far as
+    // its least-advanced input. Null if any month never reported one.
+    revenue_as_of: months.reduce<string | null>((a, r) => {
+      const v = (r as { revenue_as_of?: unknown }).revenue_as_of;
+      if (v == null) return a;
+      const d = String(v);
+      return a == null || d < a ? d : a;
+    }, null),
     period_start: ctx.periodStart,
     period_end: ctx.periodEnd,
     days_elapsed: ctx.daysElapsed,

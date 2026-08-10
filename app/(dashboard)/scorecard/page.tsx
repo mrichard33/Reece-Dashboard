@@ -72,6 +72,12 @@ export default async function ScorecardPage({
   // anything older gets an amber "data through" chip so staleness is visible.
   const dataThrough = view?.actuals.as_of_date ?? null;
   const isStale = !!(dataThrough && dataThrough < resolved.asOf);
+  // Revenue reaches its OWN date, which is not the row's. On 2026-08-10 the row
+  // said 2026-08-07 while revenue said 2026-08-06 — and the column had never
+  // been read, so a four-day-old revenue figure rendered indistinguishable from
+  // a current one.
+  const revenueThrough = view?.actuals.revenue_as_of ?? null;
+  const revenueStale = !!(revenueThrough && revenueThrough < resolved.asOf);
 
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
@@ -163,6 +169,36 @@ export default async function ScorecardPage({
             const vm = buildScorecardVM(view, resolved, reportFacts);
             return (
               <>
+                {/*
+                  A stale number presented as current is worse than a gap. The
+                  as-of chip in the controls row is easy to miss and says
+                  nothing about revenue specifically; this states the age of the
+                  figures next to the figures themselves.
+
+                  Only the metrics with no report equivalent still come from the
+                  live sync table — revenue itself now reads report 134 (see
+                  RevenueCard) — so this banner is about the remainder.
+                */}
+                {(isStale || revenueStale) && (
+                  <div
+                    role="status"
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200"
+                  >
+                    <strong className="font-semibold">
+                      Live-sync figures are behind.
+                    </strong>{" "}
+                    {isStale && dataThrough
+                      ? `Counts and rates from the LP sync reach ${usDate(dataThrough)}`
+                      : "Counts and rates from the LP sync are current"}
+                    {revenueStale && revenueThrough
+                      ? `, and its revenue columns only reach ${usDate(revenueThrough)}`
+                      : ""}
+                    {` — the selected range ends ${usDate(resolved.asOf)}.`}{" "}
+                    Report-sourced panels (Sold, Released, Open backlog, Leads) carry
+                    their own as-of dates and are unaffected.
+                  </div>
+                )}
+
                 {!view.derived.reconciled && (
                   <div
                     role="status"

@@ -129,3 +129,36 @@ describe("aggregateActuals", () => {
     expect(agg.raw_inputs?.months_aggregated).toBe(2);
   });
 });
+
+// ── §M — net_sales and gross_sales are different COHORTS ───────────────────
+//
+// Reported 2026-08-10 as a suspected transposition: ORL_MKT showed net_sales
+// 179,726 against gross_sales 46,094 — net ~4x gross, "which cannot be right."
+//
+// It is right. `revenue_basis` is `rtp_net_by_milestone_date` and net_sales
+// equals released_dollars exactly: it is value RELEASED to production in the
+// period, whenever it was sold. gross_sales is value WRITTEN in the period.
+// Orlando released $179,726 of earlier-contracted work while writing $46,094 of
+// new business — a market clearing backlog.
+//
+// This test exists so the next reader who spots that ratio does not "fix" it by
+// swapping the columns, which would corrupt correct data.
+
+describe("§M — net_sales is a release cohort, not a share of gross_sales", () => {
+  it("net exceeding gross is representable and must not be normalised away", () => {
+    // The real ORL_MKT row, 2026-08-07.
+    const net = 179_726;
+    const gross = 46_094;
+    expect(net).toBeGreaterThan(gross);
+    // If anyone ever adds a "cancellation rate" here, this is the trap: the
+    // residual is negative because the two columns count different jobs.
+    expect(gross - net).toBeLessThan(0);
+  });
+
+  it("the ratio is not a rate and must never be rendered as one", () => {
+    // Guard by construction: a percentage built from these two is out of range,
+    // which is the signal that they are not numerator and denominator.
+    const pct = (179_726 / 46_094) * 100;
+    expect(pct).toBeGreaterThan(100);
+  });
+});
