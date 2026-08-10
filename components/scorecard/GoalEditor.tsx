@@ -307,11 +307,14 @@ export function GoalEditor({
           </label>
           {mode === "dollars" ? (
             <label className={fieldWrap}>
-              <span className={labelCls}>Monthly Goal ($)</span>
-              {/* Any amount to the cent — see MoneyInput for why this is not a
+              <span className={labelCls}>Monthly NET Goal ($)</span>
+              {/* NET, not gross: this is measured against LP's NSA and divided by
+                  NSLI (also net-over-issued). Entering a gross figure here
+                  overstates attainment and rescales every derived funnel target.
+                  Any amount to the cent — see MoneyInput for why this is not a
                   number input (step="1000" rejected $2,731,306.68). */}
               <MoneyInput
-                ariaLabel="Monthly goal dollars"
+                ariaLabel="Monthly net goal dollars"
                 className={inputCls}
                 value={parseMoney(w.monthly_goal_dollars)}
                 onChange={(next) =>

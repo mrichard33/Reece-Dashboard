@@ -4,6 +4,21 @@ import { z } from "zod";
  * Shared scorecard-goal validation, imported by BOTH the client GoalEditor and
  * the server action (lib/actions/scorecard.ts). Kept out of the "use server"
  * file because that module may only export async functions.
+ *
+ * ══ THE GOAL IS A NET NUMBER ══
+ *
+ * `monthly_goal_dollars` is NET sales in DOLLARS — LP's NSA, never GSA. Nothing
+ * about the column name says so, and nothing in the schema used to either, which
+ * is the whole exposure: every read path already compares it against a net
+ * actual (`net_sales` / `released_dollars` / `net_sold`), but that was a
+ * convention held in several places at once rather than a fact recorded
+ * anywhere. A future edit that swapped one read to `gross_sold` would have been
+ * silent and would have overstated attainment by the gross-to-net gap.
+ *
+ * `goal_basis` records it, defaulting to 'net' and validated on every write.
+ * The whole NSLI chain depends on it: issues_needed = goal ÷ NSLI, and NSLI is
+ * net-over-gross-issued (NSA ÷ NumIssued), so a gross goal over a net rate
+ * silently rescales every derived Issued / Leads / Demo target too.
  */
 export const GoalSchema = z
   .object({
@@ -18,7 +33,15 @@ export const GoalSchema = z
     // 'dollars' → monthly_goal_dollars is the goal. 'growth_pct' → goal $ is derived
     // at read time from a trailing baseline × (1 + growth_pct/100).
     goal_mode: z.enum(["dollars", "growth_pct"]).default("dollars"),
+    // NET sales dollars (LP NSA). See the header — the basis is not decoration,
+    // it is what makes the goal comparable to the actuals it is divided by.
     monthly_goal_dollars: z.number().min(0),
+    // Recorded on every write so the basis is data rather than convention.
+    // 'gross' is representable so the column can express a real change of policy,
+    // but assertNetGoalBasis() refuses it everywhere a goal meets an actual —
+    // adding gross support means changing those comparisons deliberately, not
+    // discovering later that one of them drifted.
+    goal_basis: z.enum(["net", "gross"]).default("net"),
     growth_pct: z.number().min(-100).max(1000).nullable().default(null),
     working_days: z.number().int().min(1).max(31),
     target_close_pct: z.number().min(0).max(100),

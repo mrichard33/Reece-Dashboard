@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { lpService } from "@/lib/supabase/lp";
 import { getAccessContext } from "@/lib/auth";
 import { GoalSchema } from "@/lib/scorecard/goalSchema";
+import { assertNetGoalBasis, GoalBasisError } from "@/lib/scorecard/goalBasis";
 import { getTrailingRates } from "@/lib/queries/scorecard";
 import { rollupCompanyGoal } from "@/lib/actions/goalRollup";
 import { firstOfMonthET } from "@/lib/date/sellingDays";
@@ -14,10 +15,12 @@ import { firstOfMonthET } from "@/lib/date/sellingDays";
  * mirrors lib/actions/settings.ts. A successful save revalidates /scorecard so
  * the derived goal columns / pace / variance update immediately.
  *
- * Two invariants enforced here (not just in the UI):
+ * Three invariants enforced here (not just in the UI):
  *   • NSLI is CALCULATED from the market's own actuals, never taken from the client.
  *   • The company (REECE) goal is the SUM of the offices — it is never set directly;
  *     every office save rolls the company goal up (live + this month's frozen row).
+ *   • The goal is NET. Nothing is written on any other basis — see
+ *     lib/scorecard/goalBasis.ts for why a gross goal would be silently wrong.
  */
 
 export type ScorecardActionResult = { ok: boolean; error?: string };
@@ -38,6 +41,16 @@ export async function saveScorecardGoals(
   // The company total is derived from the offices — it can't be edited directly.
   if (goal.market === "REECE") {
     return { ok: false, error: "The company goal is the sum of the offices — edit an office instead." };
+  }
+
+  // The goal must be net, because every actual it will be measured against is.
+  // Asserted before ANY write, so a rejected basis leaves both goal tables and
+  // the company rollup untouched rather than half-written on mixed bases.
+  try {
+    assertNetGoalBasis(goal.goal_basis, "saveScorecardGoals");
+  } catch (err) {
+    if (err instanceof GoalBasisError) return { ok: false, error: err.message };
+    throw err;
   }
 
   const editor = ctx.executive?.name ?? ctx.email;
@@ -68,6 +81,9 @@ export async function saveScorecardGoals(
       goal_month: month,
       goal_mode: goal.goal_mode,
       goal_dollars: goal.monthly_goal_dollars,
+      // Frozen alongside the amount: a goal read back months later must carry
+      // its own basis, not inherit today's assumption about what it meant.
+      goal_basis: goal.goal_basis,
       growth_pct: goal.growth_pct,
       working_days: goal.working_days,
       target_close_pct: goal.target_close_pct,
