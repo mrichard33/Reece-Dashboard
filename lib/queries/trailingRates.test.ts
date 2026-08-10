@@ -210,3 +210,100 @@ describe("issue rate — raw-leads denominator, same window as NSLI, null-safe",
     expect(Number.isNaN(r.issueRate as unknown as number)).toBe(false);
   });
 });
+
+// ── §8 the live month is not a rate input, and NULL net is not zero ─────────
+//
+// Two bugs pointing the same direction, fixed together because fixing only the
+// window leaves the coercion armed for the next window change.
+//
+//   window    — net lags issue by weeks, so the live month is always
+//               issued-heavy and net-light, depressing NSLI
+//   semantics — a market with issued > 0 and net_sales NULL has an UNKNOWN
+//               net; coercing it to 0 drags the blended rate down with a
+//               number nobody measured
+//
+// A depressed NSLI inflates every derived target, since issues_needed =
+// periodGoal ÷ nsli.
+
+const rm = (
+  period_start: string,
+  net: number | null,
+  issued: number,
+  sales = 0,
+): RateMonth => ({ period_start, net, issued, sales, leads: 0 });
+
+describe("§8 the partial current month is excluded from the rate window", () => {
+  it("drops months at or after excludeFrom", () => {
+    const months = [
+      rm("2026-08-01", 100_000, 400, 10), // live, partial: net-light
+      rm("2026-07-01", 900_000, 300, 30),
+      rm("2026-06-01", 900_000, 300, 30),
+    ];
+    const withLive = computeTrailingRates(months, months, { windowStart: "2026-05-01" });
+    const without = computeTrailingRates(months, months, {
+      windowStart: "2026-05-01",
+      excludeFrom: "2026-08-01",
+    });
+
+    // 1,900,000/1,000 = 1900 vs 1,800,000/600 = 3000.
+    expect(withLive.nsli).toBe(1900);
+    expect(without.nsli).toBe(3000);
+    // THE POINT: including the live month understates NSLI, which inflates
+    // issues_needed = goal ÷ nsli by the same proportion.
+    expect(withLive.nsli!).toBeLessThan(without.nsli!);
+  });
+
+  it("without excludeFrom nothing is dropped — the option is opt-in", () => {
+    const months = [rm("2026-08-01", 100_000, 400, 10), rm("2026-07-01", 900_000, 300, 30)];
+    expect(computeTrailingRates(months, months, {})!.nsli).toBe(
+      Math.round(1_000_000 / 700),
+    );
+  });
+});
+
+describe("§8 a NULL net is unknown, never zero", () => {
+  it("excludes unmeasured months from BOTH sides of the ratio", () => {
+    const months = [
+      rm("2026-07-01", 900_000, 300, 30),
+      rm("2026-06-01", null, 48, 9), // OUT_OF_AREA-shaped: issued, no net
+    ];
+    // Old behaviour summed net as 900,000 over 348 issued = 2586 — dragged down
+    // by 48 issues nobody priced. The unmeasured month now contributes neither.
+    expect(computeTrailingRates(months, months, {}).nsli).toBe(3000);
+  });
+
+  it("renders unmeasured, with a reason, when nothing in the window has a net", () => {
+    // sales >= MIN_WIDEN (30) so the primary window is used rather than the
+    // widen/company cascade — this is a test of at(), not of the fallbacks.
+    const months = [rm("2026-07-01", null, 48, 30), rm("2026-06-01", null, 11, 5)];
+    const r = computeTrailingRates(months, [], {});
+    expect(r.nsli).toBeNull();
+    expect(r.avgSale).toBeNull();
+    // Rider: it must SAY it is unmeasured, not fall through to 0.
+    expect(r.unmeasuredReason).toMatch(/no net reported/);
+    expect(r.unmeasuredReason).toMatch(/59 issued/);
+  });
+
+  it("distinguishes 'no volume yet' from 'volume but no net'", () => {
+    // A measured zero net with zero issued: nothing to price and nothing priced.
+    const empty = computeTrailingRates([rm("2026-07-01", 0, 0, 35)], [], {});
+    expect(empty.nsli).toBeNull();
+    expect(empty.unmeasuredReason).toMatch(/no issued volume/);
+  });
+
+  it("a measured zero net is still a real zero", () => {
+    // net 0 with issued 10 is a MEASURED zero — a month that genuinely released
+    // nothing. It must not be confused with an unmeasured month.
+    const r = computeTrailingRates([rm("2026-07-01", 0, 10, 35)], [], {});
+    expect(r.nsli).toBe(0);
+    expect(r.unmeasuredReason).toBeNull();
+  });
+
+  it("a part-known multi-source month pairs only the known sources", () => {
+    // Explicit paired denominators: 300 issued priced, 48 not.
+    const months: RateMonth[] = [
+      { period_start: "2026-07-01", net: 900_000, issued: 348, sales: 39, leads: 0, issuedNet: 300, salesNet: 30 },
+    ];
+    expect(computeTrailingRates(months, months, {}).nsli).toBe(3000);
+  });
+});
