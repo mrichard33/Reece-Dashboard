@@ -185,6 +185,24 @@ export type ScorecardVM = {
       netAfterCancels: number | null;
       /** Why netAfterCancels is null despite a covering snapshot (cohort). */
       netPendingReason: string | null;
+      /**
+       * Net RELEASED from report 134 itself. Null = no covering 134 snapshot,
+       * in which case the panel falls back to the live sync table AND SAYS SO.
+       * This panel used to claim report-134 provenance while reading that
+       * table, which on 2026-08-10 was four days stale.
+       */
+      releasedBasis: "jobs_by_milestone" | null;
+      releasedAsOf: string | null;
+      releasedScope: "mtd" | "ytd" | "month" | "custom" | null;
+      releasedJobCount: number | null;
+      netReleased: number | null;
+      /**
+       * Terminal cohort from report 133 — the source for cancellations that
+       * `lp_market_scorecard_daily` never had (it carries only ko_count).
+       * Kept out of the pending totals, which mean open pipeline.
+       */
+      lostCount: number | null;
+      lostDollars: number | null;
       /** open-pipeline stock (job_status_ytd) — null when never imported */
       pendingAsOf: string | null;
       pendingHoa: { count: number; dollars: number } | null;
@@ -336,6 +354,12 @@ export function buildScorecardVM(
   const sf = reportFacts?.sold ?? null;
   const gb = reportFacts?.goodBusiness ?? null;
   const lf = reportFacts?.leads ?? null;
+  // Report 134's own net released. The daily-table `released` above stays as the
+  // bucket-stack input (the released/working/open identity is computed on that
+  // basis and must stay internally consistent); this is the figure the
+  // "Released this period" panel shows, because that panel already claimed
+  // report-134 provenance while reading the stale daily table.
+  const rf = reportFacts?.released ?? null;
   const facts = {
     soldBasis: sf?.basis ?? null,
     soldAsOf: sf?.asOf ?? null,
@@ -346,6 +370,13 @@ export function buildScorecardVM(
     cancelValue: sf?.cancelValueDollars ?? null,
     netAfterCancels: sf?.netAfterCancelsDollars ?? null,
     netPendingReason: sf?.netPendingReason ?? null,
+    releasedBasis: rf?.basis ?? null,
+    releasedAsOf: rf?.asOf ?? null,
+    releasedScope: rf?.scope ?? null,
+    releasedJobCount: rf?.jobCount ?? null,
+    netReleased: rf?.netReleasedDollars ?? null,
+    lostCount: gb?.lost?.count ?? null,
+    lostDollars: gb?.lost?.dollars ?? null,
     pendingAsOf: gb?.asOf ?? null,
     pendingHoa: gb?.hoa ?? null,
     pendingPermit: gb?.permit ?? null,

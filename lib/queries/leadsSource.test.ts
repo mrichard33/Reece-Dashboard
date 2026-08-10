@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { buildReportFacts, type ReportFactRow } from "./reportFacts.core";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
 import { SCORECARD_MARKETS } from "@/lib/scorecard/markets";
@@ -143,5 +143,104 @@ describe("§3 — one authoritative source per metric", () => {
       periodEnd: "2026-08-05", asOf: "2026-08-05", isPartial: false, source: "snapshot",
     };
     expect(buildReportFacts(LIVE, MTD, "REECE").leads).toBeNull();
+  });
+});
+
+// ── §J5 — released revenue names its own source ────────────────────────────
+//
+// The "Released this period" panel carried the subtitle "Basis: RTP milestone
+// date · report 134" while `viewModel.ts` read `released_dollars` from
+// `lp_market_scorecard_daily` — a table fed by the LP API sync, not by the
+// reports. On 2026-08-10 that sync had been stuck for four days and the panel
+// showed $702,506 against report 134's own $2,052,603 across 86 jobs.
+//
+// A tile may fall back. It may not borrow a provenance it is not reading.
+
+describe("§J5 — released revenue comes from report 134, and says when it does not", () => {
+  const RESOLVED = YTD;
+
+  function milestoneRow(over: Partial<ReportFactRow> = {}): ReportFactRow {
+    return {
+      report_type: "jobs_by_milestone",
+      market: "STPET_MKT",
+      metric: "net_sales",
+      scope: "ytd",
+      period_start: RESOLVED.periodStart,
+      period_end: RESOLVED.periodEnd,
+      as_of_date: "2026-08-10",
+      value_count: 86,
+      value_cents: 205_260_300,
+      bucket: null,
+      ...over,
+    } as ReportFactRow;
+  }
+
+  it("reads net released from jobs_by_milestone, not from the daily table", () => {
+    const { released } = buildReportFacts([milestoneRow()], RESOLVED, "STPET_MKT");
+    expect(released).not.toBeNull();
+    expect(released!.basis).toBe("jobs_by_milestone");
+    expect(released!.netReleasedDollars).toBeCloseTo(2_052_603, 2);
+    expect(released!.jobCount).toBe(86);
+    expect(released!.asOf).toBe("2026-08-10");
+  });
+
+  it("returns null — never 0 — when no 134 snapshot covers the period", () => {
+    // Null is what lets the panel say "FALLBACK: live sync table". A 0 would
+    // render as a confident "$0 released", which is the failure this replaces.
+    const { released } = buildReportFacts([], RESOLVED, "STPET_MKT");
+    expect(released).toBeNull();
+  });
+
+  it("does not answer an MTD view from a YTD snapshot", () => {
+    // Same period gate buildSold uses — a flow figure must match its window.
+    const mtd = { ...RESOLVED, key: "mtd", periodStart: "2026-08-01", periodEnd: "2026-08-31" } as typeof RESOLVED;
+    const { released } = buildReportFacts([milestoneRow()], mtd, "STPET_MKT");
+    expect(released).toBeNull();
+  });
+
+  it("a market with no 134 rows does not inherit another market's release", () => {
+    const { released } = buildReportFacts([milestoneRow({ market: "ORL_MKT" })], RESOLVED, "STPET_MKT");
+    expect(released).toBeNull();
+  });
+});
+
+// ── §K — report 133's terminal cohort is readable, and stays out of "open" ──
+
+describe("§K — the lost bucket is sourced, and never counted as open pipeline", () => {
+  const js = (bucket: string, count: number, cents: number): ReportFactRow =>
+    ({
+      report_type: "job_status_ytd",
+      market: "STPET_MKT",
+      metric: bucket === "lost" || bucket === "completed" ? `cohort_${bucket}` : "good_business_open",
+      scope: "mtd",
+      period_start: "2026-08-01",
+      period_end: "2026-08-31",
+      as_of_date: "2026-08-10",
+      value_count: count,
+      value_cents: cents,
+      bucket,
+    }) as ReportFactRow;
+
+  it("surfaces lost and completed from the 133 cohort", () => {
+    const { goodBusiness } = buildReportFacts(
+      [js("hoa", 5, 100_000), js("lost", 167, 401_233_800), js("completed", 331, 988_411_200)],
+      YTD,
+      "STPET_MKT",
+    );
+    expect(goodBusiness!.lost.count).toBe(167);
+    expect(goodBusiness!.completed.count).toBe(331);
+  });
+
+  it("REGRESSION: terminal buckets are excluded from pending and open totals", () => {
+    // Report 133 became a contract-date cohort on 2026-08-07 — it now carries
+    // mostly TERMINAL jobs. Folding those into "open pipeline" would report
+    // hundreds of finished and cancelled jobs as backlog.
+    const { goodBusiness } = buildReportFacts(
+      [js("hoa", 5, 100_000), js("lost", 167, 401_233_800), js("completed", 331, 988_411_200)],
+      YTD,
+      "STPET_MKT",
+    );
+    expect(goodBusiness!.pendingTotalCount).toBe(5);
+    expect(goodBusiness!.openJobsTotal).toBe(5); // hoa only; no in_production row here
   });
 });

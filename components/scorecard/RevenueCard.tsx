@@ -120,13 +120,31 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
 
   // RELEASED THIS PERIOD — RTP milestone date (report 134). One figure on its
   // own basis; it is NOT gross-sold minus anything.
+  //
+  // Prefer report 134 itself. This panel's subtitle claimed "report 134" while
+  // the value came from lp_market_scorecard_daily, which is fed by the LP API
+  // sync — on 2026-08-10 that table was four days stale and showed $702,506
+  // against report 134's own $2,052,603. The fallback remains, but it now says
+  // so rather than borrowing the report's name.
+  const releasedSourced = f.netReleased != null;
   const releasedLines: Line[] = [
     {
       label: "Net released",
-      value: pending ? usd(null) : usd(r.released),
+      value: releasedSourced ? usd(f.netReleased) : pending ? usd(null) : usd(r.released),
       strong: true,
     },
+    ...(releasedSourced && f.releasedJobCount != null
+      ? [{ label: "Jobs released", value: num(f.releasedJobCount) } as Line]
+      : []),
   ];
+
+  // Derived, never hardcoded — a fixed provenance string is exactly how this
+  // panel came to claim a source it was not reading.
+  const releasedNote = releasedSourced
+    ? `Basis: RTP milestone date · report 134 · ${vm.abbr}${f.releasedAsOf ? ` · as of ${usDate(f.releasedAsOf)}` : ""}`
+    : `Basis: RTP milestone date · ${vm.abbr} · FALLBACK: live sync table${
+        vm.snapshot.asOfDate ? `, data through ${usDate(vm.snapshot.asOfDate)}` : ""
+      } — no report 134 snapshot covers this period`;
 
   // OPEN BACKLOG — a point-in-time STOCK from the Job Status report. Every line
   // here is an open job as of the report's own date, regardless of when it was
@@ -170,7 +188,7 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
         />
         <SplitCard
           title="Released this period"
-          subtitle={`Basis: RTP milestone date · report 134 · ${vm.abbr}`}
+          subtitle={releasedNote}
           accent="border-t-2 border-t-emerald-500"
           lines={releasedLines}
         />

@@ -187,8 +187,19 @@ async function fetchDaily(): Promise<DailySnapshotRow[]> {
     const sb = await lpServer();
     const { data, error } = await sb
       .from("lp_market_scorecard_daily")
+      // REECE is a TOTAL row, not a market — Σ markets equals it exactly
+      // (verified 2026-08-10: $1,668,086 gross / $702,506 net), so folding it in
+      // alongside the offices doubles the company. buildDailyView also skips it
+      // and re-derives the company as Σ markets, but that guard lives two files
+      // away; excluding it AT THE QUERY means a new consumer of this function
+      // cannot inherit the double-count by forgetting about it.
+      .neq("market", "REECE")
       .select("market, as_of_date, period_start, leads, raw_leads_in, sets, issued, demos, sales")
       .order("as_of_date", { ascending: false })
+      // ⚠️ Undocumented truncation: ~9 market codes × as-of dates. At 400 rows
+      // this holds roughly 44 days of history; a longer window silently loses
+      // the oldest. Raise it deliberately if the daily board ever looks back
+      // further than that.
       .limit(400);
     if (error) throw new Error(error.message);
     return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
