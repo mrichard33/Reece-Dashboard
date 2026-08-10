@@ -217,8 +217,13 @@ async function fetchPlanningNsli(market: string): Promise<Measured> {
   try {
     const sb = await lpServer();
     const rates = await getTrailingRates(sb, market, firstOfMonthET());
+    // Carry the SPECIFIC reason. "No history yet" and "issued volume exists but
+    // its net was never measured" both render "—", but only one of them is
+    // something anyone can act on, and OUT_OF_AREA sits permanently in the
+    // second. A market that cannot be measured must say so rather than inherit
+    // a number from a zero it never reported.
     return rates.nsli == null
-      ? unmeasured("no trailing sales history in the rolling 90-day window yet")
+      ? unmeasured(rates.unmeasuredReason ?? "no trailing sales history in the rolling 90-day window yet")
       : measured(rates.nsli);
   } catch (err) {
     console.error("[tiers] planning NSLI failed:", (err as Error)?.message ?? err);

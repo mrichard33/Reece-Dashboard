@@ -376,6 +376,12 @@ export type TrailingRates = {
   issueRate: number | null;
   /** Which window produced the rates (null only when there's no data at all). */
   window: RateWindow | null;
+  /** Why nsli/avgSale are null, when they are. Lets a caller render "—" WITH a
+   *  reason instead of a bare dash — and distinguishes "no history yet" from
+   *  "issued volume exists but nobody measured its net", which is the standing
+   *  case for OUT_OF_AREA and can be the case for a thin market like Lakeland.
+   *  Null whenever nsli is a real number. */
+  unmeasuredReason: string | null;
   /** Sales-count sample behind the chosen window (contracts). */
   sampleN: number;
 };
@@ -383,7 +389,29 @@ export type TrailingRates = {
 /** Latest snapshot per completed month, aggregated to the fields the rates need.
  *  rawLeads = raw_leads_in (true top-of-funnel); null/absent = untracked
  *  (pre-June-2026) — such months are excluded from BOTH sides of the issue rate. */
-export type RateMonth = { period_start: string; net: number; issued: number; sales: number; leads: number; rawLeads?: number | null };
+export type RateMonth = {
+  period_start: string;
+  /** Σ of the sources that REPORTED a net. `null` = no source did — unknown,
+   *  not zero. A market with issued > 0 and net_sales NULL has an unmeasured
+   *  net, and coercing it to 0 dragged the blended rate down with a number
+   *  nobody measured. */
+  net: number | null;
+  issued: number;
+  sales: number;
+  leads: number;
+  /** issued / sales PAIRED with a known net — the honest denominators for
+   *  nsli and avgSale. Same idiom as rawLeads/issuedRaw below: a source that
+   *  contributed no net contributes no denominator either, so it neither
+   *  depresses nor inflates the rate.
+   *
+   *  Optional: omitted means "pair fully" — issued/sales when net is known, 0
+   *  when it is not. That is the right default for a single-source month and
+   *  keeps hand-built fixtures honest without spelling both out. The readers
+   *  set them explicitly because a MULTI-source month can be part-known. */
+  issuedNet?: number;
+  salesNet?: number;
+  rawLeads?: number | null;
+};
 
 const MIN_WIDEN = 30; // widen the window below this sales count …
 const MIN_USE = 20; //   … but never divide by a window under this many contracts.
@@ -394,17 +422,23 @@ const MIN_USE = 20; //   … but never divide by a window under this many contra
 function sumWindow(
   months: RateMonth[],
   k: number,
-): { net: number; issued: number; sales: number; leads: number; rawLeads: number; issuedRaw: number } {
+): { net: number; issued: number; sales: number; leads: number; rawLeads: number; issuedRaw: number; issuedNet: number; salesNet: number } {
   return months.slice(0, k).reduce(
     (a, r) => ({
-      net: a.net + r.net,
+      // Only KNOWN nets accumulate, and only alongside their own denominators.
+      // When no month in the window reported a net, issuedNet/salesNet stay 0
+      // and rate() yields null — "—", never a confident 0.
+      net: a.net + (r.net ?? 0),
       issued: a.issued + r.issued,
       sales: a.sales + r.sales,
       leads: a.leads + r.leads,
       rawLeads: a.rawLeads + (r.rawLeads ?? 0),
       issuedRaw: a.issuedRaw + (r.rawLeads != null ? r.issued : 0),
+      // `?? ` is the "pair fully" default documented on RateMonth.
+      issuedNet: a.issuedNet + (r.issuedNet ?? (r.net == null ? 0 : r.issued)),
+      salesNet: a.salesNet + (r.salesNet ?? (r.net == null ? 0 : r.sales)),
     }),
-    { net: 0, issued: 0, sales: 0, leads: 0, rawLeads: 0, issuedRaw: 0 },
+    { net: 0, issued: 0, sales: 0, leads: 0, rawLeads: 0, issuedRaw: 0, issuedNet: 0, salesNet: 0 },
   );
 }
 
@@ -418,15 +452,48 @@ function sumWindow(
 export function computeTrailingRates(
   marketMonths: RateMonth[],
   companyMonths: RateMonth[],
-  opts?: { windowStart?: string },
+  opts?: { windowStart?: string; excludeFrom?: string },
 ): TrailingRates {
+  // ── the live month is not a rate input ──────────────────────────────────
+  //
+  // NET LAGS ISSUE BY WEEKS. A job issued on the 3rd is not net until it is
+  // released, so the current month always reads artificially low: most of its
+  // issued count is in, almost none of its net is. Letting it into a rolling
+  // window depressed NSLI, and since issues_needed = periodGoal ÷ nsli, a
+  // depressed NSLI INFLATES every derived Issued / Leads / Demo target.
+  //
+  // Verified 2026-08-10: August contributed LAKE_MKT (net NULL, issued 11) and
+  // OUT_OF_AREA (net NULL, issued 48) — 59 issued at zero net — plus REECE's
+  // own partial 702,506 over 405 issued.
+  //
+  // ⚠️ THIS IS NOT THE WHOLE MATURATION PROBLEM. Excluding the current month
+  // fixes the window; it does not fix the lag. In August the window still holds
+  // July, and a July issue may not reach net until September, so July is in the
+  // window while structurally immature and NSLI stays depressed — just less so.
+  // The full fix is an NSLI_MATURATION_LAG_DAYS exclusion (~45 days, and it
+  // should be MEASURED from the actual issue-date → net-date distribution in
+  // report 134 rather than guessed). Tracked as follow-up; do not mistake this
+  // change for it.
+  const cutoff = opts?.excludeFrom;
+  const complete = (ms: RateMonth[]) => (cutoff ? ms.filter((m) => m.period_start < cutoff) : ms);
+  marketMonths = complete(marketMonths);
+  companyMonths = complete(companyMonths);
   const rate = (n: number, d: number): number | null => (d > 0 ? Math.round(n / d) : null);
   const at = (
-    w: { net: number; issued: number; sales: number; leads: number; rawLeads: number; issuedRaw: number },
+    w: { net: number; issued: number; sales: number; leads: number; rawLeads: number; issuedRaw: number; issuedNet: number; salesNet: number },
     window: RateWindow,
   ): TrailingRates => ({
-    nsli: rate(w.net, w.issued),
-    avgSale: rate(w.net, w.sales),
+    // Denominators PAIRED with a known net, not the raw counts. Issued whose
+    // month reported no net is issued we cannot price, and dividing a partial
+    // numerator by a whole denominator is what understated NSLI.
+    nsli: rate(w.net, w.issuedNet),
+    avgSale: rate(w.net, w.salesNet),
+    unmeasuredReason:
+      rate(w.net, w.issuedNet) != null
+        ? null
+        : w.issued > 0
+          ? `${w.issued} issued in this window but no net reported against any of it — net is unmeasured, not zero`
+          : "no issued volume in the trailing window yet",
     // Same window as nsli/avgSale — one window, one internally consistent
     // chain. Denominator = raw leads in (paired months only); 4-dp fraction;
     // zero raw leads → null (renders "—", never Infinity).
@@ -456,7 +523,10 @@ export function computeTrailingRates(
   const c3 = sumWindow(companyMonths, 3);
   if (c3.sales > 0) return at(c3, "company");
   // No usable data anywhere (brand-new market, empty warehouse).
-  return { nsli: null, avgSale: null, issueRate: null, window: null, sampleN: 0 };
+  return {
+    nsli: null, avgSale: null, issueRate: null, window: null, sampleN: 0,
+    unmeasuredReason: "no usable trailing history for this market or the company",
+  };
 }
 
 /**
@@ -474,19 +544,26 @@ function latestRateMonths(rows: Record<string, unknown>[]): RateMonth[] {
     if (seen.has(key)) continue;
     seen.add(key);
     const acc = byMonth.get(ps);
-    const net = Number(r.net_sales) || 0;
+    // NULL net is UNKNOWN, not zero — see RateMonth.net. `Number(null) || 0`
+    // is what turned an unmeasured market into a confident $0.
+    const net = r.net_sales == null ? null : Number(r.net_sales) || 0;
     const issued = Number(r.issued) || 0;
     const sales = Number(r.sales) || 0;
     const leads = Number(r.leads) || 0;
     const rawLeads = r.raw_leads_in == null ? null : Number(r.raw_leads_in) || 0;
+    // Denominators only count where this source actually reported a net.
+    const issuedNet = net == null ? 0 : issued;
+    const salesNet = net == null ? 0 : sales;
     if (acc) {
-      acc.net += net;
+      if (net != null) acc.net = (acc.net ?? 0) + net;
       acc.issued += issued;
       acc.sales += sales;
       acc.leads += leads;
+      acc.issuedNet = (acc.issuedNet ?? 0) + issuedNet;
+      acc.salesNet = (acc.salesNet ?? 0) + salesNet;
       if (rawLeads != null) acc.rawLeads = (acc.rawLeads ?? 0) + rawLeads;
     } else {
-      byMonth.set(ps, { period_start: ps, net, issued, sales, leads, rawLeads });
+      byMonth.set(ps, { period_start: ps, net, issued, sales, leads, issuedNet, salesNet, rawLeads });
     }
   }
   return [...byMonth.values()]; // desc month order preserved from the query
@@ -510,7 +587,10 @@ export async function getTrailingRates(
       .from("lp_market_scorecard_daily")
       .select("market, net_sales, issued, sales, leads, raw_leads_in, period_start, as_of_date")
       .in("market", codes as string[]);
-    q = live ? q.lte("period_start", anchorMonth) : q.lt("period_start", anchorMonth);
+    // Strictly BEFORE the anchor in both cases now. The live branch used to
+    // include the anchor month so "the rates move daily as data lands" — but
+    // what landed daily was issued without its net. See computeTrailingRates.
+    q = q.lt("period_start", anchorMonth);
     return q
       .order("period_start", { ascending: false })
       .order("as_of_date", { ascending: false })
@@ -784,12 +864,21 @@ export async function fetchPriorMonthsBySource(
     if (seen.has(key)) continue; // first hit per (market, month) = latest as_of
     seen.add(key);
     const list = out.get(mkt) ?? [];
+    // NULL net is UNKNOWN, not zero — see RateMonth.net. This also reaches the
+    // growth baseline via rateMonthsToBaselineRows: computeBaselineFromRows
+    // already skips `net_sales == null`, so a month nobody measured stops
+    // presenting as a real $0 baseline month.
+    const netP = r.net_sales == null ? null : Number(r.net_sales) || 0;
+    const issuedP = Number(r.issued) || 0;
+    const salesP = Number(r.sales) || 0;
     list.push({
       period_start: ps,
-      net: Number(r.net_sales) || 0,
-      issued: Number(r.issued) || 0,
-      sales: Number(r.sales) || 0,
+      net: netP,
+      issued: issuedP,
+      sales: salesP,
       leads: Number(r.leads) || 0,
+      issuedNet: netP == null ? 0 : issuedP,
+      salesNet: netP == null ? 0 : salesP,
       rawLeads: r.raw_leads_in == null ? null : Number(r.raw_leads_in) || 0,
     });
     out.set(mkt, list);
@@ -804,10 +893,12 @@ export function combineRateMonths(lists: RateMonth[][]): RateMonth[] {
     for (const m of list) {
       const acc = byMonth.get(m.period_start);
       if (acc) {
-        acc.net += m.net;
+        if (m.net != null) acc.net = (acc.net ?? 0) + m.net;
         acc.issued += m.issued;
         acc.sales += m.sales;
         acc.leads += m.leads;
+        acc.issuedNet = (acc.issuedNet ?? 0) + (m.issuedNet ?? (m.net == null ? 0 : m.issued));
+        acc.salesNet = (acc.salesNet ?? 0) + (m.salesNet ?? (m.net == null ? 0 : m.sales));
         // rawLeads: null = untracked; Σ of the sources that carry it.
         if (m.rawLeads != null) acc.rawLeads = (acc.rawLeads ?? 0) + m.rawLeads;
       } else {
@@ -864,7 +955,11 @@ async function buildView(
   // baseline resolver ignores months at/after its own anchor, so widening the
   // fetch cannot leak a period's own performance into its dollar goal.
   const rateAnchorMonth = firstOfMonthET();
-  const rateOpts = { windowStart: rolling90WindowStart() };
+  // The fetch still pulls the anchor month — computeBaselineFromRows needs the
+  // full list and filters for itself — but the RATE window excludes it: the
+  // live month is issued-without-net and depresses NSLI. See
+  // computeTrailingRates, and the maturation-lag follow-up noted there.
+  const rateOpts = { windowStart: rolling90WindowStart(), excludeFrom: rateAnchorMonth };
 
   const [{ data: goalsRows }, prior, issueFacts] = await Promise.all([
     sb.from("scorecard_goals").select("*").in("market", goalCodes),

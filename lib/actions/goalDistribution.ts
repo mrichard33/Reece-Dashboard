@@ -88,9 +88,14 @@ async function trailingNetWeights(windowMonths: number): Promise<Weights> {
 
   const weights = SCORECARD_MARKETS.map((m) => {
     const months = combineRateMonths(m.sources.map((s) => prior.get(s) ?? []));
+    // A month with an UNKNOWN net contributes no weight — numerically the same
+    // as the old zero-coercion, so distribution behaviour is unchanged, but now
+    // for the right reason. A market unknown across the whole window lands at
+    // weight 0 and is surfaced by the preview's zero-weight path (see
+    // allocation.ts), not silently given a goal it has no basis for.
     const net = months
       .filter((mo) => mo.period_start >= windowStart && mo.period_start <= windowEnd)
-      .reduce((a, mo) => a + mo.net, 0);
+      .reduce((a, mo) => a + (mo.net ?? 0), 0);
     return { code: m.code, weight: net };
   });
   return { weights, windowStart, windowEnd };
