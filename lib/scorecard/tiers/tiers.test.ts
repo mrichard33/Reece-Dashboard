@@ -54,6 +54,13 @@ const FTLAU_LEAD_BRANCHES: [string | null, number][] = [
   [null, 29],
 ];
 
+/**
+ * Gross-to-net ratio for the milestone fixture. Any value != 1 works; 1.25 is
+ * roughly the real cancellation gap and keeps the arithmetic easy to check by
+ * eye. The POINT is that it is not 1 — see the fixture loop below.
+ */
+const GROSS_OVER_NET = 1.25;
+
 const MILESTONE_NET: Record<string, [number, number]> = {
   FTLAU_MKT: [1, 1383000],
   FTMYR_MKT: [8, 21251400],
@@ -163,10 +170,16 @@ function makeFacts(): ReportFactRow[] {
     fact({ report_type: "source_cost", market: "REECE", metric: "leads", value_count: 78561, period_end: "2026-08-05" }),
   );
 
+  // Gross is deliberately NOT equal to net here. It used to be — both metrics
+  // were emitted with identical value_cents — which meant tier1.ts could have
+  // been changed from "net_sales" to "gross_sold" and every test would still
+  // have passed. The one swap that would materially overstate attainment was
+  // the one thing this fixture could not detect. Gross exceeds net by the
+  // cancellation gap, so it is modelled that way: net × GROSS_OVER_NET.
   for (const [market, [count, cents]] of Object.entries(MILESTONE_NET)) {
     rows.push(
       fact({ report_type: "jobs_by_milestone", market, metric: "net_sales", value_count: count, value_cents: cents, scope: "mtd", period_start: "2026-08-01", period_end: "2026-08-31" }),
-      fact({ report_type: "jobs_by_milestone", market, metric: "gross_sold", value_count: count, value_cents: cents, scope: "mtd", period_start: "2026-08-01", period_end: "2026-08-31" }),
+      fact({ report_type: "jobs_by_milestone", market, metric: "gross_sold", value_count: count, value_cents: Math.round(cents * GROSS_OVER_NET), scope: "mtd", period_start: "2026-08-01", period_end: "2026-08-31" }),
     );
   }
 
@@ -220,6 +233,21 @@ describe("Test 1 — Tier 1 is Goal / Actual / Pace / Projected / Variance and n
 
   test("company actual is the RTP net total — $702,506", () => {
     expect(t1.company.actual.value).toBeCloseTo(702_506, 2);
+  });
+
+  // §4 BASIS GUARD. The goal is a NET goal, so the actual measured against it
+  // must be net too. This was previously untestable: the fixture emitted
+  // net_sales and gross_sold with identical cents, so tier1.ts could have read
+  // either and every assertion above would still have passed. Gross now exceeds
+  // net by GROSS_OVER_NET, which makes the difference observable — and this test
+  // states the invariant outright rather than leaving it implied by a total.
+  test("§4: Tier 1 measures the net goal against a NET actual, never gross", () => {
+    const netCents = Object.values(MILESTONE_NET).reduce((a, [, c]) => a + c, 0);
+    expect(t1.company.actual.value).toBeCloseTo(netCents / 100, 2);
+
+    // And is nowhere near the gross figure sitting in the same snapshot.
+    const grossDollars = (netCents * GROSS_OVER_NET) / 100;
+    expect(Math.abs(t1.company.actual.value! - grossDollars)).toBeGreaterThan(1);
   });
 
   // LAKELAND RULING (2026-08-06): Orlando's goal is its own carved figure and
