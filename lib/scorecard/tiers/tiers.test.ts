@@ -942,20 +942,20 @@ describe("§L — the REECE total row never doubles the company", () => {
       dailyRow("ORL_MKT", 41, 4),
       dailyRow("REECE", 106, 11), // the total — Σ of the two above
     ];
-    const view = buildDailyView(rows as never, "2026-08-10");
+    const view = buildDailyView(rows as never);
 
     expect(view.rows.some((r) => r.market === "REECE" && !r.isCompany)).toBe(false);
     // Measured-wrapped, like every other tier figure.
-    expect(view.company.issued.value).toBe(106); // Σ offices, NOT 212
-    expect(view.company.sales.value).toBe(11);
+    expect(view.company?.issued.value).toBe(106); // Σ offices, NOT 212
+    expect(view.company?.sales.value).toBe(11);
   });
 
   test("is unaffected when the stored REECE row is absent entirely", () => {
     // fetchDaily now filters it at the query, so this is the shape the function
     // actually receives in production. Same answer either way.
     const rows = [dailyRow("STPET_MKT", 65, 7), dailyRow("ORL_MKT", 41, 4)];
-    const view = buildDailyView(rows as never, "2026-08-10");
-    expect(view.company.issued.value).toBe(106);
+    const view = buildDailyView(rows as never);
+    expect(view.company?.issued.value).toBe(106);
     expect(view.rows).toHaveLength(2);
   });
 });

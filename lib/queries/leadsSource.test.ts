@@ -193,8 +193,16 @@ describe("§J5 — released revenue comes from report 134, and says when it does
 
   it("does not answer an MTD view from a YTD snapshot", () => {
     // Same period gate buildSold uses — a flow figure must match its window.
-    const mtd = { ...RESOLVED, key: "mtd", periodStart: "2026-08-01", periodEnd: "2026-08-31" } as typeof RESOLVED;
-    const { released } = buildReportFacts([milestoneRow()], mtd, "STPET_MKT");
+    // "month" is the PeriodKey for a month-to-date view; "mtd" is a FactScope,
+    // a different union — they are easy to confuse and the compiler catches it.
+    const monthView: ResolvedPeriod = {
+      ...RESOLVED,
+      key: "month",
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-31",
+      asOf: "2026-08-10",
+    };
+    const { released } = buildReportFacts([milestoneRow()], monthView, "STPET_MKT");
     expect(released).toBeNull();
   });
 

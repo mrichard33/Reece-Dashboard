@@ -193,8 +193,8 @@ async function fetchDaily(): Promise<DailySnapshotRow[]> {
       // and re-derives the company as Σ markets, but that guard lives two files
       // away; excluding it AT THE QUERY means a new consumer of this function
       // cannot inherit the double-count by forgetting about it.
-      .neq("market", "REECE")
       .select("market, as_of_date, period_start, leads, raw_leads_in, sets, issued, demos, sales")
+      .neq("market", "REECE")
       .order("as_of_date", { ascending: false })
       // ⚠️ Undocumented truncation: ~9 market codes × as-of dates. At 400 rows
       // this holds roughly 44 days of history; a longer window silently loses
