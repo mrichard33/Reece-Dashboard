@@ -44,6 +44,13 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
   // which is how Projected Pace rendered $88.4M against an $84.5M goal on the
   // same screen as a −$22.5M Balance.
   const projected = p.daysElapsed > 0 ? Math.round((p.netSales / p.daysElapsed) * p.sellingDays) : 0;
+  // The formula is unchanged. What changed is the claim it makes about itself:
+  // extrapolating a full period from 6 of 26 days is arithmetic, not a forecast,
+  // and released dollars are structurally low early because net matures over
+  // ~5–6 months. Below 30% elapsed the tile says which it is.
+  const EARLY_PERIOD_THRESHOLD = 0.3;
+  const early =
+    p.sellingDays > 0 && p.daysElapsed / p.sellingDays < EARLY_PERIOD_THRESHOLD;
   // Balance = net vs the prorated target-to-date (dollars ahead of / behind pace).
   const balance = Math.round(p.gap);
   // Projected Pace and Balance share the pace verdict: with a per-working-day goal,
@@ -78,13 +85,26 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
   // NOT zero; a fabricated $0 reads as "behind goal" and a full-gross cancellation).
   const pending = p.netPending;
 
+  const projectedSub = pending
+    ? "report pending"
+    : early
+      ? `early estimate · ${num(p.daysElapsed)} of ${num(p.sellingDays)} selling days`
+      : projTone === "neg"
+        ? "behind goal"
+        : "on / ahead of goal";
+
   const kpis: Kpi[] = [
     { label: goalLabel, sub: goalSub, value: usd(p.monthlyGoal) },
     {
       label: "Projected Pace",
-      sub: pending ? "report pending" : projTone === "neg" ? "behind goal" : "on / ahead of goal",
+      sub: projectedSub,
       value: pending ? "—" : usd(projected),
-      tone: pending ? "plain" : projTone,
+      // Early in a period the extrapolation is too thin to carry a verdict
+      // colour; the figure still shows, in neutral.
+      tone: pending || early ? "plain" : projTone,
+      title: early
+        ? `Run-rate extrapolation from ${p.daysElapsed} completed selling day${p.daysElapsed === 1 ? "" : "s"} of ${p.sellingDays}. Early-period projections are noisy, and released dollars run structurally low because net matures over roughly five to six months.`
+        : undefined,
     },
     { label: "Target to Date", sub: "goal to date", value: usd(p.paceGoal) },
     {

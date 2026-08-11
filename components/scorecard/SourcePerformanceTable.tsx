@@ -7,6 +7,7 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import { num, usd } from "@/lib/utils";
 import { pct } from "./format";
 import type { SourceScorecardRow } from "@/lib/queries/sources";
+import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
 type NumKey = Exclude<
   keyof SourceScorecardRow,
@@ -26,7 +27,7 @@ const COLS: Col[] = [
   { key: "leads", label: "Leads", fmt: "count" },
   { key: "issued", label: "Issued", fmt: "count" },
   { key: "demo_pct", label: "Demo %", fmt: "pct" },
-  { key: "close_pct", label: "Close %", fmt: "pct" },
+  { key: "close_pct", label: METRIC_LABELS.demoToSale, fmt: "pct" },
   { key: "net_sales", label: "Net Sales", fmt: "usd" },
   { key: "pending_total", label: "Pending", fmt: "usd" },
   { key: "nsli", label: "NSLI", fmt: "usd" },

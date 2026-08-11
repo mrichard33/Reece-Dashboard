@@ -67,6 +67,22 @@ export type ByMarketRow = {
   goal: number | null;
   /** Net as a % of the prorated goal, 0+ (null when no goal). */
   pctToGoal: number | null;
+  // ── Display-only pace re-expression (no new goal math) ────────────────────
+  // `pctToGoal` already divides by the PRORATED goal and `prorateGoal` is
+  // linear, so with elapsedFrac = elapsed/workingDays:
+  //
+  //   pctToGoal   = 100 × net / (periodGoal × elapsedFrac)
+  //   achievedPct = 100 × net /  periodGoal              = pctToGoal × elapsedFrac
+  //
+  // Both fall out of numbers already computed here. The colour bands still read
+  // `pctToGoal`; these exist so the card can SAY what that ratio means instead
+  // of captioning it "109% goal" on a market holding 25% of its money.
+  /** Selling days elapsed as a % of selling days in the period. */
+  elapsedPct: number | null;
+  /** Net as a % of the FULL-period goal — what "% to goal" sounds like. */
+  achievedPct: number | null;
+  /** achievedPct − elapsedPct. Same sign as (pctToGoal − 100), always. */
+  paceDeltaPts: number | null;
 };
 
 export type ByMarketView = { rows: ByMarketRow[]; total: ByMarketRow | null };
@@ -134,10 +150,12 @@ function rowFromActuals(
   // falls back to net_sales only for rows predating the released split.
   const net = numOr0(a.released_dollars ?? a.net_sales);
   const g = utility ? null : goal && goal > 0 ? goal : null;
+  const pctToGoal = g ? Math.round((net / g) * 1000) / 10 : null;
   return {
     market,
     label,
     utility,
+    ...paceFields(a, pctToGoal),
     // Leads = report 135, passed in by the caller (see ByMarketRow.leads).
     // NEVER a.raw_leads_in — that column is NULL for every market.
     leads,
@@ -148,8 +166,76 @@ function rowFromActuals(
     gross_sales: numOr0(a.gross_sales),
     net_sales: net,
     goal: g,
-    pctToGoal: g ? Math.round((net / g) * 1000) / 10 : null,
+    pctToGoal,
   };
+}
+
+/**
+ * The display-only pace re-expression. Separated so the All-Markets row — whose
+ * goal is DERIVED as Σ of the offices and therefore recomputes `pctToGoal`
+ * after the fact — can reuse the identical derivation instead of a second copy
+ * that could drift.
+ *
+ * `elapsedPct` is a fact about the CALENDAR and survives a missing goal —
+ * which matters, because the All-Markets row derives its goal after the fact
+ * and would otherwise lose the elapsed figure it needs. `achievedPct` and the
+ * delta are null without a goal: a 0% there would read as total failure rather
+ * than "not measured".
+ */
+export function paceFields(
+  a: Record<string, unknown>,
+  pctToGoal: number | null,
+): { elapsedPct: number | null; achievedPct: number | null; paceDeltaPts: number | null } {
+  const elapsed = numOr0(a.days_elapsed);
+  const wd = numOrNull(a.period_working_days) ?? numOrNull(a.working_days_in_period) ?? 0;
+  if (wd <= 0) return { elapsedPct: null, achievedPct: null, paceDeltaPts: null };
+  // Derive from the EXACT fraction, not from the rounded percentage — feeding a
+  // 0.1-rounded elapsedPct back in compounds two roundings and can push the
+  // delta a tenth off the true value on a market far from pace.
+  const frac = elapsed / wd;
+  return { elapsedPct: Math.round(frac * 1000) / 10, ...achievedCore(pctToGoal, frac) };
+}
+
+/**
+ * achievedPct = pctToGoal × elapsedFrac — see the ByMarketRow note. Derived,
+ * never re-divided, so it cannot disagree with the ratio driving the colour.
+ *
+ * The delta is computed as `elapsedFrac × (pctToGoal − 100)` rather than as
+ * `achievedPct − elapsedPct`. Algebraically identical:
+ *
+ *     achieved − elapsed = f·p − 100f = f·(p − 100)
+ *
+ * but this form makes the sign PROPORTIONAL to (pctToGoal − 100) by
+ * construction, so it can never contradict the colour band — subtracting two
+ * separately-rounded percentages can.
+ *
+ * It can still round to 0.0 where the band is marginally off 100: at one
+ * elapsed day of 26, a market at 99.9% of target is 0.004 points behind. The
+ * caption says "on pace", which is true; the bar stays amber, which is also
+ * true. Only a NONZERO delta is a claim, and a nonzero delta always agrees.
+ */
+function achievedCore(
+  pctToGoal: number | null,
+  frac: number | null,
+): { achievedPct: number | null; paceDeltaPts: number | null } {
+  if (pctToGoal == null || frac == null) return { achievedPct: null, paceDeltaPts: null };
+  return {
+    achievedPct: Math.round(pctToGoal * frac * 10) / 10,
+    paceDeltaPts: Math.round(frac * (pctToGoal - 100) * 10) / 10,
+  };
+}
+
+/**
+ * Re-derivation for the All-Markets row, whose goal is summed from the offices
+ * AFTER the row is built — by then only the rounded `elapsedPct` survives, so
+ * this carries a tenth more slack than `paceFields`. Immaterial at display
+ * resolution, and the sign is still proportional to (pctToGoal − 100).
+ */
+export function achievedFrom(
+  pctToGoal: number | null,
+  elapsedPct: number | null,
+): { achievedPct: number | null; paceDeltaPts: number | null } {
+  return achievedCore(pctToGoal, elapsedPct == null ? null : elapsedPct / 100);
 }
 
 /** Batched rollup for the snapshot (MTD) view — 3 queries, no per-market fan-out. */
@@ -262,6 +348,9 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     const officeGoalSum = rows.reduce((a, r) => (r.utility ? a : a + (r.goal ?? 0)), 0);
     total.goal = officeGoalSum > 0 ? officeGoalSum : null;
     total.pctToGoal = total.goal ? Math.round((total.net_sales / total.goal) * 1000) / 10 : null;
+    // The derived goal changes the ratio, so the pace statement must follow it.
+    // elapsedPct is calendar-only and already correct on the row.
+    Object.assign(total, achievedFrom(total.pctToGoal, total.elapsedPct));
   }
   return { rows, total };
 }

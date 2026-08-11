@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { num, usd, usDate } from "@/lib/utils";
+import { InfoPopover } from "@/components/help/InfoPopover";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /**
@@ -29,14 +29,23 @@ import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 type Line = { label: string; note?: string; value: string; tone?: "plain" | "red"; strong?: boolean };
 
+/**
+ * Lineage lives behind the ⓘ, not above the number.
+ *
+ * These panels each carried a two-line basis string in 11px grey — provenance
+ * competing with the figure it qualifies, on the row people come here to read.
+ * The strings are the audit trail and are NOT deleted; they move into the
+ * popover, which is what `InfoPopover`'s inline `info` prop exists for (the
+ * released panel's basis is derived at runtime and cannot be a registry entry).
+ */
 function SplitCard({
   title,
-  subtitle,
+  info,
   accent,
   lines,
 }: {
   title: string;
-  subtitle: string;
+  info: { title?: string; what: string; where: string; fix: string };
   accent: string;
   lines: Line[];
 }) {
@@ -44,11 +53,11 @@ function SplitCard({
     <div
       className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 ${accent}`}
     >
-      <div className="px-5 pb-2.5 pt-4">
+      <div className="flex items-start justify-between gap-2 px-5 pb-2.5 pt-4">
         <h3 className="font-display text-[12.5px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
           {title}
         </h3>
-        <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">{subtitle}</p>
+        <InfoPopover info={{ title, ...info }} align="right" className="-mt-0.5 shrink-0" />
       </div>
       <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800/70 dark:border-slate-800/70">
         {lines.map((l) => (
@@ -80,7 +89,7 @@ function SplitCard({
 const bucketValue = (b: { count: number; dollars: number } | null): string =>
   b == null ? "not yet sourced" : `${num(b.count)} · ${usd(b.dollars)}`;
 
-export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode }) {
+export function RevenueCard({ vm }: { vm: ScorecardVM }) {
   const r = vm.revenue;
   const f = r.facts;
   // Pending period (no report has landed yet, main 2026-08-04): dollar figures
@@ -177,42 +186,48 @@ export function RevenueCard({ vm, aside }: { vm: ScorecardVM; aside?: ReactNode 
           ? "Lead-attributed basis (fallback) — company totals come from the Marketing report"
           : "No report snapshot covers this period yet";
 
+  // The rule every panel shares, repeated in each popover so it is reachable
+  // from whichever one the reader opened. It used to live in a paragraph under
+  // the row that most people scrolled past.
+  const NO_CROSSING =
+    "A panel totals its own lines and nothing else — no figure here is subtracted " +
+    'from a figure in another panel. "Not yet sourced" and "—" mean no report ' +
+    "covers this view yet; neither is a zero.";
+
   return (
     <div className="space-y-3">
-      <div className={`grid grid-cols-1 items-start gap-4 ${aside ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <SplitCard
           title="Sold this period"
-          subtitle={`Basis: sold date · ${basisNote}${f.soldAsOf ? ` · as of ${usDate(f.soldAsOf)}` : ""}`}
+          info={{
+            what: "Contract value written in the selected period, on SOLD date, with cancellations shown explicitly rather than derived as a gross-minus-net residual.",
+            where: `Basis: sold date · ${basisNote}${f.soldAsOf ? ` · as of ${usDate(f.soldAsOf)}` : ""}`,
+            fix: `${NO_CROSSING}${f.netPendingReason ? ` Net sold reads "still maturing" because ${f.netPendingReason}.` : ""}`,
+          }}
           accent="border-t-2 border-t-navy-900 dark:border-t-slate-200"
           lines={soldLines}
         />
         <SplitCard
           title="Released this period"
-          subtitle={releasedNote}
+          info={{
+            what: "Contract value RELEASED to production in the selected period, dated by the production milestone. A different cohort from Sold — it includes work contracted in earlier periods and excludes work sold this period that has not shipped.",
+            where: releasedNote,
+            fix: NO_CROSSING,
+          }}
           accent="border-t-2 border-t-emerald-500"
           lines={releasedLines}
         />
         <SplitCard
           title="Open backlog"
-          subtitle={`Basis: point-in-time · report 133 · as of ${f.pendingAsOf ? usDate(f.pendingAsOf) : usDate(vm.snapshot.asOfDate)}`}
+          info={{
+            what: "Open jobs as of the report's own date — a point-in-time STOCK, not a period flow. It ignores the period filter and includes jobs sold in earlier periods and earlier years.",
+            where: `Basis: point-in-time · report 133 · as of ${f.pendingAsOf ? usDate(f.pendingAsOf) : usDate(vm.snapshot.asOfDate)}`,
+            fix: NO_CROSSING,
+          }}
           accent="border-t-2 border-t-sky-400"
           lines={backlogLines}
         />
-        {aside}
       </div>
-
-      <p className="flex items-start gap-1.5 px-1 text-[12px] leading-snug text-slate-500 dark:text-slate-400">
-        <span aria-hidden className="mt-px text-slate-400">ⓘ</span>
-        <span>
-          Each panel states its own basis and totals only its own lines — no figure here is
-          subtracted from a figure in another panel. Sold and Released cover the selected period;
-          Open Backlog is the current open pipeline whatever period is selected, so it carries its
-          own as-of date and includes jobs sold in earlier periods.
-          &ldquo;Not yet sourced&rdquo; and &ldquo;—&rdquo; mean no report covers this view yet —
-          neither is a zero.
-          {f.netPendingReason ? ` Net sold reads "still maturing" here because ${f.netPendingReason}.` : ""}
-        </span>
-      </p>
     </div>
   );
 }

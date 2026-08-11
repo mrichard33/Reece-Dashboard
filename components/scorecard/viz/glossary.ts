@@ -1,3 +1,4 @@
+import { METRIC_LABELS } from "@/lib/scorecard/labels";
 // Plain-language definitions for every term & symbol on the scorecard. Source of
 // truth for both the Glossary card and the inline <Term> tooltips (via SC_DEFS).
 
@@ -22,7 +23,7 @@ export const SC_GLOSSARY: GlossaryGroup[] = [
   {
     group: "Rates",
     items: [
-      { term: "Close %", def: "Sold ÷ demos — the gross close rate." },
+      { term: METRIC_LABELS.demoToSale, def: "Sales ÷ demos — of the demos we ran, how many sold. The Monday a.m. report uses “Close %” for a DIFFERENT rate (sales ÷ leads issued), which is why this one no longer carries that name." },
       { term: "% Net Close", def: "Net closes ÷ demos — closes that stuck." },
       { term: "Demo %", def: "Demos ÷ net issued — how many issued leads demo." },
       { term: "Issue Rate", def: "Issued ÷ leads over the trailing rate window — calculated from history, drives the derived Leads goal. Distinct from % Issue (issued ÷ sets)." },

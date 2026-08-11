@@ -18,7 +18,8 @@ import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries
 import { getByMarket } from "@/lib/queries/byMarket";
 import { getReportFacts } from "@/lib/queries/reportFacts";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
-import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
+import { lastCompletedSellingDay, resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
+import { freshnessChip, stalenessSellingDays, stalenessPhrase } from "@/lib/scorecard/freshness";
 import { normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
 import { usDate } from "@/lib/utils";
@@ -78,6 +79,13 @@ export default async function ScorecardPage({
   // a current one.
   const revenueThrough = view?.actuals.revenue_as_of ?? null;
   const revenueStale = !!(revenueThrough && revenueThrough < resolved.asOf);
+  // How far behind, in SELLING days, measured against the last completed selling
+  // day rather than the end of the selected range — on the 10th, a range that
+  // ends on the 31st is not evidence anything is stale. "3 selling days behind"
+  // is a number someone can act on; "data through 08/07" alone is not.
+  const lastSellingDay = lastCompletedSellingDay(todayET(), SELLING_CAL);
+  const dataLagDays = stalenessSellingDays(dataThrough, lastSellingDay, SELLING_CAL);
+  const revenueLagDays = stalenessSellingDays(revenueThrough, lastSellingDay, SELLING_CAL);
 
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
@@ -100,16 +108,20 @@ export default async function ScorecardPage({
         </span>
       )}
       {view && (() => {
-        const cf = view.actuals.computed_from;
-        const b =
-          cf === "net_report_rtp"
-            ? { t: "Net Report actual", c: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300", title: "Closed month, report-sourced — ties to the official Net Report (Released-to-Production) to the penny." }
-            : cf === "mixed"
-              ? { t: "report + live (provisional)", c: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300", title: "Aggregate spans closed months (report-sourced, exact) and the live current month (provisional estimate)." }
-              : { t: "live · provisional", c: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300", title: "Estimate for the in-progress month — a live figure, NOT the final RTP number. It reconciles to the official Net Report when the month closes." };
+        // "live · provisional" described a table that had not moved since
+        // 2026-08-07, and never defined "provisional" anywhere a reader could
+        // reach. The chip now leads with the date and carries the definition.
+        const chip = freshnessChip({
+          asOfDate: view.actuals.as_of_date,
+          computedFrom: view.actuals.computed_from,
+        });
+        const tone =
+          chip.tone === "emerald"
+            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+            : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
         return (
-          <span className={`inline-flex h-8 items-center rounded-md px-2.5 text-[11px] font-medium sm:h-7 ${b.c}`} title={b.title}>
-            {b.t}
+          <span className={`inline-flex h-8 items-center rounded-md px-2.5 text-[11px] font-medium sm:h-7 ${tone}`} title={chip.title}>
+            {chip.text}
           </span>
         );
       })()}
@@ -188,12 +200,16 @@ export default async function ScorecardPage({
                       Live-sync figures are behind.
                     </strong>{" "}
                     {isStale && dataThrough
-                      ? `Counts and rates from the LP sync reach ${usDate(dataThrough)}`
+                      ? `Counts and rates from the LP sync reach ${usDate(dataThrough)}${
+                          stalenessPhrase(dataLagDays) ? ` — ${stalenessPhrase(dataLagDays)}` : ""
+                        }`
                       : "Counts and rates from the LP sync are current"}
                     {revenueStale && revenueThrough
-                      ? `, and its revenue columns only reach ${usDate(revenueThrough)}`
+                      ? `, and its revenue columns only reach ${usDate(revenueThrough)}${
+                          stalenessPhrase(revenueLagDays) ? ` (${stalenessPhrase(revenueLagDays)})` : ""
+                        }`
                       : ""}
-                    {` — the selected range ends ${usDate(resolved.asOf)}.`}{" "}
+                    {`. The selected range ends ${usDate(resolved.asOf)}.`}{" "}
                     Report-sourced panels (Sold, Released, Open backlog, Leads) carry
                     their own as-of dates and are unaffected.
                   </div>
@@ -216,11 +232,20 @@ export default async function ScorecardPage({
                 {/* ② Funnel vs Goal */}
                 <FunnelGoalTable view={view} vm={vm} />
 
-                {/* ③ Sold vs Net + ④ Per-Day Pace — one row (Sold · Net · Per-Day) */}
-                <RevenueCard vm={vm} aside={<PerDayCard vm={vm} />} />
+                {/*
+                  ③ Daily Pace — promoted out of RevenueCard's `aside`, where it
+                  was the fourth column of a revenue row. "issued/day 67.5 vs
+                  110.1" is the most directly actionable line on this page for a
+                  sales manager; it should not be sitting beside three dollar
+                  panels competing for the same glance.
+                */}
+                <PerDayCard vm={vm} />
+
+                {/* ④ Sold · Released · Open backlog — three bases, no arithmetic between them. */}
+                <RevenueCard vm={vm} />
 
                 {/* ⑤ By Market — every market for the period; rows sum to All Markets. */}
-                {byMarket.rows.length > 0 && <ByMarketTable data={byMarket} />}
+                {byMarket.rows.length > 0 && <ByMarketTable data={byMarket} abbr={vm.abbr} />}
               </>
             );
           })()

@@ -2,6 +2,7 @@ import { num } from "@/lib/utils";
 import { pct } from "./format";
 import { ScSection } from "./ScSection";
 import { InfoPopover } from "@/components/help/InfoPopover";
+import { METRIC_LABELS, METRIC_FORMULAS } from "@/lib/scorecard/labels";
 import type { ScorecardView } from "@/lib/queries/scorecard";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
@@ -22,6 +23,8 @@ type Row = {
   paceCls: string;
   /** helpContent key for an (i) popover on the metric label. */
   infoKey?: string;
+  /** Denominator, spelled out — every percentage must answer "percent of what?". */
+  formula?: string;
 };
 
 const r0 = (v: number) => Math.round(v);
@@ -67,6 +70,7 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
     target: number,
     ptsGap: number | null,
     higherIsBetter: boolean,
+    formula?: string,
   ): Row => {
     const good = ptsGap == null ? null : higherIsBetter ? ptsGap >= 0 : ptsGap <= 0;
     return {
@@ -76,6 +80,7 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
       actual: pct(actual),
       paceLabel: ptsGap == null ? null : `${ptsGap >= 0 ? "+" : ""}${ptsGap.toFixed(1)} pt`,
       paceCls: good == null ? MUTE : good ? EMERALD : BRICK,
+      formula,
     };
   };
 
@@ -92,10 +97,13 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
     countRow("Issued", a.issued, d.target_issued_per_day),
     countRow("Demos", a.demos, d.target_demoed_per_day),
     countRow("Sales", a.sales, d.target_closed_per_day),
-    rateRow("Close %", a.close_pct, g.target_close_pct, d.variance.close_pts, true),
-    rateRow("Demo %", a.demo_pct, g.target_demo_pct, d.variance.demo_pts, true),
-    rateRow("Good Rate %", a.good_rate_pct, g.target_good_rate_pct, d.variance.good_rate_pts, true),
-    rateRow("KO %", a.ko_pct, g.target_ko_pct, d.variance.ko_pts, false),
+    // `close_pct` is sales ÷ demos and always has been. The Monday a.m. report
+    // means sales ÷ leads ISSUED by "Close %", so this row no longer borrows
+    // that name — see lib/scorecard/labels.ts. Computation unchanged.
+    rateRow(METRIC_LABELS.demoToSale, a.close_pct, g.target_close_pct, d.variance.close_pts, true, METRIC_FORMULAS.demoToSale),
+    rateRow(METRIC_LABELS.demo, a.demo_pct, g.target_demo_pct, d.variance.demo_pts, true, METRIC_FORMULAS.demo),
+    rateRow(METRIC_LABELS.goodRate, a.good_rate_pct, g.target_good_rate_pct, d.variance.good_rate_pts, true, METRIC_FORMULAS.goodRate),
+    rateRow(METRIC_LABELS.ko, a.ko_pct, g.target_ko_pct, d.variance.ko_pts, false, METRIC_FORMULAS.ko),
   ];
 
   const dotCls = (cls: string) =>
@@ -143,13 +151,17 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
                 className={`border-t border-slate-50 dark:border-slate-900 ${i === 4 ? "border-t-2 border-t-slate-200 dark:border-t-slate-700" : ""}`}
               >
                 <td className="px-2 py-2 font-sans font-medium text-slate-700 dark:text-slate-200 sm:px-3">
-                  {row.infoKey ? (
-                    <span className="inline-flex items-center gap-1">
-                      {row.metric}
-                      <InfoPopover helpKey={row.infoKey} align="left" />
+                  <span className="inline-flex items-center gap-1">
+                    <span title={row.formula}>{row.metric}</span>
+                    {row.infoKey && <InfoPopover helpKey={row.infoKey} align="left" />}
+                  </span>
+                  {/* The denominator, on screen rather than in a tooltip only —
+                      a rate whose basis you must hover to learn is a rate people
+                      will misread. */}
+                  {row.formula && (
+                    <span className="mt-0.5 block font-mono text-[10px] font-normal text-slate-400 dark:text-slate-500">
+                      {row.formula}
                     </span>
-                  ) : (
-                    row.metric
                   )}
                 </td>
                 <td className="hidden px-3 py-2 text-right text-slate-500 dark:text-slate-400 sm:table-cell">{row.monthly ?? "—"}</td>

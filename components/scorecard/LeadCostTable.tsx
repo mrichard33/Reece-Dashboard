@@ -7,6 +7,7 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import { num, usd } from "@/lib/utils";
 import { pct } from "./format";
 import type { LeadCostRow } from "@/lib/queries/leadcost";
+import { METRIC_LABELS, METRIC_FORMULAS } from "@/lib/scorecard/labels";
 
 type SortKey = "net_sales" | "spend" | "cost_pct" | "romi" | "leads";
 
@@ -83,7 +84,7 @@ export function LeadCostTable({
         <div className="space-y-2 lg:hidden">
           {sorted.map((r) => {
             const metrics: { label: string; value: string; tone?: string }[] = [
-              { label: "Close %", value: pct(r.close_pct) },
+              { label: METRIC_LABELS.demoToSale, value: pct(r.close_pct) },
               { label: "Leads", value: num(r.leads) },
               { label: "Cost/Lead", value: r.connected ? usd(r.cost_per_lead) : "—" },
               { label: "Spend", value: r.connected ? usd(r.spend) : "—" },
@@ -122,7 +123,7 @@ export function LeadCostTable({
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800">
                 <th className="py-2 pr-3 text-left font-medium">Source</th>
-                <th className="py-2 pl-3 text-right font-medium">Close %</th>
+                <th className="py-2 pl-3 text-right font-medium" title={METRIC_FORMULAS.demoToSale}>{METRIC_LABELS.demoToSale}</th>
                 {cols.map((c) => (
                   <th key={c.key} className="py-2 pl-3 text-right font-medium">
                     <button type="button" onClick={() => onSort(c.key)} className="hover:text-slate-800 dark:hover:text-slate-200">
