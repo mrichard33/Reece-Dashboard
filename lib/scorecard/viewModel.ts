@@ -203,6 +203,18 @@ export type ScorecardVM = {
        */
       lostCount: number | null;
       lostDollars: number | null;
+      /**
+       * Report 133's lost cohort split by CAUSE. Null = no covering 133
+       * snapshot. Never sourced from `ko_count`, which is a different measure
+       * on a different cohort and disagrees by design.
+       */
+      lostBasis: "job_status_ytd" | null;
+      lostAsOf: string | null;
+      lostTotalCount: number | null;
+      lostTotalDollars: number | null;
+      lostByCause: { key: string; label: string; count: number; dollars: number }[];
+      lostUnresolvedCount: number;
+      lostUnresolvedDollars: number;
       /** open-pipeline stock (job_status_ytd) — null when never imported */
       pendingAsOf: string | null;
       pendingHoa: { count: number; dollars: number } | null;
@@ -360,6 +372,7 @@ export function buildScorecardVM(
   // "Released this period" panel shows, because that panel already claimed
   // report-134 provenance while reading the stale daily table.
   const rf = reportFacts?.released ?? null;
+  const lostF = reportFacts?.lost ?? null;
   const facts = {
     soldBasis: sf?.basis ?? null,
     soldAsOf: sf?.asOf ?? null,
@@ -377,6 +390,13 @@ export function buildScorecardVM(
     netReleased: rf?.netReleasedDollars ?? null,
     lostCount: gb?.lost?.count ?? null,
     lostDollars: gb?.lost?.dollars ?? null,
+    lostBasis: lostF?.basis ?? null,
+    lostAsOf: lostF?.asOf ?? null,
+    lostTotalCount: lostF?.totalCount ?? null,
+    lostTotalDollars: lostF?.totalDollars ?? null,
+    lostByCause: lostF?.byCause ?? [],
+    lostUnresolvedCount: lostF?.unresolvedCount ?? 0,
+    lostUnresolvedDollars: lostF?.unresolvedDollars ?? 0,
     pendingAsOf: gb?.asOf ?? null,
     pendingHoa: gb?.hoa ?? null,
     pendingPermit: gb?.permit ?? null,

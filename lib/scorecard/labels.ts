@@ -46,7 +46,11 @@ export const METRIC_FORMULAS: Record<keyof typeof METRIC_LABELS, string> = {
   demo: "Demos ÷ gross issued",
   issue: "Issued ÷ sets",
   goodRate: "(Sold − cancelled) ÷ sold $",
-  ko: "Cancelled jobs ÷ sold",
+  // Names its cohort deliberately. The ③ "Lost this period" panel counts the
+  // SAME kind of event from report 133's contract-date cohort and will disagree
+  // — 12 here against 14 lost jobs for August. Two cancellation figures on one
+  // page are fine; two unlabelled ones are not.
+  ko: "Cancelled ÷ sold · live sync, sold cohort",
   close: "Sales ÷ leads issued (Monday report definition — not yet computed)",
 };
 

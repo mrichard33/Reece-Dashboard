@@ -31,6 +31,11 @@ export async function fetchReportFactRows(): Promise<ReportFactRow[]> {
       )
       .eq("is_current", true)
       .in("report_type", ["sales_efficiency", "source_cost", "lead_disposition", "job_status_ytd"])
+      // ⚠️ Undocumented truncation, and it fails SILENTLY — past this ceiling
+      // rows vanish with no error and tiles quietly under-report. Headroom as
+      // of 2026-08-11: 1,844 current rows of 5,000, and adding
+      // `cohort_lost_by_status` cost 164 of them. Every new metric or market
+      // spends more, so raise this deliberately rather than discovering it.
       .limit(5000);
     if (error) throw new Error(error.message);
     return (data ?? []) as ReportFactRow[];

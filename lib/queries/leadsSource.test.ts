@@ -252,3 +252,101 @@ describe("§K — the lost bucket is sourced, and never counted as open pipeline
     expect(goodBusiness!.openJobsTotal).toBe(5); // hoa only; no in_production row here
   });
 });
+
+// ── §K — cancellations come from report 133, split by cause ────────────────
+//
+// The tile read "not yet sourced" because `lp_market_scorecard_daily` has no
+// cancellation column — only `ko_count`, a different measure on a different
+// cohort (12 for August against 14 lost jobs in the same window). No amount of
+// backfill fixes that; it is a wiring change.
+//
+// The `lost` bucket is 976 jobs and was one undifferentiated number covering
+// four different management conversations. Credit Decline alone is 340 of them.
+
+describe("§K — loss cause is a status grouping within lost", () => {
+  const lostRow = (bucket: string, count: number, cents: number, over: Partial<ReportFactRow> = {}): ReportFactRow =>
+    ({
+      report_type: "job_status_ytd",
+      market: "STPET_MKT",
+      metric: "cohort_lost_by_status",
+      scope: "ytd",
+      period_start: YTD.periodStart,
+      period_end: YTD.periodEnd,
+      as_of_date: "2026-08-11",
+      value_count: count,
+      value_cents: cents,
+      bucket,
+      ...over,
+    }) as ReportFactRow;
+
+  const COMPANY = [
+    lostRow("cancelled", 520, 1_264_707_000),
+    lostRow("credit_decline", 340, 759_908_900),
+    lostRow("dead_deal", 93, 220_495_000),
+    lostRow("cancelled_by_mgt", 23, 58_618_600),
+  ];
+
+  it("splits the lost cohort into its four causes and foots to the total", () => {
+    const { lost } = buildReportFacts(COMPANY, YTD, "STPET_MKT");
+    expect(lost).not.toBeNull();
+    expect(lost!.basis).toBe("job_status_ytd");
+    expect(lost!.totalCount).toBe(976);
+    expect(lost!.byCause.map((c) => c.key)).toEqual([
+      "cancelled", "credit_decline", "dead_deal", "cancelled_by_mgt",
+    ]);
+    // Ordered most-severe first, and the split MUST equal the total.
+    expect(lost!.byCause.reduce((a, c) => a + c.count, 0)).toBe(lost!.totalCount);
+  });
+
+  it("credit decline is separable — it is 35% of losses and was invisible", () => {
+    const { lost } = buildReportFacts(COMPANY, YTD, "STPET_MKT");
+    const cd = lost!.byCause.find((c) => c.key === "credit_decline")!;
+    expect(cd.count).toBe(340);
+    expect(cd.dollars).toBeCloseTo(7_599_089, 2);
+  });
+
+  it("omits causes nobody had rather than rendering a row of zeros", () => {
+    const { lost } = buildReportFacts([lostRow("cancelled", 5, 100_000)], YTD, "STPET_MKT");
+    expect(lost!.byCause).toHaveLength(1);
+    expect(lost!.byCause[0]!.key).toBe("cancelled");
+  });
+
+  it("returns null — never 0 — when no 133 snapshot covers the period", () => {
+    // Null is what lets the panel say "not yet sourced". A 0 would read as
+    // "nothing was lost", which is a very different claim.
+    expect(buildReportFacts([], YTD, "STPET_MKT").lost).toBeNull();
+  });
+
+  it("does not answer an MTD view from a YTD snapshot", () => {
+    // A loss belongs to the period its job was contracted in — flow semantics,
+    // unlike the open-pipeline buckets.
+    const monthView: ResolvedPeriod = {
+      ...YTD, key: "month", periodStart: "2026-08-01", periodEnd: "2026-08-31", asOf: "2026-08-11",
+    };
+    expect(buildReportFacts(COMPANY, monthView, "STPET_MKT").lost).toBeNull();
+  });
+
+  it("surfaces UNRESOLVED so per-market counts visibly fail to foot", () => {
+    // The 8th market: null branch codes seen in February, April and June. An
+    // unexplained gap in a coaching meeting is worse than an "unassigned" line.
+    const withUnresolved = [
+      ...COMPANY,
+      lostRow("cancelled", 2, 3_000_000, { market: "UNRESOLVED" }),
+      lostRow("credit_decline", 1, 1_362_600, { market: "UNRESOLVED" }),
+    ];
+    const { lost } = buildReportFacts(withUnresolved, YTD, "REECE");
+    expect(lost!.unresolvedCount).toBe(3);
+    expect(lost!.unresolvedDollars).toBeCloseTo(43_626, 2);
+    // Still inside the company total — it is unattributed, not excluded.
+    expect(lost!.totalCount).toBe(979);
+  });
+
+  it("a single market does not inherit another market's losses", () => {
+    const { lost } = buildReportFacts(
+      [lostRow("cancelled", 100, 100_000, { market: "ORL_MKT" })],
+      YTD,
+      "STPET_MKT",
+    );
+    expect(lost).toBeNull();
+  });
+});

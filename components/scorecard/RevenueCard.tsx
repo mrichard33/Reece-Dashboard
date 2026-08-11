@@ -3,11 +3,13 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /**
- * Section ③ — THREE panels, each declaring its own basis, with NO arithmetic
+ * Section ③ — FOUR panels, each declaring its own basis, with NO arithmetic
  * crossing between them (§2, ruled 2026-08-06).
  *
  *   SOLD THIS PERIOD      sold date · report 137 · respects the period filter
  *   RELEASED THIS PERIOD  RTP milestone date · report 134 · respects the filter
+ *   LOST THIS PERIOD      contract-date cohort · report 133 · respects the
+ *                         filter; split by CAUSE, never sourced from ko_count
  *   OPEN BACKLOG          point-in-time · report 133 · IGNORES the period
  *                         filter, honors the market filter, shows its as-of
  *
@@ -155,6 +157,35 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
         vm.snapshot.asOfDate ? `, data through ${usDate(vm.snapshot.asOfDate)}` : ""
       } — no report 134 snapshot covers this period`;
 
+  // LOST THIS PERIOD — report 133's terminal cohort, split by CAUSE.
+  //
+  // The `lost` bucket was one undifferentiated number covering four completely
+  // different management conversations. A credit decline is a finance problem;
+  // a cancellation is a sales problem; a dead deal is a follow-up problem;
+  // cancelled-by-management is a margin or capacity call. Company-wide, Credit
+  // Decline alone is 340 of 976 losses — 35% — and was invisible.
+  //
+  // NOT `ko_count`. That column measures something else on another cohort and
+  // will disagree; the tile said "not yet sourced" precisely because the daily
+  // table has no cancellation column to point at.
+  const lostSourced = f.lostTotalCount != null;
+  const lostLines: Line[] = lostSourced
+    ? [
+        ...f.lostByCause.map(
+          (c): Line => ({
+            label: c.label,
+            value: `${num(c.count)} · ${usd(c.dollars)}`,
+            tone: "red",
+          }),
+        ),
+        {
+          label: "= Total lost",
+          value: `${num(f.lostTotalCount)} · ${usd(f.lostTotalDollars)}`,
+          strong: true,
+        },
+      ]
+    : [{ label: "Lost jobs", value: "not yet sourced", strong: true }];
+
   // OPEN BACKLOG — a point-in-time STOCK from the Job Status report. Every line
   // here is an open job as of the report's own date, regardless of when it was
   // sold. The buckets foot to Total open by construction. No minus signs: this
@@ -196,7 +227,7 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SplitCard
           title="Sold this period"
           info={{
@@ -216,6 +247,24 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           }}
           accent="border-t-2 border-t-emerald-500"
           lines={releasedLines}
+        />
+        <SplitCard
+          title="Lost this period"
+          info={{
+            what:
+              "Jobs from this period's contract cohort that ended in a terminal status, split by cause. Four different problems: a credit decline is finance, a cancellation is sales, a dead deal is follow-up, and cancelled-by-management is a margin or capacity call." +
+              (f.lostUnresolvedCount > 0
+                ? ` ${num(f.lostUnresolvedCount)} of these (${usd(f.lostUnresolvedDollars)}) carry no resolvable branch code, so per-market figures will not foot to this total by that amount.`
+                : ""),
+            where: lostSourced
+              ? `Basis: contract-date cohort · report 133 · ${vm.abbr}${f.lostAsOf ? ` · as of ${usDate(f.lostAsOf)}` : ""}`
+              : "No report 133 snapshot covers this period yet",
+            fix:
+              `${NO_CROSSING} Deliberately NOT sourced from the live sync's ko_count — that is a different measure on a different cohort ` +
+              `(12 for August against 14 lost jobs in the same window) and the two disagree by design.`,
+          }}
+          accent="border-t-2 border-t-brick"
+          lines={lostLines}
         />
         <SplitCard
           title="Open backlog"
