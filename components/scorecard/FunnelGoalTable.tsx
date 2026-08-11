@@ -1,4 +1,4 @@
-import { num } from "@/lib/utils";
+import { num, usDate } from "@/lib/utils";
 import { pct } from "./format";
 import { ScSection } from "./ScSection";
 import { InfoPopover } from "@/components/help/InfoPopover";
@@ -119,7 +119,10 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
     <ScSection
       id="sc-funnel"
       label="Funnel vs Goal"
-      meta="Actual measured against the prorated (MTD) target"
+      // Every figure in this table comes from the live LP sync, which has no
+      // report equivalent for counts or rates — so it cannot be repointed, only
+      // stamped. A rate rendered bare is a rate presented as current.
+      meta={`Actual vs the prorated ${vm.abbr} target · live sync through ${usDate(vm.snapshot.asOfDate)}`}
     >
       {showDivergence && (
         <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">

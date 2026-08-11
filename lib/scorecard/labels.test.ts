@@ -24,6 +24,15 @@ describe("§1 — the close-rate vocabulary", () => {
     expect(METRIC_FORMULAS.close).not.toMatch(/÷ demos/);
   });
 
+  it("KO % names its cohort, because the Lost panel counts the same event differently", () => {
+    // ③ "Lost this period" reads report 133's contract-date cohort; KO % reads
+    // the live sync's sold cohort. For August that is 14 lost jobs against a
+    // ko_count of 12. Both are correct and they will never agree. Two
+    // cancellation figures on one page are fine; two unlabelled ones are not.
+    expect(METRIC_FORMULAS.ko).toMatch(/live sync/i);
+    expect(METRIC_FORMULAS.ko).toMatch(/cohort/i);
+  });
+
   it("every rate label can state its own denominator", () => {
     for (const key of Object.keys(METRIC_LABELS) as (keyof typeof METRIC_LABELS)[]) {
       expect(METRIC_FORMULAS[key]).toBeTruthy();
