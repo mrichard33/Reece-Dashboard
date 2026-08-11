@@ -158,11 +158,54 @@ export type ReleasedFacts = {
   grossReleasedDollars: number | null;
 };
 
+/** The four loss causes LP records, plus a catch-all for anything it adds later. */
+export const LOSS_CAUSES = [
+  { key: "cancelled", label: "Cancelled" },
+  { key: "credit_decline", label: "Credit decline" },
+  { key: "dead_deal", label: "Dead deal" },
+  { key: "cancelled_by_mgt", label: "Cancelled by mgt" },
+  { key: "other_lost", label: "Other" },
+] as const;
+
+export type LossCauseKey = (typeof LOSS_CAUSES)[number]["key"];
+
+/**
+ * Lost jobs for the period, from report 133, split by WHY.
+ *
+ * The `lost` bucket is 976 jobs company-wide and was one undifferentiated
+ * number. It is four different management conversations: a credit decline is a
+ * finance problem, a cancellation is a sales problem, a dead deal is a
+ * follow-up problem, and cancelled-by-management is a margin or capacity call.
+ * Credit Decline alone is 35% of all losses.
+ *
+ * NOT sourced from `lp_market_scorecard_daily.ko_count`. That column is a
+ * different measure on a different cohort — 12 for August against 14 lost jobs
+ * in the same window — and the two disagree by design.
+ */
+export type LostFacts = {
+  basis: "job_status_ytd";
+  asOf: string;
+  scope: FactScope | null;
+  totalCount: number;
+  totalDollars: number;
+  byCause: { key: LossCauseKey; label: string; count: number; dollars: number }[];
+  /**
+   * Losses whose branch code did not resolve to a market (null `brn_id` seen in
+   * February, April and June). Non-zero only on the company view, which is the
+   * only place the per-market rows can fail to foot to the total. Surfaced
+   * explicitly: an unexplained gap in a coaching meeting is worse than an
+   * "unassigned" line.
+   */
+  unresolvedCount: number;
+  unresolvedDollars: number;
+};
+
 export type ReportFacts = {
   sold: SoldFacts | null;
   goodBusiness: GoodBusinessFacts | null;
   leads: LeadsFacts | null;
   released: ReleasedFacts | null;
+  lost: LostFacts | null;
 };
 
 const dollars = (cents: number | null | undefined): number | null =>
@@ -465,6 +508,61 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
   };
 }
 
+function buildLost(
+  rows: ReportFactRow[],
+  resolved: ResolvedPeriod,
+  marketCode: string,
+): LostFacts | null {
+  const inMarket = marketFilter(marketCode);
+  // FLOW semantics, unlike the open-pipeline buckets in buildGoodBusiness: a
+  // loss belongs to the period its job was contracted in, so a YTD snapshot
+  // must not answer an MTD view.
+  const js = pickSnapshot(
+    rows.filter(
+      (r) =>
+        r.report_type === "job_status_ytd" &&
+        r.metric === "cohort_lost_by_status" &&
+        inMarket(r.market) &&
+        coversPeriod(r, resolved),
+    ),
+    resolved,
+  );
+  if (!js.length) return null; // unknown, not zero
+
+  const byCause = LOSS_CAUSES.map(({ key, label }) => {
+    let count = 0;
+    let cents = 0;
+    for (const r of js) {
+      if (r.bucket !== key) continue;
+      count += r.value_count;
+      cents += r.value_cents ?? 0;
+    }
+    return { key, label, count, dollars: cents / 100 };
+  }).filter((c) => c.count > 0); // never render a cause nobody had
+
+  const totalCount = byCause.reduce((a, c) => a + c.count, 0);
+  const totalDollars = byCause.reduce((a, c) => a + c.dollars, 0);
+
+  let unresolvedCount = 0;
+  let unresolvedCents = 0;
+  for (const r of js) {
+    if (r.market !== "UNRESOLVED") continue;
+    unresolvedCount += r.value_count;
+    unresolvedCents += r.value_cents ?? 0;
+  }
+
+  return {
+    basis: "job_status_ytd",
+    asOf: js[0]!.as_of_date,
+    scope: js[0]!.scope ?? null,
+    totalCount,
+    totalDollars,
+    byCause,
+    unresolvedCount,
+    unresolvedDollars: unresolvedCents / 100,
+  };
+}
+
 function buildGoodBusiness(rows: ReportFactRow[], marketCode: string): GoodBusinessFacts | null {
   const inMarket = marketFilter(marketCode);
   // Stock semantics: the current job_status_ytd snapshot is the open pipeline
@@ -567,5 +665,6 @@ export function buildReportFacts(
     goodBusiness: buildGoodBusiness(rows, marketCode),
     leads: buildLeads(rows, resolved, marketCode),
     released: buildReleased(rows, resolved, marketCode),
+    lost: buildLost(rows, resolved, marketCode),
   };
 }

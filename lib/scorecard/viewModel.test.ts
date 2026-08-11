@@ -350,6 +350,23 @@ const FACTS: ReportFacts = {
     netReleasedDollars: 56_893_787.43,
     grossReleasedDollars: 79_904_667.2,
   },
+  // Report 133's terminal cohort, split by cause — the figure the Lost panel
+  // renders. Real company shape as of 2026-08-11.
+  lost: {
+    basis: "job_status_ytd" as const,
+    asOf: "2026-08-05",
+    scope: "ytd" as const,
+    totalCount: 976,
+    totalDollars: 23_037_295,
+    byCause: [
+      { key: "cancelled" as const, label: "Cancelled", count: 520, dollars: 12_647_070 },
+      { key: "credit_decline" as const, label: "Credit decline", count: 340, dollars: 7_599_089 },
+      { key: "dead_deal" as const, label: "Dead deal", count: 93, dollars: 2_204_950 },
+      { key: "cancelled_by_mgt" as const, label: "Cancelled by mgt", count: 23, dollars: 586_186 },
+    ],
+    unresolvedCount: 3,
+    unresolvedDollars: 43_626,
+  },
   goodBusiness: {
     asOf: "2026-08-05",
     hoa: { count: 93, dollars: 2_008_759 },
