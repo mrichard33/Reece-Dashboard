@@ -38,8 +38,44 @@ const PROVISIONAL_DEF =
 export function freshnessChip(input: {
   asOfDate: string | null;
   computedFrom: string | null;
+  /**
+   * `scorecard_report_snapshots.is_partial_month` — true when the file was
+   * generated at or before its own period_end, so it does not cover the whole
+   * period it declares. NULL means unknown (legacy PDF snapshots carry no
+   * reliable generation time) and must never be read as false.
+   */
+  isPartial?: boolean | null;
+  /** `period_end` the partial file reaches — the date it is partial THROUGH. */
+  partialThrough?: string | null;
 }): FreshnessChip {
-  const when = input.asOfDate ? `Data through ${usDate(input.asOfDate)}` : "No data";
+  // A partial file is a different claim from a stale one: the data is current,
+  // it just does not cover all of the period it names. Saying "Data through" for
+  // it would overstate coverage, so the prefix changes rather than the date.
+  //
+  // Only an explicit true triggers this. Under [DAYOFFSET(-1)] it should never
+  // fire — it exists to make a scheduling regression visible instead of silently
+  // publishing a short day as a whole one.
+  const partial = input.isPartial === true;
+  const through = input.partialThrough ?? input.asOfDate;
+
+  const when = partial && through
+    ? `Partial through ${usDate(through)}`
+    : input.asOfDate
+      ? `Data through ${usDate(input.asOfDate)}`
+      : "No data";
+
+  // A partial file cannot be an exact closed-month reading, whatever
+  // computed_from says — the period it declares is not fully covered.
+  if (partial) {
+    return {
+      text: `${when} · Partial`,
+      title:
+        "This report was generated before the period it covers had ended, so it " +
+        `does not include every day through ${through ? usDate(through) : "the period end"}. ` +
+        "Treat the totals as incomplete rather than low.",
+      tone: "amber",
+    };
+  }
 
   if (input.computedFrom === "net_report_rtp") {
     return {

@@ -16,6 +16,7 @@ import type { RevenueBucket } from "@/components/scorecard/viz/RevenueStack";
 import type { RankedItem } from "@/components/scorecard/viz/RankedBars";
 import type { ScorecardView } from "@/lib/queries/scorecard";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
+import { sellingDaysElapsed, type SellingCalendar } from "@/lib/date/sellingDays";
 import type { ReportFacts } from "@/lib/queries/reportFacts.core";
 
 // ── formatters specific to the scorecard visuals ────────────────────────────
@@ -84,7 +85,10 @@ export type ScorecardVM = {
   snapshot: {
     asOfDate: string;
     rangeLabel: string;
+    /** Selling days elapsed by the CALENDAR — independent of how fresh the feed is. */
     daysElapsed: number;
+    /** Selling days the ACTUALS cover, per the snapshot. Below daysElapsed when stale. */
+    dataDaysElapsed: number | null;
     sellingDays: number;
     rawLeads: number | null;
     reconciled: boolean;
@@ -249,17 +253,41 @@ export function buildScorecardVM(
   view: ScorecardView,
   resolved: ResolvedPeriod,
   reportFacts?: ReportFacts | null,
+  cal?: SellingCalendar,
 ): ScorecardVM {
   const { actuals: a, goals: g, derived: d } = view;
   const abbr = abbrFor(resolved.key);
 
   // Elapsed COMPLETED selling days — 0 on the first day of a period ("no completed
   // days yet"); never coerced to 1, so pace math can render "—" instead of lying.
-  const daysElapsed = a.days_elapsed ?? 0;
+  //
+  // This is a CALENDAR fact and must not come from the data. `a.days_elapsed` is
+  // written by the LP-MCP daily job and anchored to that snapshot's as_of_date, so
+  // a stalled feed freezes it: on 2026-08-11 the tile read "6 of 26" because the
+  // snapshot had not advanced past 2026-08-07, while eight selling days had
+  // actually elapsed. Every target-to-date is prorated over this number, so a
+  // stale feed shrinks the target in step with the missing actuals and a real
+  // miss renders as on-pace. The feed going quiet must make the page look WORSE,
+  // not better.
+  //
+  // resolved.asOf is lastCompletedSellingDay(today) for the MTD key — derived
+  // from the calendar, never from the feed — so counting to it is immune.
+  // `today never counts` is already true by construction: asOf is the last
+  // COMPLETED selling day.
+  const calendarElapsed = cal
+    ? sellingDaysElapsed(resolved.periodStart, resolved.asOf, cal)
+    : null;
+  const daysElapsed = calendarElapsed ?? a.days_elapsed ?? 0;
+  /** How far the ACTUALS reach — the snapshot's own count. Only for showing age. */
+  const dataDaysElapsed = a.days_elapsed ?? null;
   // Period-total selling days — expands with the filter (whole year for YTD, whole
-  // quarter for QTD, the month for a single-month view). Falls back to the monthly
-  // denominator on single-month / recompute paths that don't set it.
-  const sellingDays = a.period_working_days ?? a.working_days_in_period ?? g.working_days ?? 26;
+  // quarter for QTD, the month for a single-month view).
+  //
+  // No numeric fallback: a missing denominator used to become 26, which is a
+  // plausible-looking month and therefore silently wrong for Feb (24), Nov (23)
+  // or any period that is not a single month. 0 propagates to the `sellingDays > 0`
+  // guards below and renders "—".
+  const sellingDays = a.period_working_days ?? a.working_days_in_period ?? g.working_days ?? 0;
 
   // ── pace ──
   // Headline Net = RELEASED TO PRODUCTION (RTP) — the basis of Reece's official Net
@@ -482,6 +510,7 @@ export function buildScorecardVM(
       asOfDate: a.as_of_date,
       rangeLabel: `${a.period_start} → ${a.period_end}`,
       daysElapsed,
+      dataDaysElapsed,
       sellingDays,
       rawLeads: a.raw_leads_in,
       reconciled: d.reconciled,
