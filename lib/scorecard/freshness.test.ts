@@ -72,3 +72,63 @@ describe("§6 — staleness measured in selling days", () => {
     expect(stalenessPhrase(null)).toBeNull();
   });
 });
+
+// ── Partial coverage ────────────────────────────────────────────────────────
+//
+// `is_partial_month` has been computed and stored on every snapshot since
+// 2026-08-06 (lp_is_partial_coverage: the file's ET generation date <= its own
+// period_end). Nothing ever read it. Under the rolling daily schedule a partial
+// file would publish a short day as if it were a whole one, and the only visible
+// symptom would be a dip that looks like a bad day of selling.
+
+describe("freshnessChip — partial coverage", () => {
+  it("says Partial through, not Data through", () => {
+    const chip = freshnessChip({
+      asOfDate: "2026-08-11",
+      computedFrom: null,
+      isPartial: true,
+      partialThrough: "2026-08-10",
+    });
+    expect(chip.text).toBe("Partial through 08-10-2026 · Partial");
+    expect(chip.tone).toBe("amber");
+  });
+
+  it("outranks computed_from — a partial file is never an exact closed month", () => {
+    // net_report_rtp normally renders emerald "Net Report actual". A file that
+    // does not cover its own period cannot be the exact reading of it.
+    const chip = freshnessChip({
+      asOfDate: "2026-08-11",
+      computedFrom: "net_report_rtp",
+      isPartial: true,
+      partialThrough: "2026-08-10",
+    });
+    expect(chip.text).toContain("Partial");
+    expect(chip.text).not.toContain("Net Report actual");
+    expect(chip.tone).toBe("amber");
+  });
+
+  it("falls back to asOfDate when no period_end is supplied", () => {
+    const chip = freshnessChip({ asOfDate: "2026-08-10", computedFrom: null, isPartial: true });
+    expect(chip.text).toBe("Partial through 08-10-2026 · Partial");
+  });
+
+  it("treats NULL as unknown, never as false", () => {
+    // Legacy PDF snapshots carry no reliable generation time, so is_partial_month
+    // is NULL. Rendering those as "Partial" would cry wolf on every historical
+    // month; rendering them as partial-free is the existing, correct behaviour.
+    const unknown = freshnessChip({ asOfDate: "2026-08-10", computedFrom: null, isPartial: null });
+    expect(unknown.text).toBe("Data through 08-10-2026 · Provisional");
+
+    const explicitlyWhole = freshnessChip({
+      asOfDate: "2026-08-10", computedFrom: null, isPartial: false, partialThrough: "2026-08-10",
+    });
+    expect(explicitlyWhole.text).toBe("Data through 08-10-2026 · Provisional");
+  });
+
+  it("still never says Live", () => {
+    const chip = freshnessChip({
+      asOfDate: "2026-08-11", computedFrom: null, isPartial: true, partialThrough: "2026-08-10",
+    });
+    expect(chip.text.toLowerCase()).not.toContain("live");
+  });
+});

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildScorecardVM, scMoneyShort, scPts } from "./viewModel";
 import type { ScorecardView } from "@/lib/queries/scorecard";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
+import { resolveSellingCalendar } from "@/lib/date/sellingDays";
 
 const MONTH: ResolvedPeriod = {
   key: "month",
@@ -442,5 +443,95 @@ describe("buildScorecardVM — revenue.facts (③ cards)", () => {
     const vm = buildScorecardVM(makeView(), MONTH);
     expect(vm.revenue.facts.soldBasis).toBeNull();
     expect(vm.revenue.facts.pendingTotal).toBeNull();
+  });
+});
+
+// ── §4 elapsed days come from the calendar, never from the feed ─────────────
+//
+// The scorecard read "6 of 26" on 2026-08-11. The arithmetic was right; the
+// input was not. `days_elapsed` is written by the LP-MCP daily job and anchored
+// to that snapshot's as_of_date, so when the job stalled at 2026-08-07 the count
+// froze with it while eight selling days had actually elapsed.
+//
+// That is worse than a cosmetic lag. Every target-to-date is prorated over this
+// number, so a stale feed shrinks the target in lockstep with the missing
+// actuals and a genuine miss renders as on-pace. A feed going quiet has to make
+// the page look WORSE, not better.
+
+describe("elapsed days ignore a stale feed", () => {
+  const CAL = resolveSellingCalendar({
+    SCORECARD_SELLING_DAYS: "mon,tue,wed,thu,fri,sat",
+    SCORECARD_HOLIDAYS: "none",
+  });
+
+  /** Aug 2026 MTD resolved to the last completed selling day, Mon Aug 10. */
+  const AUG: ResolvedPeriod = {
+    key: "month",
+    label: "Aug 2026 (MTD)",
+    periodStart: "2026-08-01",
+    periodEnd: "2026-08-10",
+    asOf: "2026-08-10",
+    isPartial: false,
+    source: "snapshot",
+  };
+
+  /** A snapshot frozen at Aug 7 — the 2026-08-11 outage, reproduced. */
+  const staleView = (): ScorecardView => {
+    const v = makeView();
+    v.actuals.period_start = "2026-08-01";
+    v.actuals.period_end = "2026-08-07";
+    v.actuals.as_of_date = "2026-08-07";
+    v.actuals.days_elapsed = 6; // what the stalled job last wrote
+    v.actuals.working_days_in_period = 26;
+    return v;
+  };
+
+  it("counts to the last completed selling day, not to the snapshot", () => {
+    const vm = buildScorecardVM(staleView(), AUG, null, CAL);
+    // Aug 1(Sat) 3 4 5 6 7 8 10 — Sundays 2 and 9 excluded → 8 selling days.
+    expect(vm.snapshot.daysElapsed).toBe(8);
+    expect(vm.snapshot.daysElapsed).toBeGreaterThan(6);
+  });
+
+  it("still reports how far the ACTUALS reach, so the gap stays visible", () => {
+    // Overriding elapsed must not hide the staleness — it relocates it.
+    const vm = buildScorecardVM(staleView(), AUG, null, CAL);
+    expect(vm.snapshot.dataDaysElapsed).toBe(6);
+    expect(vm.snapshot.asOfDate).toBe("2026-08-07");
+  });
+
+  it("does not shrink the target basis to match the missing actuals", () => {
+    // Every target-to-date is prorated over elapsed/selling days — funnel goals
+    // (perDay * elapsed), mtd_goal_dollars, and the per-day table all share this
+    // basis. Pinning the basis pins all of them, without depending on the
+    // fixture carrying goals for any particular stage.
+    const withCal = buildScorecardVM(staleView(), AUG, null, CAL);
+    const withoutCal = buildScorecardVM(staleView(), AUG, null);
+
+    expect(withCal.pace.daysElapsed).toBeGreaterThan(withoutCal.pace.daysElapsed);
+    expect(withCal.pace.elapsedPct).toBeGreaterThan(withoutCal.pace.elapsedPct);
+
+    // 8/26 vs the stalled 6/26 — the period is 31% gone, not 23%.
+    expect(Math.round(withCal.pace.elapsedPct)).toBe(31);
+    expect(Math.round(withoutCal.pace.elapsedPct)).toBe(23);
+  });
+
+  it("today never counts", () => {
+    // asOf is the last COMPLETED selling day, so Tue Aug 11 is excluded by
+    // construction — an in-progress day is not an elapsed one.
+    const vm = buildScorecardVM(staleView(), AUG, null, CAL);
+    expect(vm.snapshot.daysElapsed).toBe(8); // not 9
+  });
+
+  it("a missing denominator renders as unknown, not as a plausible 26", () => {
+    const v = staleView();
+    v.actuals.working_days_in_period = null;
+    v.actuals.period_working_days = null;
+    v.goals.working_days = null as unknown as number;
+    const vm = buildScorecardVM(v, AUG, null, CAL);
+    // 26 is right for August and wrong for Feb (24) or Nov (23). Guessing it hid
+    // the missing value; 0 propagates to the `sellingDays > 0` guards and renders "—".
+    expect(vm.snapshot.sellingDays).toBe(0);
+    expect(vm.pace.elapsedPct).toBe(0);
   });
 });

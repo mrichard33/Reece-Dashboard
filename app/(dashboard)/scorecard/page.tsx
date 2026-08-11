@@ -16,7 +16,7 @@ import { ByMarketTable } from "@/components/scorecard/ByMarketTable";
 import { EditGoalsPanel } from "@/components/scorecard/EditGoalsPanel";
 import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries/scorecard";
 import { getByMarket } from "@/lib/queries/byMarket";
-import { getReportFacts } from "@/lib/queries/reportFacts";
+import { getReportFacts, getPartialCoverage } from "@/lib/queries/reportFacts";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { lastCompletedSellingDay, resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
 import { freshnessChip, stalenessSellingDays, stalenessPhrase } from "@/lib/scorecard/freshness";
@@ -47,7 +47,7 @@ export default async function ScorecardPage({
   // derives "this month" from the browser's local clock.
   const currentMonthET = todayET().slice(0, 7);
 
-  const [view, byMarket, reportFacts] = await Promise.all([
+  const [view, byMarket, reportFacts, partialCoverage] = await Promise.all([
     getScorecardForPeriod(MARKET, resolved).catch((err) => {
       console.error(`[scorecard] view ${MARKET} failed:`, (err as Error)?.message ?? err);
       return null;
@@ -59,6 +59,9 @@ export default async function ScorecardPage({
     // ③ card figures (lp_report_facts) — getReportFacts never rejects; a
     // failure yields nulls and the cards render "not yet sourced".
     getReportFacts(MARKET, resolved),
+    // Partial-coverage flags for the current snapshots. Never rejects — an empty
+    // map just leaves the freshness chip at its existing wording.
+    getPartialCoverage(),
   ]);
   // Admin-only editor data — never let its fan-out take down the page; the panel
   // simply hides if it can't load.
@@ -111,9 +114,16 @@ export default async function ScorecardPage({
         // "live · provisional" described a table that had not moved since
         // 2026-08-07, and never defined "provisional" anywhere a reader could
         // reach. The chip now leads with the date and carries the definition.
+        // Released revenue is the headline figure and comes from report 134, so
+        // that snapshot's coverage is the one the chip has to speak for. Under
+        // [DAYOFFSET(-1)] this never fires — it exists so a scheduling
+        // regression shows up as a label rather than as a quiet dip.
+        const cover = partialCoverage.get(`jobs_by_milestone|${resolved.periodStart}`);
         const chip = freshnessChip({
           asOfDate: view.actuals.as_of_date,
           computedFrom: view.actuals.computed_from,
+          isPartial: cover?.isPartial ?? null,
+          partialThrough: cover?.periodEnd ?? null,
         });
         const tone =
           chip.tone === "emerald"
@@ -178,7 +188,7 @@ export default async function ScorecardPage({
           </Card>
         ) : (
           (() => {
-            const vm = buildScorecardVM(view, resolved, reportFacts);
+            const vm = buildScorecardVM(view, resolved, reportFacts, SELLING_CAL);
             return (
               <>
                 {/*

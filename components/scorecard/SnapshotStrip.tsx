@@ -5,10 +5,23 @@ import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 /** One-line meta bar: snapshot date, window, selling-day progress, raw leads. */
 export function SnapshotStrip({ vm }: { vm: ScorecardVM }) {
   const s = vm.snapshot;
+
+  // Selling days elapsed is a calendar fact, so this counts real elapsed days
+  // even when the feed has stalled. When the actuals reach fewer days than have
+  // elapsed, say so here rather than leaving a bare "8 of 26" next to numbers
+  // that only cover six of them — the count and its coverage belong together.
+  const behind = s.dataDaysElapsed != null && s.dataDaysElapsed < s.daysElapsed;
+  const sellingDays = s.sellingDays > 0 ? String(s.sellingDays) : "—";
+
   const items: [string, string][] = [
     ["Snapshot", s.asOfDate],
     ["Window", s.rangeLabel],
-    ["Selling days", `${s.daysElapsed} of ${s.sellingDays}`],
+    [
+      "Selling days",
+      behind
+        ? `${s.daysElapsed} of ${sellingDays} · data covers ${s.dataDaysElapsed}`
+        : `${s.daysElapsed} of ${sellingDays}`,
+    ],
     ["Raw leads", s.rawLeads != null ? num(s.rawLeads) : "—"],
   ];
   return (

@@ -40,10 +40,13 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
   // view model's already-resolved value rather than re-deriving it is what keeps
   // the two sections from disagreeing on one page.
   const leads = vm.revenue.facts.leads;
-  const daysElapsed = a.days_elapsed ?? 0;
-  // Same period-wide denominator as the ① hero (period_working_days first) so the
-  // "Monthly Goal" column and the pace strip never disagree on the day basis.
-  const sellingDays = a.period_working_days ?? a.working_days_in_period ?? g.working_days ?? 26;
+  // Both day figures come from the view model, for the same reason the leads
+  // figure above does: re-deriving them here is what lets two sections of one
+  // page disagree. It also picked up `a.days_elapsed`, which freezes when the
+  // feed stalls, and a `?? 26` denominator that quietly substitutes a
+  // plausible-looking month for a missing one.
+  const daysElapsed = vm.snapshot.daysElapsed;
+  const sellingDays = vm.snapshot.sellingDays;
 
   // ── count rows: goal = per-day target × days (target-to-date) or × selling days (monthly).
   //    A miss on a volume row is amber (recoverable), matching the approved design.
