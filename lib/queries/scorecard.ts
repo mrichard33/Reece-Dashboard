@@ -25,6 +25,7 @@ import {
   sumTargetTotals,
   perDayActual,
   prorateGoal,
+  revenueAnchorDate,
   type PerDayTargets,
   type TargetTotals,
 } from "@/lib/scorecard/paceTargets";
@@ -159,8 +160,16 @@ export type ScorecardDerived = {
    *  view; the sum of Jan…current-month goals for YTD. */
   period_goal_dollars: number;
   /** Goal $ prorated to the elapsed share of the period — Σ fully-elapsed months +
-   *  current month × (elapsed ÷ working days). This is "Target to Date". */
+   *  current month × (elapsed ÷ working days). This is "Target to Date" for the
+   *  COUNTS, which reach the period's own as-of date. */
   mtd_goal_dollars: number;
+  /** Goal $ prorated to `revenue_as_of` — the date released dollars actually
+   *  reach. The revenue hero divides by THIS, never by `mtd_goal_dollars`:
+   *  revenue settled through Aug 6 measured against a target prorated to Aug 10
+   *  is understated every day and reads "behind pace" regardless of performance.
+   *  Equals `mtd_goal_dollars` when no Net Report has landed for the period.
+   *  See docs/revenue-as-of.md. */
+  revenue_goal_to_date_dollars: number;
   /** CALCULATED trailing NET average sale (net sales ÷ sales count) — the divisor
    *  that turns the net goal into a target sales count (sales = goal ÷ this). */
   avg_sale_target: number | null;
@@ -704,6 +713,12 @@ function derive(
   periodGoalFull?: number | null,
   rates?: TrailingRates,
   anchor?: { anchorMonth: string; periodScoped: boolean },
+  /** Σ of the units' revenue-anchored to-date goals (aggregate periods only). */
+  revenueGoalOverride?: number | null,
+  /** Calendar-derived elapsed selling days for the single-month path. */
+  elapsedOverride?: number | null,
+  /** Selling days elapsed through `revenue_as_of` (single-month path). */
+  revenueElapsedOverride?: number | null,
 ): ScorecardDerived {
   const avgSaleTarget = rates?.avgSale ?? null;
   // Selling-day basis (both sides): the FULL period's selling days for target
@@ -711,13 +726,26 @@ function derive(
   // an elapsed day (the writer/aggregator already exclude it).
   const periodDays =
     actuals.period_working_days ?? actuals.working_days_in_period ?? goals.working_days ?? 0;
-  const elapsed = actuals.days_elapsed ?? 0;
+  // Prefer the calendar-derived count; fall back to the snapshot only when no
+  // resolved period was supplied (period-less reads).
+  const elapsed = elapsedOverride ?? actuals.days_elapsed ?? 0;
   // Aggregate periods (3 Months / YTD) sum the frozen monthly goals in range;
   // single-month snapshots prorate the live monthly goal by elapsed selling days.
   const mtd_goal_dollars =
     periodGoalOverride != null
       ? Math.round(periodGoalOverride)
       : Math.round(prorateGoal(goals.monthly_goal_dollars, elapsed, periodDays) ?? 0);
+  // THE REVENUE TARGET. Released dollars are knowable only through the Net
+  // Report's coverage date, so the target they are measured against prorates to
+  // that same date — never to the period end, and never to the (later) date the
+  // COUNTS reach. Falls back to the count target when no revenue date exists, so
+  // a period with no report behaves exactly as before. See docs/revenue-as-of.md.
+  const revenue_goal_to_date_dollars =
+    revenueGoalOverride != null
+      ? Math.round(revenueGoalOverride)
+      : revenueElapsedOverride != null
+        ? Math.round(prorateGoal(goals.monthly_goal_dollars, revenueElapsedOverride, periodDays) ?? 0)
+        : mtd_goal_dollars;
   // Full (unprorated) goal for the whole period. Aggregate → Σ of every month's
   // goal in range; single month → the month's goal. Never the current-month goal
   // alone for a multi-month view.
@@ -740,6 +768,7 @@ function derive(
     monthly_goal_dollars: goals.monthly_goal_dollars,
     period_goal_dollars,
     mtd_goal_dollars,
+    revenue_goal_to_date_dollars,
     avg_sale_target: avgSaleTarget ?? null,
     rate_window: rates?.window ?? null,
     rate_sample_n: rates?.sampleN ?? null,
@@ -1070,12 +1099,21 @@ async function buildView(
   const unitGoals = isAggregate
     ? await Promise.all(
         units.map((srcs) =>
-          resolvePeriodGoalForSources(sb, srcs, resolved!, cal, liveEffectiveFor, baselineForSource),
+          resolvePeriodGoalForSources(
+            sb,
+            srcs,
+            resolved!,
+            cal,
+            liveEffectiveFor,
+            baselineForSource,
+            actuals.revenue_as_of,
+          ),
         ),
       )
     : units.map((srcs) => ({
         toDate: null as number | null,
         full: srcs.reduce((a, c) => a + liveEffectiveFor(c, actuals.period_start), 0),
+        revenueToDate: null as number | null,
         estimated: false,
       }));
 
@@ -1083,7 +1121,27 @@ async function buildView(
   const periodGoalToDate = isAggregate
     ? unitGoals.reduce((a, u) => a + (u.toDate ?? 0), 0)
     : null;
+  const revenueGoalToDate = isAggregate
+    ? unitGoals.reduce((a, u) => a + (u.revenueToDate ?? 0), 0)
+    : null;
   const estimated = unitGoals.some((u) => u.estimated);
+
+  // ── elapsed-day anchors for the single-month (snapshot) path ──
+  // Both are CALENDAR facts. `actuals.days_elapsed` is written by the LP-MCP daily
+  // job and frozen at that snapshot's as_of_date, so a stalled feed shrinks the
+  // target in step with the missing actuals and a real miss renders as on-pace.
+  // The view model already refuses to display that number for the same reason;
+  // the goal it is compared against has to use the same anchor or the two
+  // disagree — which is exactly how the panel came to read "8 / 26 elapsed"
+  // beside a $700,000 (7/26) Fort Myers target. See docs/revenue-as-of.md.
+  const countElapsedOverride =
+    resolved && !isAggregate ? sellingDaysElapsed(actuals.period_start, resolved.asOf, cal) : null;
+  // Revenue reaches only as far as the Net Report covers, and never past the
+  // period's own as-of.
+  const revenueAnchor =
+    resolved && !isAggregate ? revenueAnchorDate(resolved.asOf, actuals.revenue_as_of) : null;
+  const revenueElapsedOverride =
+    revenueAnchor == null ? null : sellingDaysElapsed(actuals.period_start, revenueAnchor, cal);
 
   // ── per-day pace targets: one NSLI chain per unit, then Σ ──
   const periodDays =
@@ -1130,6 +1188,9 @@ async function buildView(
       isAggregate ? periodGoalFull : null,
       rates,
       anchor,
+      revenueGoalToDate,
+      countElapsedOverride,
+      revenueElapsedOverride,
     ),
   };
 }
@@ -1166,7 +1227,15 @@ async function resolvePeriodGoalForSources(
   cal: SellingCalendar,
   liveEffectiveFor: (src: string, atMonth: string) => number,
   baselineForSource: (src: string, atMonth: string) => { value: number },
-): Promise<{ toDate: number; full: number; estimated: boolean }> {
+  /**
+   * Coverage end date of the month's Net Report (`revenue_as_of`), or null when
+   * no report has landed. The REVENUE target prorates to this date instead of
+   * `resolved.asOf`: released dollars are only knowable through the last report,
+   * so measuring them against a target that reaches further is understated by
+   * construction. See docs/revenue-as-of.md.
+   */
+  revenueAsOf: string | null,
+): Promise<{ toDate: number; full: number; revenueToDate: number; estimated: boolean }> {
   const months = monthsInRange(resolved.periodStart, resolved.periodEnd);
 
   const { data: frozenRows } = await sb
@@ -1180,10 +1249,14 @@ async function resolvePeriodGoalForSources(
   }
 
   // `total` = Target to Date (current month prorated). `periodTotal` = Period Goal
-  // (every month in range counted in full, unprorated).
+  // (every month in range counted in full, unprorated). `revenueTotal` is the same
+  // shape as `total` but anchored to the revenue watermark.
   let total = 0;
   let periodTotal = 0;
+  let revenueTotal = 0;
   let estimated = false;
+
+  const revenueAnchor = revenueAnchorDate(resolved.asOf, revenueAsOf);
   for (const monthStart of months) {
     const y = Number(monthStart.slice(0, 4));
     const mo = Number(monthStart.slice(5, 7));
@@ -1207,19 +1280,24 @@ async function resolvePeriodGoalForSources(
     // Period Goal counts every month in range at full.
     periodTotal += monthGoal;
 
-    // Target to Date: prorate the month that contains asOf; fully-elapsed months
-    // count in full; months entirely after asOf contribute nothing.
-    if (resolved.asOf >= monthEnd) {
-      total += monthGoal;
-    } else if (resolved.asOf >= monthStart) {
+    // Target to Date: prorate the month that contains the anchor; fully-elapsed
+    // months count in full; months entirely after the anchor contribute nothing.
+    // Identical shape for both anchors — only the date differs, so the count
+    // target and the revenue target can never drift apart in their math.
+    const toDateAt = (anchor: string): number => {
+      if (anchor >= monthEnd) return monthGoal;
+      if (anchor < monthStart) return 0;
       const wd = sellingDaysInPeriod(monthStart, monthEnd, cal);
-      const elapsed = sellingDaysElapsed(monthStart, resolved.asOf, cal);
-      total += prorateGoal(monthGoal, elapsed, wd) ?? 0;
-    }
+      const elapsed = sellingDaysElapsed(monthStart, anchor, cal);
+      return prorateGoal(monthGoal, elapsed, wd) ?? 0;
+    };
+    total += toDateAt(resolved.asOf);
+    revenueTotal += toDateAt(revenueAnchor);
   }
   return {
     toDate: Math.round(total),
     full: Math.round(periodTotal),
+    revenueToDate: Math.round(revenueTotal),
     estimated,
   };
 }

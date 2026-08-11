@@ -5,7 +5,8 @@ import {
 } from "@/lib/queries/scorecard";
 import { lpServer } from "@/lib/supabase/lp";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
-import { prorateGoal } from "@/lib/scorecard/paceTargets";
+import { prorateGoal, revenueAnchorDate } from "@/lib/scorecard/paceTargets";
+import { resolveSellingCalendar, sellingDaysElapsed } from "@/lib/date/sellingDays";
 import {
   SCORECARD_MARKETS,
   UTILITY_MARKETS,
@@ -125,6 +126,15 @@ function mtdGoalFor(
   goalRow: GoalRow | undefined,
   baselineRows: BaselineRow[],
   periodStart: string,
+  /**
+   * Selling days elapsed through the market's `revenue_as_of`. This table's
+   * `net_sales` is `released_dollars` — money the Net Report has settled — so
+   * the goal it is divided by has to stop on the same date. Prorating to the
+   * (later) date the COUNTS reach is what made Fort Lauderdale read 5% of
+   * target and Lakeland 0%. Null → fall back to the snapshot's own elapsed.
+   * See docs/revenue-as-of.md.
+   */
+  revenueElapsed: number | null,
 ): number | null {
   if (!goalRow) return null;
   const growth = numOrNull(goalRow.growth_pct);
@@ -133,7 +143,7 @@ function mtdGoalFor(
       ? Math.round(computeBaselineFromRows(baselineRows, periodStart).value * (1 + growth / 100))
       : numOr0(goalRow.monthly_goal_dollars);
   const wd = numOrNull(actualsRow.working_days_in_period) ?? numOr0(goalRow.working_days);
-  const elapsed = numOr0(actualsRow.days_elapsed);
+  const elapsed = revenueElapsed ?? numOr0(actualsRow.days_elapsed);
   const prorated = prorateGoal(effective, elapsed, wd ?? 0);
   return prorated == null ? null : Math.round(prorated);
 }
@@ -309,8 +319,20 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
       net_sales: sum("net_sales"),
       days_elapsed: Math.max(...found.map((r) => numOr0(r.days_elapsed))),
       working_days_in_period: Math.max(...found.map((r) => numOr0(r.working_days_in_period))) || null,
+      // The merged market's revenue reaches only as far as its LEAST-covered
+      // constituent. In practice every source carries the same Net Report date,
+      // but taking the min means a market can never claim coverage one of its
+      // offices does not have. Dropping the column entirely — which this sum
+      // used to do — silently reverted merged markets to the count basis.
+      revenue_as_of: found
+        .map((r) => (r.revenue_as_of == null ? null : String(r.revenue_as_of).slice(0, 10)))
+        .filter((d): d is string => d != null)
+        .sort()[0] ?? null,
     };
   };
+
+  // Calendar for the revenue anchor. Server-side only, same env the writer reads.
+  const cal = resolveSellingCalendar();
 
   const buildRow = (
     code: string,
@@ -320,11 +342,22 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   ): ByMarketRow | null => {
     const a = combinedActuals(sources);
     if (!a) return null;
+    // How far this market's RELEASED dollars actually reach.
+    const revAsOf = a.revenue_as_of == null ? null : String(a.revenue_as_of).slice(0, 10);
+    const revenueElapsed = revAsOf
+      ? sellingDaysElapsed(periodStart, revenueAnchorDate(resolved.asOf, revAsOf), cal)
+      : null;
     // Goal = Σ of the source markets' prorated goals.
     let goal: number | null = null;
     if (!utility) {
       for (const src of sources) {
-        const g = mtdGoalFor(a, goals.get(src), baseByMarket.get(src) ?? [], periodStart);
+        const g = mtdGoalFor(
+          a,
+          goals.get(src),
+          baseByMarket.get(src) ?? [],
+          periodStart,
+          revenueElapsed,
+        );
         if (g != null) goal = (goal ?? 0) + g;
       }
     }
@@ -380,7 +413,10 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
   type V = NonNullable<Awaited<ReturnType<typeof getScorecardForPeriod>>>;
   const toRow = (market: string, label: string, utility: boolean, v: V): ByMarketRow => {
     const a = v.actuals as unknown as Record<string, unknown>;
-    const goal = utility ? null : v.derived.mtd_goal_dollars || null;
+    // The revenue-anchored target, matching the snapshot path — this row's net
+    // is released dollars, so it is divided by the goal that stops on the same
+    // date. Equals mtd_goal_dollars when no Net Report has landed.
+    const goal = utility ? null : v.derived.revenue_goal_to_date_dollars || null;
     return rowFromActuals(market, label, utility, a, goal, leadsFor(market));
   };
 

@@ -94,6 +94,9 @@ function makeView(overrides?: {
     monthly_goal_dollars: 9067081,
     period_goal_dollars: 9067081,
     mtd_goal_dollars: 8369613,
+    // No revenue watermark in this fixture — equals the count target, which is
+    // the documented "no Net Report has landed" behaviour.
+    revenue_goal_to_date_dollars: 8369613,
     avg_sale_target: 9358,
     rate_window: "trailing_3",
     rate_sample_n: 100,
@@ -219,6 +222,11 @@ describe("buildScorecardVM — aggregate (YTD) period-awareness", () => {
     v.actuals.days_elapsed = 162; // Jan 1 → Jul 11 elapsed
     v.derived.period_goal_dollars = 54_461_538; // Σ Jan–Jul goals (Period Goal)
     v.derived.mtd_goal_dollars = 49_230_769; // Target to Date
+    // This fixture carries no revenue watermark (actuals.revenue_as_of is null),
+    // so the revenue target equals the count target — the same fallback the
+    // query layer applies when no Net Report has landed. Set explicitly because
+    // the hero divides by THIS field, not by mtd_goal_dollars.
+    v.derived.revenue_goal_to_date_dollars = 49_230_769;
     return v;
   }
 
@@ -338,6 +346,9 @@ const FACTS: ReportFacts = {
     grossSoldDollars: 79_904_667.2,
     cancelCount: 955,
     cancelValueDollars: 23_010_879.77,
+    // control_totals carries no explicit cancellations bucket, so it cannot
+    // assert a gross-after-cancels distinct from NSA.
+    grossAfterCancelsDollars: null,
     netAfterCancelsDollars: 56_893_787.43,
   },
   // Report 134's own released figure. The fixture carries it so the "Released

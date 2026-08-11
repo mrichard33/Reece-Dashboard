@@ -149,3 +149,27 @@ export function prorateGoal(
   const e = Math.max(0, elapsedDays);
   return goal * (e / periodDays);
 }
+
+/**
+ * The date the REVENUE target prorates to — the earlier of the period's own
+ * as-of and the Net Report's coverage date.
+ *
+ * Released dollars are knowable only as far as the Net Report reaches, so a
+ * revenue target prorated any further is understated by construction: on
+ * 2026-08-11 revenue settled through Aug 6 was measured against a target
+ * prorated to Aug 10, and every market read "behind pace" regardless of
+ * performance.
+ *
+ * Two guards, both deliberate:
+ *   - no revenue date (no report has landed) → the period as-of, so a period
+ *     with no report behaves exactly as it did before this existed;
+ *   - a revenue date AHEAD of the period as-of (a report covering past the end
+ *     of the selected range) → the period as-of, so a wide report cannot
+ *     inflate a narrow range's target.
+ *
+ * See docs/revenue-as-of.md.
+ */
+export function revenueAnchorDate(periodAsOf: string, revenueAsOf: string | null): string {
+  if (!revenueAsOf) return periodAsOf;
+  return revenueAsOf < periodAsOf ? revenueAsOf : periodAsOf;
+}

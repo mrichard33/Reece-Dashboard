@@ -1,4 +1,4 @@
-import { num, usd } from "@/lib/utils";
+import { num, usd, usDate, shortDate } from "@/lib/utils";
 import { ScSection } from "./ScSection";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
@@ -93,6 +93,20 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
         ? "behind goal"
         : "on / ahead of goal";
 
+  // Revenue reaches its OWN date — the Net Report's coverage end, which trails the
+  // date the COUNTS reach whenever a report has not landed for the most recent
+  // days. Both the revenue figure and the target it is measured against now
+  // prorate to this date, so the tiles SAY it: two different dates on one screen
+  // is honest, one figure built from two dates is not. See docs/revenue-as-of.md.
+  const revThrough = p.revenueAsOf ? `through ${shortDate(p.revenueAsOf)}` : null;
+  // Only worth calling out when it actually differs from the count basis;
+  // otherwise it is noise on every tile.
+  const revLags = p.revenueDaysElapsed != null && p.revenueDaysElapsed !== p.daysElapsed;
+  const revDaysSub =
+    revLags && p.revenueDaysElapsed != null
+      ? ` · ${num(p.revenueDaysElapsed)} of ${num(p.sellingDays)} selling days`
+      : "";
+
   const kpis: Kpi[] = [
     { label: goalLabel, sub: goalSub, value: usd(p.monthlyGoal) },
     {
@@ -106,11 +120,30 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
         ? `Run-rate extrapolation from ${p.daysElapsed} completed selling day${p.daysElapsed === 1 ? "" : "s"} of ${p.sellingDays}. Early-period projections are noisy, and released dollars run structurally low because net matures over roughly five to six months.`
         : undefined,
     },
-    { label: "Target to Date", sub: "goal to date", value: usd(p.paceGoal) },
+    {
+      label: "Target to Date",
+      // Names the SAME date as the Net tile: this is the whole point of the
+      // alignment, and a reader has to be able to see that the numerator and
+      // the denominator stop on the same day.
+      sub: revThrough ? `goal ${revThrough}${revDaysSub}` : "goal to date",
+      value: usd(p.paceGoal),
+      title: revLags
+        ? `Prorated to ${usDate(p.revenueAsOf!)} — the Net Report's coverage date — not to ${usDate(vm.snapshot.asOfDate)}, which is how far the COUNTS reach. Released dollars are not knowable past the last report, so the target they are measured against stops on the same day.`
+        : undefined,
+    },
     {
       label: `Net — Released ${vm.abbr}`,
-      sub: pending ? "report pending — no released figure yet" : vm.provisional ? "provisional · ties to report at close" : "released to production (RTP)",
+      sub: pending
+        ? "report pending — no released figure yet"
+        : vm.provisional
+          ? "provisional · ties to report at close"
+          : revThrough
+            ? `released ${revThrough}`
+            : "released to production (RTP)",
       value: pending ? "—" : usd(p.netSales),
+      title: revThrough
+        ? "Released to production (RTP), by production milestone date, from the Net Report. The report is the only source of net — the warehouse cannot produce it — so this figure reaches the report's coverage date and no further."
+        : undefined,
     },
     {
       label: "Balance",

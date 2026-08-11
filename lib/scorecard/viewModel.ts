@@ -132,6 +132,15 @@ export type ScorecardVM = {
     ratePeriodScoped: boolean;
     daysElapsed: number;
     sellingDays: number;
+    /** Coverage date of the Net Report behind `netSales` and `paceGoal` — the
+     *  date the REVENUE reaches, which is not `snapshot.asOfDate` (what the
+     *  counts reach). Null when no report has landed. The hero states it so a
+     *  reader can see the two figures share one date. */
+    revenueAsOf: string | null;
+    /** Selling days elapsed through `revenueAsOf` — the denominator `paceGoal`
+     *  was prorated over, shown beside the count elapsed so the two are
+     *  distinguishable rather than silently different. */
+    revenueDaysElapsed: number | null;
   };
   funnel: FunnelStage[];
   rates: {
@@ -186,6 +195,9 @@ export type ScorecardVM = {
       grossSold: number | null;
       cancelCount: number | null;
       cancelValue: number | null;
+      /** gross − cancelled ONLY. Not net, not NSA — see SoldFacts. */
+      grossAfterCancels: number | null;
+      /** LP's NSA — the only figure on this card that may be called Net/NSA. */
       netAfterCancels: number | null;
       /** Why netAfterCancels is null despite a covering snapshot (cohort). */
       netPendingReason: string | null;
@@ -299,7 +311,19 @@ export function buildScorecardVM(
   // hero tiles render "—" via `netPending` instead of a fabricated $0-behind-goal.
   const netPending = a.released_dollars == null && a.net_sales == null;
   const netReleased = a.released_dollars ?? a.net_sales ?? 0;
-  const paceGoal = d.mtd_goal_dollars ?? 0;
+  // THE REVENUE TARGET, not the count target. `netReleased` reaches
+  // `a.revenue_as_of` (the Net Report's coverage date); `d.mtd_goal_dollars`
+  // reaches the period's own as-of, which is later whenever a report has not
+  // landed for the most recent days. Dividing one by the other understates every
+  // market every day — on 2026-08-11 revenue settled through Aug 6 was measured
+  // against a target prorated to Aug 10, and Fort Lauderdale read 5% of target.
+  // Both sides of this ratio now reach the same date. See docs/revenue-as-of.md.
+  const paceGoal = d.revenue_goal_to_date_dollars ?? d.mtd_goal_dollars ?? 0;
+  /** The date the revenue figures reach — null when no Net Report has landed. */
+  const revenueAsOf = a.revenue_as_of ?? null;
+  /** Selling days elapsed through `revenueAsOf`; the denominator behind paceGoal. */
+  const revenueDaysElapsed =
+    cal && revenueAsOf ? sellingDaysElapsed(resolved.periodStart, revenueAsOf, cal) : null;
   // Full goal for the whole period (Σ of the months in range) — NOT the current
   // month's goal alone. Equals the month goal for a single-month view.
   const monthlyGoal =
@@ -409,6 +433,7 @@ export function buildScorecardVM(
     grossSold: sf?.grossSoldDollars ?? null,
     cancelCount: sf?.cancelCount ?? null,
     cancelValue: sf?.cancelValueDollars ?? null,
+    grossAfterCancels: sf?.grossAfterCancelsDollars ?? null,
     netAfterCancels: sf?.netAfterCancelsDollars ?? null,
     netPendingReason: sf?.netPendingReason ?? null,
     releasedBasis: rf?.basis ?? null,
@@ -541,6 +566,8 @@ export function buildScorecardVM(
       ratePeriodScoped: d.rate_period_scoped,
       daysElapsed,
       sellingDays,
+      revenueAsOf,
+      revenueDaysElapsed,
     },
     funnel,
     rates,
