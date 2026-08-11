@@ -23,8 +23,27 @@ export function absTime(input: Date | string | number | null | undefined): strin
   return formatInTimeZone(date, TZ, "yyyy-MM-dd HH:mm:ss zzz");
 }
 
+const MONTHS_ABBR = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * Compact spelled day — "Aug 6". The year is omitted deliberately: these labels
+ * sit inside a period that already names its year.
+ *
+ * A `YYYY-MM-DD` string is parsed by SLICING, never via `new Date(...)` — same
+ * rule `usDate` follows below, and for the same reason. `new Date("2026-08-06")`
+ * is UTC midnight, and formatting that in any timezone west of UTC renders the
+ * PREVIOUS day: an ET-facing page would label a revenue watermark of Aug 6 as
+ * "Aug 5". Date/epoch inputs keep the date-fns path.
+ */
 export function shortDate(input: Date | string | number | null | undefined): string {
   if (input === null || input === undefined) return "—";
+  if (typeof input === "string" && /^\d{4}-\d{2}-\d{2}/.test(input)) {
+    const month = MONTHS_ABBR[Number(input.slice(5, 7)) - 1];
+    return month ? `${month} ${Number(input.slice(8, 10))}` : "—";
+  }
   const date = typeof input === "string" || typeof input === "number" ? new Date(input) : input;
   if (Number.isNaN(date.getTime())) return "—";
   return format(date, "MMM d");

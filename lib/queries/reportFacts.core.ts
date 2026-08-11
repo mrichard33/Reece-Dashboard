@@ -79,6 +79,22 @@ export type SoldFacts = {
   cancelCount: number | null;
   cancelValueDollars: number | null;
   /**
+   * GROSS SOLD − CANCELLED, and nothing else. This is NOT net and must never be
+   * labelled Net or NSA (see the type note below): it subtracts cancellations
+   * only, while NSA additionally subtracts credit declines, holds and working.
+   * On Fort Myers for 2026-08 the two differ by ~$501K — $844,765 against
+   * $343,676 — with $466,188 of the difference sitting in working alone.
+   *
+   * Computable whenever gross and the cancellations bucket are both sourced,
+   * INCLUDING in a cohort-immature month where NSA is still maturing. That is
+   * why the Sold panel's bottom line is no longer blank in an MTD view.
+   */
+  grossAfterCancelsDollars: number | null;
+  /**
+   * LP's NSA (`net_sold` on report 137) — gross net of cancellations, credit
+   * declines, holds AND working. The ONLY figure entitled to the words "Net" or
+   * "NSA" on this card.
+   *
    * Null when the answering snapshot is cohort-immature (an MTD Sales
    * Efficiency pull with a blank Net column). `netPendingReason` says why, so
    * the card can explain instead of showing a bare dash.
@@ -444,6 +460,11 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
       // A composed figure is as-of the NEWEST part, and its scope is the
       // composition rather than any one snapshot's.
       const asOf = se.reduce((a, r) => (r.as_of_date > a ? r.as_of_date : a), se[0]!.as_of_date);
+      // gross − cancelled, from the EXPLICIT cancellations bucket. Deliberately
+      // independent of `net_sold`: it stays computable through a month whose Net
+      // column is still maturing, which is the common MTD case.
+      const grossAfterCancels =
+        cancelled.seen && cancelled.cents != null ? dollars(sold.cents - cancelled.cents)! : null;
       return {
         basis: "sales_efficiency",
         asOf: composedFrom ? asOf : se[0]!.as_of_date,
@@ -455,6 +476,7 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
         cancelValueDollars: cancelled.seen && cancelled.cents != null
           ? dollars(cancelled.cents)!
           : netSourced ? dollars(sold.cents - netSold.cents!)! : null,
+        grossAfterCancelsDollars: grossAfterCancels,
         netAfterCancelsDollars: netSourced ? dollars(netSold.cents)! : null,
         netPendingReason: netSourced
           ? null
@@ -481,6 +503,11 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
       grossSoldDollars: dollars(gross.cents)!,
       cancelCount: sold.count - netSold.count,
       cancelValueDollars: dollars(gross.cents - nsa.cents)!,
+      // This fallback has no explicit cancellations bucket — its "cancelled" is
+      // already the gross−NSA residual, so gross − that residual is just NSA
+      // again. Reporting it as gross-after-cancels would assert a distinction
+      // this source cannot make, so it stays null and the card omits the line.
+      grossAfterCancelsDollars: null,
       netAfterCancelsDollars: dollars(nsa.cents)!,
       netPendingReason: null,
     };
@@ -503,6 +530,9 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
     grossSoldDollars: dollars(sold.cents ?? 0)!,
     cancelCount: sold.count - netSold.count,
     cancelValueDollars: dollars((sold.cents ?? 0) - (netSold.cents ?? 0))!,
+    // Same as the control-totals fallback: no explicit cancellations bucket, so
+    // there is no gross-after-cancels this source can honestly assert.
+    grossAfterCancelsDollars: null,
     netAfterCancelsDollars: dollars(netSold.cents ?? 0)!,
     netPendingReason: null,
   };
