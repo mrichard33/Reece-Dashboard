@@ -911,3 +911,51 @@ describe("blanks render — with a reason, never $0", () => {
     expect(unmeasured("x").value).toBeNull();
   });
 });
+
+// ── §L — REECE is a TOTAL row, not a market ────────────────────────────────
+//
+// Verified live 2026-08-10: Σ markets equals the stored REECE row EXACTLY on
+// both measures ($1,668,086 gross / $702,506 net). Folding it in alongside the
+// offices therefore doubles the company — precisely 2×, which is the kind of
+// error that looks like a good month.
+//
+// fetchDaily now excludes it at the query. buildDailyView also skips it and
+// re-derives the company as Σ markets; this pins that second guard, because the
+// two live in different files and only one of them is obvious.
+
+describe("§L — the REECE total row never doubles the company", () => {
+  const dailyRow = (market: string, issued: number, sales: number) => ({
+    market,
+    as_of_date: "2026-08-10",
+    period_start: "2026-08-01",
+    leads: 0,
+    raw_leads_in: 0,
+    sets: 0,
+    issued,
+    demos: 0,
+    sales,
+  });
+
+  test("excludes a stored REECE row and derives the company as Σ offices", () => {
+    const rows = [
+      dailyRow("STPET_MKT", 65, 7),
+      dailyRow("ORL_MKT", 41, 4),
+      dailyRow("REECE", 106, 11), // the total — Σ of the two above
+    ];
+    const view = buildDailyView(rows as never);
+
+    expect(view.rows.some((r) => r.market === "REECE" && !r.isCompany)).toBe(false);
+    // Measured-wrapped, like every other tier figure.
+    expect(view.company?.issued.value).toBe(106); // Σ offices, NOT 212
+    expect(view.company?.sales.value).toBe(11);
+  });
+
+  test("is unaffected when the stored REECE row is absent entirely", () => {
+    // fetchDaily now filters it at the query, so this is the shape the function
+    // actually receives in production. Same answer either way.
+    const rows = [dailyRow("STPET_MKT", 65, 7), dailyRow("ORL_MKT", 41, 4)];
+    const view = buildDailyView(rows as never);
+    expect(view.company?.issued.value).toBe(106);
+    expect(view.rows).toHaveLength(2);
+  });
+});

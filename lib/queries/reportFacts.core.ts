@@ -111,6 +111,10 @@ export type GoodBusinessFacts = {
   otherPending: PendingBucket;
   /** Released/production-track open jobs — outside pending Good Business. */
   excluded: PendingBucket;
+  /** Terminal cohort buckets (report 133 is contract-date scoped since
+   *  2026-08-07). Deliberately NOT part of pendingTotal/openJobsTotal. */
+  lost: PendingBucket;
+  completed: PendingBucket;
   pendingTotalDollars: number;
   pendingTotalCount: number;
   /** hoa+permit+other+excluded counts — must equal every open job (footing proof). */
@@ -133,10 +137,32 @@ export type LeadsFacts = {
   reconDelta: number | null;
 };
 
+/**
+ * Net RELEASED for the period, from report 134 (jobs_by_milestone).
+ *
+ * Exists because the "Released this period" panel claimed report-134 provenance
+ * in its subtitle while reading `lp_market_scorecard_daily` — a table fed by the
+ * LP API sync, not by the reports. On 2026-08-10 that table was four days stale
+ * and the panel showed $702,506 against report 134's own $2,052,603.
+ *
+ * The report is authoritative here: it is current, cents-exact, and it is what
+ * the label already claimed. The daily table remains a fallback, but a fallback
+ * that SAYS it is one — see `basis`.
+ */
+export type ReleasedFacts = {
+  basis: "jobs_by_milestone";
+  asOf: string;
+  scope: FactScope | null;
+  jobCount: number;
+  netReleasedDollars: number;
+  grossReleasedDollars: number | null;
+};
+
 export type ReportFacts = {
   sold: SoldFacts | null;
   goodBusiness: GoodBusinessFacts | null;
   leads: LeadsFacts | null;
+  released: ReleasedFacts | null;
 };
 
 const dollars = (cents: number | null | undefined): number | null =>
@@ -312,6 +338,34 @@ function sumMetric(rows: ReportFactRow[], metric: string) {
   return { seen, count, cents };
 }
 
+function buildReleased(
+  rows: ReportFactRow[],
+  resolved: ResolvedPeriod,
+  marketCode: string,
+): ReleasedFacts | null {
+  const inMarket = marketFilter(marketCode);
+  // FLOW semantics, so the same period gate buildSold uses: a YTD snapshot must
+  // not answer an MTD view.
+  const jm = pickSnapshot(
+    rows.filter((r) => r.report_type === "jobs_by_milestone" && inMarket(r.market) && coversPeriod(r, resolved)),
+    resolved,
+  );
+  if (!jm.length) return null;
+
+  const net = sumMetric(jm, "net_sales");
+  if (!net.seen || net.cents == null) return null; // unknown, not zero
+  const gross = sumMetric(jm, "gross_sold");
+
+  return {
+    basis: "jobs_by_milestone",
+    asOf: jm[0]!.as_of_date,
+    scope: jm[0]!.scope ?? null,
+    jobCount: net.count,
+    netReleasedDollars: dollars(net.cents)!,
+    grossReleasedDollars: gross.seen ? dollars(gross.cents) : null,
+  };
+}
+
 function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: string): SoldFacts | null {
   // Report 137 first — authoritative for Issued/Sat/Sold/Cancelled/NSA by
   // market AND company (Σ markets). Cancellations come from its EXPLICIT
@@ -430,12 +484,22 @@ function buildGoodBusiness(rows: ReportFactRow[], marketCode: string): GoodBusin
   const permit = bucket("permit");
   const otherPending = bucket("other_pending");
   const excluded = bucket("in_production");
+  // Terminal cohort buckets. Report 133 became a CONTRACT-DATE cohort on
+  // 2026-08-07 — it now carries every status, mostly terminal (March 2026: 331
+  // completed and 167 lost against 2 open holds). These are read here so the
+  // cancellation figure has a 133 source at all, and are kept OUT of
+  // pendingTotal/openJobsTotal, which mean open pipeline and would be nonsense
+  // with terminal jobs folded in.
+  const lost = bucket("lost");
+  const completed = bucket("completed");
   return {
     asOf: js[0]!.as_of_date,
     hoa,
     permit,
     otherPending,
     excluded,
+    lost,
+    completed,
     pendingTotalDollars: hoa.dollars + permit.dollars + otherPending.dollars,
     pendingTotalCount: hoa.count + permit.count + otherPending.count,
     openJobsTotal: hoa.count + permit.count + otherPending.count + excluded.count,
@@ -502,5 +566,6 @@ export function buildReportFacts(
     sold: buildSold(rows, resolved, marketCode),
     goodBusiness: buildGoodBusiness(rows, marketCode),
     leads: buildLeads(rows, resolved, marketCode),
+    released: buildReleased(rows, resolved, marketCode),
   };
 }

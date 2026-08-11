@@ -45,6 +45,18 @@ import {
 export type ScorecardActuals = {
   market: string;
   as_of_date: string;
+  /**
+   * How far the REVENUE figures actually reach — distinct from as_of_date,
+   * which is how far the row reaches. They diverge: on 2026-08-10 the row said
+   * 2026-08-07 while revenue said 2026-08-06.
+   *
+   * The column has existed all along and NOTHING read it — `grep revenue_as_of`
+   * over this repo returned zero hits — so a revenue number four days old was
+   * rendered with no way for a reader to tell. Null when the sync did not
+   * report one (LAKE_MKT, OUT_OF_AREA and UNASSIGNED carry null today, the same
+   * three markets carrying a null net).
+   */
+  revenue_as_of: string | null;
   period_start: string;
   period_end: string;
   /** Selling days elapsed [period_start, as_of] (Mon–Sat minus Reece closures). */
@@ -1227,6 +1239,7 @@ function mapRecomputedActuals(raw: Record<string, unknown>, market: string): Sco
   return {
     market: String(raw.market ?? market),
     as_of_date: String(raw.as_of_date ?? ""),
+    revenue_as_of: raw.revenue_as_of == null ? null : String(raw.revenue_as_of),
     period_start: String(raw.period_start ?? ""),
     period_end: String(raw.period_end ?? ""),
     days_elapsed: i(raw.days_elapsed),

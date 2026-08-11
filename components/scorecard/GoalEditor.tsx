@@ -13,6 +13,7 @@ import { marketLabel, SCORECARD_MARKETS } from "@/lib/scorecard/markets";
 import { usd, usdExact, num, monthLabelFull, parseMoney } from "@/lib/utils";
 import { ScCard } from "./ScCard";
 import { MoneyInput } from "./MoneyInput";
+import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
 type FieldSpec = { name: string; label: string; step?: string; prefix?: string };
 
@@ -26,7 +27,7 @@ type FieldSpec = { name: string; label: string; step?: string; prefix?: string }
  */
 const FIELDS: FieldSpec[] = [
   { name: "working_days", label: "Working Days", step: "1" },
-  { name: "target_close_pct", label: "Target Close %", step: "any" },
+  { name: "target_close_pct", label: `Target ${METRIC_LABELS.demoToSale}`, step: "any" },
   { name: "target_demo_pct", label: "Target Demo %", step: "any" },
   { name: "target_good_rate_pct", label: "Target Good Rate %", step: "any" },
   { name: "target_ko_pct", label: "Target KO %", step: "any" },

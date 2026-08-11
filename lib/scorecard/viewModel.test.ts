@@ -25,6 +25,7 @@ function makeView(overrides?: {
     market: "REECE",
     computed_from: "lp_api",
     as_of_date: "2026-06-24",
+    revenue_as_of: "2026-06-24",
     period_start: "2026-06-01",
     period_end: "2026-06-24",
     days_elapsed: 24,
@@ -338,12 +339,26 @@ const FACTS: ReportFacts = {
     cancelValueDollars: 23_010_879.77,
     netAfterCancelsDollars: 56_893_787.43,
   },
+  // Report 134's own released figure. The fixture carries it so the "Released
+  // this period" panel is exercised on its REAL source rather than the daily
+  // fallback — the confusion this whole change exists to end.
+  released: {
+    basis: "jobs_by_milestone" as const,
+    asOf: "2026-08-05",
+    scope: "ytd" as const,
+    jobCount: 1_284,
+    netReleasedDollars: 56_893_787.43,
+    grossReleasedDollars: 79_904_667.2,
+  },
   goodBusiness: {
     asOf: "2026-08-05",
     hoa: { count: 93, dollars: 2_008_759 },
     permit: { count: 18, dollars: 343_564 },
     otherPending: { count: 131, dollars: 3_794_614 },
     excluded: { count: 698, dollars: 18_707_849.28 },
+    // Terminal cohort — deliberately absent from the pending totals below.
+    lost: { count: 167, dollars: 4_012_338 },
+    completed: { count: 331, dollars: 9_884_112 },
     pendingTotalDollars: 2_008_759 + 343_564 + 3_794_614,
     pendingTotalCount: 242,
     openJobsTotal: 940,
