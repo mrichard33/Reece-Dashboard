@@ -372,7 +372,7 @@ export function GoalEditor({
             </p>
           )}
           <p className="mt-1 text-slate-600 dark:text-slate-300">
-            NSLI <span className="font-mono">{nsli > 0 ? usd(nsli) : "—"}</span>{" "}
+            Net Sales $ / Issued Lead <span className="font-mono">{nsli > 0 ? usd(nsli) : "—"}</span>{" "}
             <span className="text-[10.5px] uppercase tracking-wider text-slate-400">calculated</span>
             {entry?.rateWindow && (
               <span className="text-[10.5px] text-slate-400"> ({rateWindowLabel(entry.rateWindow)} · n={num(entry.rateSampleN)})</span>

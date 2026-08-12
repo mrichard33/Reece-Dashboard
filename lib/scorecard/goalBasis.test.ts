@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   assertNetGoalBasis,
+  assertNetActualMetric,
   netGoalOrUnmeasured,
   isNetActualMetric,
   GoalBasisError,
   NET_ACTUAL_METRICS,
+  NON_GOAL_METRICS,
 } from "./goalBasis";
 import { targetTotals, perDayTargets, prorateGoal } from "./paceTargets";
 
@@ -22,10 +24,22 @@ describe("goal basis is net, and is enforced rather than assumed", () => {
 
   it("REFUSES a gross goal, and says why", () => {
     // THE regression guard for §4. Every actual a goal is compared against in
-    // this repo is net; storing a gross goal overstates attainment by the
-    // gross-to-net gap and rescales every NSLI-derived funnel target with it.
+    // this repo is Net Sales; storing a gross goal overstates attainment by the
+    // cancellations and financing denials it fails to subtract, and rescales
+    // every efficiency-derived funnel target with it.
     expect(() => assertNetGoalBasis("gross", "saveScorecardGoals")).toThrow(GoalBasisError);
-    expect(() => assertNetGoalBasis("gross", "saveScorecardGoals")).toThrow(/gross-to-net gap/);
+    expect(() => assertNetGoalBasis("gross", "saveScorecardGoals")).toThrow(
+      /Net Sales/,
+    );
+    // The error must carry the definition, not just the name — "net" is the
+    // word four of the five dollar figures on this page could claim.
+    expect(() => assertNetGoalBasis("gross", "saveScorecardGoals")).toThrow(
+      /Gross Written − Cancellations − Financing Denied/,
+    );
+    // And it must say that changing it is a contract decision, not a swap.
+    expect(() => assertNetGoalBasis("gross", "saveScorecardGoals")).toThrow(
+      /not a number swap/,
+    );
   });
 
   it("refuses anything else too — the guard is an allowlist, not a gross check", () => {
@@ -34,13 +48,53 @@ describe("goal basis is net, and is enforced rather than assumed", () => {
     expect(() => assertNetGoalBasis("", "test")).toThrow(GoalBasisError);
   });
 
-  it("names only net metrics as valid goal counterparts", () => {
+  it("names only Net Sales metrics as valid goal counterparts", () => {
     for (const m of NET_ACTUAL_METRICS) expect(isNetActualMetric(m)).toBe(true);
     // The three that would be materially wrong, and are one identifier away
     // from the right ones in the same view models.
     for (const m of ["gross_sold", "gross_sales", "gsli"]) {
       expect(isNetActualMetric(m)).toBe(false);
     }
+  });
+
+  it("REFUSES RTP — it was allowed before 2026-08-12 and is the reason for this change", () => {
+    // `released_dollars` sat in this allowlist until the metric contract was
+    // rewritten. RTP is dated by production milestone, so a contract sold in
+    // April lands in August; pacing a sales goal against it compares two
+    // different cohorts. This assertion is the whole point of the rewrite.
+    expect(isNetActualMetric("released_dollars")).toBe(false);
+    expect(() => assertNetActualMetric("released_dollars", "paceHero")).toThrow(
+      /production milestone/,
+    );
+  });
+
+  it("REFUSES NSA — the trap, because it also has 'net' in the name", () => {
+    // NSA subtracts working and hold on top of cancellations and financing
+    // denials, so it lags by months: July 2026 was 50.9% of gross on NSA and
+    // 76.3% on Net Sales. It is the QUALITY metric, not the goal basis.
+    expect(isNetActualMetric("net_sold")).toBe(false);
+    expect(isNetActualMetric("nsa_cents")).toBe(false);
+    expect(() => assertNetActualMetric("net_sold", "paceHero")).toThrow(/working/);
+  });
+
+  it("REFUSES gross-after-cancels — it omits financing denied", () => {
+    // Fort Myers Aug 2026: gross-after-cancels $844,765 vs Net Sales $821,484.
+    // $23K apart on one market in one month, and only one is the goal basis.
+    expect(isNetActualMetric("gross_after_cancels")).toBe(false);
+    expect(() => assertNetActualMetric("gross_after_cancels", "revenueCard")).toThrow(
+      /financing denials/,
+    );
+  });
+
+  it("every refused metric explains itself — an allowlist miss must be diagnosable", () => {
+    for (const m of Object.keys(NON_GOAL_METRICS)) {
+      expect(isNetActualMetric(m)).toBe(false);
+      // The thrown message must name the offending metric AND the right basis.
+      expect(() => assertNetActualMetric(m, "ctx")).toThrow(new RegExp(m));
+      expect(() => assertNetActualMetric(m, "ctx")).toThrow(/Net Sales/);
+    }
+    // Anti-vacuity: this loop is worthless if the map is empty or tiny.
+    expect(Object.keys(NON_GOAL_METRICS).length).toBeGreaterThanOrEqual(6);
   });
 });
 

@@ -125,18 +125,32 @@ describe("§O3 — the revenue target prorates to revenue_as_of, not period_end"
     }
   });
 
-  it("O4 — the hero states the date, and both tiles state the SAME date", () => {
-    // "The revenue tile must visibly read 'Released through Aug 6' (its own
-    // revenue_as_of), not the period end."
+  it("O4 — the revenue watermark string is still derived once, from revenue_as_of", () => {
+    // AMENDED 2026-08-12. This used to assert that the hero's headline tile read
+    // "released through Aug 6". That tile is gone: the hero's actual is now Net
+    // Sales, which is dated by CONTRACT date and has no coverage watermark of
+    // its own, so there is no RTP date left in the hero to align. The watermark
+    // still governs the Released panel, and the derivation is still single-
+    // sourced here for the branch that renders it.
     expect(shortDate(REVENUE_AS_OF)).toBe("Aug 6");
 
     const src = readFileSync("components/scorecard/PaceHero.tsx", "utf8");
-    // One derived string feeds both tiles, so they cannot drift apart.
     expect(src).toMatch(/const revThrough\s*=\s*p\.revenueAsOf\s*\?\s*`through \$\{shortDate\(p\.revenueAsOf\)\}`/);
-    expect(src).toMatch(/`released \$\{revThrough\}`/); // Net — Released tile
-    expect(src).toMatch(/`goal \$\{revThrough\}/); // Target to Date tile
-    // And it is the REVENUE date, never the snapshot's own as-of.
+    // Never the snapshot's own as-of, whichever tile consumes it.
     expect(src).not.toMatch(/released \$\{[^}]*snapshot\.asOfDate/);
+  });
+
+  it("O4 — on the Net Sales basis the target stops where the ACTUAL stops", () => {
+    // The replacement guarantee. `p.paceGoal` prorates to the Net Report's
+    // watermark, which is correct for an RTP actual and wrong for this one:
+    // Net Sales reaches the cohort's as-of, typically several selling days
+    // later. Measuring 8 days of actual against 5 days of target would flatter
+    // Balance by ~38%, so the target is re-prorated to the elapsed selling days.
+    const src = readFileSync("components/scorecard/PaceHero.tsx", "utf8");
+    expect(src).toMatch(/const targetToDate\s*=\s*onNetSales/);
+    expect(src).toMatch(/prorateGoal\(p\.monthlyGoal, p\.daysElapsed, p\.sellingDays\)/);
+    // Balance must consume the aligned target, not the RTP-anchored one.
+    expect(src).toMatch(/const balance\s*=\s*Math\.round\(actual - targetToDate\)/);
   });
 
   it("O4 — shortDate is calendar-safe and omits the year", () => {

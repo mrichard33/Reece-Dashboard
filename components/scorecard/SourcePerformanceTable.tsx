@@ -30,7 +30,7 @@ const COLS: Col[] = [
   { key: "close_pct", label: METRIC_LABELS.demoToSale, fmt: "pct" },
   { key: "net_sales", label: "Net Sales", fmt: "usd" },
   { key: "pending_total", label: "Pending", fmt: "usd" },
-  { key: "nsli", label: "NSLI", fmt: "usd" },
+  { key: "nsli", label: "Net Sales $ / Lead", fmt: "usd" },
 ];
 
 function fmtCell(v: number | null, kind: Col["fmt"]): string {

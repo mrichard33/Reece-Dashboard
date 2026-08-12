@@ -91,17 +91,46 @@ Rationale for each rejected alternative:
   ingest cadence is worth doing, but it is an operational change that shrinks
   the gap — it does not remove the need to prorate to the watermark.
 
-- **Move the tile to report 137.** Rejected, and not a close call. 137 is
-  fresher (its Aug snapshot is as-of 2026-08-11 against the Net Report's
-  2026-08-06), but freshness is not the question. 137 measures the **sold**
-  cohort — jobs contracted in the period, with NSA net of cancellations, credit
-  declines, holds and working. The RTP table measures **released to
-  production**, dated by the production milestone, which includes work
-  contracted in earlier periods and excludes work sold this period that has not
-  shipped. They are different business states, not the same state at two
-  freshnesses. Swapping one for the other because it updates more often would
-  silently redefine "Net Released" — exactly the migration this work exists to
-  prevent. Only an explicit leadership redefinition should move that tile.
+- **Move the tile to report 137.** Rejected *as a freshness argument*, and that
+  reasoning still stands: 137 is fresher (its Aug snapshot is as-of 2026-08-11
+  against the Net Report's 2026-08-06), but freshness was never the question.
+  137 measures the **sold** cohort — jobs contracted in the period. The RTP
+  table measures **released to production**, dated by the production milestone,
+  which includes work contracted in earlier periods and excludes work sold this
+  period that has not shipped. They are different business states, not the same
+  state at two freshnesses. Swapping one for the other *because it updates more
+  often* would silently redefine "Net Released".
+
+  This section closed by saying only an explicit leadership redefinition should
+  move that tile. **On 2026-08-12 that redefinition was made, so the tile has
+  moved** — see below.
+
+### 2026-08-12 — the headline is Net Sales, and RTP is no longer paced against
+
+The metric contract was rewritten. The goal-bearing basis is now:
+
+    Net Sales = Gross Written − Cancellations − Financing Denied
+
+and the governing rule is that the goal, the actual, the pace and the efficiency
+denominator all share it. RTP fails that rule for the reason this document
+already gave: it is dated by production milestone, so a contract sold in April
+lands in August. It answers a production question, and a sales goal cannot be
+paced against it at all — the mismatch is a cohort mismatch, not a lag.
+
+What changed, and what did not:
+
+- **Changed.** `PaceHero`'s headline is `Net Sales {period}`, and Projected Pace
+  and Balance are recomputed from it in the same component, so the four figures
+  cannot end up on two bases. `released_dollars` is now REFUSED by
+  `goalBasis.ts`'s allowlist rather than permitted by it.
+- **Unchanged.** Report 134 is still ingested, `lp_net_report_rtp` still feeds
+  `revenue_as_of`, and RTP still renders — on the Released panel, where its
+  basis is stated and nothing is paced against it. Everything above about
+  proration to the watermark still governs that panel.
+
+Net Sales carries no equivalent watermark problem: it is dated by contract date
+and both its inputs land within days, so the actual and the target-to-date stop
+on the same day by construction.
 
 ## What the code does now
 
