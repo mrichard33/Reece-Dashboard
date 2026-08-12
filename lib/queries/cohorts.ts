@@ -10,8 +10,12 @@ import type { Measured } from "@/lib/scorecard/tiers/types";
  * DB wrapper for the cohort layer. The pure core is `cohorts.core.ts`; this
  * file only fetches and re-exports, so callers have one import.
  *
- * Source is the `lp_cohort_maturation` view (LP-MCP migration
- * 2026-08-12_cohort_maturation.sql), which is already at MARKET grain with
+ * Source is the `lp_cohort_maturation` view (LP-MCP migrations
+ * 2026-08-12_cohort_maturation.sql, replaced by
+ * 2026-08-12b_cohort_disposition_split.sql — which separates the DEFINITION of
+ * Net Sales from LP's reported disposition and adds
+ * observed_disposition_cents / reconciliation_delta_cents), already at MARKET
+ * grain with
  * office codes summed — §7's rule enforced in the database rather than
  * re-implemented per reader. `rollupToMarket` in the core stays exported for
  * callers holding office-grain rows and for the regression test that proves
@@ -119,8 +123,14 @@ export async function fetchCohortHistory(contractMonth?: string): Promise<Cohort
 }
 
 /**
- * Company-level mature rate: Σ Net Sales ÷ Σ Gross Written over eligible
- * cohorts, summed then divided.
+ * Company-level HISTORICAL MATURE NSA RATE: Σ NSA ÷ Σ Gross Written over
+ * eligible cohorts, summed then divided.
+ *
+ * ⚠️ The numerator is SETTLED NSA, not Net Sales. Σ Net Sales ÷ Σ Gross Written
+ * is a different figure — Net Retention % — and describing this one that way is
+ * exactly the confusion the rename exists to prevent. Both round to 71.1% on
+ * Jan–May 2026, so the error would not be caught by eye; on July they are 50.9%
+ * and 76.3%.
  *
  * `asOf` is the observation date the eligibility window is measured to — pass
  * the period's as-of, not `new Date()`, so the figure is reproducible.
