@@ -53,3 +53,49 @@ describe("§2 — achieved vs elapsed, in points", () => {
     expect(formatPaceShort({ achievedPct: 25, elapsedPct: 23 })).toBe("25% / 23% · +2 pts");
   });
 });
+
+/**
+ * §3 — THE COLOUR KEYS ON pace_delta_points, NEVER ON pct_of_monthly_goal.
+ *
+ * The trap the contract names: 25% of the goal banked at 23% of the month
+ * elapsed is AHEAD. A rule that coloured on "% of monthly goal" would paint
+ * that red for three weeks and green in the last, on a market that was never
+ * behind — and by the time it turned green the information was worthless.
+ *
+ * The scorecard colours on `pctToGoal` (net ÷ the PRORATED to-date goal), which
+ * is not a second calculation: because `prorateGoal` is linear,
+ *
+ *     pctToGoal ≥ 100  ⟺  achievedPct ≥ elapsedPct  ⟺  paceDeltaPts ≥ 0
+ *
+ * These pin that equivalence from the language side, so a future change to the
+ * band cannot leave the sentence saying "ahead" on a red bar.
+ */
+describe("§3 — pace verdict follows the delta, not the share of goal", () => {
+  it("25% achieved at 23% elapsed is AHEAD, not 25% of the way to failure", () => {
+    const s = formatPace({ achievedPct: 25, elapsedPct: 23 });
+    expect(s).toMatch(/ahead/i);
+    expect(s).not.toMatch(/behind/i);
+  });
+
+  it("a HIGH share of goal can still be behind, and a LOW one ahead", () => {
+    // The two cases that prove the verdict is not reading the share.
+    expect(formatPace({ achievedPct: 90, elapsedPct: 96 })).toMatch(/behind/i);
+    expect(formatPace({ achievedPct: 8, elapsedPct: 4 })).toMatch(/ahead/i);
+  });
+
+  it("the verdict flips exactly at the delta's sign change, at every share", () => {
+    for (const elapsed of [4, 23, 50, 77, 96]) {
+      expect(formatPace({ achievedPct: elapsed + 1, elapsedPct: elapsed })).toMatch(/ahead/i);
+      expect(formatPace({ achievedPct: elapsed - 1, elapsedPct: elapsed })).toMatch(/behind/i);
+    }
+  });
+
+  it("THE NUMBER IS ALWAYS VISIBLE — colour is never the only signal", () => {
+    // §3: "Number always visible; never colour-only." A colour-blind reader, a
+    // greyscale print and a screenshot in a deck all have to carry the verdict.
+    const s = formatPace({ achievedPct: 25, elapsedPct: 23 })!;
+    expect(s).toMatch(/25/);
+    expect(s).toMatch(/23/);
+    expect(s).toMatch(/pts/);
+  });
+});
