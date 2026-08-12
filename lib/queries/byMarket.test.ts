@@ -23,7 +23,8 @@ const row = (over: Partial<ByMarketRow>): ByMarketRow => ({
   issued: 0,
   demos: 0,
   sales: 0,
-  close_pct: null,
+  demo_pct: null,
+  demo_to_sale_pct: null,
   gross_sales: 0,
   net_sales: 0,
   net_sales_through: null,
@@ -163,19 +164,28 @@ describe("§2 — achieved vs elapsed, derived from the ratio already on screen"
  * SALES scorecard paced a sales goal against production releases.
  */
 
-/** [market, gross, cancelled, cd] in cents. */
-const AUG_2026: Array<[string, number, number, number]> = [
-  ["FTLAU_MKT", 23_484_800, 9_569_800, 0],
-  ["FTMYR_MKT", 87_320_800, 2_844_300, 2_328_100],
-  ["JAX_MKT", 17_710_700, 0, 6_259_500],
-  ["LAKE_MKT", 7_096_400, 0, 0],
-  ["ORL_MKT", 25_160_100, 4_021_100, 1_356_100],
-  ["SAR_MKT", 30_243_000, 812_500, 1_380_500],
-  ["STPET_MKT", 27_512_500, 4_662_300, 0],
+/**
+ * [market, gross, cancelled, cd, issued, sat, sold] in cents / counts.
+ *
+ * ⚠️ ONE OBSERVATION, PINNED: `observed_on = 2026-08-11`, covering data through
+ * 08-10. The dollars AND the counts are read from that single row set, which is
+ * the property Amendment A2 turns on — they describe one appointment-date
+ * cohort, so a fixture that took counts from a different observation (or a
+ * different report) would not be testing what ships. Live data has since moved
+ * on; this stays pinned so the assertions stay reproducible.
+ */
+const AUG_2026: Array<[string, number, number, number, number, number, number]> = [
+  ["FTLAU_MKT", 23_484_800, 9_569_800, 0, 47, 25, 4],
+  ["FTMYR_MKT", 87_320_800, 2_844_300, 2_328_100, 161, 101, 32],
+  ["JAX_MKT", 17_710_700, 0, 6_259_500, 74, 45, 10],
+  ["LAKE_MKT", 7_096_400, 0, 0, 15, 10, 4],
+  ["ORL_MKT", 25_160_100, 4_021_100, 1_356_100, 97, 44, 15],
+  ["SAR_MKT", 30_243_000, 812_500, 1_380_500, 82, 52, 19],
+  ["STPET_MKT", 27_512_500, 4_662_300, 0, 110, 72, 11],
 ];
 
 const obs = (
-  [market, grossCents, cancelledCents, cdCents]: (typeof AUG_2026)[number],
+  [market, grossCents, cancelledCents, cdCents, issuedCount, satCount, soldCount]: (typeof AUG_2026)[number],
   over: Partial<CohortObservation> = {},
 ): CohortObservation => ({
   appointmentMonth: "2026-08-01",
@@ -189,9 +199,9 @@ const obs = (
   holdCents: null,
   cancelledCents,
   cdCents,
-  issuedCount: null,
-  satCount: null,
-  soldCount: null,
+  issuedCount,
+  satCount,
+  soldCount,
   isCurrent: true,
   ...over,
 });
@@ -271,7 +281,7 @@ describe("netSalesByMarket", () => {
   });
 
   it("excludes appointment months outside the period — cohorts never migrate", () => {
-    const july = obs(["FTMYR_MKT", 1_000_000_00, 0, 0], { appointmentMonth: "2026-07-01" });
+    const july = obs(["FTMYR_MKT", 1_000_000_00, 0, 0, 0, 0, 0], { appointmentMonth: "2026-07-01" });
     const aug = netSalesByMarket([...AUG, july], "2026-08-01", "2026-08-31");
     expect(dollars(aug.get("FTMYR_MKT")!.netSalesCents)).toBe(821_484);
 
@@ -319,5 +329,155 @@ describe("the market goal is paced against the same basis", () => {
     const target = (GOALS.LAKE_MKT! * 8) / 26;
     const net = dollars(m.get("LAKE_MKT")!.netSalesCents)!;
     expect(Math.round((net / target) * 1000) / 10).toBe(166.3);
+  });
+});
+
+/**
+ * ── Amendment A2 — the sales funnel comes from Report 137 ───────────────────
+ *
+ * The rule this REPLACES: v4 §1 barred 137's appointment columns from any
+ * funnel metric. That was right only while a single funnel served both Sales
+ * and the call center. 137 filters on appointment dates, so its counts and its
+ * dollars describe ONE cohort — and pairing them is what makes a market row
+ * internally consistent instead of splicing live-sync counts onto 137 money.
+ *
+ * The rule that SURVIVES: these counts still may not be reconciled to
+ * Appointment Statistics. Different cohort basis, different attribution, and
+ * per-setter differences that run in both directions.
+ */
+describe("A2 — market funnel counts come from the 137 cohort", () => {
+  const m = netSalesByMarket(AUG, "2026-08-01", "2026-08-31");
+
+  it("reconciles EXACTLY to the 137 fixture for the same appointment window", () => {
+    // A2: "A sales-scorecard Issued or Demos figure that does not reconcile to
+    // the 137 export for the same appointment-date range is a DEFECT."
+    expect(m.get("FTMYR_MKT")!.issuedCount).toBe(161);
+    expect(m.get("FTMYR_MKT")!.satCount).toBe(101);
+    expect(m.get("FTMYR_MKT")!.soldCount).toBe(32);
+    // Company row is Σ of the markets, matching the 137 export's own total for
+    // observed_on 2026-08-11.
+    expect(m.get("REECE")!.issuedCount).toBe(586);
+    expect(m.get("REECE")!.satCount).toBe(349);
+    expect(m.get("REECE")!.soldCount).toBe(95);
+  });
+
+  it("§5 is dissolved — market-grain Demo % is a VALUE, never unmeasured", () => {
+    // v4 §5 blocked this because Appointment Statistics carries no market
+    // column. 137 By Market does, so the blocker is gone and the fallback with
+    // it. Every market resolves.
+    for (const [market] of AUG_2026) {
+      const r = m.get(market)!;
+      expect(r.issuedCount).not.toBeNull();
+      expect(r.satCount).not.toBeNull();
+      const demoPct = (r.satCount! / r.issuedCount!) * 100;
+      expect(Number.isFinite(demoPct)).toBe(true);
+    }
+  });
+
+  it("derives the rate from SUMMED counts, never an average of the markets' rates", () => {
+    const r = m.get("REECE")!;
+    const summed = (r.satCount! / r.issuedCount!) * 100;
+    const averaged =
+      AUG_2026.reduce((a, [, , , , iss, sat]) => a + (sat / iss) * 100, 0) / AUG_2026.length;
+    expect(Math.round(summed * 10) / 10).toBe(59.6);
+    // §11 applies to counts exactly as to dollars: the two answers differ, and
+    // the summed one is the published figure.
+    expect(Math.round(averaged * 10) / 10).not.toBe(Math.round(summed * 10) / 10);
+  });
+
+  it("a count the report did not carry is unknown, not zero", () => {
+    // Same all-or-unknown rule the dollars follow. One market with a missing
+    // count makes the COMPANY total unknown rather than quietly understating
+    // it — a smaller-but-confident total is the failure mode being prevented.
+    const holed = AUG_2026.map((r, i) =>
+      i === 0 ? obs(r, { issuedCount: null }) : obs(r),
+    );
+    const h = netSalesByMarket(holed, "2026-08-01", "2026-08-31");
+    expect(h.get("FTLAU_MKT")!.issuedCount).toBeNull();
+    expect(h.get("REECE")!.issuedCount).toBeNull();
+    // The dollars are unaffected — a missing count is not a missing sale.
+    expect(dollars(h.get("REECE")!.netSalesCents)).toBe(1_852_941);
+  });
+
+  it("cohorts do not migrate: a July count never lands in an August window", () => {
+    const july = obs(AUG_2026[0]!, {
+      appointmentMonth: "2026-07-01",
+      issuedCount: 999,
+      satCount: 999,
+      soldCount: 999,
+    });
+    const aug = netSalesByMarket([...AUG, july], "2026-08-01", "2026-08-31");
+    expect(aug.get("FTLAU_MKT")!.issuedCount).toBe(47);
+    // Widen the window and the July cohort joins — it does not move, the window does.
+    const ytd = netSalesByMarket([...AUG, july], "2026-01-01", "2026-12-31");
+    expect(ytd.get("FTLAU_MKT")!.issuedCount).toBe(47 + 999);
+  });
+});
+
+/**
+ * ── §11 — the market rollup regression fixture ──────────────────────────────
+ *
+ * Fort Lauderdale is BOCA + FTLAU + MIAMI, summed BEFORE any rate is derived.
+ * Reading the FTLAU office row alone gives $140,433 gross and $0 net — the
+ * 5%-of-target row this fixture exists to keep from coming back.
+ */
+describe("§11 — Fort Lauderdale is a rollup, and the counts roll up with it", () => {
+  const OFFICES: Array<[string, number, number, number, number, number, number]> = [
+    // [office, gross, cancelled, cd, issued, sat, sold]
+    ["BOCA", 9_441_500, 0, 0, 18, 11, 2],
+    ["FTLAU", 14_043_300, 9_569_800, 0, 22, 11, 2],
+    ["MIAMI", 0, 0, 0, 7, 3, 0],
+  ];
+
+  const rolled: CohortObservation = {
+    appointmentMonth: "2026-08-01",
+    market: "FTLAU_MKT",
+    observedOn: "2026-08-11",
+    dataThrough: "2026-08-10",
+    officeCount: OFFICES.length,
+    grossCents: OFFICES.reduce((a, o) => a + o[1], 0),
+    nsaCents: 8_541_500,
+    workingCents: null,
+    holdCents: null,
+    cancelledCents: OFFICES.reduce((a, o) => a + o[2], 0),
+    cdCents: OFFICES.reduce((a, o) => a + o[3], 0),
+    issuedCount: OFFICES.reduce((a, o) => a + o[4], 0),
+    satCount: OFFICES.reduce((a, o) => a + o[5], 0),
+    soldCount: OFFICES.reduce((a, o) => a + o[6], 0),
+    isCurrent: true,
+  };
+
+  it("reproduces $234,848 gross / $95,698 cancelled / $139,150 net", () => {
+    const m = netSalesByMarket([rolled], "2026-08-01", "2026-08-31");
+    const r = m.get("FTLAU_MKT")!;
+    expect(dollars(r.grossCents)).toBe(234_848);
+    expect(dollars(r.netSalesCents)).toBe(139_150);
+    expect(rolled.cancelledCents! / 100).toBe(95_698);
+    expect(rolled.cdCents).toBe(0);
+  });
+
+  it("taking the first office row instead gives $140,433 gross and $0 net", () => {
+    // The exact defect, pinned. Net is 0 because FTLAU's own cancellations
+    // ($95,698) very nearly equal its own gross.
+    const first = OFFICES[1]!; // FTLAU, the office that shares the market's name
+    expect(first[1] / 100).toBe(140_433);
+    expect((first[1] - first[2] - first[3]) / 100).toBeCloseTo(44_735, 0);
+    // …and against the market's real $139,150 that is a 68% understatement.
+    expect(dollars(rolled.grossCents)).not.toBe(140_433);
+  });
+
+  it("the counts sum too — 47 issued, 25 sat, 4 sold", () => {
+    expect(rolled.issuedCount).toBe(47);
+    expect(rolled.satCount).toBe(25);
+    expect(rolled.soldCount).toBe(4);
+  });
+
+  it("Report 137 NSA is carried as a DIAGNOSTIC and is not Net Sales", () => {
+    // $85,415 NSA against $139,150 Net Sales on the same rows. The gap is
+    // working and hold — unresolved business, not loss.
+    const m = netSalesByMarket([rolled], "2026-08-01", "2026-08-31");
+    expect(rolled.nsaCents! / 100).toBe(85_415);
+    expect(dollars(m.get("FTLAU_MKT")!.netSalesCents)).toBe(139_150);
+    expect(dollars(m.get("FTLAU_MKT")!.netSalesCents)).not.toBe(85_415);
   });
 });

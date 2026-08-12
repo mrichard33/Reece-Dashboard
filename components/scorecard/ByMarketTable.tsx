@@ -62,7 +62,8 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
       ["Issued", num(r.issued)],
       ["Demos", num(r.demos)],
       ["Sales", num(r.sales)],
-      [METRIC_LABELS.demoToSale, r.utility ? "—" : pct(r.close_pct)],
+      [METRIC_LABELS.demo, r.utility ? "—" : pct(r.demo_pct)],
+      [METRIC_LABELS.demoToSale, r.utility ? "—" : pct(r.demo_to_sale_pct)],
       ["Gross written", usd(r.gross_sales)],
     ];
     const paceLine = formatPace(r);
@@ -134,8 +135,11 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
       <td className={`${cell} text-slate-600 dark:text-slate-300`}>{num(r.issued)}</td>
       <td className={`${cell} text-slate-600 dark:text-slate-300`}>{num(r.demos)}</td>
       <td className={`${cell} text-slate-900 dark:text-slate-100`}>{num(r.sales)}</td>
+      <td className={`${cell} text-slate-600 dark:text-slate-300`} title={METRIC_FORMULAS.demo}>
+        {r.utility ? "—" : pct(r.demo_pct)}
+      </td>
       <td className={`${cell} text-slate-600 dark:text-slate-300`} title={METRIC_FORMULAS.demoToSale}>
-        {r.utility ? "—" : pct(r.close_pct)}
+        {r.utility ? "—" : pct(r.demo_to_sale_pct)}
       </td>
       <td className={`${cell} text-slate-600 dark:text-slate-300`}>{usd(r.gross_sales)}</td>
       <td className={`${cell} text-slate-900 dark:text-slate-100`}>{usd(r.net_sales)}</td>
@@ -177,8 +181,12 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
       // these cards showed RTP through 08-06 beside counts through 08-10 and
       // said nothing about either. `net_sales_through` is report 137's
       // data_through, not its run date.
+      // A4: the cohort basis is named on the section, once, rather than left
+      // for a reader to infer per column. Every count and dollar in this table
+      // is report 137 on the appointment-date cohort — one cohort per row.
       meta={
-        (dataThrough ? `Net Sales · report 137 · through ${dataThrough} · ` : "") +
+        "Report 137 · appointment-date cohort · " +
+        (dataThrough ? `through ${dataThrough} · ` : "") +
         "Tap a market to open its scorecard"
       }
     >
@@ -190,19 +198,27 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
 
       {/* Desktop: full table */}
       <div className="hidden overflow-x-auto border-t border-slate-100 px-2 py-1 dark:border-slate-800/70 lg:block lg:px-4 lg:py-2">
-        <table className="w-full min-w-[820px] text-[13px]">
+        <table className="w-full min-w-[900px] text-[13px]">
           <thead>
             <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               <th className="px-3 py-2.5 text-left font-semibold">Market</th>
-              <th className={headCell}>Leads</th>
-              <th className={headCell}>Issued</th>
-              <th className={headCell}>Demos</th>
-              <th className={headCell}>Sales</th>
-              <th className={headCell} title={METRIC_FORMULAS.demoToSale}>
+              <th className={headCell} title="Leads bought in this window. Report 135 (Lead Disposition), lead-cohort basis — NOT the appointment cohort the rest of this row is on, and deliberately not divided into it: lead grain and appointment grain have no proven bridge.">Leads</th>
+              {/* A4: every appointment count names its cohort basis and its
+                  report. These three and the two rates beside them are all
+                  report 137, all appointment-date — the same rows as the
+                  dollars. They will NOT tie to Appointment Statistics and are
+                  not meant to. */}
+              <th className={headCell} title="Appointments issued. Report 137, APPOINTMENT-DATE cohort — the same rows as Gross Written and Net Sales in this row. Does not tie to Appointment Statistics (446 here vs 418 there for 8/2–8/8): different cohort basis, different attribution.">Issued</th>
+              <th className={headCell} title="Appointments sat (demos). Report 137, APPOINTMENT-DATE cohort.">Demos</th>
+              <th className={headCell} title="Gross sales count. Report 137, APPOINTMENT-DATE cohort.">Sales</th>
+              <th className={headCell} title={`${METRIC_FORMULAS.demo} · Report 137 · appointment-date cohort. NOT "Company Demo %", which is the call-center metric on a SET-date cohort and a different number.`}>
+                {METRIC_LABELS.demo}
+              </th>
+              <th className={headCell} title={`${METRIC_FORMULAS.demoToSale} · Report 137 · appointment-date cohort.`}>
                 {METRIC_LABELS.demoToSale}
               </th>
-              <th className={headCell} title="Contract value WRITTEN in this period, on contract date. Report 137.">Gross written</th>
-              <th className={headCell} title="Net Sales = Gross Written − Cancellations − Financing Denied, on contract date. Report 137. This is the goal-bearing figure — the same basis as the company hero and this market's goal.">
+              <th className={headCell} title="Contract value WRITTEN for appointments in this period. Report 137, appointment-date cohort.">Gross written</th>
+              <th className={headCell} title="Net Sales = Gross Written − Cancellations − Financing Denied. Report 137, appointment-date cohort. Working and Hold stay IN it — unresolved business is not loss. This is the goal-bearing figure — the same basis as the company hero and this market's goal.">
                 Net Sales
               </th>
               <th className={headCell}>{abbr} target</th>
