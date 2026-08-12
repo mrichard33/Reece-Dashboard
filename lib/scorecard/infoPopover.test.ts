@@ -1,16 +1,29 @@
 /**
- * §Mobile — the ⓘ popover must be reachable on a phone.
+ * §Popover — the ⓘ must be readable wherever it is rendered.
  *
- * Reported 2026-08-12: "when I click on the info buttons on mobile the pop up
- * is always cut off the screen." Two independent causes, both in
- * `components/help/InfoPopover.tsx`:
+ * TWO REPORTS, ONE ROOT CAUSE, SIX HOURS APART.
  *
- *   1. A fixed `w-80` (320px) panel positioned absolutely off a 20px trigger.
- *      On a ~390px viewport it runs past whichever edge the trigger sits near;
- *      `align="left"` overflows the right edge almost everywhere.
- *   2. An absolutely-positioned child CANNOT escape an ancestor with
- *      `overflow-x-auto` — which is every table on the scorecard. Those ⓘ
- *      buttons opened into a clipped strip, or nothing at all.
+ * 2026-08-12 (morning): "when I click on the info buttons on mobile the pop up
+ * is always cut off the screen."
+ * 2026-08-12 (same day, after the first fix shipped): "the scorecard pop-up
+ * icon on desktop is now cutting off. It is also cutting off in the boxes
+ * labeled Sold this period / Released this period / Lost this period / Open
+ * backlog. I think it is being contained in the box."
+ *
+ * The root cause of both is one CSS fact: an absolutely-positioned child
+ * CANNOT escape an ancestor that clips (`overflow-hidden`, `overflow-x-auto`).
+ * The scorecard is built out of such ancestors, and — this is the part the
+ * first fix missed — several of them are DESKTOP-ONLY:
+ *
+ *   · RevenueCard's SplitCard   overflow-hidden                (all widths)
+ *   · ByMarketTable             hidden overflow-x-auto lg:block
+ *   · SourcePerformanceTable    hidden overflow-x-auto sm:block
+ *   · LeadCostTable             hidden overflow-x-auto lg:block
+ *
+ * The first fix made the panel `fixed` below `sm` and restored `sm:absolute`
+ * above it, so it moved the bug from phone to desktop instead of removing it.
+ * `fixed` is now the only positioning mode, at every breakpoint, with the
+ * trigger measured in JS to recover the anchoring `absolute` gave for free.
  *
  * `vitest.config.ts` collects `lib/**` only and runs in a node env, so no
  * component test can render this. A source scan is the only way to prove the
@@ -26,74 +39,146 @@ const SRC = readFileSync("components/help/InfoPopover.tsx", "utf8");
 
 /**
  * Source with comments removed. The component's own comment explains the bug
- * and therefore names `w-80` in prose; a rule about which CLASSES render must
- * not fire on the sentence describing why they changed. Same approach as
- * labelDiscipline.test.ts.
+ * and therefore names the offending classes in prose; a rule about which
+ * CLASSES render must not fire on the sentence describing why they changed.
+ * Same approach as labelDiscipline.test.ts.
  */
 const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 
-describe("§Mobile — InfoPopover escapes overflow ancestors", () => {
-  it("positions the panel against the VIEWPORT below sm", () => {
-    // `fixed` is the whole fix: it cannot be clipped by a scroll container and
-    // cannot exceed the screen. If this reverts to a bare `absolute`, every ⓘ
-    // inside a table breaks again.
-    expect(SRC).toMatch(/className=\{cn\(\s*\n\s*"fixed inset-x-4 bottom-4/);
+describe("§Popover — the panel escapes clipping ancestors at EVERY breakpoint", () => {
+  it("never positions the panel with `absolute`, at any breakpoint", () => {
+    // THE REGRESSION GUARD. `sm:absolute` is what broke desktop; a bare
+    // `absolute` is what broke mobile. Neither may come back — an absolutely
+    // positioned panel is clipped by SplitCard's overflow-hidden, which is
+    // the "contained in the box" report.
+    expect(CODE).not.toMatch(/\babsolute\b/);
+  });
+
+  it("positions the panel against the VIEWPORT", () => {
+    expect(CODE).toMatch(/"fixed z-50/);
+  });
+
+  it("measures the trigger so the panel still follows it", () => {
+    // `fixed` costs the automatic anchoring `absolute` provided. If the
+    // measurement goes away, every popover pins to the same viewport corner.
+    expect(CODE).toMatch(/getBoundingClientRect\(\)/);
+    expect(CODE).toMatch(/btnRef/);
+  });
+
+  it("keeps the panel on screen horizontally rather than trusting the trigger", () => {
+    // A trigger near the right edge with align="left" would otherwise hang off
+    // the viewport — the original mobile complaint, which is width-independent
+    // and so can recur on a narrow desktop window.
+    expect(CODE).toMatch(/Math\.min\(Math\.max\(GAP, preferred\), vw - width - GAP\)/);
+  });
+
+  it("flips above the trigger when there is not enough room below", () => {
+    expect(CODE).toMatch(/roomBelow/);
+    expect(CODE).toMatch(/roomAbove/);
+    expect(CODE).toMatch(/bottom: vh - r\.top \+ GAP/);
+  });
+
+  it("repositions on scroll from a CONTAINER, not just the window", () => {
+    // Capture phase is load-bearing: scroll events on those overflow-x-auto
+    // tables do not bubble to window, so a bubble-phase listener would let the
+    // panel drift away from its trigger inside exactly the containers that
+    // motivated this fix.
+    expect(CODE).toMatch(/addEventListener\("scroll", place, true\)/);
+    expect(CODE).toMatch(/addEventListener\("resize", place\)/);
+    expect(CODE).toMatch(/removeEventListener\("scroll", place, true\)/);
+  });
+
+  it("measures before opening, so the first paint is already placed", () => {
+    expect(CODE).toMatch(/if \(!open\) place\(\)/);
   });
 
   it("bounds its height and scrolls internally rather than overflowing", () => {
-    expect(SRC).toMatch(/max-h-\[70vh\] overflow-y-auto/);
+    expect(CODE).toMatch(/overflow-y-auto/);
+    expect(CODE).toMatch(/maxHeight: placement\.maxHeight/);
+    // The phone sheet keeps its CSS cap.
+    expect(CODE).toMatch(/max-h-\[70vh\]/);
   });
 
-  it("restores the anchored popover at sm and up, unchanged", () => {
-    expect(SRC).toMatch(/sm:absolute/);
-    expect(SRC).toMatch(/sm:top-full/);
-    expect(SRC).toMatch(/sm:w-80/);
-    // The align prop still drives left/right — at sm+ only.
-    expect(SRC).toMatch(/align === "right" \? "sm:right-0" : "sm:left-0"/);
+  it("falls back to the viewport sheet below sm", () => {
+    expect(CODE).toMatch(/matchMedia\("\(min-width: 640px\)"\)/);
+    expect(CODE).toMatch(/inset-x-4 bottom-4/);
   });
 
   it("never sizes the mobile panel with a fixed width", () => {
-    // A `w-80` that is not sm-scoped is the original bug.
-    expect(CODE).not.toMatch(/(?<!sm:)\bw-80\b/);
+    // A `w-80` class was the original bug; the desktop width is now a measured
+    // number clamped to the viewport, not a class at all.
+    expect(CODE).not.toMatch(/\bw-80\b/);
+    expect(CODE).toMatch(/Math\.min\(PANEL_WIDTH, vw - GAP \* 2\)/);
+  });
+
+  it("still drives the preferred edge from the align prop", () => {
+    expect(CODE).toMatch(/align === "right" \? r\.right - width : r\.left/);
   });
 
   it("has a tap-to-close backdrop on mobile only", () => {
-    expect(SRC).toMatch(/fixed inset-0 z-40 .*sm:hidden/);
-    expect(SRC).toMatch(/onClick=\{\(\) => setOpen\(false\)\}/);
+    expect(CODE).toMatch(/fixed inset-0 z-40 .*sm:hidden/);
+    expect(CODE).toMatch(/onClick=\{\(\) => setOpen\(false\)\}/);
   });
 
-  it("layers the panel above its own backdrop", () => {
-    // Backdrop z-40, panel z-50; at sm+ the panel drops back to z-40 and the
-    // backdrop is hidden entirely.
-    expect(SRC).toMatch(/bottom-4 z-50/);
-    expect(SRC).toMatch(/sm:z-40/);
+  it("keeps the panel a DOM descendant so click-outside still works", () => {
+    // `fixed` changes where it PAINTS, not where it lives in the tree. The
+    // outside-click test relies on that.
+    expect(CODE).toMatch(/ref\.current && !ref\.current\.contains\(e\.target as Node\)/);
   });
 });
 
-describe("§Mobile — the tables that made this necessary still scroll", () => {
+describe("§Popover — the clipping ancestors that made this necessary still exist", () => {
   /**
-   * Anti-vacuity. The popover fix only matters because these exist; if the
-   * overflow containers were removed the guard above would silently stop
-   * guarding anything real.
+   * Anti-vacuity. The fix only matters because these exist; if the overflow
+   * containers were removed the guards above would silently stop guarding
+   * anything real.
    */
-  const TABLES = [
+  const CLIPPERS = [
     "components/scorecard/CohortPanels.tsx",
     "components/scorecard/ByMarketTable.tsx",
     "components/scorecard/SourcePerformanceTable.tsx",
+    "components/scorecard/LeadCostTable.tsx",
   ];
 
   it("at least one scorecard table is an overflow container", () => {
-    const scrolling = TABLES.filter((f) => /overflow-x-auto/.test(readFileSync(f, "utf8")));
+    const scrolling = CLIPPERS.filter((f) => /overflow-x-auto/.test(readFileSync(f, "utf8")));
     expect(scrolling.length).toBeGreaterThan(0);
   });
 
-  it("the cohort table renders an ⓘ, which is the case that was broken", () => {
+  it("at least one of those containers is DESKTOP-ONLY", () => {
+    // This is the specific shape that made the sm-scoped fix wrong: a scroll
+    // container that does not exist on a phone and therefore could not be
+    // caught by testing on one.
+    const desktopOnly = CLIPPERS.filter((f) =>
+      /hidden overflow-x-auto[^"]*(?:sm|lg):block/.test(readFileSync(f, "utf8")),
+    );
+    expect(desktopOnly.length).toBeGreaterThan(0);
+  });
+
+  it("the four RevenueCard panels still clip their own content", () => {
+    // Sold / Released / Lost / Open backlog — the boxes named in the report.
+    // SplitCard needs overflow-hidden for its rounded accent border, so the
+    // popover is what has to escape, not the card that has to stop clipping.
+    const src = readFileSync("components/scorecard/RevenueCard.tsx", "utf8");
+    expect(src).toMatch(/overflow-hidden rounded-lg/);
+    for (const title of [
+      "Sold this period",
+      "Released this period",
+      "Lost this period",
+      "Open backlog",
+    ]) {
+      expect(src, `${title} panel is gone — update this guard`).toContain(title);
+    }
+    expect(src).toMatch(/<InfoPopover info=\{\{ title, \.\.\.info \}\}/);
+  });
+
+  it("the cohort table renders an ⓘ, which is the case that was broken first", () => {
     const src = readFileSync("components/scorecard/CohortPanels.tsx", "utf8");
     expect(src).toMatch(/<InfoPopover/);
   });
 });
 
-describe("§Mobile — no other component hardcodes an off-screen panel width", () => {
+describe("§Popover — no other component hardcodes an off-screen panel width", () => {
   const ROOTS = ["components", "app"];
   function walk(dir: string, out: string[] = []): string[] {
     for (const entry of readdirSync(dir)) {
