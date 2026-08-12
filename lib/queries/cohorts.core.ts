@@ -13,20 +13,34 @@
  * anything, and it is why Gross Written is treated as the fixed denominator
  * throughout.
  *
- * ══ THE DECOMPOSITION ══
+ * ══ THE DEFINITION — ONE FORMULA, AND IT IS A SUBTRACTION ══
  *
- *     Gross Written  (IMMUTABLE — the cohort's defining figure)
- *       ├─ Lost      = cancelled + credit_decline
- *       └─ Net Sales = Pending + Matured
- *            ├─ Pending = working + hold
- *            └─ Matured = nsa
+ *     Net Sales = Gross Written − Cancellations − Financing Denied
  *
- * Net Sales — the goal-bearing basis (see `lib/scorecard/goalBasis.ts`) — is
- * Gross Written less the two TERMINAL losses. It is therefore computable two
- * ways: by subtraction (`gross − cancelled − cd`) or by summing what remains
- * (`nsa + working + hold`). THE SUBTRACTION IS AUTHORITATIVE. The two differ by
- * exactly the waterfall delta, which is a source-data observation, not a
- * correction to apply.
+ * Gross Written is the cohort's immutable defining figure; cancellations and
+ * financing denials are the two TERMINAL losses. That is the whole formula.
+ * Nothing else derives Net Sales, anywhere.
+ *
+ * ══ THE DISPOSITION — AN OBSERVATION, NOT AN IDENTITY ══
+ *
+ * Separately, LP reports how that business is currently sitting:
+ *
+ *     observed disposition = nsa + working + hold
+ *          Matured = nsa             settled
+ *          Pending = working + hold  still in play
+ *
+ * ⚠️ DO NOT WRITE `Net Sales = Pending + Matured`. It is very nearly true, and
+ * that is exactly what makes it dangerous. Report 137 does not always foot:
+ * measured 2026-08-12 the identity ties exactly on only two of eight cohorts,
+ * and the sign of the miss flips between April and June. Writing it as an
+ * equation silently promotes a DIAGNOSTIC OBSERVATION into a GUARANTEED
+ * ACCOUNTING IDENTITY — and the whole reconciliation apparatus below exists
+ * because LP guarantees no such thing.
+ *
+ * The gap between the definition and the observation is
+ * `reconciliationDelta`. It is carried alongside both, and resolved into
+ * neither. Net Sales does not move because the disposition disagrees with it,
+ * and no rate is normalised to make them agree.
  *
  * ══ AN UNOBSERVED DISPOSITION IS UNKNOWN, NOT ZERO ══
  *
@@ -106,13 +120,22 @@ export type CohortObservation = Omit<CohortOfficeRow, "officeCode"> & {
   isCurrent?: boolean;
 };
 
-/** The §3 tree, with every branch nullable for the reason above. */
+/**
+ * The cohort's figures, with every branch nullable for the reason above.
+ *
+ * `netSalesCents` comes from the DEFINITION (a subtraction).
+ * `observedDispositionCents` comes from LP's REPORTED state (a sum).
+ * `reconciliationDeltaCents` is how far apart they are. They are three separate
+ * fields on purpose — collapsing any two of them is the mistake.
+ */
 export type CohortDecomposition = {
   grossCents: number | null;
   lostCents: number | null;
   pendingCents: number | null;
   maturedCents: number | null;
   netSalesCents: number | null;
+  observedDispositionCents: number | null;
+  reconciliationDeltaCents: number | null;
 };
 
 export type WaterfallDelta = { cents: number; pct: number };
@@ -124,12 +147,31 @@ export type WaterfallWarning = {
   message: string;
 };
 
-export type MatureRate = {
+/**
+ * ⚠️ TWO RATES, BOTH OVER GROSS WRITTEN, ANSWERING DIFFERENT QUESTIONS. They are
+ * within a rounding point of each other on settled cohorts, which is precisely
+ * why they must never share a name.
+ *
+ *   Historical Mature NSA Rate = Σ NSA ÷ Σ Gross Written  (eligible cohorts)
+ *       "Of what we wrote, how much ultimately SETTLED to LP's net?"
+ *       Backward-looking, needs cohorts old enough to have settled, and is the
+ *       assumption behind the Expected Mature Net forecast.
+ *
+ *   Net Retention %            = Net Sales ÷ Gross Written  (any cohort)
+ *       "Of what we wrote, how much has NOT been permanently lost?"
+ *       Available immediately, on any cohort including the current month.
+ *
+ * On Jan–May 2026 both round to 71.1%. On July 2026 they are 50.9% and 76.3% —
+ * a 25-point gap that is working and hold still in play. Reading one as the
+ * other misreports a young month badly in whichever direction you got it wrong.
+ */
+export type HistoricalMatureNsaRate = {
   /** Fraction, e.g. 0.711. Not a percentage. */
   rate: number;
   cohortCount: number;
   grossCents: number;
-  netSalesCents: number;
+  /** THE NUMERATOR: settled NSA, not Net Sales. The name says which. */
+  nsaCents: number;
   eligibilityDays: number;
   /** The contract months that fed it, oldest first — for the tile's footnote. */
   months: string[];
@@ -293,13 +335,44 @@ export function netSalesCents(o: Pick<CohortObservation, "grossCents" | "cancell
   return o.grossCents - lost;
 }
 
+/**
+ * What LP currently reports the business as DOING: settled + still in play.
+ *
+ * This is an observation of the same cohort, not a second way to compute Net
+ * Sales. Where it disagrees with the definition, `reconciliationDelta` is the
+ * disagreement and both figures stand.
+ */
+export function observedDispositionCents(o: CohortObservation): number | null {
+  return sumKnown([o.nsaCents, o.workingCents, o.holdCents]);
+}
+
+/**
+ * observed disposition − Net Sales.
+ *
+ * POSITIVE means LP's dispositions account for MORE than the definition says
+ * exists. Algebraically identical to `waterfallDelta` (which frames the same
+ * quantity against LP's five-bucket identity); this is the framing that
+ * matters to the cohort panels, because it names precisely the two figures a
+ * reader can see side by side.
+ */
+export function reconciliationDelta(o: CohortObservation): number | null {
+  const observed = observedDispositionCents(o);
+  const defined = netSalesCents(o);
+  if (observed == null || defined == null) return null;
+  return observed - defined;
+}
+
 export function decompose(o: CohortObservation): CohortDecomposition {
   return {
     grossCents: o.grossCents,
     lostCents: sumKnown([o.cancelledCents, o.cdCents]),
     pendingCents: sumKnown([o.workingCents, o.holdCents]),
     maturedCents: o.nsaCents,
+    // ALWAYS the subtraction. Never pendingCents + maturedCents, however
+    // tempting it is to reuse the two fields directly above.
     netSalesCents: netSalesCents(o),
+    observedDispositionCents: observedDispositionCents(o),
+    reconciliationDeltaCents: reconciliationDelta(o),
   };
 }
 
@@ -326,9 +399,15 @@ export function netSurvivalRate(o: CohortObservation): Measured {
   return fraction(o.nsaCents, o.grossCents, "net survival rate");
 }
 
-/** The goal-bearing basis as a share of what was written. */
-export function netSalesRate(o: CohortObservation): Measured {
-  return fraction(netSalesCents(o), o.grossCents, "net sales rate");
+/**
+ * NET RETENTION % — the goal-bearing basis as a share of what was written.
+ * "Of what we wrote, how much has NOT been permanently lost?"
+ *
+ * NOT the Historical Mature NSA Rate. See the note on that type: on July 2026
+ * this reads 76.3% and the NSA rate reads 50.9%.
+ */
+export function netRetentionRate(o: CohortObservation): Measured {
+  return fraction(netSalesCents(o), o.grossCents, "net retention %");
 }
 
 /** working + hold, over gross. The share still genuinely undecided. */
@@ -352,9 +431,15 @@ export function lostRate(o: CohortObservation): Measured {
  * they fall short. Fixed sign convention so engineering, alerts and diagnostics
  * all agree.
  *
- * Measured 2026-08-11 the identity ties exactly on only two of eight cohorts,
+ * Measured 2026-08-12 the identity ties exactly on only two of eight cohorts,
  * and the sign flips between April and June — so it is not a systematic
  * double-count, and nothing here tries to explain it away.
+ *
+ * Algebraically this is the same quantity as `reconciliationDelta`: expanding
+ * (nsa+working+hold+cancelled+cd) − gross gives (nsa+working+hold) − (gross −
+ * cancelled − cd), i.e. observed disposition − Net Sales. Two framings of one
+ * miss — this one against LP's five-bucket identity, the other against the two
+ * figures a reader sees side by side.
  */
 export function waterfallDelta(o: CohortObservation): WaterfallDelta | null {
   const buckets = sumKnown([o.nsaCents, o.workingCents, o.holdCents, o.cancelledCents, o.cdCents]);
@@ -401,7 +486,12 @@ export function waterfallWarning(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Σ Net Sales ÷ Σ Gross Written over ELIGIBLE cohorts.
+ * HISTORICAL MATURE NSA RATE — Σ NSA ÷ Σ Gross Written over ELIGIBLE cohorts.
+ *
+ * The numerator is SETTLED NSA, deliberately: this rate answers "what does a
+ * dollar written eventually settle to", so its numerator has to be the settled
+ * figure. Using Net Sales here would make it a retention rate wearing a
+ * maturity rate's name — see the note on `HistoricalMatureNsaRate`.
  *
  * SUM THE NUMERATORS AND DENOMINATORS, THEN DIVIDE. Never average cohort rates:
  * an average weights a $2M month equally with a $13M one and answers a question
@@ -410,11 +500,11 @@ export function waterfallWarning(
  * Takes one observation per cohort — pass the CURRENT observation of each, not
  * the whole history, or a cohort observed five times counts five times.
  */
-export function matureRate(
+export function historicalMatureNsaRate(
   observations: readonly CohortObservation[],
   asOf: string,
   eligibilityDays: number = MATURE_RATE_ELIGIBILITY_DAYS,
-): Measured<MatureRate> {
+): Measured<HistoricalMatureNsaRate> {
   const eligible = observations.filter((o) =>
     isEligibleForMatureRate(o.contractMonth, asOf, eligibilityDays),
   );
@@ -426,42 +516,46 @@ export function matureRate(
   }
 
   let gross = 0;
-  let net = 0;
+  let nsa = 0;
   const months = new Set<string>();
   for (const o of eligible) {
-    const ns = netSalesCents(o);
-    // A cohort whose report did not carry every component cannot join either
-    // sum — including its gross while dropping its net would bias the rate down.
-    if (ns == null || o.grossCents == null) continue;
+    // A cohort whose report did not carry NSA cannot join either sum —
+    // including its gross while dropping its numerator would bias the rate
+    // down and look like a quality collapse.
+    if (o.nsaCents == null || o.grossCents == null) continue;
     gross += o.grossCents;
-    net += ns;
+    nsa += o.nsaCents;
     months.add(o.contractMonth);
   }
 
   if (!(gross > 0)) {
     return unmeasured(
       `the ${eligible.length} eligible cohort observation(s) carry no usable gross ` +
-        `written — every one is missing a disposition component`,
+        `written with a settled NSA beside it`,
     );
   }
 
   return measured({
-    rate: net / gross,
+    rate: nsa / gross,
     cohortCount: months.size,
     grossCents: gross,
-    netSalesCents: net,
+    nsaCents: nsa,
     eligibilityDays,
     months: [...months].sort(),
   });
 }
 
 /**
- * What this period's writing is worth once it settles.
+ * What this period's writing is worth once it settles: Gross Written × the
+ * HISTORICAL MATURE NSA RATE.
  *
  * NOT A QUALITY METRIC. This is Gross Written × a historical constant, so
  * within a month a manager raises it only by writing MORE, never by writing
  * BETTER. It is a forecast. No UI copy, tooltip or comment may imply otherwise
  * — the quality incentive lives in the net survival rate.
+ *
+ * The rate passed in must be the mature NSA rate, not Net Retention % — the
+ * two are within a point on settled cohorts and 25 points apart on a young one.
  */
 export function expectedMatureNet(grossToDateCents: number | null, rate: number): number | null {
   if (grossToDateCents == null || !Number.isFinite(grossToDateCents)) return null;

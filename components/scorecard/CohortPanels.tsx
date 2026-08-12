@@ -5,12 +5,13 @@ import {
   decompose,
   lostRate,
   netSalesCents,
+  netRetentionRate,
   netSurvivalRate,
   pendingRate,
   waterfallDelta,
   waterfallWarning,
   type CohortObservation,
-  type MatureRate,
+  type HistoricalMatureNsaRate,
 } from "@/lib/queries/cohorts.core";
 import type { Measured } from "@/lib/scorecard/tiers/types";
 
@@ -51,7 +52,7 @@ export function ExpectedOutcomePanel({
 }: {
   grossWrittenCents: number | null;
   monthlyGoalDollars: number | null;
-  rate: Measured<MatureRate>;
+  rate: Measured<HistoricalMatureNsaRate>;
   abbr: string;
   asOf: string | null;
 }) {
@@ -76,17 +77,19 @@ export function ExpectedOutcomePanel({
     title: "Expected Mature Net",
     what:
       "A FORECAST, not a measurement: this period's Gross Written multiplied by the " +
-      "share of gross that historically survives to settle. It does not measure how " +
-      "well anyone sold — at a fixed volume it cannot move. Writing more raises it; " +
-      "writing better does not.",
+      "HISTORICAL MATURE NSA RATE — settled NSA divided by gross written, over cohorts " +
+      "old enough to have settled. It does not measure how well anyone sold: at a " +
+      "fixed volume it cannot move. Writing more raises it; writing better does not.",
     where: rate.known
       ? `Basis: Gross Written × ${pct}, from ${rate.value.cohortCount} cohorts at least ` +
         `${rate.value.eligibilityDays} days old (${money(rate.value.grossCents)} written) · ` +
         `report 137 · ${abbr}${asOf ? ` · as of ${usDate(asOf)}` : ""}`
       : "Basis: not computable yet — no cohort is old enough to model from.",
     fix:
-      "The survival share is re-derived as cohorts age; it is not a hardcoded number. " +
-      "If it looks wrong, check panel ③ — the cohorts feeding it are listed there.",
+      "NOT the same as Net Retention % below, which is Net Sales over gross written and " +
+      "answers what has not been permanently LOST. This rate answers what ultimately " +
+      "SETTLES. On settled cohorts they land within a point of each other; on July 2026 " +
+      "they are 50.9% and 76.3%. The rate is re-derived as cohorts age, never hardcoded.",
   };
 
   return (
@@ -94,7 +97,7 @@ export function ExpectedOutcomePanel({
       id="expected-outcome"
       label="Expected Economic Outcome"
       tail="modeled — not a measured dollar"
-      meta={rate.known ? `${pct} historical survival assumption` : "not yet computable"}
+      meta={rate.known ? `${pct} historical mature NSA rate` : "not yet computable"}
     >
       {/* Dashed borders and the amber wash mark the whole panel as an estimate.
           Nothing else on this page is drawn this way. */}
@@ -110,7 +113,9 @@ export function ExpectedOutcomePanel({
           <div className="mt-1.5 text-[10px] leading-relaxed text-amber-800/80 dark:text-amber-300/80">
             {rate.known ? (
               <>
-                {pct} historical survival assumption
+                {pct} Historical Mature NSA Rate
+                <br />
+                <span className="opacity-80">settled NSA ÷ gross written</span>
                 <br />
                 {/* Sample size in COHORTS and DOLLARS. Never "n=17
                     observations" — re-reading one cohort five times is five
@@ -166,9 +171,11 @@ export function CohortQualityPanel({
     what:
       "Every contract stays in the month it was WRITTEN in; only its disposition " +
       "changes. Gross Written is therefore fixed, and the columns to its right show " +
-      "what became of it. Net Sales removes the two terminal losses (cancellations " +
-      "and financing denied). Net (NSA) additionally removes what is still working " +
-      "or on hold, so it keeps rising for months after the cohort closes.",
+      "what became of it. Net Sales is DEFINED by subtraction — gross written less " +
+      "cancellations less financing denied — and nothing else derives it. Pending and " +
+      "Matured are LP's separate report of how that business is currently sitting; " +
+      "they very nearly sum back to Net Sales, but report 137 does not always foot, " +
+      "so the gap is shown as Recon Δ rather than resolved into either figure.",
     where: `Basis: contract date · report 137${asOf ? ` · as of ${usDate(asOf)}` : ""}`,
     fix:
       "A young cohort's low Net Survival Rate is maturation, not necessarily poor " +
@@ -209,7 +216,10 @@ export function CohortQualityPanel({
               <th className="px-2 py-2 text-right font-semibold" title="LP's NSA — fully settled net.">
                 Net (NSA)
               </th>
-              <th className="px-2 py-2 text-right font-semibold" title="Net (NSA) ÷ Gross Written. The quality KPI.">
+              <th className="px-2 py-2 text-right font-semibold" title="Net Sales ÷ Gross Written. Of what we wrote, how much has NOT been permanently lost? Available on any cohort, including the current month.">
+                Net Retention %
+              </th>
+              <th className="px-2 py-2 text-right font-semibold" title="Net (NSA) ÷ Gross Written. Of what we wrote, how much ultimately SETTLED? This is the rate the Expected Mature Net forecast is built on, and it needs a settled cohort to mean anything.">
                 Net Survival Rate
               </th>
               <th className="px-2 py-2 text-right font-semibold" title="(net + working + hold + cancelled + cd) − gross. A source-data diagnostic; it never adjusts a rate.">
@@ -248,6 +258,9 @@ export function CohortQualityPanel({
                   </td>
                   <td className="px-2 py-2 text-right font-mono tabular text-slate-800 dark:text-slate-100">
                     {money(d.maturedCents)}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono tabular text-slate-700 dark:text-slate-200">
+                    {pctOf(netRetentionRate(c))}
                   </td>
                   <td className="px-2 py-2 text-right font-mono tabular text-slate-800 dark:text-slate-100">
                     {pctOf(surv)}
@@ -291,10 +304,13 @@ export function CohortQualityPanel({
       </div>
 
       <div className="px-5 pb-4 text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
-        Recon Δ is a source-data diagnostic. Where it is non-zero, LP&apos;s disposition
-        buckets do not sum to Gross Written — that is recorded and investigated, never
-        corrected into the rates. Net Survival Rate stays Net (NSA) ÷ Gross Written
-        regardless.
+        <strong className="font-semibold">Net Retention %</strong> (Net Sales ÷ Gross
+        Written) and <strong className="font-semibold">Net Survival Rate</strong> (NSA ÷
+        Gross Written) are different questions — not permanently lost, versus ultimately
+        settled. They converge as a cohort ages and are far apart on a young one; only the
+        second is the assumption behind Expected Mature Net. Recon Δ is a source-data
+        diagnostic: where it is non-zero, LP&apos;s disposition buckets do not sum to Gross
+        Written. It is recorded and investigated, never corrected into either rate.
       </div>
     </ScSection>
   );

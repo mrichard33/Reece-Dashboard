@@ -1,8 +1,8 @@
 import { lpServer } from "@/lib/supabase/lp";
 import {
-  matureRate,
+  historicalMatureNsaRate,
   type CohortObservation,
-  type MatureRate,
+  type HistoricalMatureNsaRate,
 } from "./cohorts.core";
 import type { Measured } from "@/lib/scorecard/tiers/types";
 
@@ -125,9 +125,9 @@ export async function fetchCohortHistory(contractMonth?: string): Promise<Cohort
  * `asOf` is the observation date the eligibility window is measured to — pass
  * the period's as-of, not `new Date()`, so the figure is reproducible.
  */
-export async function getCompanyMatureRate(asOf: string): Promise<Measured<MatureRate>> {
+export async function getCompanyHistoricalMatureNsaRate(asOf: string): Promise<Measured<HistoricalMatureNsaRate>> {
   const cohorts = await fetchCurrentCohorts();
-  return matureRate(cohorts, asOf);
+  return historicalMatureNsaRate(cohorts, asOf);
 }
 
 /**
@@ -135,21 +135,21 @@ export async function getCompanyMatureRate(asOf: string): Promise<Measured<Matur
  * too little volume to carry its own. The `ownRate` flag tells the UI which
  * cells to mark — a borrowed rate must never render as if it were measured.
  */
-export async function getMarketMatureRates(
+export async function getMarketHistoricalMatureNsaRates(
   asOf: string,
-): Promise<{ company: Measured<MatureRate>; byMarket: Map<string, { rate: Measured<MatureRate>; ownRate: boolean }> }> {
+): Promise<{ company: Measured<HistoricalMatureNsaRate>; byMarket: Map<string, { rate: Measured<HistoricalMatureNsaRate>; ownRate: boolean }> }> {
   const cohorts = await fetchCurrentCohorts();
-  const company = matureRate(cohorts, asOf);
+  const company = historicalMatureNsaRate(cohorts, asOf);
 
   const markets = [...new Set(cohorts.map((c) => c.market))];
-  const byMarket = new Map<string, { rate: Measured<MatureRate>; ownRate: boolean }>();
+  const byMarket = new Map<string, { rate: Measured<HistoricalMatureNsaRate>; ownRate: boolean }>();
 
   for (const market of markets) {
     // §7 applies to the MODEL too: derive the market's rate from its own summed
     // numerator and denominator. Never average its offices' rates, and never
     // compute per office and sum — that recreates the office/market split on
     // samples far too small to be stable.
-    const own = matureRate(
+    const own = historicalMatureNsaRate(
       cohorts.filter((c) => c.market === market),
       asOf,
     );

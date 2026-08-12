@@ -18,7 +18,7 @@ import { EditGoalsPanel } from "@/components/scorecard/EditGoalsPanel";
 import {
   fetchCurrentCohorts,
   foldCohortsByMonth,
-  matureRate,
+  historicalMatureNsaRate,
   netSalesCents,
 } from "@/lib/queries/cohorts";
 import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries/scorecard";
@@ -84,7 +84,7 @@ export default async function ScorecardPage({
   const companyCohorts = foldCohortsByMonth(cohortRows);
   // The eligibility window is measured to the period's as-of, not to `new
   // Date()`, so the figure is reproducible from the same inputs tomorrow.
-  const matureRateM = matureRate(companyCohorts, resolved.asOf);
+  const historicalMatureNsaRateM = historicalMatureNsaRate(companyCohorts, resolved.asOf);
   const cohortAsOf = companyCohorts.reduce<string | null>(
     (max, c) => (max == null || c.observedOn > max ? c.observedOn : max),
     null,
@@ -280,6 +280,7 @@ export default async function ScorecardPage({
                       ? null
                       : Math.round(currentCohortNetSalesCents / 100)
                   }
+                  netSalesAsOf={cohortAsOf}
                 />
 
                 {/*
@@ -293,7 +294,7 @@ export default async function ScorecardPage({
                 <ExpectedOutcomePanel
                   grossWrittenCents={currentCohortGrossCents}
                   monthlyGoalDollars={vm.pace.monthlyGoal}
-                  rate={matureRateM}
+                  rate={historicalMatureNsaRateM}
                   abbr={vm.abbr}
                   asOf={cohortAsOf}
                 />

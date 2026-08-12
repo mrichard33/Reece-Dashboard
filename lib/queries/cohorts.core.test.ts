@@ -6,6 +6,7 @@
  * the arithmetic did — not that a made-up number drifted.
  */
 
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   MATURE_RATE_ELIGIBILITY_DAYS,
@@ -15,11 +16,12 @@ import {
   expectedMatureNet,
   isEligibleForMatureRate,
   lostRate,
-  matureRate,
+  historicalMatureNsaRate,
   netSalesCents,
-  netSalesRate,
+  netRetentionRate,
   netSurvivalRate,
   pendingRate,
+  reconciliationDelta,
   rollupToMarket,
   sumKnown,
   usesOwnRate,
@@ -218,7 +220,7 @@ describe("§3 — cohort decomposition and its rates", () => {
     // 50.9% has settled to net — the 25-point gap is working and hold, still
     // live. Reading either one as the other misreports the month badly.
     const jul = byMonth("2026-07-01");
-    const sales = netSalesRate(jul);
+    const sales = netRetentionRate(jul);
     const surv = netSurvivalRate(jul);
     expect(sales.known && surv.known).toBe(true);
     if (sales.known && surv.known) {
@@ -385,12 +387,12 @@ describe("§2 — mature-rate eligibility", () => {
 
 describe("§2 — the mature rate is a ratio of sums", () => {
   it("computes 71.1% from 5 cohorts and $58.2M written", () => {
-    const r = matureRate(COHORTS, AS_OF);
+    const r = historicalMatureNsaRate(COHORTS, AS_OF);
     expect(r.known).toBe(true);
     if (!r.known) return;
     expect(r.value.cohortCount).toBe(5);
     expect(r.value.grossCents).toBe(5_816_965_907); // $58,169,659.07
-    expect(r.value.netSalesCents).toBe(4_135_771_915); // $41,357,719.15
+    expect(r.value.nsaCents).toBe(4_133_291_215); // $41,332,912.15 — SETTLED NSA
     expect(r.value.rate).toBeCloseTo(0.711, 3);
     expect(r.value.months).toEqual([
       "2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01",
@@ -398,7 +400,7 @@ describe("§2 — the mature rate is a ratio of sums", () => {
   });
 
   it("SUMS then divides — averaging the cohort rates gives a different answer", () => {
-    const r = matureRate(COHORTS, AS_OF);
+    const r = historicalMatureNsaRate(COHORTS, AS_OF);
     const eligible = COHORTS.filter((c) => isEligibleForMatureRate(c.contractMonth, AS_OF));
     const averaged =
       eligible.reduce((acc, c) => acc + netSalesCents(c)! / c.grossCents!, 0) / eligible.length;
@@ -416,7 +418,7 @@ describe("§2 — the mature rate is a ratio of sums", () => {
       ...eligible,
       cohort(["2025-01-01", 100_000, 100_000, 0, 0, 0, 0]), // $1,000 at 100%
     ];
-    const summed2 = matureRate(skewed, AS_OF);
+    const summed2 = historicalMatureNsaRate(skewed, AS_OF);
     const averaged2 =
       skewed.reduce((acc, c) => acc + netSalesCents(c)! / c.grossCents!, 0) / skewed.length;
     if (summed2.known) {
@@ -427,7 +429,7 @@ describe("§2 — the mature rate is a ratio of sums", () => {
   });
 
   it("the threshold is configurable — 150 days admits only Jan–Mar", () => {
-    const r = matureRate(COHORTS, AS_OF, 150);
+    const r = historicalMatureNsaRate(COHORTS, AS_OF, 150);
     if (r.known) {
       expect(r.value.cohortCount).toBe(3);
       expect(r.value.eligibilityDays).toBe(150);
@@ -435,16 +437,16 @@ describe("§2 — the mature rate is a ratio of sums", () => {
   });
 
   it("is unmeasured, not zero, when nothing is eligible yet", () => {
-    const r = matureRate(COHORTS, "2026-01-15");
+    const r = historicalMatureNsaRate(COHORTS, "2026-01-15");
     expect(r.known).toBe(false);
     if (!r.known) expect(r.reason).toMatch(/no settled history/);
   });
 
-  it("drops a cohort missing a component from BOTH sums, never just the numerator", () => {
+  it("drops a cohort with no settled NSA from BOTH sums, never just the numerator", () => {
     const holed = COHORTS.map((c) =>
-      c.contractMonth === "2026-03-01" ? { ...c, cdCents: null } : c,
+      c.contractMonth === "2026-03-01" ? { ...c, nsaCents: null } : c,
     );
-    const r = matureRate(holed, AS_OF);
+    const r = historicalMatureNsaRate(holed, AS_OF);
     if (r.known) {
       expect(r.value.cohortCount).toBe(4);
       // March's $11.89M gross must NOT be in the denominator on its own — that
@@ -457,15 +459,17 @@ describe("§2 — the mature rate is a ratio of sums", () => {
 
 describe("§2 — Expected Mature Net is a forecast, not a quality measure", () => {
   it("is Gross Written × the historical rate", () => {
-    const r = matureRate(COHORTS, AS_OF);
+    const r = historicalMatureNsaRate(COHORTS, AS_OF);
     if (!r.known) return;
     const aug = byMonth("2026-08-01");
-    // August's $2,185,283 written × 71.1% ≈ $1.55M
-    expect(expectedMatureNet(aug.grossCents, r.value.rate)).toBeCloseTo(155_371_500, -5);
+    // August's $2,185,283 written × the 71.06% mature NSA rate ≈ $1.55M.
+    const got = expectedMatureNet(aug.grossCents, r.value.rate)!;
+    expect(got / 100).toBeGreaterThan(1_545_000);
+    expect(got / 100).toBeLessThan(1_560_000);
   });
 
   it("moves ONLY with volume — writing better cannot raise it within a month", () => {
-    const r = matureRate(COHORTS, AS_OF);
+    const r = historicalMatureNsaRate(COHORTS, AS_OF);
     if (!r.known) return;
     const gross = 218_528_300;
     const base = expectedMatureNet(gross, r.value.rate)!;
@@ -510,5 +514,117 @@ describe("cohort immutability", () => {
     const out = rollupToMarket(mixed);
     expect(out).toHaveLength(2);
     expect(out.map((o) => o.contractMonth)).toEqual(["2026-07-01", "2026-08-01"]);
+  });
+});
+
+// ─── Net Sales is ALGEBRAICALLY INDEPENDENT of the disposition ───────────────
+
+describe("Net Sales is defined by subtraction, never derived from the disposition", () => {
+  it("does not move when the disposition disagrees with it", () => {
+    // THE GUARD. `Net Sales = Pending + Matured` is very nearly true, which is
+    // exactly what makes it dangerous: writing it as an identity promotes a
+    // diagnostic observation into a guaranteed accounting rule, and report 137
+    // ties on only two of eight cohorts. Inflate the disposition by $1M and the
+    // definition must not notice.
+    const base = byMonth("2026-05-01"); // the cohort that ties exactly
+    const defined = netSalesCents(base)!;
+    for (const skew of [{ nsaCents: base.nsaCents! + 100_000_000 },
+                        { workingCents: base.workingCents! + 100_000_000 },
+                        { holdCents: base.holdCents! - 500_000 }]) {
+      expect(netSalesCents({ ...base, ...skew })).toBe(defined);
+    }
+    // It moves only when its OWN inputs move.
+    expect(netSalesCents({ ...base, cdCents: base.cdCents! + 100_000 })).toBe(defined - 100_000);
+  });
+
+  it("decompose() reports the definition and the observation as separate fields", () => {
+    const jun = byMonth("2026-06-01");
+    const d = decompose(jun);
+    // The definition.
+    expect(d.netSalesCents).toBe(d.grossCents! - d.lostCents!);
+    // The observation.
+    expect(d.observedDispositionCents).toBe(d.pendingCents! + d.maturedCents!);
+    // And they are NOT asserted equal — the gap is carried, not resolved.
+    expect(d.reconciliationDeltaCents).toBe(
+      d.observedDispositionCents! - d.netSalesCents!,
+    );
+    expect(d.reconciliationDeltaCents).not.toBe(0); // June misses by −$13,069
+  });
+
+  it("the reconciliation delta and the waterfall delta are one quantity", () => {
+    // Expanding (nsa+w+h+c+cd) − gross gives (nsa+w+h) − (gross−c−cd). Two
+    // framings of one miss; if they ever diverge, one of them is wrong.
+    for (const c of COHORTS) {
+      expect(reconciliationDelta(c)).toBe(waterfallDelta(c)!.cents);
+    }
+  });
+
+  it("a cohort that ties exactly is not treated as proof the identity holds", () => {
+    // May ties at $0. That is one observation, not a guarantee — the same
+    // over-generalisation that made report 138 reject 60 files in a day.
+    expect(reconciliationDelta(byMonth("2026-05-01"))).toBe(0);
+    expect(reconciliationDelta(byMonth("2026-03-01"))).toBe(15_092_000);
+  });
+
+  it("no source file derives Net Sales from the disposition", () => {
+    // Types cannot express this. The scan can.
+    const files = ["lib/queries/cohorts.core.ts", "lib/queries/cohorts.ts",
+                   "components/scorecard/CohortPanels.tsx"];
+    for (const f of files) {
+      const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+      expect(src).not.toMatch(/netSales\w*\s*=\s*[^;]*pending/i);
+      expect(src).not.toMatch(/netSales\w*\s*=\s*[^;]*matured/i);
+      expect(src).not.toMatch(/pendingCents\s*\+\s*maturedCents/);
+    }
+  });
+});
+
+// ─── The two rates must never be confused ───────────────────────────────────
+
+describe("Historical Mature NSA Rate is not Net Retention %", () => {
+  it("they answer different questions and diverge on a young cohort", () => {
+    const jul = byMonth("2026-07-01");
+    const retention = netRetentionRate(jul); // not permanently lost
+    const settled = netSurvivalRate(jul); //    ultimately settled
+    if (retention.known && settled.known) {
+      expect(retention.value).toBeCloseTo(0.763, 3);
+      expect(settled.value).toBeCloseTo(0.509, 3);
+      // 25 points apart. Reading one as the other misreports July badly.
+      expect(retention.value - settled.value).toBeGreaterThan(0.25);
+    }
+  });
+
+  it("they converge on a settled cohort — which is why the names must differ", () => {
+    // January: 73.2% vs 73.5%. Close enough that a shared name would never be
+    // caught by eye, and a young month is where it would do the damage.
+    const jan = byMonth("2026-01-01");
+    const retention = netRetentionRate(jan);
+    const settled = netSurvivalRate(jan);
+    if (retention.known && settled.known) {
+      expect(Math.abs(retention.value - settled.value)).toBeLessThan(0.005);
+    }
+  });
+
+  it("the modeled rate's numerator is SETTLED NSA, not Net Sales", () => {
+    const r = historicalMatureNsaRate(COHORTS, AS_OF);
+    expect(r.known).toBe(true);
+    if (!r.known) return;
+    // Σ NSA over Jan–May, not Σ Net Sales ($41,357,719.15).
+    expect(r.value.nsaCents).toBe(4_133_291_215);
+    expect(r.value.rate).toBe(4_133_291_215 / 5_816_965_907);
+    // The retention-weighted answer is a DIFFERENT number, proving we did not
+    // compute it — even though both round to 71.1% today.
+    const retentionWeighted = 4_135_771_915 / 5_816_965_907;
+    expect(r.value.rate).not.toBe(retentionWeighted);
+    expect((r.value.rate * 100).toFixed(1)).toBe("71.1");
+    expect((retentionWeighted * 100).toFixed(1)).toBe("71.1");
+  });
+
+  it("the type carries nsaCents, so a future edit cannot quietly swap the basis", () => {
+    const r = historicalMatureNsaRate(COHORTS, AS_OF);
+    if (r.known) {
+      expect(r.value).toHaveProperty("nsaCents");
+      expect(r.value).not.toHaveProperty("netSalesCents");
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { num, usd, usDate, shortDate } from "@/lib/utils";
 import { ScSection } from "./ScSection";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
+import { prorateGoal } from "@/lib/scorecard/paceTargets";
 
 /**
  * Section ① — Goal & Pace. The 5-second read: a flat horizontal band of eight
@@ -36,26 +37,34 @@ function windowLabel(w: string | null): string {
 export function PaceHero({
   vm,
   netSalesDollars = null,
+  netSalesAsOf = null,
 }: {
   vm: ScorecardVM;
   /**
    * Net Sales for the period — Gross Written − Cancellations − Financing
-   * Denied, from the cohort layer. THE GOAL-BEARING BASIS (2026-08-12).
+   * Denied, from the cohort layer. THE GOAL-BEARING BASIS (2026-08-12), and the
+   * ONLY figure this hero will show as the actual.
    *
-   * When supplied it replaces RTP as the actual, and the three figures derived
-   * from the actual — Projected Pace, Balance, and the headline itself — are
-   * recomputed from it here rather than read off `vm.pace`. That is deliberate:
-   * the goal, the actual, the pace and the target-to-date must share one
-   * sales-dollar basis, so they are computed in one place from one input. Null
-   * falls back to the previous RTP behaviour so the panel still renders if the
-   * cohort view is unreachable.
+   * Projected Pace and Balance are derived from it here rather than read off
+   * `vm.pace`, so the goal, the actual, the pace and the target-to-date cannot
+   * end up on two sales-dollar bases.
+   *
+   * ⚠️ NULL RENDERS "UNAVAILABLE", NOT A SUBSTITUTE FIGURE. There used to be an
+   * RTP fallback here. It is gone deliberately: RTP is a different economic
+   * event — released to production, dated by production milestone — and putting
+   * it in the most important position on a SALES scorecard misreports the
+   * month even when it is labelled. A reader who wants it has the Released
+   * panel below, where nothing is paced against it. An honest blank beats a
+   * confident wrong number.
    */
   netSalesDollars?: number | null;
+  /** Last known cohort observation date, shown when Net Sales is unavailable. */
+  netSalesAsOf?: string | null;
 }) {
   const p = vm.pace;
 
   const onNetSales = netSalesDollars != null;
-  const actual = onNetSales ? netSalesDollars : p.netSales;
+  const actual = netSalesDollars ?? 0;
 
   // Projected period-end = current run-rate × selling days in the whole period.
   // `sellingDays` and the `paceGoal` behind Target to Date come off the SAME
@@ -76,7 +85,17 @@ export function PaceHero({
   // pace). Recomputed on the Net Sales basis rather than reusing `p.gap`, which
   // was measured against RTP — mixing the two would put a Net Sales headline
   // above a Balance that disagrees with it.
-  const balance = onNetSales ? Math.round(actual - p.paceGoal) : Math.round(p.gap);
+  //
+  // ⚠️ THE TARGET MUST STOP WHERE THE ACTUAL STOPS. `p.paceGoal` prorates to the
+  // Net Report's coverage watermark, which is right for an RTP actual and wrong
+  // for this one: Net Sales is dated by CONTRACT date and reaches the cohort's
+  // own as-of, typically several selling days later. Measuring 8 days of actual
+  // against 5 days of target would have flattered Balance by ~38%. On Net Sales
+  // the target prorates to the period's elapsed selling days instead.
+  const targetToDate = onNetSales
+    ? Math.round(prorateGoal(p.monthlyGoal, p.daysElapsed, p.sellingDays) ?? 0)
+    : p.paceGoal;
+  const balance = Math.round(actual - targetToDate);
   // Projected Pace and Balance share the pace verdict: with a per-working-day goal,
   // beating the projected period goal ⇔ being ahead of the to-date target.
   const balTone: Kpi["tone"] = balance >= 0 ? "pos" : "neg";
@@ -105,12 +124,17 @@ export function PaceHero({
   const goalLabel = vm.isSingleMonth ? "Monthly Goal" : "Period Goal";
   const goalSub = vm.isSingleMonth ? "full month" : "full period";
 
-  // No report-sourced net yet → Net / Projected / Balance render "—" (pending is
-  // NOT zero; a fabricated $0 reads as "behind goal" and a full-gross cancellation).
-  const pending = p.netPending;
+  // Net Sales unavailable → the actual, Projected Pace and Balance all render
+  // "—". Unavailable is NOT zero: a fabricated $0 reads as "behind goal" and as
+  // a full-month cancellation at the same time. It is also not a cue to show
+  // RTP instead — see the prop doc above.
+  const pending = !onNetSales;
+  const unavailableSub = netSalesAsOf
+    ? `source temporarily unavailable · last read ${shortDate(netSalesAsOf)}`
+    : "source temporarily unavailable";
 
   const projectedSub = pending
-    ? "report pending"
+    ? "no Net Sales to project from"
     : early
       ? `early estimate · ${num(p.daysElapsed)} of ${num(p.sellingDays)} selling days`
       : projTone === "neg"
@@ -149,9 +173,15 @@ export function PaceHero({
       // Names the SAME date as the Net tile: this is the whole point of the
       // alignment, and a reader has to be able to see that the numerator and
       // the denominator stop on the same day.
-      sub: revThrough ? `goal ${revThrough}${revDaysSub}` : "goal to date",
-      value: usd(p.paceGoal),
-      title: revLags
+      sub: onNetSales
+        ? `goal through ${num(p.daysElapsed)} of ${num(p.sellingDays)} selling days`
+        : revThrough
+          ? `goal ${revThrough}${revDaysSub}`
+          : "goal to date",
+      value: usd(targetToDate),
+      title: onNetSales
+        ? "Prorated to the selling days elapsed — the same days the Net Sales figure covers. Both stop on the same day by construction, because Net Sales is dated by contract date and has no separate coverage watermark."
+        : revLags
         ? `Prorated to ${usDate(p.revenueAsOf!)} — the Net Report's coverage date — not to ${usDate(vm.snapshot.asOfDate)}, which is how far the COUNTS reach. Released dollars are not knowable past the last report, so the target they are measured against stops on the same day.`
         : undefined,
     },
@@ -160,34 +190,17 @@ export function PaceHero({
     // contract sold in April lands in August. It answered a production question
     // on a sales scoreboard and could not be paced against a sales goal. RTP is
     // still ingested and still rendered, on the Released panel below, where its
-    // basis is stated and nothing is paced against it.
-    onNetSales
-      ? {
-          label: `Net Sales ${vm.abbr}`,
-          sub: "gross written − cancellations − financing denied",
-          value: usd(actual),
-          title:
-            "Net Sales: the contract value written in this period, less the two " +
-            "TERMINAL losses — cancellations and financing denials. Working and " +
-            "hold dollars are still counted, because they are still live deals. " +
-            "This is the basis the goal, the pace and the efficiency denominator " +
-            "are all measured on. It is dated by CONTRACT date, so it never " +
-            "borrows a dollar from another month.",
-        }
-      : {
-          label: `Net — Released ${vm.abbr}`,
-          sub: pending
-            ? "report pending — no released figure yet"
-            : vm.provisional
-              ? "provisional · ties to report at close"
-              : revThrough
-                ? `released ${revThrough}`
-                : "released to production (RTP)",
-          value: pending ? "—" : usd(p.netSales),
-          title: revThrough
-            ? "FALLBACK — the cohort view is unreachable, so this is released to production (RTP) by production milestone date, from the Net Report. It is a different cohort from the sales goal and should not be paced against it."
-            : undefined,
-        },
+    // basis is stated and nothing is paced against it. It is NOT a fallback for
+    // this tile under any condition.
+    {
+      label: `Net Sales ${vm.abbr}`,
+      sub: pending ? unavailableSub : "gross written − cancellations − financing denied",
+      value: pending ? "Unavailable" : usd(actual),
+      tone: "plain",
+      title: pending
+        ? "Net Sales could not be read from the cohort source. No other figure is substituted here: released-to-production dollars are a different economic event on a different date basis, and showing them in this position would misreport the month. The Released panel below still carries RTP."
+        : "Net Sales: the contract value written in this period, less the two TERMINAL losses — cancellations and financing denials. Working and hold dollars are still counted, because they are still live deals. This is the basis the goal, the pace and the efficiency denominator are all measured on. It is dated by CONTRACT date, so it never borrows a dollar from another month.",
+    },
     {
       label: "Balance",
       sub: pending ? "report pending" : balance >= 0 ? "ahead of target" : "behind target",

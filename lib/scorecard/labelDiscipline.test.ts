@@ -126,12 +126,24 @@ describe("§Naming — Net Sales is defined wherever it is named", () => {
     expect(src).toMatch(/gross written − cancellations − financing denied/i);
   });
 
-  it("RTP is gone from the hero as a headline, and says why if it falls back", () => {
+  it("RTP is not a fallback for the hero — there is no substitution path at all", () => {
+    const src = code(readFileSync(HERO, "utf8"));
+    // A labelled fallback was tried and rejected: RTP is a different economic
+    // event, and putting it in the most important position on a SALES scorecard
+    // misreports the month even when the label says so. Unavailable renders as
+    // unavailable.
+    expect(src).toMatch(/value: pending \? "Unavailable"/);
+    expect(src).toMatch(/source temporarily unavailable/);
+    // No RTP figure may be read into the hero's actual under any branch.
+    expect(src).not.toMatch(/p\.netSales/);
+    expect(src).not.toMatch(/released to production/i);
+    expect(src).not.toMatch(/Net — Released/);
+  });
+
+  it("the unavailable state carries the last known as-of, not a bare dash", () => {
     const src = readFileSync(HERO, "utf8");
-    // The fallback branch survives, but it must announce itself as a fallback
-    // and must not claim to be pace-able.
-    expect(src).toMatch(/FALLBACK/);
-    expect(src).toMatch(/should not be paced against it/);
+    expect(src).toMatch(/netSalesAsOf/);
+    expect(src).toMatch(/last read \$\{shortDate\(netSalesAsOf\)\}/);
   });
 
   it("the cohort table distinguishes all four dollar columns by name", () => {
