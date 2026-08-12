@@ -8,50 +8,62 @@ import {
   prorateGoal,
 } from "./paceTargets";
 
-describe("targetTotals — the locked NSLI chain", () => {
-  it("issued = goal ÷ NSLI, demos = issued × demo%, closed = goal ÷ avg sale", () => {
-    const t = targetTotals({ periodGoal: 1_000_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70, issueRate: 0.5 });
+describe("targetTotals — the net-per-issued-appointment chain", () => {
+  it("issued = goal ÷ net$/issued appt, demos = issued × demo%, closed = goal ÷ avg sale", () => {
+    const t = targetTotals({ periodGoal: 1_000_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70});
     expect(t.issued).toBeCloseTo(250);
     expect(t.demoed).toBeCloseTo(175);
     expect(t.closed).toBeCloseTo(50);
   });
 
-  it("leads = issued ÷ issue rate, to the unit (handoff test 21)", () => {
-    const t = targetTotals({ periodGoal: 1_000_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70, issueRate: 0.5 });
-    expect(t.leads).toBeCloseTo(500); // 250 issues ÷ 0.5
-  });
-
-  it("null/zero NSLI or avg sale yields null, never NaN/Infinity", () => {
-    const t = targetTotals({ periodGoal: 1_000_000, nsli: 0, avgSale: null, targetDemoPct: 70, issueRate: 0.5 });
+  it("null/zero rate or avg sale yields null, never NaN/Infinity", () => {
+    const t = targetTotals({ periodGoal: 1_000_000, nsli: 0, avgSale: null, targetDemoPct: 70});
     expect(t.leads).toBeNull(); // no issues → no leads
     expect(t.issued).toBeNull();
     expect(t.demoed).toBeNull();
     expect(t.closed).toBeNull();
   });
 
-  it("null/zero issue rate → leads null while the rest of the chain stands (test 24)", () => {
-    for (const issueRate of [null, 0]) {
-      const t = targetTotals({ periodGoal: 1_000_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70, issueRate });
-      expect(t.leads).toBeNull();
-      expect(t.issued).toBeCloseTo(250);
-      expect(Number.isNaN(t.leads as unknown as number)).toBe(false);
-      expect(t.leads).not.toBe(Infinity);
-    }
+  it("leads-needed is ALWAYS null — the grain bridge is unproven (§6, §13)", () => {
+    // Not "null when the issue rate is missing". Null unconditionally, on a
+    // fully-populated chain, because issues ÷ issue-rate divides an
+    // APPOINTMENT-grain count by a LEAD-grain rate. There is no input that
+    // makes this measurable, which is the difference between deferred and
+    // merely absent.
+    const t = targetTotals({ periodGoal: 1_000_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70 });
+    expect(t.leads).toBeNull();
+    // …and the rest of the chain is unaffected.
+    expect(t.issued).toBeCloseTo(250);
+    expect(t.demoed).toBeCloseTo(175);
+    expect(t.closed).toBeCloseTo(50);
+  });
+
+  it("no issue rate is computed anywhere in the repo", () => {
+    // The guard that keeps this deferred rather than quietly re-derived. A
+    // `TargetChainInput` with an `issueRate` field would not typecheck; this
+    // catches the looser version — someone reintroducing the ratio inline.
+    expect(Object.keys(targetTotals({ periodGoal: 1, nsli: 1, avgSale: 1, targetDemoPct: 1 }))).toEqual([
+      "leads",
+      "issued",
+      "demoed",
+      "closed",
+    ]);
   });
 });
 
 describe("per-day targets and company additivity (handoff tests 8 + 22)", () => {
   const officeA = perDayTargets(
-    targetTotals({ periodGoal: 520_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70, issueRate: 0.5 }),
+    targetTotals({ periodGoal: 520_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70}),
     26,
   );
   const officeB = perDayTargets(
-    targetTotals({ periodGoal: 1_040_000, nsli: 5200, avgSale: 26_000, targetDemoPct: 60, issueRate: 0.4 }),
+    targetTotals({ periodGoal: 1_040_000, nsli: 5200, avgSale: 26_000, targetDemoPct: 60}),
     26,
   );
 
   it("office per-day = totals ÷ period selling days (0.1 rounding)", () => {
-    expect(officeA.leadsPerDay).toBe(10); // 260 leads ÷ 26
+    // leadsPerDay follows leads: null, because the grain bridge is unproven.
+    expect(officeA.leadsPerDay).toBeNull();
     expect(officeA.issuedPerDay).toBe(5);
     expect(officeA.demoedPerDay).toBe(3.5);
     expect(officeA.closedPerDay).toBe(1);
@@ -65,9 +77,9 @@ describe("per-day targets and company additivity (handoff tests 8 + 22)", () => 
     expect(company.closedPerDay).toBeCloseTo(officeA.closedPerDay! + officeB.closedPerDay!, 10);
   });
 
-  it("an office with no NSLI history is skipped, not NaN'd", () => {
+  it("an office with no rate history is skipped, not NaN'd", () => {
     const empty = perDayTargets(
-      targetTotals({ periodGoal: 100_000, nsli: null, avgSale: null, targetDemoPct: 70, issueRate: null }),
+      targetTotals({ periodGoal: 100_000, nsli: null, avgSale: null, targetDemoPct: 70}),
       26,
     );
     const company = sumPerDayTargets([officeA, empty]);
@@ -78,9 +90,9 @@ describe("per-day targets and company additivity (handoff tests 8 + 22)", () => 
     expect(none.issuedPerDay).toBeNull();
   });
 
-  it("an office missing only its issue rate contributes to every metric but leads", () => {
+  it("every office contributes to every metric except leads, which nobody has", () => {
     const noLeadsHistory = perDayTargets(
-      targetTotals({ periodGoal: 520_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70, issueRate: null }),
+      targetTotals({ periodGoal: 520_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70}),
       26,
     );
     const company = sumPerDayTargets([officeA, noLeadsHistory]);
@@ -90,17 +102,18 @@ describe("per-day targets and company additivity (handoff tests 8 + 22)", () => 
 
   it("company totals sum offices null-safely", () => {
     const totals = sumTargetTotals([
-      targetTotals({ periodGoal: 520_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70, issueRate: 0.5 }),
-      targetTotals({ periodGoal: 100_000, nsli: null, avgSale: null, targetDemoPct: 70, issueRate: null }),
+      targetTotals({ periodGoal: 520_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70}),
+      targetTotals({ periodGoal: 100_000, nsli: null, avgSale: null, targetDemoPct: 70}),
     ]);
-    expect(totals.leads).toBeCloseTo(260);
+    // Σ of nulls is null — a leads total is not resurrected by summing offices.
+    expect(totals.leads).toBeNull();
     expect(totals.issued).toBeCloseTo(130);
     expect(totals.closed).toBeCloseTo(26);
   });
 
   it("0 period selling days yields null per-day targets", () => {
     const t = perDayTargets(
-      targetTotals({ periodGoal: 520_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70, issueRate: 0.5 }),
+      targetTotals({ periodGoal: 520_000, nsli: 4000, avgSale: 20_000, targetDemoPct: 70}),
       0,
     );
     expect(t.leadsPerDay).toBeNull();

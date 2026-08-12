@@ -269,7 +269,7 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.leadsGoal": {
     title: "Leads goal (derived)",
-    what: "The Leads goal is NOT entered anywhere — it is derived: issues-needed (period goal ÷ NSLI) ÷ the market's historical issue rate (issued ÷ RAW LEADS IN, from actuals). 'Leads' here means true top-of-funnel raw leads in (ruled 2026-08-05) — not the appointment-set cohort, which is the Sets figure. Because the issue rate is observed history, this goal MOVES with performance: if the issue rate declines, the Leads goal RISES (more leads needed per issue) rather than showing a miss on Issued. That is correct for a derived data point — read a rising Leads goal as a conversion change, not a demand change.",
+    what: "DEFERRED — there is no Leads goal, and this is not a gap waiting on data. It was issues-needed (period goal ÷ net $ per issued appointment) ÷ a historical issue rate, which divides an APPOINTMENT-grain numerator by a LEAD-grain rate. That bridge is unproven: 78,557 Lead Disposition rows sit over 71,040 distinct leads, one lead carries up to eleven of them, and num_superseded reaches 10. The figure was not approximately right, it was undefined, so it renders unmeasured with that reason rather than shipping a number nobody can defend.",
     where:
       "Issue rate comes from `lp_market_scorecard_daily` trailing months (`raw_leads_in` denominator; months before June 2026 lack it and are excluded from the ratio) via `computeTrailingRates` in `lib/queries/scorecard.ts` — the SAME widened window (and visible basis) as NSLI and Average Sale, anchored to the selected period (period-scoped). Company row = Σ of the per-office chains, never a blended rate. Distinct from % Issue, which is issued ÷ sets.",
     fix: "If the Leads goal looks off, check the NSLI/issue-rate basis tooltip on the Goal & Pace header (window + contracts + anchor month). Thin history widens the window automatically; a market with no raw-leads history shows '—'. The dollar goal itself is edited in the Goals editor — the Leads figure always follows it through the chain.",
@@ -364,10 +364,10 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "Definition is provisional until tied out to the Reece export.",
   },
   "scorecard.kpi.nsli": {
-    title: "NSLI",
+    title: "Net Sales $ per Issued Appointment",
     what: "⚠ Provisional: Net Sale $ ÷ Issue (Net Sale = non-cancelled total). Drives the per-day pace targets together with the goal $ and working days.",
     where: "`lp_market_scorecard_daily.nsli` (net_sales ÷ issued).",
-    fix: "Set Trailing NSLI in the Goals editor to drive pace; reconcile the definition to the export.",
+    fix: "Set the trailing rate in the Goals editor to drive pace; reconcile the definition to the export. NEVER call it 'per Issued Lead' — the denominator is appointment grain.",
   },
   "scorecard.kpi.goodRate": {
     title: "Good Rate %",

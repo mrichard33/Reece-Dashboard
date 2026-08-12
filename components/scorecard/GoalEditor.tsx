@@ -33,7 +33,7 @@ const FIELDS: FieldSpec[] = [
   { name: "target_ko_pct", label: "Target KO %", step: "any" },
 ];
 
-/** Short label for the trailing rate window (transparency for the NSLI figure). */
+/** Short label for the trailing rate window (transparency for the net-per-issued-appointment figure). */
 const rateWindowLabel = (w: string | null): string =>
   w === "rolling_90d" ? "rolling 90d"
   : w === "trailing_3" ? "trailing 3mo"
@@ -153,20 +153,16 @@ export function GoalEditor({
   // close %, which drifts off the dollar goal).
   const nsli = entry?.nsli ?? 0;
   const avgSale = entry?.avgSale ?? 0;
-  const issueRate = entry?.issueRate ?? null;
-  // Which source answered the issue rate — the rolling window, or the current
-  // YTD report snapshots (§8 fallback until per-office lead history exists).
-  const issueBasis = entry?.issueRateBasis ?? null;
   const demoPct = Number(w.target_demo_pct) || 0;
-  // goal ÷ NSLI is ISSUES needed (the old `leadsNeeded` name was a mislabel);
-  // leads needed = issues ÷ the historical issue rate (issued ÷ leads, derived).
+  // goal ÷ (net $ per issued appointment) is ISSUES needed.
+  //
+  // LEADS NEEDED IS DELETED, not null-by-accident (§6, §13). It was issues ÷ a
+  // historical issue rate, which divides an APPOINTMENT-grain numerator by a
+  // LEAD-grain rate — and that bridge is unproven: 78,557 Lead Disposition rows
+  // over 71,040 distinct leads, up to eleven rows on one lead. The row renders
+  // unmeasured with that reason rather than shipping an approximation.
   const issuesNeeded = nsli > 0 ? Math.round(effectiveGoal / nsli) : null;
-  const leadsNeeded =
-    issuesNeeded != null && issueRate != null && issueRate > 0
-      ? Math.round(issuesNeeded / issueRate)
-      : null;
   const issuedPerDay = issuesNeeded != null ? issuesNeeded / wd : null;
-  const leadsPerDay = leadsNeeded != null ? leadsNeeded / wd : null;
   const demoedPerDay = issuedPerDay != null ? issuedPerDay * (demoPct / 100) : null;
   const closedPerDay = avgSale > 0 ? effectiveGoal / avgSale / wd : null;
 
@@ -309,8 +305,9 @@ export function GoalEditor({
           {mode === "dollars" ? (
             <label className={fieldWrap}>
               <span className={labelCls}>Monthly NET Goal ($)</span>
-              {/* NET, not gross: this is measured against LP's NSA and divided by
-                  NSLI (also net-over-issued). Entering a gross figure here
+              {/* NET, not gross: this is measured against Net Sales and divided
+                  by net $ per issued appointment (also net-over-issued).
+                  Entering a gross figure here
                   overstates attainment and rescales every derived funnel target.
                   Any amount to the cent — see MoneyInput for why this is not a
                   number input (step="1000" rejected $2,731,306.68). */}
@@ -381,23 +378,23 @@ export function GoalEditor({
             <span className="font-mono font-semibold">{issuesNeeded != null ? num(issuesNeeded) : "—"}</span>
             {nsli <= 0 && <span className="ml-2 text-amber-600">no issued history yet — issues / pace unavailable</span>}
           </p>
+          {/* Leads needed is UNMEASURED, and says why. It is not a missing
+              number waiting on data — the ratio that produced it divided an
+              appointment-grain count by a lead-grain rate, and that bridge is
+              unproven. Rendering "—" with no reason would read as a feed
+              problem someone could go fix. */}
           <p className="mt-1 text-slate-600 dark:text-slate-300">
-            Issue rate{" "}
-            <span className="font-mono">{issueRate != null ? `${num(Math.round(issueRate * 100))}%` : "—"}</span>{" "}
-            <span className="text-[10.5px] uppercase tracking-wider text-slate-400">calculated</span>
-            {issueRate != null && (
-              <span className="text-[10.5px] text-slate-400">
-                {" "}({issueBasis === "report_ytd"
-                  ? "YTD reports · issued ÷ leads"
-                  : rateWindowLabel(entry?.rateWindow ?? null)})
-              </span>
-            )}
-            {" · leads needed "}
-            <span className="font-mono font-semibold">{leadsNeeded != null ? num(leadsNeeded) : "—"}</span>
-            {issueRate == null && <span className="ml-2 text-amber-600">no leads history and no covering report snapshot — leads goal unavailable</span>}
+            {"Leads needed "}
+            <span className="font-mono font-semibold">—</span>
+            <span className="ml-2 text-amber-600">
+              not measured: grain bridge not established. Issued is
+              appointment-grain and raw leads are lead-grain — one lead can
+              carry eleven appointment rows, so issues ÷ issue-rate is undefined
+              rather than approximate.
+            </span>
           </p>
           <p className="mt-1 text-slate-600 dark:text-slate-300">
-            Required / day — leads <span className="font-mono">{n1(leadsPerDay)}</span>, issued <span className="font-mono">{n1(issuedPerDay)}</span>, demoed <span className="font-mono">{n1(demoedPerDay)}</span>, closed <span className="font-mono">{n1(closedPerDay)}</span>
+            Required / day — issued <span className="font-mono">{n1(issuedPerDay)}</span>, demoed <span className="font-mono">{n1(demoedPerDay)}</span>, closed <span className="font-mono">{n1(closedPerDay)}</span>
           </p>
         </div>
 

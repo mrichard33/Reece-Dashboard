@@ -101,7 +101,7 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
 
   // Sold this period, from report 137:
   //   count = NumSold · gross = GSA · cancels = the EXPLICIT cancellations
-  //   bucket · gross after cancels = GSA − cancels · Net (NSA) = LP's NSA.
+  //   bucket · gross after cancels = GSA − cancels · Net (Report 137 NSA).
   // The last two are different numbers and carry different labels — see the
   // note above `soldLines`.
   // Cancellation value is NEVER the gross−net residual (the 2026-08-05
@@ -154,7 +154,7 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
         ]
       : []),
     // NSA keeps the word "Net", and nothing else on this panel may use it.
-    { label: "Net (NSA)", note: "LP net", value: netValue, strong: f.grossAfterCancels == null },
+    { label: "Net (Report 137 NSA)", note: "LP net", value: netValue, strong: f.grossAfterCancels == null },
   ];
 
   // RELEASED THIS PERIOD — RTP milestone date (report 134). One figure on its
@@ -262,10 +262,10 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
             what:
               "Contract value written in the selected period, on SOLD date, with cancellations shown explicitly rather than derived as a gross-minus-net residual. " +
               "Two bottom lines, deliberately: Gross after cancels = gross − cancellations. " +
-              "Net (NSA) is LP's figure and subtracts cancellations, credit declines, holds AND working. " +
+              "Net (Report 137 NSA) is LP's figure and subtracts cancellations, credit declines, holds AND working. " +
               "They are not the same number — on Fort Myers in August 2026 they differ by about $501K, most of it working — so they never share a label.",
             where: `Basis: sold date · ${basisNote}${f.soldAsOf ? ` · as of ${usDate(f.soldAsOf)}` : ""}`,
-            fix: `${NO_CROSSING}${f.netPendingReason ? ` Net (NSA) reads "still maturing" because ${f.netPendingReason}. Gross after cancels is unaffected — it needs only gross and the cancellations bucket.` : ""}`,
+            fix: `${NO_CROSSING}${f.netPendingReason ? ` Net (Report 137 NSA) reads "still maturing" because ${f.netPendingReason}. Gross after cancels is unaffected — it needs only gross and the cancellations bucket.` : ""}`,
           }}
           accent="border-t-2 border-t-navy-900 dark:border-t-slate-200"
           lines={soldLines}

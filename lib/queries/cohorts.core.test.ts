@@ -13,14 +13,15 @@ import {
   WATERFALL_DELTA_THRESHOLD,
   cohortAgeDays,
   decompose,
-  expectedMatureNet,
+  expectedSettledNet,
   isEligibleForMatureRate,
   lostRate,
-  historicalMatureNsaRate,
+  settledNetRetention,
   netSalesCents,
   netRetentionRate,
   netSurvivalRate,
   pendingRate,
+  periodCohortTotals,
   reconciliationDelta,
   rollupToMarket,
   sumKnown,
@@ -46,10 +47,10 @@ const COMPANY: Array<[month: string, g: number, n: number, w: number, h: number,
 ];
 
 const cohort = (
-  [contractMonth, grossCents, nsaCents, workingCents, holdCents, cancelledCents, cdCents]: (typeof COMPANY)[number],
+  [appointmentMonth, grossCents, nsaCents, workingCents, holdCents, cancelledCents, cdCents]: (typeof COMPANY)[number],
   market = "REECE",
 ): CohortObservation => ({
-  contractMonth,
+  appointmentMonth,
   market,
   // The run date and the coverage date, kept apart: report 137's MTD file runs
   // the morning AFTER the day it covers. Fixtures carry both so a test that
@@ -69,7 +70,7 @@ const cohort = (
 });
 
 const COHORTS = COMPANY.map((r) => cohort(r));
-const byMonth = (m: string) => COHORTS.find((c) => c.contractMonth === m)!;
+const byMonth = (m: string) => COHORTS.find((c) => c.appointmentMonth === m)!;
 
 /**
  * §7 — Fort Lauderdale is three LP offices, from snapshot
@@ -78,17 +79,17 @@ const byMonth = (m: string) => COHORTS.find((c) => c.contractMonth === m)!;
  */
 const FTLAU_OFFICES: CohortOfficeRow[] = [
   {
-    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "BOCA",
+    appointmentMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "BOCA",
     grossCents: 9_441_500, nsaCents: 8_541_500, workingCents: 0, holdCents: 900_000,
     cancelledCents: 0, cdCents: 0, issuedCount: 16, satCount: 9, soldCount: 2,
   },
   {
-    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "FTLAU",
+    appointmentMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "FTLAU",
     grossCents: 14_043_300, nsaCents: 0, workingCents: 4_473_500, holdCents: 0,
     cancelledCents: 9_569_800, cdCents: 0, issuedCount: 20, satCount: 13, soldCount: 2,
   },
   {
-    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "MIAMI",
+    appointmentMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "MIAMI",
     grossCents: 0, nsaCents: 0, workingCents: 0, holdCents: 0,
     cancelledCents: 0, cdCents: 0, issuedCount: 11, satCount: 3, soldCount: 0,
   },
@@ -378,8 +379,8 @@ describe("§2 — mature-rate eligibility", () => {
   });
 
   it("admits Jan–May and excludes June, July and August as of 2026-08-12", () => {
-    const eligible = COHORTS.filter((c) => isEligibleForMatureRate(c.contractMonth, AS_OF));
-    expect(eligible.map((c) => c.contractMonth)).toEqual([
+    const eligible = COHORTS.filter((c) => isEligibleForMatureRate(c.appointmentMonth, AS_OF));
+    expect(eligible.map((c) => c.appointmentMonth)).toEqual([
       "2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01",
     ]);
   });
@@ -390,22 +391,24 @@ describe("§2 — mature-rate eligibility", () => {
 });
 
 describe("§2 — the mature rate is a ratio of sums", () => {
-  it("computes 71.1% from 5 cohorts and $58.2M written", () => {
-    const r = historicalMatureNsaRate(COHORTS, AS_OF);
+  it("computes 71.10% from 5 cohorts and $58.2M written", () => {
+    const r = settledNetRetention(COHORTS, AS_OF);
     expect(r.known).toBe(true);
     if (!r.known) return;
     expect(r.value.cohortCount).toBe(5);
     expect(r.value.grossCents).toBe(5_816_965_907); // $58,169,659.07
-    expect(r.value.nsaCents).toBe(4_133_291_215); // $41,332,912.15 — SETTLED NSA
-    expect(r.value.rate).toBeCloseTo(0.711, 3);
+    expect(r.value.netSalesCents).toBe(4_135_771_915); // $41,357,719.15 — NET SALES
+    // TWO decimal places, deliberately. At one, this and the NSA-numerator
+    // version are both "71.1%" and the difference is invisible.
+    expect((r.value.rate * 100).toFixed(2)).toBe("71.10");
     expect(r.value.months).toEqual([
       "2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01",
     ]);
   });
 
   it("SUMS then divides — averaging the cohort rates gives a different answer", () => {
-    const r = historicalMatureNsaRate(COHORTS, AS_OF);
-    const eligible = COHORTS.filter((c) => isEligibleForMatureRate(c.contractMonth, AS_OF));
+    const r = settledNetRetention(COHORTS, AS_OF);
+    const eligible = COHORTS.filter((c) => isEligibleForMatureRate(c.appointmentMonth, AS_OF));
     const averaged =
       eligible.reduce((acc, c) => acc + netSalesCents(c)! / c.grossCents!, 0) / eligible.length;
 
@@ -422,7 +425,7 @@ describe("§2 — the mature rate is a ratio of sums", () => {
       ...eligible,
       cohort(["2025-01-01", 100_000, 100_000, 0, 0, 0, 0]), // $1,000 at 100%
     ];
-    const summed2 = historicalMatureNsaRate(skewed, AS_OF);
+    const summed2 = settledNetRetention(skewed, AS_OF);
     const averaged2 =
       skewed.reduce((acc, c) => acc + netSalesCents(c)! / c.grossCents!, 0) / skewed.length;
     if (summed2.known) {
@@ -433,7 +436,7 @@ describe("§2 — the mature rate is a ratio of sums", () => {
   });
 
   it("the threshold is configurable — 150 days admits only Jan–Mar", () => {
-    const r = historicalMatureNsaRate(COHORTS, AS_OF, 150);
+    const r = settledNetRetention(COHORTS, AS_OF, 150);
     if (r.known) {
       expect(r.value.cohortCount).toBe(3);
       expect(r.value.eligibilityDays).toBe(150);
@@ -441,16 +444,20 @@ describe("§2 — the mature rate is a ratio of sums", () => {
   });
 
   it("is unmeasured, not zero, when nothing is eligible yet", () => {
-    const r = historicalMatureNsaRate(COHORTS, "2026-01-15");
+    const r = settledNetRetention(COHORTS, "2026-01-15");
     expect(r.known).toBe(false);
     if (!r.known) expect(r.reason).toMatch(/no settled history/);
   });
 
-  it("drops a cohort with no settled NSA from BOTH sums, never just the numerator", () => {
+  it("drops a cohort with an incomplete Net Sales from BOTH sums, never just the numerator", () => {
+    // The hole that matters is now a missing CANCELLATION or FINANCING DENIAL,
+    // not a missing NSA — those are what Net Sales is built from. Blanking
+    // cancelled_cents makes March's Net Sales unknowable, so the whole cohort
+    // leaves both sums.
     const holed = COHORTS.map((c) =>
-      c.contractMonth === "2026-03-01" ? { ...c, nsaCents: null } : c,
+      c.appointmentMonth === "2026-03-01" ? { ...c, cancelledCents: null } : c,
     );
-    const r = historicalMatureNsaRate(holed, AS_OF);
+    const r = settledNetRetention(holed, AS_OF);
     if (r.known) {
       expect(r.value.cohortCount).toBe(4);
       // March's $11.89M gross must NOT be in the denominator on its own — that
@@ -459,34 +466,50 @@ describe("§2 — the mature rate is a ratio of sums", () => {
       expect(r.value.rate).toBeGreaterThan(0.7);
     }
   });
+
+  it("a missing NSA no longer removes a cohort — NSA is not in the numerator", () => {
+    // The counterpart to the test above, and the behaviour change made visible:
+    // under the NSA basis this dropped March entirely. Net Sales does not read
+    // nsa_cents at all, so a cohort with a complete gross/cancelled/cd still
+    // contributes — an unobserved DISPOSITION is not an unobserved cohort.
+    const holed = COHORTS.map((c) =>
+      c.appointmentMonth === "2026-03-01" ? { ...c, nsaCents: null } : c,
+    );
+    const r = settledNetRetention(holed, AS_OF);
+    expect(r.known).toBe(true);
+    if (!r.known) return;
+    expect(r.value.cohortCount).toBe(5);
+    expect(r.value.grossCents).toBe(5_816_965_907);
+    expect((r.value.rate * 100).toFixed(2)).toBe("71.10");
+  });
 });
 
 describe("§2 — Expected Mature Net is a forecast, not a quality measure", () => {
   it("is Gross Written × the historical rate", () => {
-    const r = historicalMatureNsaRate(COHORTS, AS_OF);
+    const r = settledNetRetention(COHORTS, AS_OF);
     if (!r.known) return;
     const aug = byMonth("2026-08-01");
     // August's $2,185,283 written × the 71.06% mature NSA rate ≈ $1.55M.
-    const got = expectedMatureNet(aug.grossCents, r.value.rate)!;
+    const got = expectedSettledNet(aug.grossCents, r.value.rate)!;
     expect(got / 100).toBeGreaterThan(1_545_000);
     expect(got / 100).toBeLessThan(1_560_000);
   });
 
   it("moves ONLY with volume — writing better cannot raise it within a month", () => {
-    const r = historicalMatureNsaRate(COHORTS, AS_OF);
+    const r = settledNetRetention(COHORTS, AS_OF);
     if (!r.known) return;
     const gross = 218_528_300;
-    const base = expectedMatureNet(gross, r.value.rate)!;
+    const base = expectedSettledNet(gross, r.value.rate)!;
     // Double the quality (halve the losses) at identical volume: unchanged.
     // There is no quality input to pass — that IS the point. The only lever is
     // `gross`, so the same gross can only ever give the same answer.
-    expect(expectedMatureNet(gross, r.value.rate)).toBe(base);
+    expect(expectedSettledNet(gross, r.value.rate)).toBe(base);
     // Double the volume: doubles, to within the cent this rounds to.
-    expect(expectedMatureNet(gross * 2, r.value.rate)).toBeCloseTo(base * 2, -1);
+    expect(expectedSettledNet(gross * 2, r.value.rate)).toBeCloseTo(base * 2, -1);
   });
 
   it("is null for an unknown gross, never 0", () => {
-    expect(expectedMatureNet(null, 0.711)).toBeNull();
+    expect(expectedSettledNet(null, 0.711)).toBeNull();
   });
 });
 
@@ -513,11 +536,11 @@ describe("cohort immutability", () => {
   it("rollup keys on the cohort month, so two months never merge", () => {
     const mixed: CohortOfficeRow[] = [
       { ...FTLAU_OFFICES[0]! },
-      { ...FTLAU_OFFICES[0]!, contractMonth: "2026-07-01" },
+      { ...FTLAU_OFFICES[0]!, appointmentMonth: "2026-07-01" },
     ];
     const out = rollupToMarket(mixed);
     expect(out).toHaveLength(2);
-    expect(out.map((o) => o.contractMonth)).toEqual(["2026-07-01", "2026-08-01"]);
+    expect(out.map((o) => o.appointmentMonth)).toEqual(["2026-07-01", "2026-08-01"]);
   });
 });
 
@@ -609,26 +632,140 @@ describe("Historical Mature NSA Rate is not Net Retention %", () => {
     }
   });
 
-  it("the modeled rate's numerator is SETTLED NSA, not Net Sales", () => {
-    const r = historicalMatureNsaRate(COHORTS, AS_OF);
+  it("the settled rate's numerator is NET SALES, not NSA (§8)", () => {
+    // ⚠️ THIS ASSERTION IS THE REVERSE OF WHAT IT USED TO BE, and the reversal
+    // is the point of the change. The rate previously took Σ NSA over Σ Gross;
+    // §8 defines settled_net_retention as Σ NET SALES over Σ Gross. Both round
+    // to "71.1%" at one decimal, which is exactly why the old version survived
+    // review — the contract publishes two decimals, and there they part.
+    const r = settledNetRetention(COHORTS, AS_OF);
     expect(r.known).toBe(true);
     if (!r.known) return;
-    // Σ NSA over Jan–May, not Σ Net Sales ($41,357,719.15).
-    expect(r.value.nsaCents).toBe(4_133_291_215);
-    expect(r.value.rate).toBe(4_133_291_215 / 5_816_965_907);
-    // The retention-weighted answer is a DIFFERENT number, proving we did not
-    // compute it — even though both round to 71.1% today.
-    const retentionWeighted = 4_135_771_915 / 5_816_965_907;
-    expect(r.value.rate).not.toBe(retentionWeighted);
+
+    // Σ Net Sales over Jan–May.
+    expect(r.value.netSalesCents).toBe(4_135_771_915);
+    expect(r.value.rate).toBe(4_135_771_915 / 5_816_965_907);
+
+    // The NSA-weighted answer is a DIFFERENT number, proving we did not compute
+    // it — indistinguishable at one decimal place, distinct at two.
+    const nsaWeighted = 4_133_291_215 / 5_816_965_907;
+    expect(r.value.rate).not.toBe(nsaWeighted);
     expect((r.value.rate * 100).toFixed(1)).toBe("71.1");
-    expect((retentionWeighted * 100).toFixed(1)).toBe("71.1");
+    expect((nsaWeighted * 100).toFixed(1)).toBe("71.1");
+    expect((r.value.rate * 100).toFixed(2)).toBe("71.10");
+    expect((nsaWeighted * 100).toFixed(2)).toBe("71.06");
   });
 
-  it("the type carries nsaCents, so a future edit cannot quietly swap the basis", () => {
-    const r = historicalMatureNsaRate(COHORTS, AS_OF);
+  it("the type carries netSalesCents, so a future edit cannot quietly swap the basis", () => {
+    // Same guard, opposite direction. The numerator is named ON THE TYPE so a
+    // change of basis has to change the shape and cannot pass as a one-token
+    // edit inside the function body — which is how the NSA version got here.
+    const r = settledNetRetention(COHORTS, AS_OF);
     if (r.known) {
-      expect(r.value).toHaveProperty("nsaCents");
-      expect(r.value).not.toHaveProperty("netSalesCents");
+      expect(r.value).toHaveProperty("netSalesCents");
+      expect(r.value).not.toHaveProperty("nsaCents");
     }
+  });
+});
+
+/**
+ * ── §10 — coverage of a month RANGE is MAX, and a period is all its months ──
+ *
+ * Both halves of the same defect. A period was being represented by its anchor
+ * month, and a range's coverage by its OLDEST constituent.
+ */
+describe("§10 — periodCohortTotals", () => {
+  /** Jan–Aug, each a closed month except August. [month, gross, cancelled, cd, through] */
+  const YEAR: Array<[string, number, number, number, string]> = [
+    ["2026-01-01", 1_193_000_00, 320_000_00, 0, "2026-01-31"],
+    ["2026-02-01", 1_082_000_00, 291_000_00, 0, "2026-02-28"],
+    ["2026-03-01", 1_189_098_00, 366_000_00, 0, "2026-03-31"],
+    ["2026-04-01", 1_055_000_00, 303_000_00, 0, "2026-04-30"],
+    ["2026-05-01", 1_297_867_07, 401_000_00, 0, "2026-05-31"],
+    ["2026-06-01", 1_140_000_00, 337_000_00, 0, "2026-06-30"],
+    ["2026-07-01", 1_045_000_00, 247_000_00, 0, "2026-07-31"],
+    ["2026-08-01", 218_528_300, 30_146_600, 3_195_700, "2026-08-10"],
+  ];
+
+  const year: CohortObservation[] = YEAR.map(([m, gross, canc, cd, through]) => ({
+    appointmentMonth: m,
+    market: "REECE",
+    observedOn: "2026-08-11",
+    dataThrough: through,
+    officeCount: 7,
+    grossCents: gross,
+    nsaCents: null,
+    workingCents: null,
+    holdCents: null,
+    cancelledCents: canc,
+    cdCents: cd,
+    issuedCount: null,
+    satCount: null,
+    soldCount: null,
+    isCurrent: true,
+  }));
+
+  it("a fully-current Jan–Aug range reports coverage 2026-08-10, not 2026-01-31", () => {
+    // THE BUG: MIN made YTD read "through 2026-01-31 · 162 days behind" while
+    // every month was current. January's date marks January being FINISHED.
+    const t = periodCohortTotals(year, "2026-01-01", "2026-12-31");
+    expect(t.dataThrough).toBe("2026-08-10");
+    expect(t.dataThrough).not.toBe("2026-01-31");
+    expect(t.months).toHaveLength(8);
+  });
+
+  it("a 3-month range reports its NEWEST month, not its oldest", () => {
+    // The other reported symptom: "through 2026-06-30 · 35 selling days behind".
+    const t = periodCohortTotals(year, "2026-06-01", "2026-08-31");
+    expect(t.dataThrough).toBe("2026-08-10");
+    expect(t.dataThrough).not.toBe("2026-06-30");
+  });
+
+  it("a period sums EVERY month in range — not just the anchor", () => {
+    // The headline defect. MTD is indistinguishable; a range is not.
+    const mtd = periodCohortTotals(year, "2026-08-01", "2026-08-31");
+    const ytd = periodCohortTotals(year, "2026-01-01", "2026-12-31");
+    expect(mtd.netSalesCents).toBe(185_186_000);
+    expect(ytd.netSalesCents).toBeGreaterThan(mtd.netSalesCents!);
+    // …and the year is the sum of its months, not its first one.
+    const jan = periodCohortTotals(year, "2026-01-01", "2026-01-31");
+    expect(ytd.netSalesCents).not.toBe(jan.netSalesCents);
+    expect(ytd.netSalesCents).toBe(
+      year.reduce((a, c) => a + netSalesCents(c)!, 0),
+    );
+  });
+
+  it("cohorts never migrate — narrowing the window only changes what is in scope", () => {
+    const jul = periodCohortTotals(year, "2026-07-01", "2026-07-31");
+    const julAug = periodCohortTotals(year, "2026-07-01", "2026-08-31");
+    const aug = periodCohortTotals(year, "2026-08-01", "2026-08-31");
+    expect(julAug.netSalesCents).toBe(jul.netSalesCents! + aug.netSalesCents!);
+  });
+
+  it("an unknown component makes the total unknown, never quietly smaller", () => {
+    const holed = year.map((c) =>
+      c.appointmentMonth === "2026-03-01" ? { ...c, cancelledCents: null } : c,
+    );
+    const t = periodCohortTotals(holed, "2026-01-01", "2026-12-31");
+    expect(t.netSalesCents).toBeNull();
+    // Gross is still knowable — only the subtraction is compromised.
+    expect(t.grossCents).not.toBeNull();
+  });
+
+  it("an undeclared coverage date does not poison the range's reach", () => {
+    // The opposite of how minCoverage folds, deliberately: one month that
+    // cannot say what it covers tells us nothing about how far the range gets.
+    const holed = year.map((c) =>
+      c.appointmentMonth === "2026-03-01" ? { ...c, dataThrough: null } : c,
+    );
+    expect(periodCohortTotals(holed, "2026-01-01", "2026-12-31").dataThrough).toBe("2026-08-10");
+  });
+
+  it("an empty range is unmeasured, not zero", () => {
+    const t = periodCohortTotals(year, "2025-01-01", "2025-12-31");
+    expect(t.months).toEqual([]);
+    // sumKnown over nothing is 0 — the caller distinguishes by months.length,
+    // which is why the month list is published beside the totals.
+    expect(t.dataThrough).toBeNull();
   });
 });

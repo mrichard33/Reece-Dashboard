@@ -149,7 +149,6 @@ describe("§4 identity — target dollars to date == target issues to date × pl
         nsli: c.nsli,
         avgSale: null,
         targetDemoPct: 70,
-        issueRate: null,
       });
       const perDay = perDayTargets(totals, c.periodDays);
 
@@ -184,7 +183,6 @@ describe("§4 identity — target dollars to date == target issues to date × pl
       nsli,
       avgSale: null,
       targetDemoPct: 70,
-      issueRate: null,
     });
     const grossPerDay = perDayTargets(grossTotals, periodDays);
     const issuesToDate = Math.round(grossPerDay.issuedPerDay! * elapsed);

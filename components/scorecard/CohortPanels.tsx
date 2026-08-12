@@ -11,7 +11,7 @@ import {
   waterfallDelta,
   waterfallWarning,
   type CohortObservation,
-  type HistoricalMatureNsaRate,
+  type SettledNetRetention,
 } from "@/lib/queries/cohorts.core";
 import type { Measured } from "@/lib/scorecard/tiers/types";
 
@@ -29,8 +29,8 @@ const money = (cents: number | null) => (cents == null ? "—" : usd(Math.round(
 const pctOf = (m: Measured) => (m.known ? `${(m.value * 100).toFixed(1)}%` : "—");
 
 /** MM-YYYY → "Jun 2026". Cohorts are months and read better named than dated. */
-function monthLabel(contractMonth: string): string {
-  const [y, m] = contractMonth.split("-");
+function monthLabel(appointmentMonth: string): string {
+  const [y, m] = appointmentMonth.split("-");
   const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${names[Number(m) - 1] ?? m} ${y}`;
 }
@@ -38,10 +38,15 @@ function monthLabel(contractMonth: string): string {
 // ─── ② EXPECTED ECONOMIC OUTCOME — modeled ───────────────────────────────────
 
 /**
- * ⚠️ THIS IS NOT A QUALITY METRIC. Expected Mature Net is Gross Written × a
+ * ⚠️ THIS IS NOT A QUALITY METRIC. Expected Settled Net is Gross Written × a
  * historical constant, so within a month a manager raises it only by writing
  * MORE, never by writing BETTER. Every string in this component is written to
  * keep that true. The quality incentive lives in panel ③.
+ *
+ * ⚠️ AND MATURATION INVERTS. Losses accrue with age, so a YOUNG cohort reads too
+ * GOOD: July 76.3% and August 84.8% against a settled ~71%. August is currently
+ * overstated by roughly $300K and will FALL. The panel says so rather than
+ * letting a reader mistake a young month's retention for an improvement.
  */
 export function ExpectedOutcomePanel({
   grossWrittenCents,
@@ -52,11 +57,13 @@ export function ExpectedOutcomePanel({
 }: {
   grossWrittenCents: number | null;
   monthlyGoalDollars: number | null;
-  rate: Measured<HistoricalMatureNsaRate>;
+  rate: Measured<SettledNetRetention>;
   abbr: string;
   asOf: string | null;
 }) {
-  const pct = rate.known ? `${(rate.value.rate * 100).toFixed(1)}%` : null;
+  // TWO decimal places. At one, this rate and the NSA-numerator version it
+  // replaced are both "71.1%" — the whole difference lives in the second digit.
+  const pct = rate.known ? `${(rate.value.rate * 100).toFixed(2)}%` : null;
   const expected =
     rate.known && grossWrittenCents != null
       ? Math.round((grossWrittenCents * rate.value.rate) / 100)
@@ -66,7 +73,7 @@ export function ExpectedOutcomePanel({
       ? Math.round(monthlyGoalDollars * rate.value.rate)
       : null;
 
-  // The goal is NAMED, never assumed. A tile reading "Expected Mature Value at
+  // The goal is NAMED, never assumed. A tile reading "Expected Settled Value at
   // Goal" with no figure is the screenshot that becomes a new net target in
   // somebody's deck by Friday; naming the goal it was computed from is what
   // stops that. The goal is whatever the SELECTED MONTH stores — it is not a
@@ -74,22 +81,25 @@ export function ExpectedOutcomePanel({
   const goalName = monthlyGoalDollars != null ? usd(monthlyGoalDollars) : null;
 
   const info = {
-    title: "Expected Mature Net",
+    title: "Expected Settled Net",
     what:
-      "A FORECAST, not a measurement: this period's Gross Written multiplied by the " +
-      "HISTORICAL MATURE NSA RATE — settled NSA divided by gross written, over cohorts " +
-      "old enough to have settled. It does not measure how well anyone sold: at a " +
-      "fixed volume it cannot move. Writing more raises it; writing better does not.",
+      "A FORECAST, not a measurement: this period's Gross Written multiplied by SETTLED " +
+      "NET RETENTION — Net Sales divided by Gross Written, summed over cohorts old " +
+      "enough to have settled. It does not measure how well anyone sold: at a fixed " +
+      "volume it cannot move. Writing more raises it; writing better does not.",
     where: rate.known
       ? `Basis: Gross Written × ${pct}, from ${rate.value.cohortCount} cohorts at least ` +
-        `${rate.value.eligibilityDays} days old (${money(rate.value.grossCents)} written) · ` +
-        `report 137 · ${abbr}${asOf ? ` · as of ${usDate(asOf)}` : ""}`
+        `${rate.value.eligibilityDays} days old measured from the FIRST of the appointment ` +
+        `month (${money(rate.value.grossCents)} written) · report 137 · appointment-date ` +
+        `cohort · ${abbr}${asOf ? ` · as of ${usDate(asOf)}` : ""}`
       : "Basis: not computable yet — no cohort is old enough to model from.",
     fix:
-      "NOT the same as Net Retention % below, which is Net Sales over gross written and " +
-      "answers what has not been permanently LOST. This rate answers what ultimately " +
-      "SETTLES. On settled cohorts they land within a point of each other; on July 2026 " +
-      "they are 50.9% and 76.3%. The rate is re-derived as cohorts age, never hardcoded.",
+      "The numerator is NET SALES, not Report 137 NSA. The NSA version of this rate is " +
+      "71.06% against this one's 71.10% — identical to one decimal place, which is why " +
+      "the distinction has to be stated rather than eyeballed. Report 137 NSA also removes live " +
+      "Working and Hold, which are unresolved business rather than loss. Maturation " +
+      "INVERTS here: losses accrue over time, so young cohorts read too GOOD and will " +
+      "fall. The rate is re-derived as cohorts age, never hardcoded.",
   };
 
   return (
@@ -97,14 +107,14 @@ export function ExpectedOutcomePanel({
       id="expected-outcome"
       label="Expected Economic Outcome"
       tail="modeled — not a measured dollar"
-      meta={rate.known ? `${pct} historical mature NSA rate` : "not yet computable"}
+      meta={rate.known ? `${pct} settled net retention` : "not yet computable"}
     >
       {/* Dashed borders and the amber wash mark the whole panel as an estimate.
           Nothing else on this page is drawn this way. */}
       <div className="grid gap-4 px-5 pb-5 sm:grid-cols-2">
         <div className="rounded-lg border border-dashed border-amber-400 bg-amber-50/60 px-4 py-3 dark:border-amber-600/70 dark:bg-amber-900/15">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-            Expected Mature Net
+            Expected Settled Net
             <InfoPopover info={info} />
           </div>
           <div className="mt-1.5 font-mono text-[22px] font-semibold leading-none tabular text-amber-900 dark:text-amber-200">
@@ -113,9 +123,9 @@ export function ExpectedOutcomePanel({
           <div className="mt-1.5 text-[10px] leading-relaxed text-amber-800/80 dark:text-amber-300/80">
             {rate.known ? (
               <>
-                {pct} Historical Mature NSA Rate
+                {pct} Settled Net Retention
                 <br />
-                <span className="opacity-80">settled NSA ÷ gross written</span>
+                <span className="opacity-80">Net Sales ÷ Gross Written · eligible cohorts</span>
                 <br />
                 {/* Sample size in COHORTS and DOLLARS. Never "n=17
                     observations" — re-reading one cohort five times is five
@@ -132,8 +142,8 @@ export function ExpectedOutcomePanel({
         <div className="rounded-lg border border-dashed border-amber-400 bg-amber-50/60 px-4 py-3 dark:border-amber-600/70 dark:bg-amber-900/15">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300">
             {goalName
-              ? `Expected Mature Value at the ${goalName} goal`
-              : "Expected Mature Value at goal"}
+              ? `Expected Settled Value at the ${goalName} goal`
+              : "Expected Settled Value at goal"}
           </div>
           <div className="mt-1.5 font-mono text-[22px] font-semibold leading-none tabular text-amber-900 dark:text-amber-200">
             {atGoal == null ? "—" : `~${usd(atGoal)}`}
@@ -164,7 +174,7 @@ export function CohortQualityPanel({
 }) {
   if (cohorts.length === 0) return null;
 
-  const rows = [...cohorts].sort((a, b) => b.contractMonth.localeCompare(a.contractMonth));
+  const rows = [...cohorts].sort((a, b) => b.appointmentMonth.localeCompare(a.appointmentMonth));
 
   const info = {
     title: "Cohort quality",
@@ -213,13 +223,13 @@ export function CohortQualityPanel({
               <th className="px-2 py-2 text-right font-semibold" title="Working + hold. Still undecided.">
                 Pending
               </th>
-              <th className="px-2 py-2 text-right font-semibold" title="LP's NSA — fully settled net.">
-                Net (NSA)
+              <th className="px-2 py-2 text-right font-semibold" title="Report 137's NSA — LP's fully settled net. Not the source of record for Net Sales.">
+                Net (Report 137 NSA)
               </th>
               <th className="px-2 py-2 text-right font-semibold" title="Net Sales ÷ Gross Written. Of what we wrote, how much has NOT been permanently lost? Available on any cohort, including the current month.">
                 Net Retention %
               </th>
-              <th className="px-2 py-2 text-right font-semibold" title="Net (NSA) ÷ Gross Written. Of what we wrote, how much ultimately SETTLED? This is the rate the Expected Mature Net forecast is built on, and it needs a settled cohort to mean anything.">
+              <th className="px-2 py-2 text-right font-semibold" title="Report 137 NSA ÷ Gross Written. Of what we wrote, how much has LP SETTLED? A diagnostic — NOT the basis of the Expected Settled Net forecast, which uses Net Sales ÷ Gross Written. Report 137 NSA additionally removes live Working and Hold, so on a young cohort this reads far below Net Retention %: July 2026 is 50.9% here and 76.3% to the left, and the gap is unresolved business, not loss.">
                 Net Survival Rate
               </th>
               <th className="px-2 py-2 text-right font-semibold" title="(net + working + hold + cancelled + cd) − gross. A source-data diagnostic; it never adjusts a rate.">
@@ -236,11 +246,11 @@ export function CohortQualityPanel({
               const surv = netSurvivalRate(c);
               return (
                 <tr
-                  key={`${c.contractMonth}-${c.market}`}
+                  key={`${c.appointmentMonth}-${c.market}`}
                   className="border-b border-slate-100 last:border-0 dark:border-slate-800/70"
                 >
                   <td className="py-2 pr-3 font-medium text-slate-700 dark:text-slate-200">
-                    {monthLabel(c.contractMonth)}
+                    {monthLabel(c.appointmentMonth)}
                   </td>
                   <td className="px-2 py-2 text-right font-mono tabular text-slate-800 dark:text-slate-100">
                     {money(d.grossCents)}
@@ -305,12 +315,20 @@ export function CohortQualityPanel({
 
       <div className="px-5 pb-4 text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
         <strong className="font-semibold">Net Retention %</strong> (Net Sales ÷ Gross
-        Written) and <strong className="font-semibold">Net Survival Rate</strong> (NSA ÷
-        Gross Written) are different questions — not permanently lost, versus ultimately
-        settled. They converge as a cohort ages and are far apart on a young one; only the
-        second is the assumption behind Expected Mature Net. Recon Δ is a source-data
-        diagnostic: where it is non-zero, LP&apos;s disposition buckets do not sum to Gross
-        Written. It is recorded and investigated, never corrected into either rate.
+        Written) and <strong className="font-semibold">Net Survival Rate</strong> (Report
+        137 NSA ÷ Gross Written) are different questions — not permanently lost, versus
+        settled by LP. They converge as a cohort ages and are far apart on a young one,
+        because Report 137 NSA removes Working and Hold while Net Retention keeps them: a $30,000 job
+        on permit hold is still good business. The <strong className="font-semibold">first</strong>{" "}
+        is the assumption behind Expected Settled Net; the second is a diagnostic.
+        <br />
+        <strong className="font-semibold">Maturation runs downward.</strong> Losses accrue
+        with age, so the youngest cohorts read the BEST and will fall — August 84.8% and
+        July 76.3% against a settled ~71%. A young month is not outperforming.
+        <br />
+        Recon Δ is a source-data diagnostic: where it is non-zero, LP&apos;s disposition
+        buckets do not sum to Gross Written. It is recorded and investigated, never
+        corrected into either rate.
       </div>
     </ScSection>
   );

@@ -51,9 +51,19 @@ export const SC_GLOSSARY: GlossaryGroup[] = [
       { term: "Gross Sales", def: "All sold dollars before holds and cancellations — the tie-out total." },
       { term: "Working Rev", def: "Working (held) plus open quotes — revenue still in progress." },
       { term: "Avg sale", def: "Released net sales ÷ number of net closes." },
-      { term: "NSLI", def: "Net Sales per Lead Issued — released dollars earned per issued lead." },
-      { term: "GSLI", def: "Gross Sales per Lead Issued — gross dollars per issued lead." },
-      { term: "Trailing NSLI", def: "An NSLI baseline carried in from prior periods." },
+      {
+        term: METRIC_LABELS.netPerIssuedAppointment,
+        def:
+          "Net Sales ÷ issued APPOINTMENTS — the pacing driver. Both sides come from report 137, " +
+          "on the same appointment-date cohort. Formerly “NSLI / Net $ per Issued Lead”, which was " +
+          "wrong twice: the denominator is appointment grain, not lead grain (one lead can carry " +
+          "eleven appointment rows), and the numerator was released-to-production dollars rather " +
+          "than Net Sales.",
+      },
+      {
+        term: "Gross Written $ per Issued Appointment",
+        def: "Gross Written ÷ issued appointments. The gross counterpart, on the same denominator.",
+      },
     ],
   },
   {

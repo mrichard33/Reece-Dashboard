@@ -130,7 +130,7 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
       {showDivergence && (
         <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
           The sales target (goal ÷ average sale) and the funnel flow (demos × close %) differ by{" "}
-          {divergence!.toFixed(0)}% — this market&apos;s demo %, close %, NSLI, or average sale may be inconsistent.
+          {divergence!.toFixed(0)}% — this market&apos;s demo %, demo &rarr; sale %, net $ per issued appointment, or average sale may be inconsistent.
         </div>
       )}
       <div className="overflow-x-auto border-t border-slate-100 px-2 py-1 dark:border-slate-800/70 sm:px-4 sm:py-2">

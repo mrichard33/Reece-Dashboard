@@ -61,10 +61,40 @@ export type ByMarketRow = {
    * company row showed a non-zero total (§4).
    */
   leads: number | null;
-  issued: number;
-  demos: number;
-  sales: number;
-  close_pct: number | null;
+  /**
+   * ── THE SALES FUNNEL, FROM REPORT 137 (Amendment A2) ──────────────────────
+   *
+   * Issued, Demos and Sales all come from `lp_cohort_maturation` — the SAME
+   * report, the SAME appointment-date cohort and the SAME rows as Gross Written
+   * and Net Sales beside them. That is the whole point: one row of this table
+   * now describes one cohort instead of splicing live-sync counts onto 137
+   * dollars and inviting a reconciliation that could never succeed.
+   *
+   * ⚠️ v4 §1 forbade exactly this, and Amendment A2 retires that rule. It was
+   * right only while a single funnel was being made to serve both Sales and the
+   * call center: 137 is appointment-dated, so it can answer for Sales and
+   * cannot answer for setters, and forcing one funnel to do both is what made
+   * its counts look untrustworthy.
+   *
+   * ⚠️ These will NOT reconcile to Appointment Statistics (report 138), and are
+   * not meant to. Same window, same setters: 446 issued here against 418 there,
+   * 271 sat against 260, with per-setter differences running in both
+   * directions. Two cohort bases, two attributions. Do not build a
+   * reconciliation view between them.
+   *
+   * NULL, never 0 — a market with no cohort row has not been measured. This is
+   * a change from the old live-sync fields, which were coerced through
+   * numOr0().
+   */
+  issued: number | null;
+  demos: number | null;
+  sales: number | null;
+  /** Demos ÷ Issued, report 137. NOT "Company Demo %" — that is the call
+   *  center's set-date metric and a different number (60.8% vs 62.2% on
+   *  8/2–8/8). See lib/scorecard/labels.ts. */
+  demo_pct: number | null;
+  /** Sales ÷ Demos, report 137. NEVER "Close %", which is sales ÷ issued. */
+  demo_to_sale_pct: number | null;
   /**
    * Gross Written from report 137, the base Net Sales is subtracted FROM.
    *
@@ -121,8 +151,18 @@ export type ByMarketView = { rows: ByMarketRow[]; total: ByMarketRow | null };
  * must stay visible so it can be driven to zero (handoff 2026-08-05).
  */
 export function rowHasActivity(row: ByMarketRow): boolean {
+  // Every term is null-coalesced: since A2 the funnel counts come from the 137
+  // cohort and are NULL when unmeasured, where they used to be a coerced 0.
+  // "Not measured" is not activity, and it is not a reason to hide the row's
+  // dollars either — hence a sum across all six rather than a check on any one.
   return (
-    (row.leads ?? 0) + row.issued + row.demos + row.sales + (row.gross_sales ?? 0) + (row.net_sales ?? 0) !== 0
+    (row.leads ?? 0) +
+      (row.issued ?? 0) +
+      (row.demos ?? 0) +
+      (row.sales ?? 0) +
+      (row.gross_sales ?? 0) +
+      (row.net_sales ?? 0) !==
+    0
   );
 }
 
@@ -180,12 +220,50 @@ function mtdGoalFor(
   return prorated == null ? null : Math.round(prorated);
 }
 
-/** Report 137's figures for one display market, already at market grain. */
+/**
+ * Report 137's figures for one display market, already at market grain.
+ *
+ * Dollars AND counts, deliberately together: under Amendment A2 they are one
+ * cohort, and splitting them across two sources is the defect this type exists
+ * to prevent recurring.
+ */
 export type MarketNetSales = {
   netSalesCents: number | null;
   grossCents: number | null;
   dataThrough: string | null;
+  issuedCount: number | null;
+  satCount: number | null;
+  soldCount: number | null;
 };
+
+/**
+ * The five funnel fields, derived from the 137 cohort and NOTHING else.
+ *
+ * ONE function, called by both row builders. They used to read `a.issued` /
+ * `a.demos` / `a.sales` / `a.close_pct` off the live-sync row independently,
+ * and two copies of a sourcing decision is how one of them gets repointed and
+ * the other does not.
+ *
+ * Rates are derived from the SUMMED counts, never averaged across the market's
+ * offices — §11 applies to counts exactly as it does to dollars.
+ */
+function funnelFromCohort(cohort: MarketNetSales | null): Pick<
+  ByMarketRow,
+  "issued" | "demos" | "sales" | "demo_pct" | "demo_to_sale_pct"
+> {
+  const issued = cohort?.issuedCount ?? null;
+  const demos = cohort?.satCount ?? null;
+  const sales = cohort?.soldCount ?? null;
+  const ratio = (n: number | null, d: number | null): number | null =>
+    n == null || d == null || d <= 0 ? null : Math.round((n / d) * 1000) / 10;
+  return {
+    issued,
+    demos,
+    sales,
+    demo_pct: ratio(demos, issued),
+    demo_to_sale_pct: ratio(sales, demos),
+  };
+}
 
 function rowFromActuals(
   market: string,
@@ -219,10 +297,9 @@ function rowFromActuals(
     // Leads = report 135, passed in by the caller (see ByMarketRow.leads).
     // NEVER a.raw_leads_in — that column is NULL for every market.
     leads,
-    issued: numOr0(a.issued),
-    demos: numOr0(a.demos),
-    sales: numOr0(a.sales),
-    close_pct: numOrNull(a.close_pct),
+    // A2: the funnel comes from the cohort, not from `a` (live sync). See
+    // `funnelFromCohort` and ByMarketRow.issued.
+    ...funnelFromCohort(cohort),
     gross_sales: gross,
     net_sales: net,
     net_sales_through: cohort?.dataThrough ?? null,
@@ -249,7 +326,7 @@ export function netSalesByMarket(
   periodStart: string,
   periodEnd: string,
 ): Map<string, MarketNetSales> {
-  const inPeriod = cohorts.filter((c) => c.contractMonth >= periodStart && c.contractMonth <= periodEnd);
+  const inPeriod = cohorts.filter((c) => c.appointmentMonth >= periodStart && c.appointmentMonth <= periodEnd);
   const byMarket = new Map<string, CohortObservation[]>();
   for (const c of inPeriod) {
     const bucket = byMarket.get(c.market);
@@ -265,6 +342,12 @@ export function netSalesByMarket(
       netSalesCents: sumKnown(group.map((c) => netSalesCents(c))),
       grossCents: sumKnown(group.map((c) => c.grossCents)),
       dataThrough: minCoverage(group.map((c) => c.dataThrough)),
+      // Counts fold the same way as dollars — same rows, same rule. A month
+      // whose file did not carry a count makes the total unknown rather than
+      // silently smaller.
+      issuedCount: sumKnown(group.map((c) => c.issuedCount)),
+      satCount: sumKnown(group.map((c) => c.satCount)),
+      soldCount: sumKnown(group.map((c) => c.soldCount)),
     });
   }
 
@@ -276,6 +359,9 @@ export function netSalesByMarket(
       netSalesCents: sumKnown(all.map((v) => v.netSalesCents)),
       grossCents: sumKnown(all.map((v) => v.grossCents)),
       dataThrough: minCoverage(all.map((v) => v.dataThrough)),
+      issuedCount: sumKnown(all.map((v) => v.issuedCount)),
+      satCount: sumKnown(all.map((v) => v.satCount)),
+      soldCount: sumKnown(all.map((v) => v.soldCount)),
     });
   }
   return out;
@@ -414,15 +500,15 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     if (found.length === 0) return null;
     if (found.length === 1) return found[0] ?? null;
     const sum = (f: string) => found.reduce((a, r) => a + numOr0(r[f]), 0);
-    const demos = sum("demos");
-    const sales = sum("sales");
     return {
       leads: sum("leads"),
       raw_leads_in: sum("raw_leads_in"),
-      issued: sum("issued"),
-      demos,
-      sales,
-      close_pct: demos > 0 ? Math.round((sales / demos) * 1000) / 10 : null,
+      // ⚠️ THE FUNNEL COUNTS ARE DELIBERATELY ABSENT FROM THIS SUM, for the same
+      // reason the dollar columns below are: since A2 they come from
+      // `netSalesByMarket` (report 137), and leaving a live-sync `issued` /
+      // `demos` / `sales` in this pseudo-row would put a second, differently
+      // sourced copy one field lookup away from being read back in. Only the
+      // pace/calendar fields this row is still consulted for remain.
       days_elapsed: Math.max(...found.map((r) => numOr0(r.days_elapsed))),
       working_days_in_period: Math.max(...found.map((r) => numOr0(r.working_days_in_period))) || null,
       // ⚠️ The DOLLAR columns are deliberately absent from this sum (2026-08-13).
@@ -527,7 +613,7 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
   const [factRows, cohorts, reece, ...marketViews] = await Promise.all([
     // Report 135 leads — one fetch, projected per market in memory.
     fetchReportFactRows(),
-    // Report 137 cohorts. Keyed on contract month, so an aggregate period sums
+    // Report 137 cohorts. Keyed on appointment month, so an aggregate period sums
     // the months it spans — cohort immutability means each month's contracts
     // stay in their own month however wide the window is.
     fetchCurrentCohorts(),

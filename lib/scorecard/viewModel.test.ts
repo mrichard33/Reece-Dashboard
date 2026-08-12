@@ -102,7 +102,6 @@ function makeView(overrides?: {
     rate_sample_n: 100,
     rate_anchor_month: "2026-06-01",
     rate_period_scoped: true,
-    issue_rate: 0.42,
     sales_target_divergence_pct: null,
     target_leads_per_day: 215.9,
     target_issued_per_day: 90.7,

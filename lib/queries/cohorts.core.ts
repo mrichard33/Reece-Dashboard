@@ -1,17 +1,43 @@
 /**
- * Sales cohorts: what a contract month was worth, and what it turned into.
+ * Sales cohorts: what an appointment month was worth, and what it turned into.
  *
  * Pure core — no DB imports, so it unit-tests in a plain node env. The wrapper
  * lives in `lib/queries/cohorts.ts` and re-exports everything here, so callers
  * have one import.
  *
- * ══ A COHORT IS THE MONTH THE CONTRACT WAS WRITTEN IN ══
+ * ══ A COHORT IS THE MONTH THE APPOINTMENT FELL IN ══
  *
- * Immutably. A July contract stays July business forever; only its DISPOSITION
- * changes. Nothing here may ever add a maturing prior-month dollar to a current
- * month's figure — that is the single rule that makes cohort reporting mean
- * anything, and it is why Gross Written is treated as the fixed denominator
- * throughout.
+ * Report 137 filters on APPOINTMENT dates — verified from the PDF header, "For
+ * Appointment Dates Between Sun 08/02/26 and Sat 08/08/26". The CSV carries only
+ * SDate/EDate and never states its filter, which is how this field was called
+ * `contract_month` for as long as it was.
+ *
+ * ⚠️ STANDING RULE: TWO EXPORTS SHARING `SDate`/`EDate` ARE NOT THEREBY ON THE
+ * SAME DATE BASIS. Render as PDF — the header states filters the CSV omits.
+ *
+ * VALUE BASIS AND COHORT BASIS ARE DIFFERENT THINGS AND BOTH ARE TRUE. Gross
+ * Written is the contract dollar amount of sales whose APPOINTMENTS fall in the
+ * window. Not a contradiction, and not a blocker.
+ *
+ * ══ COHORT DATE FOLLOWS THE DEPARTMENT BEING MANAGED ══
+ *
+ * Sales is measured on the APPOINTMENT date: what did the appointments Sales
+ * was responsible for produce? The call center is measured on the SET date:
+ * what happened to the appointments this setter created? A setter who books on
+ * Aug 5 for Aug 12 belongs to the week of Aug 5 on one scorecard and to the
+ * period containing Aug 12 on the other. Same appointment, two valid views.
+ *
+ * Everything in this file is the APPOINTMENT-date cohort — the sales side. Never
+ * mix the two bases inside one KPI.
+ *
+ * ══ THE COHORT IS IMMUTABLE ══
+ *
+ * A July cohort stays July business forever; only its DISPOSITION changes.
+ * Nothing here may ever add a maturing prior-month dollar to a current month's
+ * figure — that is the single rule that makes cohort reporting mean anything,
+ * and it is why Gross Written is treated as the fixed denominator throughout.
+ * Months are NOT kept closed: restatement is expected and is the whole point of
+ * re-observing.
  *
  * ══ THE DEFINITION — ONE FORMULA, AND IT IS A SUBTRACTION ══
  *
@@ -61,11 +87,13 @@ import { measured, unmeasured, type Measured } from "@/lib/scorecard/tiers/types
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * How old a cohort must be to feed the mature-rate denominator.
+ * How old a cohort must be to feed the settled-rate denominator.
  *
- * ANCHORED AT THE COHORT MONTH START — a cohort is `days` old when that many
- * days have passed since the first of its contract month. Measured this way on
- * 2026-08-11, Jan–May qualify and June (71 days) does not.
+ * ANCHORED AT THE APPOINTMENT MONTH START — a cohort is `days` old when that
+ * many days have passed since the first of its appointment month. THE ANCHOR IS
+ * PART OF THE RULE: measured this way on 2026-08-12, Jan–May qualify (5
+ * cohorts, $58.2M, 71.10%) and June (72 days) does not. An end-of-month anchor
+ * would select Jan–Apr and return 71.67% — a different published figure.
  *
  * This is an INCLUSION THRESHOLD, not a claim that a cohort is definitively
  * mature on day 90. It is provisional until the maturation series is long
@@ -83,7 +111,7 @@ export const MATURE_RATE_ELIGIBILITY_DAYS = 90;
 export const WATERFALL_DELTA_THRESHOLD = 0.01;
 
 /**
- * Below this much Gross Written, a market does not get its own mature rate —
+ * Below this much Gross Written, a market does not get its own settled rate —
  * it falls back to the company rate and the cell is marked. A rate computed
  * from one or two contracts is noise presented as measurement.
  */
@@ -99,7 +127,7 @@ export const MIN_GROSS_FOR_OWN_RATE_CENTS = 200_000_00;
  * NOT zero.
  */
 export type CohortOfficeRow = {
-  contractMonth: string; // 'YYYY-MM-01'
+  appointmentMonth: string; // 'YYYY-MM-01'
   market: string; // '*_MKT'
   /**
    * When LP RAN the report. The maturation series is keyed on this — "what does
@@ -161,32 +189,38 @@ export type WaterfallWarning = {
 };
 
 /**
- * ⚠️ TWO RATES, BOTH OVER GROSS WRITTEN, ANSWERING DIFFERENT QUESTIONS. They are
- * within a rounding point of each other on settled cohorts, which is precisely
- * why they must never share a name.
+ * SETTLED NET RETENTION — Σ Net Sales ÷ Σ Gross Written over ELIGIBLE cohorts.
  *
- *   Historical Mature NSA Rate = Σ NSA ÷ Σ Gross Written  (eligible cohorts)
- *       "Of what we wrote, how much ultimately SETTLED to LP's net?"
- *       Backward-looking, needs cohorts old enough to have settled, and is the
- *       assumption behind the Expected Mature Net forecast.
+ * "Of what we wrote in a month old enough to have settled, how much survived?"
+ * Measured 2026-08-12 over the start-anchored 90-day window: Jan–May, 5
+ * cohorts, $58,169,659 written, $41,357,719 net, **71.10%**.
  *
- *   Net Retention %            = Net Sales ÷ Gross Written  (any cohort)
- *       "Of what we wrote, how much has NOT been permanently lost?"
- *       Available immediately, on any cohort including the current month.
+ * ⚠️ THE NUMERATOR IS NET SALES, NOT NSA, AND THE DIFFERENCE IS PUBLISHED.
+ * Σ NSA ÷ Σ Gross over the same five cohorts is 71.06%. Both round to 71.1% at
+ * one decimal place, which is exactly why this went unnoticed while the code
+ * computed the NSA version — the contract publishes two decimals, and there
+ * they differ. The two quantities also answer different questions:
  *
- * On Jan–May 2026 both round to 71.1%. On July 2026 they are 50.9% and 76.3% —
- * a 25-point gap that is working and hold still in play. Reading one as the
- * other misreports a young month badly in whichever direction you got it wrong.
+ *   Settled Net Retention = Net Sales ÷ Gross  — how much was NOT permanently
+ *       lost. Working and Hold are unresolved business and stay IN it. This is
+ *       the goal-bearing basis and the forecast multiplier.
+ *
+ *   Net Survival (NSA)    = Report 137 NSA ÷ Gross — how much LP has settled.
+ *       Working and Hold are removed. A diagnostic, never a forecast input.
+ *
+ * On a SETTLED cohort the gap is small because little is still in play. On a
+ * YOUNG one it is enormous: July 2026 reads 76.3% retention against 50.9%
+ * survival, and the 25 points between them are working and hold, not loss.
  */
-export type HistoricalMatureNsaRate = {
+export type SettledNetRetention = {
   /** Fraction, e.g. 0.711. Not a percentage. */
   rate: number;
   cohortCount: number;
   grossCents: number;
-  /** THE NUMERATOR: settled NSA, not Net Sales. The name says which. */
-  nsaCents: number;
+  /** THE NUMERATOR: Net Sales (gross − cancelled − cd), not NSA. */
+  netSalesCents: number;
   eligibilityDays: number;
-  /** The contract months that fed it, oldest first — for the tile's footnote. */
+  /** The appointment months that fed it, oldest first — for the tile's footnote. */
   months: string[];
 };
 
@@ -209,7 +243,7 @@ export function sumKnown(values: ReadonlyArray<number | null | undefined>): numb
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Fold office rows into one row per (contractMonth, market, observedOn).
+ * Fold office rows into one row per (appointmentMonth, market, observedOn).
  *
  * Fort Lauderdale is BOCA + FTLAU + MIAMI. On the 2026-08-11 snapshot those are
  * gross $94,415 / $140,433 / $0 and net $85,415 / $0 / $0. Reading the FTLAU
@@ -249,7 +283,7 @@ export function minCoverage(dates: readonly (string | null)[]): string | null {
 export function rollupToMarket(rows: readonly CohortOfficeRow[]): CohortObservation[] {
   const byKey = new Map<string, CohortOfficeRow[]>();
   for (const r of rows) {
-    const key = `${r.contractMonth}|${r.market}|${r.observedOn}`;
+    const key = `${r.appointmentMonth}|${r.market}|${r.observedOn}`;
     const bucket = byKey.get(key);
     if (bucket) bucket.push(r);
     else byKey.set(key, [r]);
@@ -259,7 +293,7 @@ export function rollupToMarket(rows: readonly CohortOfficeRow[]): CohortObservat
   for (const group of byKey.values()) {
     const first = group[0]!;
     out.push({
-      contractMonth: first.contractMonth,
+      appointmentMonth: first.appointmentMonth,
       market: first.market,
       observedOn: first.observedOn,
       dataThrough: minCoverage(group.map((r) => r.dataThrough)),
@@ -277,14 +311,14 @@ export function rollupToMarket(rows: readonly CohortOfficeRow[]): CohortObservat
   }
   return out.sort(
     (a, b) =>
-      a.contractMonth.localeCompare(b.contractMonth) ||
+      a.appointmentMonth.localeCompare(b.appointmentMonth) ||
       a.market.localeCompare(b.market) ||
       a.observedOn.localeCompare(b.observedOn),
   );
 }
 
 /**
- * Fold market rows into ONE row per contract month — the company view.
+ * Fold market rows into ONE row per appointment month — the company view.
  *
  * The same rule as `rollupToMarket`, one level up: sum the dollars, then derive
  * the rate from the sums. Never average the markets' rates; on 2026-08-12 that
@@ -300,15 +334,15 @@ export function foldCohortsByMonth(
 ): CohortObservation[] {
   const byMonth = new Map<string, CohortObservation[]>();
   for (const o of observations) {
-    const bucket = byMonth.get(o.contractMonth);
+    const bucket = byMonth.get(o.appointmentMonth);
     if (bucket) bucket.push(o);
-    else byMonth.set(o.contractMonth, [o]);
+    else byMonth.set(o.appointmentMonth, [o]);
   }
 
   const out: CohortObservation[] = [];
-  for (const [contractMonth, group] of byMonth) {
+  for (const [appointmentMonth, group] of byMonth) {
     out.push({
-      contractMonth,
+      appointmentMonth,
       market: group.length === 1 ? group[0]!.market : market,
       // The freshest OBSERVATION in the group. Correct for the maturation series
       // — "the latest time we looked at January" — and safe there because it
@@ -331,7 +365,62 @@ export function foldCohortsByMonth(
       isCurrent: group.every((o) => o.isCurrent !== false),
     });
   }
-  return out.sort((a, b) => a.contractMonth.localeCompare(b.contractMonth));
+  return out.sort((a, b) => a.appointmentMonth.localeCompare(b.appointmentMonth));
+}
+
+/**
+ * ── §10 — A PERIOD IS ITS MONTHS, AND ITS COVERAGE IS THE NEWEST ONE ────────
+ *
+ * Every cohort whose appointment month falls in [periodStart, periodEnd],
+ * summed. Cohort immutability is what makes this legal: each month's contracts
+ * stay in their own month, so a window simply decides which months are in
+ * scope — nothing migrates.
+ *
+ * ⚠️ THE DEFECT THIS REPLACES. The page selected a SINGLE cohort, the one whose
+ * appointment month equalled `periodStart`, and rendered it as the period's
+ * headline. For MTD that is correct and indistinguishable. For 3-Month it
+ * showed one month of Net Sales against three months of goal; for YTD, January
+ * against the year. The figure was not stale or approximate — it was a
+ * different quantity wearing the period's label.
+ *
+ * ⚠️ COVERAGE IS MAX(dataThrough), NOT MIN. A closed month's coverage date marks
+ * COMPLETENESS, not staleness: January reaching 01-31 says January is finished,
+ * not that a Jan–Aug total stops there. Taking the min is what made the YTD view
+ * report "through 2026-01-31 · 162 days behind" while every month was current.
+ *
+ * This is deliberately the OPPOSITE fold from `minCoverage`, which combines
+ * MARKETS WITHIN one month and is conservative for a good reason — a company
+ * row is only as current as its stalest market. Different axis, different rule.
+ * Both are right; conflating them is what produced the banner.
+ *
+ * Whether the range is INCOMPLETE is a separate question, and not one this can
+ * answer: a missing month is invisible to a sum of the months present. The
+ * reporting clock owns it, because it knows the calendar.
+ */
+export function periodCohortTotals(
+  cohorts: readonly CohortObservation[],
+  periodStart: string,
+  periodEnd: string,
+): {
+  grossCents: number | null;
+  netSalesCents: number | null;
+  /** MAX over the months in range — see above. Null if none declared one. */
+  dataThrough: string | null;
+  /** Which appointment months fed it, oldest first. */
+  months: string[];
+} {
+  const inPeriod = cohorts.filter(
+    (c) => c.appointmentMonth >= periodStart && c.appointmentMonth <= periodEnd,
+  );
+  return {
+    grossCents: sumKnown(inPeriod.map((c) => c.grossCents)),
+    netSalesCents: sumKnown(inPeriod.map((c) => netSalesCents(c))),
+    dataThrough: inPeriod.reduce<string | null>(
+      (max, c) => (c.dataThrough != null && (max == null || c.dataThrough > max) ? c.dataThrough : max),
+      null,
+    ),
+    months: [...new Set(inPeriod.map((c) => c.appointmentMonth))].sort(),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -340,26 +429,26 @@ export function foldCohortsByMonth(
 
 const MS_PER_DAY = 86_400_000;
 
-/** Whole days from the first of the contract month to `asOf`. */
-export function cohortAgeDays(contractMonth: string, asOf: string): number {
-  const start = Date.parse(`${contractMonth.slice(0, 10)}T00:00:00Z`);
+/** Whole days from the first of the appointment month to `asOf`. */
+export function cohortAgeDays(appointmentMonth: string, asOf: string): number {
+  const start = Date.parse(`${appointmentMonth.slice(0, 10)}T00:00:00Z`);
   const end = Date.parse(`${asOf.slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return NaN;
   return Math.round((end - start) / MS_PER_DAY);
 }
 
 /**
- * Is this cohort old enough to feed the mature rate?
+ * Is this cohort old enough to feed the settled rate?
  *
  * The current month never is, whatever the arithmetic says — its Gross Written
  * is still accumulating, so it is not a fixed denominator yet.
  */
 export function isEligibleForMatureRate(
-  contractMonth: string,
+  appointmentMonth: string,
   asOf: string,
   eligibilityDays: number = MATURE_RATE_ELIGIBILITY_DAYS,
 ): boolean {
-  const age = cohortAgeDays(contractMonth, asOf);
+  const age = cohortAgeDays(appointmentMonth, asOf);
   if (!Number.isFinite(age)) return false;
   return age >= eligibilityDays;
 }
@@ -446,7 +535,7 @@ export function netSurvivalRate(o: CohortObservation): Measured {
  * NET RETENTION % — the goal-bearing basis as a share of what was written.
  * "Of what we wrote, how much has NOT been permanently lost?"
  *
- * NOT the Historical Mature NSA Rate. See the note on that type: on July 2026
+ * NOT Settled Net Retention (the modeled rate) and NOT Net Survival. On July 2026
  * this reads 76.3% and the NSA rate reads 50.9%.
  */
 export function netRetentionRate(o: CohortObservation): Measured {
@@ -461,6 +550,52 @@ export function pendingRate(o: CohortObservation): Measured {
 /** cancelled + credit decline, over gross. Terminal losses. */
 export function lostRate(o: CohortObservation): Measured {
   return fraction(sumKnown([o.cancelledCents, o.cdCents]), o.grossCents, "lost rate");
+}
+
+/**
+ * PERMANENT LOSS % — cancellations + financing denied, over Gross Written.
+ *
+ * Identical arithmetic to `lostRate`, published under the name §3 and §16 use.
+ * The name earns its keep: "lost" invites a reader to assume Working and Hold
+ * belong in it, since those are also colloquially "not won yet". They do not.
+ * Only the two TERMINAL outcomes are here. A $30,000 job on permit hold is
+ * still good business.
+ */
+export function permanentLossRate(o: CohortObservation): Measured {
+  return fraction(sumKnown([o.cancelledCents, o.cdCents]), o.grossCents, "permanent loss %");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Amendment A2 — the appointment counts ARE the sales funnel
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Demo % — Sat ÷ Issued, both from Report 137, both on the appointment cohort.
+ *
+ * ⚠️ THIS IS THE SALES SCORECARD'S "Demo %", NOT "Company Demo %". The latter
+ * belongs to the call-center scorecard, is computed on a SET-date cohort from a
+ * different source, and is a different number: on 8/2–8/8 this reads 60.8%
+ * (271 ÷ 446) while Appointment Statistics reads 62.2% (260 ÷ 418). Two valid
+ * views of one week. Giving them one name is the collision Amendment A exists
+ * to prevent.
+ *
+ * Under v4 §1 these counts were barred from funnel metrics. Amendment A2
+ * retires that bar: 137 filters on appointment dates, so its counts and its
+ * dollars describe ONE cohort, and pairing them is the point. The bar was
+ * correct only while a single funnel was being made to serve both departments.
+ */
+export function demoRate(o: CohortObservation): Measured {
+  return fraction(o.satCount, o.issuedCount, "demo %");
+}
+
+/**
+ * Demo → Sale % — Sold ÷ Sat, both from Report 137.
+ *
+ * NEVER "Close %". Close % is `sales ÷ issued appointments` and is a different
+ * denominator on numbers people plan against — see lib/scorecard/labels.ts.
+ */
+export function demoToSaleRate(o: CohortObservation): Measured {
+  return fraction(o.soldCount, o.satCount, "demo → sale %");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -518,38 +653,47 @@ export function waterfallWarning(
     deltaCents: d.cents,
     deltaPct: d.pct,
     message:
-      `${o.market} ${o.contractMonth}: disposition buckets ${sign} gross written by ` +
+      `${o.market} ${o.appointmentMonth}: disposition buckets ${sign} gross written by ` +
       `$${Math.abs(dollars).toLocaleString("en-US")} (${(d.pct * 100).toFixed(2)}%). ` +
       `Recorded, not corrected — the net survival rate is unaffected.`,
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §2 — the modeled mature rate
+// §8 — the modeled settled rate
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * HISTORICAL MATURE NSA RATE — Σ NSA ÷ Σ Gross Written over ELIGIBLE cohorts.
- *
- * The numerator is SETTLED NSA, deliberately: this rate answers "what does a
- * dollar written eventually settle to", so its numerator has to be the settled
- * figure. Using Net Sales here would make it a retention rate wearing a
- * maturity rate's name — see the note on `HistoricalMatureNsaRate`.
+ * SETTLED NET RETENTION — Σ Net Sales ÷ Σ Gross Written over ELIGIBLE cohorts.
  *
  * SUM THE NUMERATORS AND DENOMINATORS, THEN DIVIDE. Never average cohort rates:
  * an average weights a $2M month equally with a $13M one and answers a question
  * nobody asked.
  *
+ * ELIGIBILITY IS START-ANCHORED, AND THE ANCHOR IS PART OF THE RULE. A cohort
+ * is `eligibilityDays` old when that many days have passed since the FIRST of
+ * its appointment month. On 2026-08-12 that selects Jan–May — 5 cohorts,
+ * $58,169,659 written, 71.10%. An end-of-month anchor would select Jan–Apr — 4
+ * cohorts, $45,248,267, 71.67%. A different answer, which is why the anchor is
+ * specified rather than left to whoever reads the code next.
+ *
+ * 90 days is an INCLUSION THRESHOLD, not a claim that a cohort is settled on
+ * day 90. It is provisional until the maturation series is long enough to show
+ * where the rate actually stabilises.
+ *
  * Takes one observation per cohort — pass the CURRENT observation of each, not
- * the whole history, or a cohort observed five times counts five times.
+ * the whole history, or a cohort observed five times counts five times. That is
+ * also why the tile states its sample in COHORTS and DOLLARS: repeated
+ * observations of one cohort are not independent samples, so "n=17" would be a
+ * lie about the evidence even when the arithmetic is right.
  */
-export function historicalMatureNsaRate(
+export function settledNetRetention(
   observations: readonly CohortObservation[],
   asOf: string,
   eligibilityDays: number = MATURE_RATE_ELIGIBILITY_DAYS,
-): Measured<HistoricalMatureNsaRate> {
+): Measured<SettledNetRetention> {
   const eligible = observations.filter((o) =>
-    isEligibleForMatureRate(o.contractMonth, asOf, eligibilityDays),
+    isEligibleForMatureRate(o.appointmentMonth, asOf, eligibilityDays),
   );
   if (eligible.length === 0) {
     return unmeasured(
@@ -559,30 +703,31 @@ export function historicalMatureNsaRate(
   }
 
   let gross = 0;
-  let nsa = 0;
+  let net = 0;
   const months = new Set<string>();
   for (const o of eligible) {
-    // A cohort whose report did not carry NSA cannot join either sum —
-    // including its gross while dropping its numerator would bias the rate
-    // down and look like a quality collapse.
-    if (o.nsaCents == null || o.grossCents == null) continue;
+    // A cohort whose report did not carry every component of Net Sales cannot
+    // join either sum — including its gross while dropping its numerator would
+    // bias the rate down and look like a quality collapse.
+    const n = netSalesCents(o);
+    if (n == null || o.grossCents == null) continue;
     gross += o.grossCents;
-    nsa += o.nsaCents;
-    months.add(o.contractMonth);
+    net += n;
+    months.add(o.appointmentMonth);
   }
 
   if (!(gross > 0)) {
     return unmeasured(
       `the ${eligible.length} eligible cohort observation(s) carry no usable gross ` +
-        `written with a settled NSA beside it`,
+        `written with a complete Net Sales beside it`,
     );
   }
 
   return measured({
-    rate: nsa / gross,
+    rate: net / gross,
     cohortCount: months.size,
     grossCents: gross,
-    nsaCents: nsa,
+    netSalesCents: net,
     eligibilityDays,
     months: [...months].sort(),
   });
@@ -590,17 +735,20 @@ export function historicalMatureNsaRate(
 
 /**
  * What this period's writing is worth once it settles: Gross Written × the
- * HISTORICAL MATURE NSA RATE.
+ * SETTLED NET RETENTION rate.
  *
  * NOT A QUALITY METRIC. This is Gross Written × a historical constant, so
  * within a month a manager raises it only by writing MORE, never by writing
  * BETTER. It is a forecast. No UI copy, tooltip or comment may imply otherwise
- * — the quality incentive lives in the net survival rate.
+ * — the quality incentive lives in Net Retention % on the cohort itself.
  *
- * The rate passed in must be the mature NSA rate, not Net Retention % — the
- * two are within a point on settled cohorts and 25 points apart on a young one.
+ * ⚠️ MATURATION INVERTS UNDER THIS DEFINITION. Losses accrue over time, so a
+ * young cohort reads TOO GOOD, not too bad: July 76.3% and August 84.8% against
+ * a settled ~71%. August is currently overstated by roughly $300K and WILL
+ * FALL. Anything rendering this forecast has to say so, or a reader will treat
+ * a young month's retention as an improvement.
  */
-export function expectedMatureNet(grossToDateCents: number | null, rate: number): number | null {
+export function expectedSettledNet(grossToDateCents: number | null, rate: number): number | null {
   if (grossToDateCents == null || !Number.isFinite(grossToDateCents)) return null;
   if (!Number.isFinite(rate)) return null;
   return Math.round(grossToDateCents * rate);

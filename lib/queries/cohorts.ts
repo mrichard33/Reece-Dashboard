@@ -1,8 +1,8 @@
 import { lpServer } from "@/lib/supabase/lp";
 import {
-  historicalMatureNsaRate,
+  settledNetRetention,
   type CohortObservation,
-  type HistoricalMatureNsaRate,
+  type SettledNetRetention,
 } from "./cohorts.core";
 import type { Measured } from "@/lib/scorecard/tiers/types";
 
@@ -10,16 +10,18 @@ import type { Measured } from "@/lib/scorecard/tiers/types";
  * DB wrapper for the cohort layer. The pure core is `cohorts.core.ts`; this
  * file only fetches and re-exports, so callers have one import.
  *
- * Source is the `lp_cohort_maturation` view (LP-MCP migrations
- * 2026-08-12_cohort_maturation.sql, replaced by
- * 2026-08-12b_cohort_disposition_split.sql — which separates the DEFINITION of
- * Net Sales from LP's reported disposition and adds
- * observed_disposition_cents / reconciliation_delta_cents), already at MARKET
- * grain with
- * office codes summed — §7's rule enforced in the database rather than
- * re-implemented per reader. `rollupToMarket` in the core stays exported for
- * callers holding office-grain rows and for the regression test that proves
- * the rollup is what produces Fort Lauderdale's real figures.
+ * Source is the `lp_cohort_maturation` view, currently at LP-MCP migration
+ * 2026-08-13_cohort_maturation.sql — which appends `appointment_month` (137
+ * filters on APPOINTMENT dates, so `contract_month` was named for the wrong
+ * thing and is now a deprecated alias), plus `net_retention_rate` and
+ * `permanent_loss_rate` under the names the contract publishes.
+ *
+ * Rows arrive already at MARKET grain with office codes summed — §11's
+ * sum-then-derive rule enforced in the database rather than re-implemented per
+ * reader. `rollupToMarket` in the core stays exported for callers holding
+ * office-grain rows and for the regression test that proves the rollup is what
+ * produces Fort Lauderdale's real figures ($234,848 gross, $139,150 net —
+ * reading the FTLAU office row alone gives $140,433 and $0).
  *
  * A fetch failure returns [] with a console.error, never throws — the panels
  * render "not yet sourced", never $0. Matching `reportFacts.ts`.
@@ -29,13 +31,13 @@ export * from "./cohorts.core";
 
 /** Columns of `lp_cohort_maturation` this repo reads. */
 const COHORT_COLUMNS =
-  "contract_month, market, observed_on, data_through, declared_period_end, is_partial_month, " +
+  "appointment_month, market, observed_on, data_through, declared_period_end, is_partial_month, " +
   "cohort_age_days, snapshot_id, scope, is_current, " +
   "office_count, gross_cents, nsa_cents, working_cents, hold_cents, cancelled_cents, cd_cents, " +
   "net_sales_cents, issued_count, sat_count, sold_count";
 
 type CohortRow = {
-  contract_month: string;
+  appointment_month: string;
   market: string;
   observed_on: string;
   data_through: string | null;
@@ -60,7 +62,7 @@ type CohortRow = {
 
 function toObservation(r: CohortRow): CohortObservation {
   return {
-    contractMonth: r.contract_month,
+    appointmentMonth: r.appointment_month,
     market: r.market,
     // TWO DATES, kept apart. observed_on is when LP RAN the report (08-11);
     // data_through is what the dollars COVER (08-10). The view returns
@@ -84,7 +86,7 @@ function toObservation(r: CohortRow): CohortObservation {
 }
 
 /**
- * The CURRENT observation of every cohort — one row per (contract_month,
+ * The CURRENT observation of every cohort — one row per (appointment_month,
  * market). This is what Panel 3 renders and what the mature rate is derived
  * from.
  *
@@ -99,7 +101,7 @@ export async function fetchCurrentCohorts(): Promise<CohortObservation[]> {
       .from("lp_cohort_maturation")
       .select(COHORT_COLUMNS)
       .eq("is_current", true)
-      .order("contract_month", { ascending: false })
+      .order("appointment_month", { ascending: false })
       .limit(2000);
     if (error) throw new Error(error.message);
     return ((data ?? []) as unknown as CohortRow[]).map(toObservation);
@@ -115,13 +117,13 @@ export async function fetchCurrentCohorts(): Promise<CohortObservation[]> {
  * 2026-08-09, so the curve has too few points to draw. It ships now so the
  * series accumulates and the panel has data when it lands.
  */
-export async function fetchCohortHistory(contractMonth?: string): Promise<CohortObservation[]> {
+export async function fetchCohortHistory(appointmentMonth?: string): Promise<CohortObservation[]> {
   try {
     const sb = await lpServer();
     let q = sb.from("lp_cohort_maturation").select(COHORT_COLUMNS);
-    if (contractMonth) q = q.eq("contract_month", contractMonth);
+    if (appointmentMonth) q = q.eq("appointment_month", appointmentMonth);
     const { data, error } = await q
-      .order("contract_month", { ascending: true })
+      .order("appointment_month", { ascending: true })
       .order("observed_on", { ascending: true })
       .limit(5000);
     if (error) throw new Error(error.message);
@@ -133,43 +135,44 @@ export async function fetchCohortHistory(contractMonth?: string): Promise<Cohort
 }
 
 /**
- * Company-level HISTORICAL MATURE NSA RATE: Σ NSA ÷ Σ Gross Written over
- * eligible cohorts, summed then divided.
+ * Company-level SETTLED NET RETENTION: Σ Net Sales ÷ Σ Gross Written over
+ * eligible cohorts, summed then divided. 71.10% on Jan–May 2026.
  *
- * ⚠️ The numerator is SETTLED NSA, not Net Sales. Σ Net Sales ÷ Σ Gross Written
- * is a different figure — Net Retention % — and describing this one that way is
- * exactly the confusion the rename exists to prevent. Both round to 71.1% on
- * Jan–May 2026, so the error would not be caught by eye; on July they are 50.9%
- * and 76.3%.
+ * ⚠️ The numerator is NET SALES, not NSA. Σ NSA ÷ Σ Gross over the same five
+ * cohorts is 71.06% — indistinguishable at one decimal place, different at the
+ * two the contract publishes, and 25 points apart on a young cohort where
+ * working and hold are still in play. The NSA version is a survival diagnostic
+ * and is never the forecast multiplier.
  *
  * `asOf` is the observation date the eligibility window is measured to — pass
  * the period's as-of, not `new Date()`, so the figure is reproducible.
  */
-export async function getCompanyHistoricalMatureNsaRate(asOf: string): Promise<Measured<HistoricalMatureNsaRate>> {
+export async function getCompanySettledNetRetention(asOf: string): Promise<Measured<SettledNetRetention>> {
   const cohorts = await fetchCurrentCohorts();
-  return historicalMatureNsaRate(cohorts, asOf);
+  return settledNetRetention(cohorts, asOf);
 }
 
 /**
- * Per-market mature rate, falling back to the company rate where a market has
- * too little volume to carry its own. The `ownRate` flag tells the UI which
- * cells to mark — a borrowed rate must never render as if it were measured.
+ * Per-market settled net retention, falling back to the company rate where a
+ * market has too little volume to carry its own. The `ownRate` flag tells the
+ * UI which cells to mark — a borrowed rate must never render as if it were
+ * measured.
  */
-export async function getMarketHistoricalMatureNsaRates(
+export async function getMarketSettledNetRetention(
   asOf: string,
-): Promise<{ company: Measured<HistoricalMatureNsaRate>; byMarket: Map<string, { rate: Measured<HistoricalMatureNsaRate>; ownRate: boolean }> }> {
+): Promise<{ company: Measured<SettledNetRetention>; byMarket: Map<string, { rate: Measured<SettledNetRetention>; ownRate: boolean }> }> {
   const cohorts = await fetchCurrentCohorts();
-  const company = historicalMatureNsaRate(cohorts, asOf);
+  const company = settledNetRetention(cohorts, asOf);
 
   const markets = [...new Set(cohorts.map((c) => c.market))];
-  const byMarket = new Map<string, { rate: Measured<HistoricalMatureNsaRate>; ownRate: boolean }>();
+  const byMarket = new Map<string, { rate: Measured<SettledNetRetention>; ownRate: boolean }>();
 
   for (const market of markets) {
     // §7 applies to the MODEL too: derive the market's rate from its own summed
     // numerator and denominator. Never average its offices' rates, and never
     // compute per office and sum — that recreates the office/market split on
     // samples far too small to be stable.
-    const own = historicalMatureNsaRate(
+    const own = settledNetRetention(
       cohorts.filter((c) => c.market === market),
       asOf,
     );

@@ -132,8 +132,10 @@ export function PaceHero({
   const rateTitle = p.rateWindow
     ? `Basis: ${windowLabel(p.rateWindow)} · ${p.rateSampleN ?? 0} contracts${anchorLabel}`
     : undefined;
-  // Issue rate rides the NSLI tile (no 9th KPI — it would orphan the 2/4/8 grid).
-  const issuePct = p.issueRate != null ? ` · issue ${num(Math.round(p.issueRate * 100))}%` : "";
+  // Issue rate USED to ride this tile. It is deleted, not hidden (§6, §13): it
+  // divided appointment-grain Issued by lead-grain raw leads, a bridge that has
+  // never been proven. Nothing replaces it here — the honest render is its
+  // absence, and the leads-needed row in the goal editor states the reason.
   // §7: the window is part of the number. The header used to say only
   // "trailing net ÷ leads issued" while the goal editor said "rolling 90d ·
   // n=344" — two labels, two different values, no way to tell which was which.
@@ -255,7 +257,7 @@ export function PaceHero({
           : undefined,
     },
     { label: "Average Sale", sub: `net ÷ sales · ${windowSub}`, value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle, flag: p.rateWidened },
-    { label: "Net Sales $ / Issued Lead", sub: `net sales ÷ leads issued · ${windowSub}${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
+    { label: "Net Sales $ / Issued Lead", sub: `net sales ÷ leads issued · ${windowSub}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
   ];
 
   const toneCls = (t: Kpi["tone"]) =>

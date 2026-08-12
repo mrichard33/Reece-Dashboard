@@ -80,7 +80,6 @@ describe("computeTrailingRates — window rule + min-sample guard", () => {
     expect(r.window).toBeNull();
     expect(r.nsli).toBeNull();
     expect(r.avgSale).toBeNull();
-    expect(r.issueRate).toBeNull();
     expect(r.sampleN).toBe(0);
   });
 });
@@ -103,10 +102,8 @@ describe("rolling 90-day primary window (live anchor — ruled 2026-08-04, hando
     expect(r.window).toBe("rolling_90d");
     const net = 100_000 + 400_000 + 380_000 + 360_000;
     const issued = 30 + 120 + 110 + 100;
-    const rawLeads = 180 + 600 + 560 + 520;
     expect(r.sampleN).toBe(12 + 40 + 38 + 36);
     expect(r.nsli).toBe(Math.round(net / issued)); // Σ numerators ÷ Σ denominators
-    expect(r.issueRate).toBeCloseTo(issued / rawLeads, 4);
   });
 
   it("recomputes as the window slides: a later windowStart drops the oldest month", () => {
@@ -153,63 +150,24 @@ describe("rolling 90-day primary window (live anchor — ruled 2026-08-04, hando
   });
 });
 
-describe("issue rate — raw-leads denominator, same window as NSLI, null-safe", () => {
-  it("issueRate = Σissued ÷ Σraw_leads_in over the SAME window nsli/avgSale chose", () => {
-    const m = months(6, 200_000, 60, 20, 150); // trailing_3; rawLeads = leads = 150
-    const r = computeTrailingRates(m, COMPANY);
-    expect(r.window).toBe("trailing_3");
-    expect(r.issueRate).toBeCloseTo((60 * 3) / (150 * 3), 4); // 0.4
-  });
-
-  it("the set-cohort `leads` column is NOT the denominator (ruled 2026-08-05)", () => {
-    // rawLeads = 2× the cohort figure — the rate must follow rawLeads.
-    const m = months(6, 200_000, 60, 20, 150, 300);
-    const r = computeTrailingRates(m, COMPANY);
-    expect(r.issueRate).toBeCloseTo((60 * 3) / (300 * 3), 4); // 0.2, not 0.4
-  });
-
-  it("months without raw_leads_in (pre-June-2026) are excluded from BOTH sides of the ratio", () => {
-    // 2 tracked months + 1 untracked in the trailing_3 window: the untracked
-    // month's issued must not inflate the numerator against a smaller denominator.
-    const m: RateMonth[] = [
-      { period_start: "2026-07-01", net: 200_000, issued: 60, sales: 20, leads: 150, rawLeads: 300 },
-      { period_start: "2026-06-01", net: 200_000, issued: 60, sales: 20, leads: 150, rawLeads: 300 },
-      { period_start: "2026-05-01", net: 200_000, issued: 999, sales: 20, leads: 150, rawLeads: null },
-    ];
-    const r = computeTrailingRates(m, COMPANY);
-    expect(r.window).toBe("trailing_3");
-    expect(r.issueRate).toBeCloseTo(120 / 600, 4); // May's 999 issued excluded
-  });
-
-  it("no raw-leads months anywhere in the window → issueRate null, never a silent cohort fallback", () => {
-    const m = months(6, 200_000, 60, 20, 150, null); // history predates tracking
-    const r = computeTrailingRates(m, COMPANY);
-    expect(r.nsli).not.toBeNull(); // NSLI unaffected
-    expect(r.issueRate).toBeNull();
-  });
-
-  it("moves with the widening: a trailing_6 window prices issue rate over 6 months too", () => {
-    const m = months(12, 150_000, 40, 8, 100); // trailing_6
-    const r = computeTrailingRates(m, COMPANY);
-    expect(r.window).toBe("trailing_6");
-    expect(r.issueRate).toBeCloseTo((40 * 6) / (100 * 6), 4);
-  });
-
-  it("company fallback carries the COMPANY issue rate (visible via window flag, test 25)", () => {
-    const m = months(12, 20_000, 10, 1, 25); // → company
-    const r = computeTrailingRates(m, COMPANY);
-    expect(r.window).toBe("company"); // the visible fallback flag
-    expect(r.issueRate).toBeCloseTo((1_500 * 3) / (3_000 * 3), 4);
-  });
-
-  it("zero leads in the window → issueRate null while nsli stays intact (test 24)", () => {
-    const m = months(6, 200_000, 60, 20, 0);
-    const r = computeTrailingRates(m, COMPANY);
-    expect(r.nsli).toBe(Math.round((200_000 * 3) / (60 * 3)));
-    expect(r.issueRate).toBeNull();
-    expect(Number.isNaN(r.issueRate as unknown as number)).toBe(false);
-  });
-});
+/**
+ * ── The issue-rate suite is DELETED, and this note is what replaces it ──────
+ *
+ * It had seven tests over `Σ issued ÷ Σ raw_leads_in`. They all passed, and the
+ * ratio they guarded should never have existed: `issued` is APPOINTMENT/attempt
+ * grain and `raw_leads_in` is LEAD grain. 78,557 Lead Disposition rows sit over
+ * 71,040 distinct leads, one lead carries up to eleven of them, and
+ * `num_superseded` reaches 10 — so the two sides are not a rate, and §13 blocks
+ * any ratio combining them until a bridge is proven.
+ *
+ * Deleting the tests with the code is deliberate. Left behind with their
+ * assertions stripped they would have read as coverage of something, which is
+ * worse than an honest absence — and a reader would have restored the metric to
+ * make them meaningful again.
+ *
+ * `computeTrailingRates` still prices NSLI and average sale over the same
+ * windows; those tests are above and unchanged.
+ */
 
 // ── §8 the live month is not a rate input, and NULL net is not zero ─────────
 //

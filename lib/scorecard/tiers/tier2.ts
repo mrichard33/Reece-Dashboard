@@ -17,6 +17,7 @@
  */
 import { measured, unmeasured, type Measured, type Owner, type TierMeta } from "./types";
 import { marketLabel } from "@/lib/scorecard/markets";
+import { METRIC_LABELS } from "@/lib/scorecard/labels";
 import { pointsGap, rate } from "./metrics";
 import type { FactScope } from "@/lib/queries/reportFacts.core";
 import { forMarket, pickSnapshot, sumMetric, type RolledFact } from "./factRollup";
@@ -34,7 +35,11 @@ export type StageDef = {
 export const STAGES: readonly StageDef[] = [
   { key: "issue", label: "Issue %", formula: "Issued ÷ Leads", owner: "Marketing / call center" },
   { key: "sit", label: "Sit %", formula: "Sat ÷ Issued", owner: "Call center" },
-  { key: "close", label: "Close %", formula: "Sold ÷ Sat", owner: "Sales" },
+  // `Sold ÷ Sat` is Demo → Sale %, NOT Close %. "Close %" is reserved for
+  // `sales ÷ issued appointments` — a different denominator on numbers people
+  // plan against. The key stays `close` (it addresses the stage, and callers
+  // index on it); the LABEL is what a reader sees and it has to be honest.
+  { key: "close", label: METRIC_LABELS.demoToSale, formula: "Sold ÷ Sat", owner: "Sales" },
   { key: "survival", label: "Survival %", formula: "Net ÷ Sold", owner: "Finance / Operations" },
 ];
 

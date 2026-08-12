@@ -30,7 +30,7 @@ const COLS: Col[] = [
   { key: "close_pct", label: METRIC_LABELS.demoToSale, fmt: "pct" },
   { key: "net_sales", label: "Net Sales", fmt: "usd" },
   { key: "pending_total", label: "Pending", fmt: "usd" },
-  { key: "nsli", label: "Net Sales $ / Lead", fmt: "usd" },
+  { key: "nsli", label: METRIC_LABELS.netPerIssuedAppointment, fmt: "usd" },
 ];
 
 function fmtCell(v: number | null, kind: Col["fmt"]): string {
@@ -178,7 +178,7 @@ export function SourcePerformanceTable({
                   const q = quality(r.close_pct, referenceClosePct);
                   const nsliVsRef =
                     r.nsli != null && referenceNsli
-                      ? `NSLI ${usd(r.nsli)} vs REECE avg ${usd(referenceNsli)}`
+                      ? `Net $ / issued appt ${usd(r.nsli)} vs REECE avg ${usd(referenceNsli)}`
                       : undefined;
                   return (
                     <tr
