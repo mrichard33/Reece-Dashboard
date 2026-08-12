@@ -77,13 +77,41 @@ export function InfoPopover({
         <Info className="h-3.5 w-3.5" strokeWidth={2.25} />
       </button>
 
+      {/*
+        MOBILE: a viewport-anchored sheet, not a popover.
+
+        The absolute popover below `sm` was unusable, for two independent
+        reasons. (1) `w-80` is a fixed 320px hung off a 20px trigger, so on a
+        ~390px screen it runs off whichever edge the trigger sits near —
+        `align="left"` overflows the right edge almost everywhere. (2) An
+        absolutely-positioned child CANNOT escape an ancestor with
+        `overflow-x-auto`, and that describes every table on the scorecard
+        (ByMarketTable, SourcePerformanceTable, the cohort table), so those ⓘ
+        buttons opened into a clipped strip or nothing at all.
+
+        `fixed` solves both at once: it is positioned against the viewport, so
+        no scroll container can clip it and its width is bounded by the screen
+        rather than by a constant. At `sm` and up the original popover is
+        restored unchanged.
+      */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/20 sm:hidden"
+          aria-hidden
+          onClick={() => setOpen(false)}
+        />
+      )}
+
       {open && (
         <div
           className={cn(
-            "absolute top-full z-40 mt-2 w-80 rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900",
-            align === "right" ? "right-0" : "left-0",
+            "fixed inset-x-4 bottom-4 z-50 max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900",
+            // ≥ sm: back to the anchored popover, exactly as before.
+            "sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:z-40 sm:mt-2 sm:max-h-none sm:w-80 sm:overflow-visible",
+            align === "right" ? "sm:right-0" : "sm:left-0",
           )}
           role="dialog"
+          aria-modal="false"
         >
           <div className="flex items-start justify-between gap-2">
             <h4 className="font-display text-sm font-semibold text-navy-900 dark:text-white">
