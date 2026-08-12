@@ -51,7 +51,11 @@ const cohort = (
 ): CohortObservation => ({
   contractMonth,
   market,
+  // The run date and the coverage date, kept apart: report 137's MTD file runs
+  // the morning AFTER the day it covers. Fixtures carry both so a test that
+  // conflates them fails here rather than on the page.
   observedOn: "2026-08-12",
+  dataThrough: "2026-08-11",
   officeCount: 9,
   grossCents,
   nsaCents,
@@ -74,17 +78,17 @@ const byMonth = (m: string) => COHORTS.find((c) => c.contractMonth === m)!;
  */
 const FTLAU_OFFICES: CohortOfficeRow[] = [
   {
-    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", officeCode: "BOCA",
+    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "BOCA",
     grossCents: 9_441_500, nsaCents: 8_541_500, workingCents: 0, holdCents: 900_000,
     cancelledCents: 0, cdCents: 0, issuedCount: 16, satCount: 9, soldCount: 2,
   },
   {
-    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", officeCode: "FTLAU",
+    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "FTLAU",
     grossCents: 14_043_300, nsaCents: 0, workingCents: 4_473_500, holdCents: 0,
     cancelledCents: 9_569_800, cdCents: 0, issuedCount: 20, satCount: 13, soldCount: 2,
   },
   {
-    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", officeCode: "MIAMI",
+    contractMonth: "2026-08-01", market: "FTLAU_MKT", observedOn: "2026-08-11", dataThrough: "2026-08-10", officeCode: "MIAMI",
     grossCents: 0, nsaCents: 0, workingCents: 0, holdCents: 0,
     cancelledCents: 0, cdCents: 0, issuedCount: 11, satCount: 3, soldCount: 0,
   },

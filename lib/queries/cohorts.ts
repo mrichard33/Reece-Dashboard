@@ -29,7 +29,8 @@ export * from "./cohorts.core";
 
 /** Columns of `lp_cohort_maturation` this repo reads. */
 const COHORT_COLUMNS =
-  "contract_month, market, observed_on, cohort_age_days, snapshot_id, scope, is_current, " +
+  "contract_month, market, observed_on, data_through, declared_period_end, is_partial_month, " +
+  "cohort_age_days, snapshot_id, scope, is_current, " +
   "office_count, gross_cents, nsa_cents, working_cents, hold_cents, cancelled_cents, cd_cents, " +
   "net_sales_cents, issued_count, sat_count, sold_count";
 
@@ -37,6 +38,9 @@ type CohortRow = {
   contract_month: string;
   market: string;
   observed_on: string;
+  data_through: string | null;
+  declared_period_end: string | null;
+  is_partial_month: boolean | null;
   cohort_age_days: number | null;
   snapshot_id: string;
   scope: string | null;
@@ -58,7 +62,13 @@ function toObservation(r: CohortRow): CohortObservation {
   return {
     contractMonth: r.contract_month,
     market: r.market,
+    // TWO DATES, kept apart. observed_on is when LP RAN the report (08-11);
+    // data_through is what the dollars COVER (08-10). The view returns
+    // data_through NULL for a partial file, which propagates as "coverage not
+    // declared" rather than being back-filled from period_end — a file
+    // generated on the 10th claiming Aug 1-31 must not be read as covering it.
     observedOn: r.observed_on,
+    dataThrough: r.data_through,
     officeCount: r.office_count ?? 0,
     grossCents: r.gross_cents,
     nsaCents: r.nsa_cents,

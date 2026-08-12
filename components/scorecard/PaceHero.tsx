@@ -38,6 +38,8 @@ export function PaceHero({
   vm,
   netSalesDollars = null,
   netSalesAsOf = null,
+  netSalesLag = null,
+  netSalesRefused = null,
 }: {
   vm: ScorecardVM;
   /**
@@ -60,10 +62,30 @@ export function PaceHero({
   netSalesDollars?: number | null;
   /** Last known cohort observation date, shown when Net Sales is unavailable. */
   netSalesAsOf?: string | null;
+  /**
+   * How far Net Sales is behind the reporting cutoff, e.g. "1 selling day
+   * behind, 2 calendar days old". Null when it is current.
+   *
+   * ⚠️ NOT decoration. Since 2026-08-13 the target prorates to elapsed selling
+   * days through Net Sales' OWN coverage date, so numerator and denominator
+   * share a date — which means a LATE feed makes this tile look BETTER. On
+   * 2026-08-12 that is $423,553 on Balance and $669,117 on Projected Pace. This
+   * badge is what discharges that, so it renders on the tile itself rather than
+   * in a banner a reader can scroll past.
+   */
+  netSalesLag?: string | null;
+  /**
+   * Set when the reporting clock REFUSED this figure — its file covers past the
+   * cutoff, so it contains activity outside the reporting period. Renders as
+   * unavailable with the reason, never as a number.
+   */
+  netSalesRefused?: string | null;
 }) {
   const p = vm.pace;
 
-  const onNetSales = netSalesDollars != null;
+  // A refused figure is not a figure. Treated exactly like an unavailable one:
+  // the gate's whole purpose is that a value past the cutoff never renders.
+  const onNetSales = netSalesDollars != null && !netSalesRefused;
   const actual = netSalesDollars ?? 0;
 
   // Projected period-end = current run-rate × selling days in the whole period.
@@ -129,9 +151,11 @@ export function PaceHero({
   // a full-month cancellation at the same time. It is also not a cue to show
   // RTP instead — see the prop doc above.
   const pending = !onNetSales;
-  const unavailableSub = netSalesAsOf
-    ? `source temporarily unavailable · last read ${shortDate(netSalesAsOf)}`
-    : "source temporarily unavailable";
+  const unavailableSub = netSalesRefused
+    ? "covers past the reporting cutoff — withheld"
+    : netSalesAsOf
+      ? `source temporarily unavailable · last read ${shortDate(netSalesAsOf)}`
+      : "source temporarily unavailable";
 
   const projectedSub = pending
     ? "no Net Sales to project from"
@@ -194,10 +218,16 @@ export function PaceHero({
     // this tile under any condition.
     {
       label: `Net Sales ${vm.abbr}`,
-      sub: pending ? unavailableSub : "gross written − cancellations − financing denied",
+      sub: pending
+        ? unavailableSub
+        : netSalesLag
+          ? `gross written − cancellations − financing denied · ${netSalesLag}`
+          : "gross written − cancellations − financing denied",
       value: pending ? "Unavailable" : usd(actual),
       tone: "plain",
-      title: pending
+      title: netSalesRefused
+        ? netSalesRefused
+        : pending
         ? "Net Sales could not be read from the cohort source. No other figure is substituted here: released-to-production dollars are a different economic event on a different date basis, and showing them in this position would misreport the month. The Released panel below still carries RTP."
         : "Net Sales: the contract value written in this period, less the two TERMINAL losses — cancellations and financing denials. Working and hold dollars are still counted, because they are still live deals. This is the basis the goal, the pace and the efficiency denominator are all measured on. It is dated by CONTRACT date, so it never borrows a dollar from another month.",
     },
@@ -207,7 +237,23 @@ export function PaceHero({
       value: pending ? "—" : signed(balance),
       tone: pending ? "plain" : balTone,
     },
-    { label: "Elapsed / Working Days", sub: `${num(Math.round(p.elapsedPct))}% of period`, value: `${num(p.daysElapsed)} / ${num(p.sellingDays)}` },
+    {
+      label: "Elapsed / Working Days",
+      // When the goal-bearing feed lags, the pace math counts FEWER days than
+      // the calendar has. Naming the gap here is what stops that reading as a
+      // free day: without it the tile would quietly say 8 on a day the calendar
+      // says 9, and the target would be lower with nothing on screen to explain
+      // why. See the ruling on buildScorecardVM's clockElapsedDays.
+      sub:
+        p.calendarDaysElapsed > p.daysElapsed
+          ? `${num(Math.round(p.elapsedPct))}% of period · ${num(p.calendarDaysElapsed - p.daysElapsed)} not yet reported`
+          : `${num(Math.round(p.elapsedPct))}% of period`,
+      value: `${num(p.daysElapsed)} / ${num(p.sellingDays)}`,
+      title:
+        p.calendarDaysElapsed > p.daysElapsed
+          ? `The target is prorated over ${num(p.daysElapsed)} selling days — the days the sales report actually covers — so it stops where the actual stops. ${num(p.calendarDaysElapsed)} selling days have elapsed on the calendar; the difference is a feed that has not reported yet, not days that did not happen.`
+          : undefined,
+    },
     { label: "Average Sale", sub: `net ÷ sales · ${windowSub}`, value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle, flag: p.rateWidened },
     { label: "Net Sales $ / Issued Lead", sub: `net sales ÷ leads issued · ${windowSub}${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
   ];

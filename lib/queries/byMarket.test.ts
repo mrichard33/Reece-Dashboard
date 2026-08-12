@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { rowHasActivity, paceFields, achievedFrom, type ByMarketRow } from "./byMarket";
+import {
+  rowHasActivity,
+  paceFields,
+  achievedFrom,
+  netSalesByMarket,
+  type ByMarketRow,
+} from "./byMarket";
+import type { CohortObservation } from "./cohorts.core";
 
 /**
  * Guard for the utility-row suppression rule. The old check summed only
@@ -19,6 +26,7 @@ const row = (over: Partial<ByMarketRow>): ByMarketRow => ({
   close_pct: null,
   gross_sales: 0,
   net_sales: 0,
+  net_sales_through: null,
   goal: null,
   pctToGoal: null,
   elapsedPct: null,
@@ -139,5 +147,177 @@ describe("§2 — achieved vs elapsed, derived from the ratio already on screen"
     expect(achievedFrom(108.3, 23.1)).toEqual({ achievedPct: 25, paceDeltaPts: 1.9 });
     expect(achievedFrom(null, 23.1)).toEqual({ achievedPct: null, paceDeltaPts: null });
     expect(achievedFrom(108.3, null)).toEqual({ achievedPct: null, paceDeltaPts: null });
+  });
+});
+
+/**
+ * ── By-Market Net Sales (2026-08-13) ────────────────────────────────────────
+ *
+ * Every figure below was read from `lp_cohort_maturation` (is_current,
+ * contract_month 2026-08-01) on 2026-08-13, and the RTP comparisons from
+ * `lp_market_scorecard_daily` on the same day.
+ *
+ * The defect this pins: the cards read `released_dollars ?? net_sales` off
+ * lp_market_scorecard_daily, whose `net_sales` IS `released_dollars`
+ * (revenue_basis 'rtp_net_by_milestone_date', revenue_as_of 2026-08-06). So a
+ * SALES scorecard paced a sales goal against production releases.
+ */
+
+/** [market, gross, cancelled, cd] in cents. */
+const AUG_2026: Array<[string, number, number, number]> = [
+  ["FTLAU_MKT", 23_484_800, 9_569_800, 0],
+  ["FTMYR_MKT", 87_320_800, 2_844_300, 2_328_100],
+  ["JAX_MKT", 17_710_700, 0, 6_259_500],
+  ["LAKE_MKT", 7_096_400, 0, 0],
+  ["ORL_MKT", 25_160_100, 4_021_100, 1_356_100],
+  ["SAR_MKT", 30_243_000, 812_500, 1_380_500],
+  ["STPET_MKT", 27_512_500, 4_662_300, 0],
+];
+
+const obs = (
+  [market, grossCents, cancelledCents, cdCents]: (typeof AUG_2026)[number],
+  over: Partial<CohortObservation> = {},
+): CohortObservation => ({
+  contractMonth: "2026-08-01",
+  market,
+  observedOn: "2026-08-11", // the RUN date — must never reach a pace calculation
+  dataThrough: "2026-08-10", // the COVERAGE date — the only one that may
+  officeCount: 1,
+  grossCents,
+  nsaCents: null,
+  workingCents: null,
+  holdCents: null,
+  cancelledCents,
+  cdCents,
+  issuedCount: null,
+  satCount: null,
+  soldCount: null,
+  isCurrent: true,
+  ...over,
+});
+
+const AUG = AUG_2026.map((r) => obs(r));
+const dollars = (c: number | null) => (c == null ? null : Math.round(c / 100));
+
+describe("netSalesByMarket", () => {
+  const m = netSalesByMarket(AUG, "2026-08-01", "2026-08-31");
+
+  it("Fort Myers is $821,484 — not the $212,514 the RTP card showed", () => {
+    expect(dollars(m.get("FTMYR_MKT")!.netSalesCents)).toBe(821_484);
+    // Anti-vacuity: the old basis and the new differ by ~4x, so a fixture that
+    // accidentally reproduced the old number could not pass this.
+    expect(dollars(m.get("FTMYR_MKT")!.netSalesCents)).not.toBe(212_514);
+    // And it is NOT gross-after-cancels either — financing denied is $23,281.
+    expect(dollars(m.get("FTMYR_MKT")!.netSalesCents)).not.toBe(844_765);
+  });
+
+  it("Orlando's net no longer exceeds its gross — the tell that it was never sales", () => {
+    // The live RTP row read gross_sales $127,023 against net_sales $179,726.
+    // Net above gross is impossible on a sales basis and routine on a release
+    // basis, because August releases include contracts written in May.
+    const orl = m.get("ORL_MKT")!;
+    expect(dollars(orl.netSalesCents)).toBe(197_829);
+    expect(dollars(orl.grossCents)).toBe(251_601);
+    expect(orl.netSalesCents!).toBeLessThan(orl.grossCents!);
+    expect(dollars(orl.netSalesCents)).not.toBe(179_726);
+  });
+
+  it("Lakeland renders a figure at all — the RTP column was NULL for it", () => {
+    expect(dollars(m.get("LAKE_MKT")!.netSalesCents)).toBe(70_964);
+  });
+
+  it("the company row is the sum of the markets: $1,852,941", () => {
+    expect(dollars(m.get("REECE")!.netSalesCents)).toBe(1_852_941);
+    const bySumming = AUG_2026.reduce((a, [, g, c, cd]) => a + (g - c - cd), 0);
+    expect(dollars(bySumming)).toBe(1_852_941);
+  });
+
+  it("Fort Lauderdale is NOT double-summed — the view already rolled its offices up", () => {
+    // BOCA + FTLAU + MIAMI (+ RFED when present) are summed into FTLAU_MKT in
+    // the database. Iterating `m.sources` here as well would double it.
+    expect(dollars(m.get("FTLAU_MKT")!.netSalesCents)).toBe(139_150);
+    expect(dollars(m.get("FTLAU_MKT")!.netSalesCents)).not.toBe(278_300);
+  });
+
+  it("carries the COVERAGE date, never the run date", () => {
+    expect(m.get("REECE")!.dataThrough).toBe("2026-08-10");
+    expect(m.get("REECE")!.dataThrough).not.toBe("2026-08-11");
+  });
+
+  it("a market whose coverage is undeclared makes the company coverage unknown", () => {
+    // is_partial_month → data_through NULL. The company row must not inherit
+    // its siblings' date and claim coverage one market cannot prove.
+    const mixed = netSalesByMarket(
+      [obs(AUG_2026[0]!, { dataThrough: null }), ...AUG_2026.slice(1).map((r) => obs(r))],
+      "2026-08-01",
+      "2026-08-31",
+    );
+    expect(mixed.get("FTLAU_MKT")!.dataThrough).toBeNull();
+    expect(mixed.get("REECE")!.dataThrough).toBeNull();
+    expect(mixed.get("SAR_MKT")!.dataThrough).toBe("2026-08-10");
+  });
+
+  it("an unmeasured component makes the total unmeasured, not smaller", () => {
+    const mixed = netSalesByMarket(
+      [obs(AUG_2026[0]!, { cdCents: null }), ...AUG_2026.slice(1).map((r) => obs(r))],
+      "2026-08-01",
+      "2026-08-31",
+    );
+    expect(mixed.get("FTLAU_MKT")!.netSalesCents).toBeNull();
+    expect(mixed.get("REECE")!.netSalesCents).toBeNull();
+    // NOT the sum of the six that ARE known — that would read as a real,
+    // confidently-too-low company total.
+    expect(mixed.get("REECE")!.netSalesCents).not.toBe(171_379_100);
+  });
+
+  it("excludes contract months outside the period — cohorts never migrate", () => {
+    const july = obs(["FTMYR_MKT", 1_000_000_00, 0, 0], { contractMonth: "2026-07-01" });
+    const aug = netSalesByMarket([...AUG, july], "2026-08-01", "2026-08-31");
+    expect(dollars(aug.get("FTMYR_MKT")!.netSalesCents)).toBe(821_484);
+
+    // A YTD window spans both, and July's contracts stay July business.
+    const ytd = netSalesByMarket([...AUG, july], "2026-01-01", "2026-12-31");
+    expect(dollars(ytd.get("FTMYR_MKT")!.netSalesCents)).toBe(821_484 + 1_000_000);
+  });
+
+  it("returns an empty map when the cohort fetch failed, rather than zeros", () => {
+    const empty = netSalesByMarket([], "2026-08-01", "2026-08-31");
+    expect(empty.size).toBe(0);
+    expect(empty.get("REECE")).toBeUndefined();
+  });
+});
+
+describe("the market goal is paced against the same basis", () => {
+  // scorecard_goals_monthly, goal_month 2026-08-01, goal_basis 'net'.
+  const GOALS: Record<string, number> = {
+    FTMYR_MKT: 2_600_000,
+    STPET_MKT: 2_731_306.68,
+    SAR_MKT: 1_744_200.99,
+    ORL_MKT: 1_598_142.4,
+    JAX_MKT: 1_200_000,
+    FTLAU_MKT: 1_000_000,
+    LAKE_MKT: 138_724,
+  };
+
+  it("the market goals sum to the company goal, so the total ties to its parts", () => {
+    const sum = Object.values(GOALS).reduce((a, b) => a + b, 0);
+    expect(Math.round(sum)).toBe(11_012_374);
+  });
+
+  it("Fort Myers reads 102.7% of pace, not the 26.6% the RTP card showed", () => {
+    const m = netSalesByMarket(AUG, "2026-08-01", "2026-08-31");
+    const target = (GOALS.FTMYR_MKT! * 8) / 26; // 8 of 26 selling days, through 08-10
+    expect(Math.round(target)).toBe(800_000);
+    const net = dollars(m.get("FTMYR_MKT")!.netSalesCents)!;
+    expect(Math.round((net / target) * 1000) / 10).toBe(102.7);
+    // What the same market showed on the retired basis.
+    expect(Math.round((212_514 / target) * 1000) / 10).toBe(26.6);
+  });
+
+  it("Lakeland is the best-pacing market in the company, and rendered nothing before", () => {
+    const m = netSalesByMarket(AUG, "2026-08-01", "2026-08-31");
+    const target = (GOALS.LAKE_MKT! * 8) / 26;
+    const net = dollars(m.get("LAKE_MKT")!.netSalesCents)!;
+    expect(Math.round((net / target) * 1000) / 10).toBe(166.3);
   });
 });

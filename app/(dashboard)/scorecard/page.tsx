@@ -21,17 +21,22 @@ import {
   historicalMatureNsaRate,
   netSalesCents,
 } from "@/lib/queries/cohorts";
+import {
+  buildReportingClock,
+  clockChip,
+  gate,
+  lagBadge,
+  type SourceClock,
+} from "@/lib/scorecard/reportingClock";
+import { fromNullable } from "@/lib/scorecard/tiers/types";
 import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries/scorecard";
 import { getByMarket } from "@/lib/queries/byMarket";
 import { getReportFacts, getPartialCoverage } from "@/lib/queries/reportFacts";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
-import { lastCompletedSellingDay, resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
-import {
-  freshnessChip,
-  stalenessSellingDays,
-  stalenessCalendarDays,
-  stalenessPhraseFull,
-} from "@/lib/scorecard/freshness";
+import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
+// Staleness wording now lives behind reportingClock's lagBadge(), so the page
+// has one source for "how far behind" instead of four inline call sites.
+import { freshnessChip } from "@/lib/scorecard/freshness";
 import { normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
 import { usDate } from "@/lib/utils";
@@ -90,7 +95,11 @@ export default async function ScorecardPage({
   // The eligibility window is measured to the period's as-of, not to `new
   // Date()`, so the figure is reproducible from the same inputs tomorrow.
   const historicalMatureNsaRateM = historicalMatureNsaRate(companyCohorts, resolved.asOf);
-  const cohortAsOf = companyCohorts.reduce<string | null>(
+  // The latest OBSERVATION across cohorts — "when did we last look at any of
+  // this". Correct for the maturation panels and for nothing else. It reads
+  // 08-11 while the dollars stop 08-10, which is precisely why it must not date
+  // a current-period figure. See `currentCohort.dataThrough` below.
+  const cohortObservedOn = companyCohorts.reduce<string | null>(
     (max, c) => (max == null || c.observedOn > max ? c.observedOn : max),
     null,
   );
@@ -105,6 +114,10 @@ export default async function ScorecardPage({
   // known as-of. There is no substitute figure: RTP is a different economic
   // event and is not a fallback for this tile.
   const currentCohortNetSalesCents = currentCohort ? netSalesCents(currentCohort) : null;
+  // ⚠️ The VALUE and its DATE must come from the SAME row. This used to take the
+  // value from `currentCohort` (one contract month) and the date from a max over
+  // EVERY month, so nothing guaranteed they described the same thing.
+  const netSalesThrough = currentCohort?.dataThrough ?? null;
   // Admin-only editor data — never let its fan-out take down the page; the panel
   // simply hides if it can't load.
   const goalsEditor = isAdmin
@@ -114,49 +127,86 @@ export default async function ScorecardPage({
       })
     : null;
 
-  // The snapshot may legitimately trail the resolved as-of by a day (job timing);
-  // anything older gets an amber "data through" chip so staleness is visible.
-  const dataThrough = view?.actuals.as_of_date ?? null;
-  const isStale = !!(dataThrough && dataThrough < resolved.asOf);
-  // Revenue reaches its OWN date, which is not the row's. On 2026-08-10 the row
-  // said 2026-08-07 while revenue said 2026-08-06 — and the column had never
-  // been read, so a four-day-old revenue figure rendered indistinguishable from
-  // a current one.
+  // ── ONE reporting cutoff ───────────────────────────────────────────────────
+  //
+  // Every current-period source registers how far its DATA reaches, and is
+  // judged against a single calendar cutoff. This replaces five independent
+  // date lookups that the page used to render side by side as if they described
+  // one period. See lib/scorecard/reportingClock.ts.
+  const clock = buildReportingClock({
+    today: todayET(),
+    period: { periodStart: resolved.periodStart, periodEnd: resolved.periodEnd },
+    cal: SELLING_CAL,
+    sources: {
+      net_sales: {
+        id: "net_sales",
+        label: "Net Sales · report 137",
+        role: { kind: "current_period", goalBearing: true },
+        // data_through, NOT observed_on. The distinction is the entire point.
+        dataThrough: fromNullable(
+          netSalesThrough,
+          currentCohort
+            ? "the report 137 snapshot for this month does not declare its coverage (partial file)"
+            : "no report 137 cohort row for this month",
+        ),
+        stampedAt: currentCohort?.observedOn ?? null,
+      },
+      live_sync: {
+        id: "live_sync",
+        label: "Live sync · funnel counts",
+        role: { kind: "current_period" },
+        // Here `as_of_date` genuinely IS a coverage date — the column means
+        // "how far this row reaches". Same name, opposite meaning from 137's.
+        dataThrough: fromNullable(view?.actuals.as_of_date ?? null, "no live-sync row for this period"),
+        stampedAt: view?.actuals.as_of_date ?? null,
+      },
+      released_rtp: {
+        id: "released_rtp",
+        label: "Released to production · report 134",
+        role: {
+          kind: "exempt",
+          why:
+            "dated by production milestone, not contract date — a contract sold in April is " +
+            "released in August, so it is answering a different question rather than running late",
+        },
+        dataThrough: fromNullable(view?.actuals.revenue_as_of ?? null, "no Net Report has landed"),
+        stampedAt: view?.actuals.revenue_as_of ?? null,
+      },
+    } satisfies Record<string, SourceClock>,
+  });
+
+  const netSalesGate = gate(clock.bySource.net_sales, currentCohortNetSalesCents);
+  // Revenue reaches its OWN date, which is not the row's — the exempt RTP
+  // clock above carries it now, and the banner below reads that clock rather
+  // than re-deriving a second copy of the same comparison.
   const revenueThrough = view?.actuals.revenue_as_of ?? null;
-  const revenueStale = !!(revenueThrough && revenueThrough < resolved.asOf);
-  // How far behind, in SELLING days, measured against the last completed selling
-  // day rather than the end of the selected range — on the 10th, a range that
-  // ends on the 31st is not evidence anything is stale. "3 selling days behind"
-  // is a number someone can act on; "data through 08/07" alone is not.
-  const lastSellingDay = lastCompletedSellingDay(todayET(), SELLING_CAL);
-  const dataLagDays = stalenessSellingDays(dataThrough, lastSellingDay, SELLING_CAL);
-  const revenueLagDays = stalenessSellingDays(revenueThrough, lastSellingDay, SELLING_CAL);
-  // Calendar age alongside selling-day lag. "3 selling days behind" is correct
-  // for pacing and reads as understating it — Aug 6 → Aug 11 is 3 selling days
-  // and 5 calendar days. Both go on the banner; see stalenessPhraseFull.
-  const dataCalendarDays = stalenessCalendarDays(dataThrough, todayET());
-  const revenueCalendarDays = stalenessCalendarDays(revenueThrough, todayET());
+  const revenueStale = clock.bySource.released_rtp.lagSellingDays != null
+    && clock.bySource.released_rtp.lagSellingDays > 0;
 
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
       <MarketPicker />
       <PeriodPicker currentMonth={currentMonthET} />
-      {view && (
-        <span
-          className={`inline-flex h-8 items-center rounded-md px-2.5 font-mono text-[11px] font-medium tabular sm:h-7 ${
-            isStale
-              ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-          }`}
-          title={
-            isStale
-              ? `Snapshot trails the selected range — data through ${usDate(dataThrough!)}, range ends ${usDate(resolved.asOf)}.`
-              : "Data current through this date."
-          }
-        >
-          {isStale ? "data through" : "as of"} {usDate(view.actuals.as_of_date)}
-        </span>
-      )}
+      {/* ONE cutoff chip. There used to be two here rendering the same date —
+          "as of 08-10-2026" beside "Data through 08-10-2026 · Provisional" —
+          and neither was the date the headline actually covered. This names the
+          ACHIEVED cutoff and carries the declared one in the tooltip. */}
+      {view && (() => {
+        const chip = clockChip(clock.cutoff);
+        const behind = clock.cutoff.anchorLagSellingDays > 0;
+        return (
+          <span
+            className={`inline-flex h-8 items-center rounded-md px-2.5 font-mono text-[11px] font-medium tabular sm:h-7 ${
+              behind
+                ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+            }`}
+            title={chip.title}
+          >
+            {chip.text}
+          </span>
+        );
+      })()}
       {view && (() => {
         // "live · provisional" described a table that had not moved since
         // 2026-08-07, and never defined "provisional" anywhere a reader could
@@ -235,7 +285,19 @@ export default async function ScorecardPage({
           </Card>
         ) : (
           (() => {
-            const vm = buildScorecardVM(view, resolved, reportFacts, SELLING_CAL);
+            // The clock's elapsed is threaded in ONCE here, so the hero, the funnel
+            // targets and the per-day card all prorate over the same days. Passing
+            // it to the hero alone would put two disagreeing target-to-date
+            // figures on one screen — $3,388,423 and $3,811,976 — which is the
+            // defect this whole change exists to remove, reintroduced one level
+            // down.
+            const vm = buildScorecardVM(
+              view,
+              resolved,
+              reportFacts,
+              SELLING_CAL,
+              clock.cutoff.paceElapsedDays,
+            );
             return (
               <>
                 {/*
@@ -248,52 +310,62 @@ export default async function ScorecardPage({
                   live sync table — revenue itself now reads report 134 (see
                   RevenueCard) — so this banner is about the remainder.
                 */}
-                {(isStale || revenueStale) && (
+                {/*
+                  ⚠️ SAY WHICH SOURCE, AND SAY IT FROM THE CLOCK.
+
+                  This banner predates the Net Sales headline. It existed to
+                  caveat the OLD RTP tile and stayed after RTP was retired, so
+                  the page went on announcing "figures are behind" above a
+                  headline that was current — and it re-derived its own staleness
+                  comparisons, which is how the page ended up with five dates.
+
+                  It now reads the reporting clock: one entry per source that is
+                  actually behind the cutoff, named, with its own lag. An exempt
+                  source (RTP) is never "behind" — it is on a different basis —
+                  so it is described rather than accused.
+                */}
+                {(clock.lagging.length > 0 || clock.refused.length > 0 || revenueStale) && (
                   <div
                     role="status"
                     className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200"
                   >
-                    {/*
-                      ⚠️ SAY WHAT IS STALE, NOT "THE PAGE IS STALE".
-
-                      This banner predates the Net Sales headline. It existed to
-                      caveat the OLD RTP tile, which read `revenue_as_of` — and
-                      when RTP was retired from the hero on 2026-08-12 the
-                      banner stayed, so the page went on announcing that
-                      "figures are behind" while the headline it sits above was
-                      current. On 2026-08-11 that meant a banner citing 08-06
-                      above a Net Sales figure that reached 08-10.
-
-                      The headline now comes from the report-137 cohort
-                      observation and carries its own as-of. `revenue_as_of`
-                      governs the Released panel and nothing else, so the banner
-                      names that panel instead of the page.
-                    */}
                     <strong className="font-semibold">
-                      {isStale
-                        ? "Live-sync counts are behind."
-                        : "Released figures are behind."}
+                      {clock.refused.length > 0
+                        ? "A source runs past the reporting cutoff."
+                        : clock.lagging.length > 0
+                          ? "A source is behind the reporting cutoff."
+                          : "Released figures are on their own date."}
                     </strong>{" "}
-                    {isStale && dataThrough
-                      ? `Counts and rates from the LP sync reach ${usDate(dataThrough)}${
-                          stalenessPhraseFull(dataLagDays, dataCalendarDays)
-                            ? ` — ${stalenessPhraseFull(dataLagDays, dataCalendarDays)}`
-                            : ""
-                        }`
-                      : "Counts and rates from the LP sync are current"}
-                    {revenueStale && revenueThrough
-                      ? `. The Net Report's revenue columns reach ${usDate(revenueThrough)}${
-                          stalenessPhraseFull(revenueLagDays, revenueCalendarDays)
-                            ? ` (${stalenessPhraseFull(revenueLagDays, revenueCalendarDays)})`
-                            : ""
-                        }, which affects the Released panel only`
-                      : ""}
-                    {`. The selected range ends ${usDate(resolved.asOf)}.`}{" "}
-                    <strong className="font-semibold">
-                      Net Sales, the goal and the pace are unaffected
-                    </strong>
-                    {cohortAsOf ? ` — they read the sales report through ${usDate(cohortAsOf)}` : ""}
-                    . Sold, Open backlog and Leads carry their own as-of dates too.
+                    {`Every current-period figure on this page is reported through ${
+                      clock.cutoff.achieved.known
+                        ? usDate(clock.cutoff.achieved.value)
+                        : usDate(clock.cutoff.declared)
+                    }.`}
+                    <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+                      {[...clock.refused, ...clock.lagging].map((id) => (
+                        <li key={id}>
+                          {clock.bySource[id].note}
+                        </li>
+                      ))}
+                      {revenueStale && revenueThrough && (
+                        <li>
+                          {`Released to production reaches ${usDate(revenueThrough)}. It is dated by production milestone, not contract date, so it is not late — it answers a different question and affects the Released panel only.`}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+
+                {clock.problems.length > 0 && (
+                  <div
+                    role="status"
+                    className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-700/60 dark:bg-rose-900/20 dark:text-rose-200"
+                  >
+                    {/* A registry violation is a bug in this page, not in the
+                        data. Surfaced rather than thrown so the scorecard still
+                        renders. */}
+                    <strong className="font-semibold">Reporting-clock misconfiguration.</strong>{" "}
+                    {clock.problems.join("; ")}.
                   </div>
                 )}
 
@@ -316,7 +388,16 @@ export default async function ScorecardPage({
                       ? null
                       : Math.round(currentCohortNetSalesCents / 100)
                   }
-                  netSalesAsOf={cohortAsOf}
+                  // COVERAGE, not observation. The hero is a current-period
+                  // figure, so it is dated by what its file covers (08-10) and
+                  // never by when LP ran the report (08-11).
+                  netSalesAsOf={netSalesThrough ?? cohortObservedOn}
+                  // The lag travels WITH the number. Aligning the pace anchor to
+                  // the achieved cutoff makes a late feed look BETTER — Balance
+                  // improves by $423,553 on 2026-08-12 — so the badge is what
+                  // discharges that, and it must not be separable from the tile.
+                  netSalesLag={lagBadge(clock.bySource.net_sales)}
+                  netSalesRefused={netSalesGate.status === "refused" ? netSalesGate.reason : null}
                 />
 
                 {/*
@@ -332,11 +413,11 @@ export default async function ScorecardPage({
                   monthlyGoalDollars={vm.pace.monthlyGoal}
                   rate={historicalMatureNsaRateM}
                   abbr={vm.abbr}
-                  asOf={cohortAsOf}
+                  asOf={cohortObservedOn}
                 />
 
                 {/* ③ Cohort Quality — MEASURED. Where the quality incentive lives. */}
-                <CohortQualityPanel cohorts={companyCohorts} asOf={cohortAsOf} />
+                <CohortQualityPanel cohorts={companyCohorts} asOf={cohortObservedOn} />
 
                 {/* ④ Funnel vs Goal */}
                 <FunnelGoalTable view={view} vm={vm} />

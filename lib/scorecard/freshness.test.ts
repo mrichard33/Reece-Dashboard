@@ -196,14 +196,49 @@ describe("§Freshness — the banner must not implicate the Net Sales headline",
     expect(src).toMatch(/affects the Released panel only/);
   });
 
-  it("says outright that the goal, pace and Net Sales are unaffected", () => {
-    expect(src).toMatch(/Net Sales, the goal and the pace are unaffected/);
-    // …and cites the date the headline actually reads.
-    expect(src).toMatch(/cohortAsOf \? ` — they read the sales report through/);
+  /**
+   * ⚠️ REWRITTEN 2026-08-13, deliberately.
+   *
+   * The banner used to assert "Net Sales, the goal and the pace are unaffected"
+   * as fixed copy. That was a promise the page could not keep — it was true on
+   * the day it was written and would have gone on printing if Net Sales ever DID
+   * fall behind. The banner now enumerates only the sources actually behind the
+   * cutoff, which is a strictly stronger version of the same intent: an
+   * unaffected source is not reassured about, it is simply absent.
+   *
+   * These assertions moved with it. They pin the mechanism, not the sentence.
+   */
+  it("names the lagging SOURCES rather than asserting which ones are fine", () => {
+    // Driven off the clock's own lists — nothing here can go stale relative to
+    // the data the way a hardcoded reassurance did.
+    expect(src).toMatch(/clock\.lagging/);
+    expect(src).toMatch(/clock\.refused/);
+    expect(src).toMatch(/clock\.bySource\[id\]\.note/);
+    // The retired promise must not come back as copy.
+    expect(src).not.toMatch(/Net Sales, the goal and the pace are unaffected/);
   });
 
-  it("shows both staleness units", () => {
-    expect(src).toMatch(/stalenessPhraseFull\(dataLagDays, dataCalendarDays\)/);
-    expect(src).toMatch(/stalenessPhraseFull\(revenueLagDays, revenueCalendarDays\)/);
+  it("cites the date the current-period figures actually COVER, not the run date", () => {
+    // The defect in one line: `observed_on` (08-11, when LP ran the report) was
+    // the only date the view exposed, so the page dated 08-10 data as 08-11.
+    expect(src).toMatch(/clock\.cutoff\.achieved/);
+    expect(src).toMatch(/netSalesThrough/);
+    expect(src).not.toMatch(/const cohortAsOf/);
+  });
+
+  it("still shows both staleness units — now via the clock's badge", () => {
+    // stalenessPhraseFull moved into lagBadge() so one wording serves the
+    // banner, the chip and the hero tile instead of three copies.
+    const clockSrc = readFileSync("lib/scorecard/reportingClock.ts", "utf8");
+    expect(clockSrc).toMatch(/stalenessPhraseFull\(/);
+    expect(clockSrc).toMatch(/stalenessSellingDays\(/);
+    expect(clockSrc).toMatch(/stalenessCalendarDays\(/);
+  });
+
+  it("renders ONE cutoff chip, not two showing the same date", () => {
+    // There were two: "as of 08-10-2026" and "Data through 08-10-2026 ·
+    // Provisional", neither of which was the date the headline covered.
+    expect(src).toMatch(/clockChip\(clock\.cutoff\)/);
+    expect(src).not.toMatch(/\{isStale \? "data through" : "as of"\}/);
   });
 });

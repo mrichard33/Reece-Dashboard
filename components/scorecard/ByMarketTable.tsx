@@ -36,6 +36,14 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
   const cell = "px-3 py-2 text-right font-mono tabular";
   const headCell = "px-3 py-2.5 text-right font-semibold";
 
+  // The date these Net Sales figures actually cover — the LEAST-covered market,
+  // so the header can never claim coverage one of its rows does not have.
+  const dataThrough =
+    [total, ...rows]
+      .map((r) => r?.net_sales_through ?? null)
+      .filter((d): d is string => d != null)
+      .sort()[0] ?? null;
+
   const goalBar = (pctToGoal: number) => (
     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
       <div
@@ -77,7 +85,7 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
               label is the reader's problem to solve, and they solve it wrong. */}
           <span className="shrink-0 text-right">
             <span className="block text-[9.5px] font-semibold uppercase tracking-wider text-slate-400">
-              Net released {abbr}
+              Net Sales {abbr}
             </span>
             <span className="block font-mono text-[15px] font-bold tabular text-slate-900 dark:text-slate-100">
               {usd(r.net_sales)}
@@ -162,7 +170,18 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
   );
 
   return (
-    <ScSection id="sc-bymarket" label="By Market" meta="Tap a market to open its scorecard">
+    <ScSection
+      id="sc-bymarket"
+      label="By Market"
+      // The basis and its coverage date, on the section rather than per cell —
+      // these cards showed RTP through 08-06 beside counts through 08-10 and
+      // said nothing about either. `net_sales_through` is report 137's
+      // data_through, not its run date.
+      meta={
+        (dataThrough ? `Net Sales · report 137 · through ${dataThrough} · ` : "") +
+        "Tap a market to open its scorecard"
+      }
+    >
       {/* Phone + tablet: stacked cards */}
       <div className="space-y-2 border-t border-slate-100 px-3 py-3 dark:border-slate-800/70 lg:hidden">
         {rows.map((r) => renderMobileCard(r))}
@@ -182,9 +201,9 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
               <th className={headCell} title={METRIC_FORMULAS.demoToSale}>
                 {METRIC_LABELS.demoToSale}
               </th>
-              <th className={headCell} title="Contract value WRITTEN in this period.">Gross written</th>
-              <th className={headCell} title="Contract value RELEASED to production in this period — a different cohort from Gross written, not a share of it.">
-                Net released
+              <th className={headCell} title="Contract value WRITTEN in this period, on contract date. Report 137.">Gross written</th>
+              <th className={headCell} title="Net Sales = Gross Written − Cancellations − Financing Denied, on contract date. Report 137. This is the goal-bearing figure — the same basis as the company hero and this market's goal.">
+                Net Sales
               </th>
               <th className={headCell}>{abbr} target</th>
               <th className={headCell} title="Net ÷ the goal prorated to selling days elapsed. 100% = exactly on pace.">

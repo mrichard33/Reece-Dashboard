@@ -13,6 +13,9 @@ import {
 } from "@/lib/scorecard/markets";
 import { fetchReportFactRows } from "@/lib/queries/reportFacts";
 import { buildReportFacts } from "@/lib/queries/reportFacts.core";
+import { fetchCurrentCohorts } from "@/lib/queries/cohorts";
+import { netSalesCents, sumKnown, minCoverage, type CohortObservation } from "@/lib/queries/cohorts.core";
+import { assertNetActualMetric } from "@/lib/scorecard/goalBasis";
 
 /**
  * By-Market rollup for the scorecard ⑤ table. For the default month-to-date
@@ -62,8 +65,31 @@ export type ByMarketRow = {
   demos: number;
   sales: number;
   close_pct: number | null;
-  gross_sales: number;
-  net_sales: number;
+  /**
+   * Gross Written from report 137, the base Net Sales is subtracted FROM.
+   *
+   * Sourced with `net_sales` deliberately: `lp_market_scorecard_daily.gross_sales`
+   * disagrees with 137 on the same date (Fort Myers 2026-08-10: $851,565 vs
+   * $873,208), and a Net Sales that cannot be derived from the Gross printed
+   * beside it is the same mixing defect one row down. NULL = not sourced.
+   */
+  gross_sales: number | null;
+  /**
+   * NET SALES = Gross Written − Cancellations − Financing Denied, from report
+   * 137 at market grain (`lp_cohort_maturation`), dated by CONTRACT date.
+   *
+   * ⚠️ This was `released_dollars` until 2026-08-13 — RTP, dated by production
+   * milestone, so a contract sold in April landed in August. Orlando proved it
+   * was not a sales figure: gross_sales $127,023 against net_sales $179,726, net
+   * exceeding gross, which is impossible on a sales basis and routine on a
+   * release basis. Fort Myers read $212,514 (26.6% of pace) and is $821,484
+   * (102.7%). RTP still exists and still belongs on the Released panel.
+   *
+   * NULL, never 0: a market with no cohort row has not been measured.
+   */
+  net_sales: number | null;
+  /** How far this market's Net Sales DATA reaches. Null = coverage undeclared. */
+  net_sales_through: string | null;
   /** Prorated (to-date) goal for the period, if the market has a goal. */
   goal: number | null;
   /** Net as a % of the prorated goal, 0+ (null when no goal). */
@@ -96,7 +122,7 @@ export type ByMarketView = { rows: ByMarketRow[]; total: ByMarketRow | null };
  */
 export function rowHasActivity(row: ByMarketRow): boolean {
   return (
-    (row.leads ?? 0) + row.issued + row.demos + row.sales + row.gross_sales + row.net_sales !== 0
+    (row.leads ?? 0) + row.issued + row.demos + row.sales + (row.gross_sales ?? 0) + (row.net_sales ?? 0) !== 0
   );
 }
 
@@ -127,14 +153,20 @@ function mtdGoalFor(
   baselineRows: BaselineRow[],
   periodStart: string,
   /**
-   * Selling days elapsed through the market's `revenue_as_of`. This table's
-   * `net_sales` is `released_dollars` — money the Net Report has settled — so
-   * the goal it is divided by has to stop on the same date. Prorating to the
-   * (later) date the COUNTS reach is what made Fort Lauderdale read 5% of
-   * target and Lakeland 0%. Null → fall back to the snapshot's own elapsed.
-   * See docs/revenue-as-of.md.
+   * Selling days elapsed through the market's NET SALES coverage date.
+   *
+   * ⚠️ Changed 2026-08-13. This used to be the `revenue_as_of` watermark,
+   * because the row's actual was `released_dollars` and a released figure is
+   * knowable only as far as the Net Report reaches. Net Sales is dated by
+   * CONTRACT date and has no such watermark — it needs the date its own file
+   * covers, which is report 137's `data_through`. Anchoring it to the RTP
+   * watermark instead would prorate an August-10 numerator against an August-6
+   * target and read every market ~40% high.
+   *
+   * Null → fall back to the snapshot's own elapsed, so a market with no cohort
+   * row behaves exactly as it did before this existed.
    */
-  revenueElapsed: number | null,
+  netSalesElapsed: number | null,
 ): number | null {
   if (!goalRow) return null;
   const growth = numOrNull(goalRow.growth_pct);
@@ -143,10 +175,17 @@ function mtdGoalFor(
       ? Math.round(computeBaselineFromRows(baselineRows, periodStart).value * (1 + growth / 100))
       : numOr0(goalRow.monthly_goal_dollars);
   const wd = numOrNull(actualsRow.working_days_in_period) ?? numOr0(goalRow.working_days);
-  const elapsed = revenueElapsed ?? numOr0(actualsRow.days_elapsed);
+  const elapsed = netSalesElapsed ?? numOr0(actualsRow.days_elapsed);
   const prorated = prorateGoal(effective, elapsed, wd ?? 0);
   return prorated == null ? null : Math.round(prorated);
 }
+
+/** Report 137's figures for one display market, already at market grain. */
+export type MarketNetSales = {
+  netSalesCents: number | null;
+  grossCents: number | null;
+  dataThrough: string | null;
+};
 
 function rowFromActuals(
   market: string,
@@ -155,12 +194,23 @@ function rowFromActuals(
   a: Record<string, unknown>,
   goal: number | null,
   leads: number | null,
+  cohort: MarketNetSales | null,
 ): ByMarketRow {
-  // Net = released to production (RTP), matching the ① hero and the Net Report basis;
-  // falls back to net_sales only for rows predating the released split.
-  const net = numOr0(a.released_dollars ?? a.net_sales);
+  // NET SALES — Gross Written − Cancellations − Financing Denied, report 137.
+  //
+  // This assert is the enforcement point that was missing. `NON_GOAL_METRICS`
+  // has rejected `released_dollars` by name since 2026-08-12, but nothing in
+  // production ever called it, which is exactly why this file went on reading
+  // RTP against a net goal for a day. Naming the metric here means a future
+  // repoint to a non-net column fails loudly instead of silently re-basing
+  // every market card.
+  assertNetActualMetric("net_sales_cents", "ByMarketRow.net_sales");
+  const net = cohort ? (cohort.netSalesCents == null ? null : Math.round(cohort.netSalesCents / 100)) : null;
+  const gross = cohort ? (cohort.grossCents == null ? null : Math.round(cohort.grossCents / 100)) : null;
   const g = utility ? null : goal && goal > 0 ? goal : null;
-  const pctToGoal = g ? Math.round((net / g) * 1000) / 10 : null;
+  // Null net is UNMEASURED, not 0% — a market with no cohort row must not read
+  // as total failure against its goal.
+  const pctToGoal = g && net != null ? Math.round((net / g) * 1000) / 10 : null;
   return {
     market,
     label,
@@ -173,11 +223,62 @@ function rowFromActuals(
     demos: numOr0(a.demos),
     sales: numOr0(a.sales),
     close_pct: numOrNull(a.close_pct),
-    gross_sales: numOr0(a.gross_sales),
+    gross_sales: gross,
     net_sales: net,
+    net_sales_through: cohort?.dataThrough ?? null,
     goal: g,
     pctToGoal,
   };
+}
+
+/**
+ * Report 137's Net Sales and Gross Written per DISPLAY market for a period.
+ *
+ * ⚠️ Keyed on the display market code, and NOT summed over `m.sources`. The
+ * view has already rolled LP's office codes up to market grain — BOCA + FTLAU +
+ * MIAMI (+ RFED when present) into FTLAU_MKT — so summing the sources here again
+ * would double Fort Lauderdale. That the two vocabularies happen to be 1:1 for
+ * every market today is not a reason to iterate sources; the rollup rule lives
+ * in the database and this reads its output.
+ *
+ * Cohorts are keyed on CONTRACT month, so an aggregate period sums the months it
+ * spans and each month's contracts stay in their own month forever.
+ */
+export function netSalesByMarket(
+  cohorts: readonly CohortObservation[],
+  periodStart: string,
+  periodEnd: string,
+): Map<string, MarketNetSales> {
+  const inPeriod = cohorts.filter((c) => c.contractMonth >= periodStart && c.contractMonth <= periodEnd);
+  const byMarket = new Map<string, CohortObservation[]>();
+  for (const c of inPeriod) {
+    const bucket = byMarket.get(c.market);
+    if (bucket) bucket.push(c);
+    else byMarket.set(c.market, [c]);
+  }
+
+  const out = new Map<string, MarketNetSales>();
+  for (const [market, group] of byMarket) {
+    out.set(market, {
+      // sumKnown propagates null: one unmeasured month makes the total
+      // unmeasured rather than quietly understating it.
+      netSalesCents: sumKnown(group.map((c) => netSalesCents(c))),
+      grossCents: sumKnown(group.map((c) => c.grossCents)),
+      dataThrough: minCoverage(group.map((c) => c.dataThrough)),
+    });
+  }
+
+  // The company row is the sum of the markets, derived here rather than read
+  // from a REECE cohort row — there isn't one; REECE is a rollup, not a market.
+  const all = [...out.values()];
+  if (all.length > 0) {
+    out.set("REECE", {
+      netSalesCents: sumKnown(all.map((v) => v.netSalesCents)),
+      grossCents: sumKnown(all.map((v) => v.grossCents)),
+      dataThrough: minCoverage(all.map((v) => v.dataThrough)),
+    });
+  }
+  return out;
 }
 
 /**
@@ -253,7 +354,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   const sb = await lpServer();
   const periodStart = resolved.periodStart;
 
-  const [{ data: actualsRows }, { data: goalRows }, { data: baseRows }, factRows] = await Promise.all([
+  const [{ data: actualsRows }, { data: goalRows }, { data: baseRows }, factRows, cohorts] = await Promise.all([
     // Every market's snapshots for this period; we keep the latest as_of per market.
     sb
       .from("lp_market_scorecard_daily")
@@ -269,6 +370,11 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     // Prior-period rows for the growth baselines (latest-first for the pure resolver).
     sb
       .from("lp_market_scorecard_daily")
+      // ⚠️ KNOWN BASIS GAP (2026-08-13, follow-up). This column is RTP, so a
+      // market on goal_mode='growth_pct' would derive a NET SALES goal from a
+      // RELEASED baseline. Inert today — every market is on goal_mode='dollars'
+      // — and repointing it needs prior-month cohort history per market, which
+      // is a larger change than this one. Flagged rather than silently left.
       .select("market, net_sales, period_start, as_of_date")
       .in("market", ALL_CODES)
       .lt("period_start", periodStart)
@@ -277,6 +383,9 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
       .limit(1000),
     // Report 135 leads — fetched ONCE and projected per market in memory.
     fetchReportFactRows(),
+    // Report 137 cohorts — Net Sales and Gross Written, already at market grain.
+    // Never rejects; [] leaves every dollar figure NULL and the cards render "—".
+    fetchCurrentCohorts(),
   ]);
 
   // Leads come from report 135 only (§3 authoritative source, §4 repoint).
@@ -314,25 +423,25 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
       demos,
       sales,
       close_pct: demos > 0 ? Math.round((sales / demos) * 1000) / 10 : null,
-      gross_sales: sum("gross_sales"),
-      released_dollars: found.some((r) => r.released_dollars != null) ? sum("released_dollars") : null,
-      net_sales: sum("net_sales"),
       days_elapsed: Math.max(...found.map((r) => numOr0(r.days_elapsed))),
       working_days_in_period: Math.max(...found.map((r) => numOr0(r.working_days_in_period))) || null,
-      // The merged market's revenue reaches only as far as its LEAST-covered
-      // constituent. In practice every source carries the same Net Report date,
-      // but taking the min means a market can never claim coverage one of its
-      // offices does not have. Dropping the column entirely — which this sum
-      // used to do — silently reverted merged markets to the count basis.
-      revenue_as_of: found
-        .map((r) => (r.revenue_as_of == null ? null : String(r.revenue_as_of).slice(0, 10)))
-        .filter((d): d is string => d != null)
-        .sort()[0] ?? null,
+      // ⚠️ The DOLLAR columns are deliberately absent from this sum (2026-08-13).
+      //
+      // This table's `net_sales` IS `released_dollars` (`revenue_basis =
+      // 'rtp_net_by_milestone_date'`), and `gross_sales` disagrees with report
+      // 137 on the same date. Both now come from `netSalesByMarket`, so summing
+      // them here would only leave a live-looking RTP figure one field lookup
+      // away from being read back in — which is exactly how this row spent a day
+      // pacing a sales goal against production releases.
+      //
+      // `revenue_as_of` goes with them: it is the RTP coverage watermark, and
+      // the pace anchor is now report 137's `data_through`.
     };
   };
 
-  // Calendar for the revenue anchor. Server-side only, same env the writer reads.
+  // Calendar for the pace anchor. Server-side only, same env the writer reads.
   const cal = resolveSellingCalendar();
+  const netByMarket = netSalesByMarket(cohorts, periodStart, resolved.periodEnd);
 
   const buildRow = (
     code: string,
@@ -342,10 +451,19 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   ): ByMarketRow | null => {
     const a = combinedActuals(sources);
     if (!a) return null;
-    // How far this market's RELEASED dollars actually reach.
-    const revAsOf = a.revenue_as_of == null ? null : String(a.revenue_as_of).slice(0, 10);
-    const revenueElapsed = revAsOf
-      ? sellingDaysElapsed(periodStart, revenueAnchorDate(resolved.asOf, revAsOf), cal)
+    const cohort = netByMarket.get(code) ?? null;
+    // The target stops where THIS market's Net Sales stops, so numerator and
+    // denominator share a date.
+    //
+    // `revenueAnchorDate` is reused for its SHAPE, not its RTP meaning: "clamp
+    // a source date that runs past the range end to the range end" is the same
+    // refusal `reportingClock` makes, and duplicating it would be two ways to
+    // say one thing. It keeps its name because the Released panel still uses it
+    // for its own watermark — see docs/revenue-as-of.md. Do not "unify" the two
+    // call sites into one anchor; that would drag production milestones back
+    // onto the sales pace.
+    const netElapsed = cohort?.dataThrough
+      ? sellingDaysElapsed(periodStart, revenueAnchorDate(resolved.asOf, cohort.dataThrough), cal)
       : null;
     // Goal = Σ of the source markets' prorated goals.
     let goal: number | null = null;
@@ -356,12 +474,12 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
           goals.get(src),
           baseByMarket.get(src) ?? [],
           periodStart,
-          revenueElapsed,
+          netElapsed,
         );
         if (g != null) goal = (goal ?? 0) + g;
       }
     }
-    return rowFromActuals(code, label, utility, a, goal, leadsFor(code));
+    return rowFromActuals(code, label, utility, a, goal, leadsFor(code), cohort);
   };
 
   const rows: ByMarketRow[] = [];
@@ -372,7 +490,10 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     if (m.utility && !rowHasActivity(row)) continue;
     rows.push(row);
   }
-  rows.sort((x, y) => Number(x.utility) - Number(y.utility) || y.net_sales - x.net_sales);
+  // Unmeasured sorts last, not as if it were zero.
+  rows.sort(
+    (x, y) => Number(x.utility) - Number(y.utility) || (y.net_sales ?? -1) - (x.net_sales ?? -1),
+  );
 
   // The All-Markets row keeps REECE's actuals, but its goal is DERIVED — the Σ of
   // the office rows' goals — so the total always equals the sum of its parts.
@@ -380,7 +501,10 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   if (total) {
     const officeGoalSum = rows.reduce((a, r) => (r.utility ? a : a + (r.goal ?? 0)), 0);
     total.goal = officeGoalSum > 0 ? officeGoalSum : null;
-    total.pctToGoal = total.goal ? Math.round((total.net_sales / total.goal) * 1000) / 10 : null;
+    total.pctToGoal =
+      total.goal && total.net_sales != null
+        ? Math.round((total.net_sales / total.goal) * 1000) / 10
+        : null;
     // The derived goal changes the ratio, so the pace statement must follow it.
     // elapsedPct is calendar-only and already correct on the row.
     Object.assign(total, achievedFrom(total.pctToGoal, total.elapsedPct));
@@ -400,24 +524,33 @@ async function safeView(market: string, resolved: ResolvedPeriod) {
 
 /** Fan-out rollup for aggregate / recompute periods (uncommon; kept for exact parity). */
 async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView> {
-  const [factRows, reece, ...marketViews] = await Promise.all([
+  const [factRows, cohorts, reece, ...marketViews] = await Promise.all([
     // Report 135 leads — one fetch, projected per market in memory.
     fetchReportFactRows(),
+    // Report 137 cohorts. Keyed on contract month, so an aggregate period sums
+    // the months it spans — cohort immutability means each month's contracts
+    // stay in their own month however wide the window is.
+    fetchCurrentCohorts(),
     safeView("REECE", resolved),
     ...MARKETS.map((m) => safeView(m.code, resolved)),
   ]);
 
   const leadsFor = (code: string): number | null =>
     buildReportFacts(factRows, resolved, code).leads?.leads ?? null;
+  const netByMarket = netSalesByMarket(cohorts, resolved.periodStart, resolved.periodEnd);
 
   type V = NonNullable<Awaited<ReturnType<typeof getScorecardForPeriod>>>;
   const toRow = (market: string, label: string, utility: boolean, v: V): ByMarketRow => {
     const a = v.actuals as unknown as Record<string, unknown>;
-    // The revenue-anchored target, matching the snapshot path — this row's net
-    // is released dollars, so it is divided by the goal that stops on the same
-    // date. Equals mtd_goal_dollars when no Net Report has landed.
-    const goal = utility ? null : v.derived.revenue_goal_to_date_dollars || null;
-    return rowFromActuals(market, label, utility, a, goal, leadsFor(market));
+    // ⚠️ `revenue_goal_to_date_dollars` is the RTP-anchored target and is no
+    // longer the right denominator — this row's net is Net Sales, dated by
+    // contract. Use the count-elapsed target instead, which is anchored to the
+    // period's own as-of. The snapshot path re-anchors per market to report
+    // 137's own coverage; this path cannot, because the aggregate view does not
+    // carry a per-market coverage date, so it uses the period anchor and is
+    // documented as the coarser of the two.
+    const goal = utility ? null : v.derived.mtd_goal_dollars || null;
+    return rowFromActuals(market, label, utility, a, goal, leadsFor(market), netByMarket.get(market) ?? null);
   };
 
   const rows: ByMarketRow[] = [];
@@ -428,7 +561,9 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
     if (m.utility && !rowHasActivity(row)) return;
     rows.push(row);
   });
-  rows.sort((x, y) => Number(x.utility) - Number(y.utility) || y.net_sales - x.net_sales);
+  rows.sort(
+    (x, y) => Number(x.utility) - Number(y.utility) || (y.net_sales ?? -1) - (x.net_sales ?? -1),
+  );
 
   const total = reece ? toRow("REECE", "All Markets", false, reece) : null;
   return { rows, total };
