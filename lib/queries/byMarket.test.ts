@@ -154,7 +154,7 @@ describe("§2 — achieved vs elapsed, derived from the ratio already on screen"
  * ── By-Market Net Sales (2026-08-13) ────────────────────────────────────────
  *
  * Every figure below was read from `lp_cohort_maturation` (is_current,
- * contract_month 2026-08-01) on 2026-08-13, and the RTP comparisons from
+ * appointment_month 2026-08-01) on 2026-08-13, and the RTP comparisons from
  * `lp_market_scorecard_daily` on the same day.
  *
  * The defect this pins: the cards read `released_dollars ?? net_sales` off
@@ -178,7 +178,7 @@ const obs = (
   [market, grossCents, cancelledCents, cdCents]: (typeof AUG_2026)[number],
   over: Partial<CohortObservation> = {},
 ): CohortObservation => ({
-  contractMonth: "2026-08-01",
+  appointmentMonth: "2026-08-01",
   market,
   observedOn: "2026-08-11", // the RUN date — must never reach a pace calculation
   dataThrough: "2026-08-10", // the COVERAGE date — the only one that may
@@ -270,8 +270,8 @@ describe("netSalesByMarket", () => {
     expect(mixed.get("REECE")!.netSalesCents).not.toBe(171_379_100);
   });
 
-  it("excludes contract months outside the period — cohorts never migrate", () => {
-    const july = obs(["FTMYR_MKT", 1_000_000_00, 0, 0], { contractMonth: "2026-07-01" });
+  it("excludes appointment months outside the period — cohorts never migrate", () => {
+    const july = obs(["FTMYR_MKT", 1_000_000_00, 0, 0], { appointmentMonth: "2026-07-01" });
     const aug = netSalesByMarket([...AUG, july], "2026-08-01", "2026-08-31");
     expect(dollars(aug.get("FTMYR_MKT")!.netSalesCents)).toBe(821_484);
 

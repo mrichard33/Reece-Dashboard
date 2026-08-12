@@ -216,7 +216,7 @@ describe("§Naming — Net Sales is defined wherever it is named", () => {
   });
 });
 
-describe("§2 — no copy may imply Expected Mature Net measures quality", () => {
+describe("§8 — no copy may imply Expected Settled Net measures quality", () => {
   const PANELS = "components/scorecard/CohortPanels.tsx";
 
   it("says outright that it is a forecast and cannot reward better selling", () => {
@@ -248,7 +248,7 @@ describe("§2 — a modeled figure is never labelled a goal without naming the r
   it("names the actual stored goal in the tile label, never a constant", () => {
     const src = readFileSync(PANELS, "utf8");
     // The label interpolates the goal it was computed from.
-    expect(src).toMatch(/Expected Mature Value at the \$\{goalName\} goal/);
+    expect(src).toMatch(/Expected Settled Value at the \$\{goalName\} goal/);
     expect(src).toMatch(/const goalName/);
   });
 

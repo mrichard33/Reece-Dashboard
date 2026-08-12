@@ -249,7 +249,7 @@ export function netSalesByMarket(
   periodStart: string,
   periodEnd: string,
 ): Map<string, MarketNetSales> {
-  const inPeriod = cohorts.filter((c) => c.contractMonth >= periodStart && c.contractMonth <= periodEnd);
+  const inPeriod = cohorts.filter((c) => c.appointmentMonth >= periodStart && c.appointmentMonth <= periodEnd);
   const byMarket = new Map<string, CohortObservation[]>();
   for (const c of inPeriod) {
     const bucket = byMarket.get(c.market);
@@ -527,7 +527,7 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
   const [factRows, cohorts, reece, ...marketViews] = await Promise.all([
     // Report 135 leads — one fetch, projected per market in memory.
     fetchReportFactRows(),
-    // Report 137 cohorts. Keyed on contract month, so an aggregate period sums
+    // Report 137 cohorts. Keyed on appointment month, so an aggregate period sums
     // the months it spans — cohort immutability means each month's contracts
     // stay in their own month however wide the window is.
     fetchCurrentCohorts(),
