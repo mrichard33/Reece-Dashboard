@@ -162,9 +162,7 @@ export function GoalEditor({
   // over 71,040 distinct leads, up to eleven rows on one lead. The row renders
   // unmeasured with that reason rather than shipping an approximation.
   const issuesNeeded = nsli > 0 ? Math.round(effectiveGoal / nsli) : null;
-  const leadsNeeded: number | null = null;
   const issuedPerDay = issuesNeeded != null ? issuesNeeded / wd : null;
-  const leadsPerDay = leadsNeeded != null ? leadsNeeded / wd : null;
   const demoedPerDay = issuedPerDay != null ? issuedPerDay * (demoPct / 100) : null;
   const closedPerDay = avgSale > 0 ? effectiveGoal / avgSale / wd : null;
 

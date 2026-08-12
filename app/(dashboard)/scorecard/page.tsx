@@ -19,7 +19,7 @@ import {
   fetchCurrentCohorts,
   foldCohortsByMonth,
   settledNetRetention,
-  netSalesCents,
+  periodCohortTotals,
 } from "@/lib/queries/cohorts";
 import {
   buildReportingClock,
@@ -103,21 +103,34 @@ export default async function ScorecardPage({
     (max, c) => (max == null || c.observedOn > max ? c.observedOn : max),
     null,
   );
-  // Gross Written for the SELECTED period's appointment month — the multiplicand
-  // of the forecast. Only the current month; a prior-month dollar must never
-  // enter a current-month figure.
+  // ── The period's cohorts, summed (§10) ──────────────────────────────────
+  //
+  // ⚠️ EVERY MONTH IN RANGE, not just the anchor. This used to `find()` the one
+  // cohort whose appointment month equalled `resolved.periodStart` and render it
+  // as the period headline — correct and indistinguishable for MTD, and for
+  // 3-Month it put ONE month of Net Sales against THREE months of goal. YTD
+  // showed January against the year.
+  //
+  // Cohort immutability is what makes summing legal: a July contract stays July
+  // business, so widening the window changes which months are in scope and
+  // moves nothing between them.
+  const periodTotals = periodCohortTotals(
+    companyCohorts,
+    resolved.periodStart,
+    resolved.periodEnd,
+  );
+  // Gross Written across the period — the multiplicand of the forecast.
+  const currentCohortGrossCents = periodTotals.grossCents;
+  // THE HEADLINE ACTUAL — Gross Written − Cancellations − Financing Denied.
+  // Null (not 0) when the cohort view is unreachable, which makes the hero
+  // render "Unavailable" with the last known as-of. There is no substitute
+  // figure: RTP is a different economic event and is not a fallback here.
+  const currentCohortNetSalesCents = periodTotals.netSalesCents;
+  // ⚠️ The VALUE and its DATE describe the same set of months. MAX across the
+  // range, because a closed month's coverage date marks completeness rather
+  // than staleness — see periodCohortTotals.
+  const netSalesThrough = periodTotals.dataThrough;
   const currentCohort = companyCohorts.find((c) => c.appointmentMonth === resolved.periodStart);
-  const currentCohortGrossCents = currentCohort?.grossCents ?? null;
-  // THE HEADLINE ACTUAL — Gross Written − Cancellations − Financing Denied, for
-  // the selected period's own appointment month. Null (not 0) when the cohort view
-  // is unreachable, which makes the hero render "Unavailable" with the last
-  // known as-of. There is no substitute figure: RTP is a different economic
-  // event and is not a fallback for this tile.
-  const currentCohortNetSalesCents = currentCohort ? netSalesCents(currentCohort) : null;
-  // ⚠️ The VALUE and its DATE must come from the SAME row. This used to take the
-  // value from `currentCohort` (one appointment month) and the date from a max over
-  // EVERY month, so nothing guaranteed they described the same thing.
-  const netSalesThrough = currentCohort?.dataThrough ?? null;
   // Admin-only editor data — never let its fan-out take down the page; the panel
   // simply hides if it can't load.
   const goalsEditor = isAdmin

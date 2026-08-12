@@ -99,14 +99,35 @@ export function aggregateActuals(rows: MonthlySnapshotRow[], ctx: AggregateCtx):
   return {
     market: ctx.market,
     as_of_date: ctx.asOf,
-    // An aggregate spans many monthly rows with different revenue_as_of values;
-    // the OLDEST is the honest answer, since the total only reaches as far as
-    // its least-advanced input. Null if any month never reported one.
+    // ── §10 — COVERAGE OF A MONTH RANGE IS MAX, NOT MIN ──────────────────────
+    //
+    // This took the OLDEST date, reasoning that a total only reaches as far as
+    // its least-advanced input. That is right for markets WITHIN one month —
+    // see `minCoverage` in cohorts.core.ts, which still folds that way — and
+    // wrong across MONTHS, because a closed month's coverage date marks
+    // COMPLETENESS, not staleness. January reaching 01-31 does not mean a
+    // Jan–Aug total stops at January; it means January is finished.
+    //
+    // Measured 2026-08-12, with Jan–Jul closed and August running to 08-11:
+    //   3-month read "through 2026-06-30 · 35 selling days behind"
+    //   YTD      read "through 2026-01-31 · 162 days behind"
+    // Both were fully current. The banner was reporting the age of the oldest
+    // finished month.
+    //
+    // MAX is the honest answer, and incompleteness is a DIFFERENT question —
+    // answered by whether a constituent month is MISSING, or the newest one
+    // trails the last completed selling day. That check belongs to the
+    // reporting clock, which knows the calendar; this only reports how far the
+    // data reaches.
+    //
+    // Unknowns no longer poison the total either. A month that never reported a
+    // coverage date says nothing about the range's reach — under MIN it could
+    // not, because `null` was skipped and the oldest survivor won regardless.
     revenue_as_of: months.reduce<string | null>((a, r) => {
       const v = (r as { revenue_as_of?: unknown }).revenue_as_of;
       if (v == null) return a;
       const d = String(v);
-      return a == null || d < a ? d : a;
+      return a == null || d > a ? d : a;
     }, null),
     period_start: ctx.periodStart,
     period_end: ctx.periodEnd,

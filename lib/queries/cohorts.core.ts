@@ -368,6 +368,61 @@ export function foldCohortsByMonth(
   return out.sort((a, b) => a.appointmentMonth.localeCompare(b.appointmentMonth));
 }
 
+/**
+ * ── §10 — A PERIOD IS ITS MONTHS, AND ITS COVERAGE IS THE NEWEST ONE ────────
+ *
+ * Every cohort whose appointment month falls in [periodStart, periodEnd],
+ * summed. Cohort immutability is what makes this legal: each month's contracts
+ * stay in their own month, so a window simply decides which months are in
+ * scope — nothing migrates.
+ *
+ * ⚠️ THE DEFECT THIS REPLACES. The page selected a SINGLE cohort, the one whose
+ * appointment month equalled `periodStart`, and rendered it as the period's
+ * headline. For MTD that is correct and indistinguishable. For 3-Month it
+ * showed one month of Net Sales against three months of goal; for YTD, January
+ * against the year. The figure was not stale or approximate — it was a
+ * different quantity wearing the period's label.
+ *
+ * ⚠️ COVERAGE IS MAX(dataThrough), NOT MIN. A closed month's coverage date marks
+ * COMPLETENESS, not staleness: January reaching 01-31 says January is finished,
+ * not that a Jan–Aug total stops there. Taking the min is what made the YTD view
+ * report "through 2026-01-31 · 162 days behind" while every month was current.
+ *
+ * This is deliberately the OPPOSITE fold from `minCoverage`, which combines
+ * MARKETS WITHIN one month and is conservative for a good reason — a company
+ * row is only as current as its stalest market. Different axis, different rule.
+ * Both are right; conflating them is what produced the banner.
+ *
+ * Whether the range is INCOMPLETE is a separate question, and not one this can
+ * answer: a missing month is invisible to a sum of the months present. The
+ * reporting clock owns it, because it knows the calendar.
+ */
+export function periodCohortTotals(
+  cohorts: readonly CohortObservation[],
+  periodStart: string,
+  periodEnd: string,
+): {
+  grossCents: number | null;
+  netSalesCents: number | null;
+  /** MAX over the months in range — see above. Null if none declared one. */
+  dataThrough: string | null;
+  /** Which appointment months fed it, oldest first. */
+  months: string[];
+} {
+  const inPeriod = cohorts.filter(
+    (c) => c.appointmentMonth >= periodStart && c.appointmentMonth <= periodEnd,
+  );
+  return {
+    grossCents: sumKnown(inPeriod.map((c) => c.grossCents)),
+    netSalesCents: sumKnown(inPeriod.map((c) => netSalesCents(c))),
+    dataThrough: inPeriod.reduce<string | null>(
+      (max, c) => (c.dataThrough != null && (max == null || c.dataThrough > max) ? c.dataThrough : max),
+      null,
+    ),
+    months: [...new Set(inPeriod.map((c) => c.appointmentMonth))].sort(),
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Cohort age and eligibility
 // ─────────────────────────────────────────────────────────────────────────────

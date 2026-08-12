@@ -21,6 +21,7 @@ import {
   netRetentionRate,
   netSurvivalRate,
   pendingRate,
+  periodCohortTotals,
   reconciliationDelta,
   rollupToMarket,
   sumKnown,
@@ -664,5 +665,107 @@ describe("Historical Mature NSA Rate is not Net Retention %", () => {
       expect(r.value).toHaveProperty("netSalesCents");
       expect(r.value).not.toHaveProperty("nsaCents");
     }
+  });
+});
+
+/**
+ * ── §10 — coverage of a month RANGE is MAX, and a period is all its months ──
+ *
+ * Both halves of the same defect. A period was being represented by its anchor
+ * month, and a range's coverage by its OLDEST constituent.
+ */
+describe("§10 — periodCohortTotals", () => {
+  /** Jan–Aug, each a closed month except August. [month, gross, cancelled, cd, through] */
+  const YEAR: Array<[string, number, number, number, string]> = [
+    ["2026-01-01", 1_193_000_00, 320_000_00, 0, "2026-01-31"],
+    ["2026-02-01", 1_082_000_00, 291_000_00, 0, "2026-02-28"],
+    ["2026-03-01", 1_189_098_00, 366_000_00, 0, "2026-03-31"],
+    ["2026-04-01", 1_055_000_00, 303_000_00, 0, "2026-04-30"],
+    ["2026-05-01", 1_297_867_07, 401_000_00, 0, "2026-05-31"],
+    ["2026-06-01", 1_140_000_00, 337_000_00, 0, "2026-06-30"],
+    ["2026-07-01", 1_045_000_00, 247_000_00, 0, "2026-07-31"],
+    ["2026-08-01", 218_528_300, 30_146_600, 3_195_700, "2026-08-10"],
+  ];
+
+  const year: CohortObservation[] = YEAR.map(([m, gross, canc, cd, through]) => ({
+    appointmentMonth: m,
+    market: "REECE",
+    observedOn: "2026-08-11",
+    dataThrough: through,
+    officeCount: 7,
+    grossCents: gross,
+    nsaCents: null,
+    workingCents: null,
+    holdCents: null,
+    cancelledCents: canc,
+    cdCents: cd,
+    issuedCount: null,
+    satCount: null,
+    soldCount: null,
+    isCurrent: true,
+  }));
+
+  it("a fully-current Jan–Aug range reports coverage 2026-08-10, not 2026-01-31", () => {
+    // THE BUG: MIN made YTD read "through 2026-01-31 · 162 days behind" while
+    // every month was current. January's date marks January being FINISHED.
+    const t = periodCohortTotals(year, "2026-01-01", "2026-12-31");
+    expect(t.dataThrough).toBe("2026-08-10");
+    expect(t.dataThrough).not.toBe("2026-01-31");
+    expect(t.months).toHaveLength(8);
+  });
+
+  it("a 3-month range reports its NEWEST month, not its oldest", () => {
+    // The other reported symptom: "through 2026-06-30 · 35 selling days behind".
+    const t = periodCohortTotals(year, "2026-06-01", "2026-08-31");
+    expect(t.dataThrough).toBe("2026-08-10");
+    expect(t.dataThrough).not.toBe("2026-06-30");
+  });
+
+  it("a period sums EVERY month in range — not just the anchor", () => {
+    // The headline defect. MTD is indistinguishable; a range is not.
+    const mtd = periodCohortTotals(year, "2026-08-01", "2026-08-31");
+    const ytd = periodCohortTotals(year, "2026-01-01", "2026-12-31");
+    expect(mtd.netSalesCents).toBe(185_186_000);
+    expect(ytd.netSalesCents).toBeGreaterThan(mtd.netSalesCents!);
+    // …and the year is the sum of its months, not its first one.
+    const jan = periodCohortTotals(year, "2026-01-01", "2026-01-31");
+    expect(ytd.netSalesCents).not.toBe(jan.netSalesCents);
+    expect(ytd.netSalesCents).toBe(
+      year.reduce((a, c) => a + netSalesCents(c)!, 0),
+    );
+  });
+
+  it("cohorts never migrate — narrowing the window only changes what is in scope", () => {
+    const jul = periodCohortTotals(year, "2026-07-01", "2026-07-31");
+    const julAug = periodCohortTotals(year, "2026-07-01", "2026-08-31");
+    const aug = periodCohortTotals(year, "2026-08-01", "2026-08-31");
+    expect(julAug.netSalesCents).toBe(jul.netSalesCents! + aug.netSalesCents!);
+  });
+
+  it("an unknown component makes the total unknown, never quietly smaller", () => {
+    const holed = year.map((c) =>
+      c.appointmentMonth === "2026-03-01" ? { ...c, cancelledCents: null } : c,
+    );
+    const t = periodCohortTotals(holed, "2026-01-01", "2026-12-31");
+    expect(t.netSalesCents).toBeNull();
+    // Gross is still knowable — only the subtraction is compromised.
+    expect(t.grossCents).not.toBeNull();
+  });
+
+  it("an undeclared coverage date does not poison the range's reach", () => {
+    // The opposite of how minCoverage folds, deliberately: one month that
+    // cannot say what it covers tells us nothing about how far the range gets.
+    const holed = year.map((c) =>
+      c.appointmentMonth === "2026-03-01" ? { ...c, dataThrough: null } : c,
+    );
+    expect(periodCohortTotals(holed, "2026-01-01", "2026-12-31").dataThrough).toBe("2026-08-10");
+  });
+
+  it("an empty range is unmeasured, not zero", () => {
+    const t = periodCohortTotals(year, "2025-01-01", "2025-12-31");
+    expect(t.months).toEqual([]);
+    // sumKnown over nothing is 0 — the caller distinguishes by months.length,
+    // which is why the month list is published beside the totals.
+    expect(t.dataThrough).toBeNull();
   });
 });
