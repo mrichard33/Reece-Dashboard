@@ -101,7 +101,20 @@ export const MIN_GROSS_FOR_OWN_RATE_CENTS = 200_000_00;
 export type CohortOfficeRow = {
   contractMonth: string; // 'YYYY-MM-01'
   market: string; // '*_MKT'
+  /**
+   * When LP RAN the report. The maturation series is keyed on this — "what does
+   * January look like as of the latest observation" is a question about when we
+   * looked. ⚠️ NEVER date a current-period figure with it: report 137's MTD
+   * files run the morning AFTER the day they cover, so this reads 08-11 over
+   * data that stops 08-10.
+   */
   observedOn: string; // 'YYYY-MM-DD'
+  /**
+   * How far the DATA reaches (`period_end`). Null when the file is partial or
+   * its coverage is unknown, in which case it declares nothing and must not be
+   * assumed. This is the only date a current-period actual may be paced against.
+   */
+  dataThrough: string | null;
   officeCode: string | null; // branch_code_raw — BOCA / FTLAU / MIAMI / …
   grossCents: number | null;
   nsaCents: number | null;
@@ -208,6 +221,31 @@ export function sumKnown(values: ReadonlyArray<number | null | undefined>): numb
  * fixed and is never hardcoded — whatever offices the snapshot carries are the
  * offices that get summed.
  */
+/**
+ * The coverage date of a GROUP — the EARLIEST of its members, and null if any
+ * member does not declare one.
+ *
+ * Deliberately the opposite of how `observedOn` folds. A rolled-up row is only
+ * as current as its stalest constituent: if Fort Lauderdale reaches 08-09 while
+ * everyone else reaches 08-10, the company row contains nine days of Fort
+ * Lauderdale and ten of everything else, and claiming 08-10 for the total
+ * overstates a market's worth of coverage. `cohorts.core` conceded this in prose
+ * for `observedOn` and never acted on it; for a date that gates a goal-bearing
+ * figure, the conservative answer is the only defensible one.
+ *
+ * All-or-unknown, matching `sumKnown`: one undeclared member makes the whole
+ * group's coverage unknown rather than silently inheriting its siblings'.
+ */
+export function minCoverage(dates: readonly (string | null)[]): string | null {
+  if (dates.length === 0) return null;
+  let min: string | null = null;
+  for (const d of dates) {
+    if (d == null) return null;
+    if (min == null || d < min) min = d;
+  }
+  return min;
+}
+
 export function rollupToMarket(rows: readonly CohortOfficeRow[]): CohortObservation[] {
   const byKey = new Map<string, CohortOfficeRow[]>();
   for (const r of rows) {
@@ -224,6 +262,7 @@ export function rollupToMarket(rows: readonly CohortOfficeRow[]): CohortObservat
       contractMonth: first.contractMonth,
       market: first.market,
       observedOn: first.observedOn,
+      dataThrough: minCoverage(group.map((r) => r.dataThrough)),
       officeCount: new Set(group.map((r) => r.officeCode ?? "")).size,
       grossCents: sumKnown(group.map((r) => r.grossCents)),
       nsaCents: sumKnown(group.map((r) => r.nsaCents)),
@@ -271,10 +310,14 @@ export function foldCohortsByMonth(
     out.push({
       contractMonth,
       market: group.length === 1 ? group[0]!.market : market,
-      // The freshest reading in the group — a company row is only as current as
-      // its stalest market, but naming the newest matches how the page's other
-      // as-of chips read. Callers wanting the conservative answer take the min.
+      // The freshest OBSERVATION in the group. Correct for the maturation series
+      // — "the latest time we looked at January" — and safe there because it
+      // dates nothing that is paced.
       observedOn: group.reduce((max, o) => (o.observedOn > max ? o.observedOn : max), group[0]!.observedOn),
+      // COVERAGE folds the other way: min, and unknown if any market is unknown.
+      // See minCoverage — a company row is only as current as its stalest
+      // market, and this is the date the hard gate judges.
+      dataThrough: minCoverage(group.map((o) => o.dataThrough)),
       officeCount: group.reduce((n, o) => n + o.officeCount, 0),
       grossCents: sumKnown(group.map((o) => o.grossCents)),
       nsaCents: sumKnown(group.map((o) => o.nsaCents)),

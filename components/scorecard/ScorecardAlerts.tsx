@@ -42,12 +42,17 @@ export function ScorecardAlerts({
   // Working revenue held (sold but not released) relative to released.
   const working = actuals.working_dollars ?? 0;
   if (working > 0) {
-    const rel = actuals.released_dollars ?? actuals.net_sales ?? 0;
+    // Compared against RELEASED dollars deliberately, and said so in the copy.
+    // "Sold but not yet released" is a production question, so released is the
+    // right denominator here — unlike the market cards, which were pacing a
+    // sales goal against it. `actuals.net_sales` is dropped as a fallback: on
+    // this table it IS released_dollars, so it only ever hid a missing value.
+    const rel = actuals.released_dollars ?? 0;
     const pctOfRel = rel > 0 ? Math.round((working / rel) * 100) : null;
     alerts.push({
-      tone: working > rel * 0.25 ? "amber" : "slate",
+      tone: rel > 0 && working > rel * 0.25 ? "amber" : "slate",
       label: "Working revenue",
-      text: `${usd(working)} sold but held${pctOfRel != null ? ` (${pctOfRel}% of released)` : ""} — watch for stalls in financing/HOA/docs.`,
+      text: `${usd(working)} sold but held${pctOfRel != null ? ` (${pctOfRel}% of released to production)` : ""} — watch for stalls in financing/HOA/docs.`,
     });
   }
 

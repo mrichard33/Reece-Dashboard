@@ -153,6 +153,59 @@ describe("§Naming — Net Sales is defined wherever it is named", () => {
     }
   });
 
+  /**
+   * The By-Market cards, added 2026-08-13.
+   *
+   * ⚠️ These are `toContain` / `not.toMatch` source scans rather than
+   * `labelsIn()` assertions, and that is deliberate: `labelsIn()` only matches
+   * `label: "…"` object literals, so a `<th>` and a mobile-card kicker are
+   * INVISIBLE to it. That blind spot is why these cards went on rendering "NET
+   * RELEASED MTD" for a day after the hero moved to Net Sales, and why nothing
+   * in this file failed. Closing it explicitly.
+   */
+  const BY_MARKET = "components/scorecard/ByMarketTable.tsx";
+
+  it("the market cards are on the same basis as the hero, not RTP", () => {
+    const src = code(readFileSync(BY_MARKET, "utf8"));
+    expect(src).toMatch(/Net Sales \{abbr\}/); // mobile card kicker
+    expect(src).toMatch(/>\s*Net Sales\s*</); // desktop <th>
+    // The retired label, in either casing, on the market table.
+    expect(src).not.toMatch(/[Nn]et released/);
+  });
+
+  it("the market column states the subtraction, and names financing denied", () => {
+    const src = readFileSync(BY_MARKET, "utf8");
+    // "Net Sales" alone is as ambiguous as the "Net" it replaced, and
+    // gross − cancels is a DIFFERENT figure — the definition must name all
+    // three terms.
+    expect(src).toMatch(/Gross Written − Cancellations − Financing Denied/i);
+    expect(src).not.toMatch(/RELEASED to production in this period/i);
+  });
+
+  it("the market query reads report 137, never released_dollars", () => {
+    // The defect in one line: `numOr0(a.released_dollars ?? a.net_sales)` on a
+    // table whose `net_sales` column IS `released_dollars`. Orlando rendered
+    // net $179,726 against gross $127,023 — net exceeding gross, impossible on
+    // a sales basis. Comments stripped so the explanation above the code cannot
+    // satisfy the assertion.
+    const src = code(readFileSync("lib/queries/byMarket.ts", "utf8"));
+    expect(src).not.toMatch(/released_dollars/);
+    expect(src).toMatch(/netSalesCents/);
+    // And the guard that would have caught it is actually wired, not just
+    // exported — it had zero production call sites when this shipped.
+    expect(src).toMatch(/assertNetActualMetric\(/);
+  });
+
+  it("an unmeasured market renders unmeasured, never $0", () => {
+    const src = code(readFileSync("lib/queries/byMarket.ts", "utf8"));
+    // numOr0 on the dollar figures is what turned "no cohort row" into a
+    // confident zero — and a market at $0 against a goal reads as total failure
+    // rather than as not-yet-sourced.
+    expect(src).toMatch(/net_sales: number \| null/);
+    expect(src).toMatch(/gross_sales: number \| null/);
+    expect(src).not.toMatch(/net_sales: numOr0/);
+  });
+
   it("no rendered copy calls gross−cancelled 'Net Sales'", () => {
     // gross − cancelled omits financing denials and is $23K adrift on one
     // market in one month. It is never the goal basis.

@@ -34,7 +34,17 @@ export const SC_GLOSSARY: GlossaryGroup[] = [
   {
     group: "Revenue",
     items: [
-      { term: "Released (Net Sales)", def: "Revenue booked and released — this is what counts toward the goal." },
+      // These are two DIFFERENT figures on two different date bases, and the old
+      // entry equated them by name — the exact conflation the metric contract
+      // exists to end (lib/scorecard/goalBasis.ts).
+      {
+        term: "Net Sales",
+        def: "Gross Written − Cancellations − Financing Denied, dated by CONTRACT date. The goal-bearing figure: goal, actual, pace and efficiency all use it.",
+      },
+      {
+        term: "Released to production (RTP)",
+        def: "Contract value released to production, dated by the production MILESTONE — a contract sold in April is released in August. Answers a production question, and cannot be paced against a sales goal.",
+      },
       { term: "Working (held / Pending)", def: "Sold but held up in financing, HOA or docs — not yet released." },
       { term: "Open quotes", def: "Quoted but not yet a firm order." },
       { term: "Cancelled", def: "Deals that fell out." },

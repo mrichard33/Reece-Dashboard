@@ -131,6 +131,10 @@ export type ScorecardVM = {
     rateAnchorMonth: string | null;
     ratePeriodScoped: boolean;
     daysElapsed: number;
+    /** Elapsed through the CALENDAR cutoff, when that differs from `daysElapsed`
+     *  because the goal-bearing feed is behind. Shown beside it so a reader can
+     *  see the day the pace math is NOT counting rather than losing it. */
+    calendarDaysElapsed: number;
     sellingDays: number;
     /** Coverage date of the Net Report behind `netSales` and `paceGoal` — the
      *  date the REVENUE reaches, which is not `snapshot.asOfDate` (what the
@@ -266,6 +270,32 @@ export function buildScorecardVM(
   resolved: ResolvedPeriod,
   reportFacts?: ReportFacts | null,
   cal?: SellingCalendar,
+  /**
+   * Elapsed selling days from the reporting clock — see
+   * lib/scorecard/reportingClock.ts.
+   *
+   * ⚠️ RULING 2026-08-13, and it REVERSES the comment directly below. The block
+   * beginning "This is a CALENDAR fact" argues that elapsed must never come from
+   * the data, because a stalled feed would shrink the target in step with the
+   * missing actuals and a real miss would render as on-pace. That reasoning was
+   * right for the world it was written in, where a stall was invisible.
+   *
+   * It is no longer, and the misalignment it accepted has its own cost: on
+   * 2026-08-12 a Net Sales numerator covering 8 selling days was measured
+   * against a target prorated over 9, which is not conservatism, it is two
+   * different periods in one ratio. The page now derives elapsed from the
+   * goal-bearing source's OWN coverage date so numerator and denominator always
+   * describe the same days, and surfaces the lag explicitly on the tile — the
+   * badge does the stall-detection job that misalignment was standing in for.
+   *
+   * Be clear-eyed about the direction: this makes a late feed look BETTER
+   * ($423,553 on Balance, $669,117 on Projected Pace). That is only acceptable
+   * because the lag is now rendered beside the number rather than inferred from
+   * it. If the badge is ever removed, this parameter must go with it.
+   *
+   * Omitted → the calendar anchor, exactly as before.
+   */
+  clockElapsedDays?: number | null,
 ): ScorecardVM {
   const { actuals: a, goals: g, derived: d } = view;
   const abbr = abbrFor(resolved.key);
@@ -289,7 +319,13 @@ export function buildScorecardVM(
   const calendarElapsed = cal
     ? sellingDaysElapsed(resolved.periodStart, resolved.asOf, cal)
     : null;
-  const daysElapsed = calendarElapsed ?? a.days_elapsed ?? 0;
+  const daysElapsed = clockElapsedDays ?? calendarElapsed ?? a.days_elapsed ?? 0;
+  /**
+   * Elapsed through the CALENDAR cutoff, kept alongside so a tile can show both
+   * and name the gap. Without this the page would silently drop a whole selling
+   * day from view whenever a feed lagged.
+   */
+  const calendarDaysElapsed = calendarElapsed ?? daysElapsed;
   /** How far the ACTUALS reach — the snapshot's own count. Only for showing age. */
   const dataDaysElapsed = a.days_elapsed ?? null;
   // Period-total selling days — expands with the filter (whole year for YTD, whole
@@ -565,6 +601,7 @@ export function buildScorecardVM(
       rateAnchorMonth: d.rate_anchor_month,
       ratePeriodScoped: d.rate_period_scoped,
       daysElapsed,
+      calendarDaysElapsed,
       sellingDays,
       revenueAsOf,
       revenueDaysElapsed,
