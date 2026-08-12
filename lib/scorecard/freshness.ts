@@ -128,3 +128,49 @@ export function stalenessPhrase(days: number | null): string | null {
   if (days == null || days <= 0) return null;
   return `${days} selling day${days === 1 ? "" : "s"} behind`;
 }
+
+/**
+ * How many CALENDAR days the data is behind TODAY.
+ *
+ * A companion to `stalenessSellingDays`, not a replacement. The two answer
+ * different questions and both belong on the banner:
+ *
+ *   selling days — how much SELLING the figure has missed. The right unit for
+ *                  pacing, because the target prorates over selling days.
+ *   calendar days — how OLD the figure is. The right unit for "should I trust
+ *                  this", because that is how a reader experiences staleness.
+ *
+ * They diverge sharply around weekends and holidays, and the gap is what made
+ * the old banner read as understating the lag: on 2026-08-11, revenue reaching
+ * 2026-08-06 was "3 selling days behind" (Aug 7, 8, 10) and five calendar days
+ * old. Both true; only one matches the reader's intuition.
+ *
+ * Measured to `today`, not to the last completed selling day — age is age, and
+ * a figure does not stop ageing because the office is shut.
+ */
+export function stalenessCalendarDays(
+  dataThrough: string | null,
+  today: string,
+): number | null {
+  if (!dataThrough) return null;
+  const from = Date.parse(`${dataThrough.slice(0, 10)}T00:00:00Z`);
+  const to = Date.parse(`${today.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  const days = Math.round((to - from) / 86_400_000);
+  return days > 0 ? days : 0;
+}
+
+/**
+ * "3 selling days / 5 calendar days behind" — both units, one phrase.
+ * Falls back to whichever is known; null when the figure is current.
+ */
+export function stalenessPhraseFull(
+  sellingDays: number | null,
+  calendarDays: number | null,
+): string | null {
+  const selling = stalenessPhrase(sellingDays);
+  if (calendarDays == null || calendarDays <= 0) return selling;
+  const cal = `${calendarDays} calendar day${calendarDays === 1 ? "" : "s"} old`;
+  if (!selling) return cal;
+  return `${selling}, ${cal}`;
+}

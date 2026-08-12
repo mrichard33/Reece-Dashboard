@@ -26,7 +26,12 @@ import { getByMarket } from "@/lib/queries/byMarket";
 import { getReportFacts, getPartialCoverage } from "@/lib/queries/reportFacts";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { lastCompletedSellingDay, resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
-import { freshnessChip, stalenessSellingDays, stalenessPhrase } from "@/lib/scorecard/freshness";
+import {
+  freshnessChip,
+  stalenessSellingDays,
+  stalenessCalendarDays,
+  stalenessPhraseFull,
+} from "@/lib/scorecard/freshness";
 import { normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
 import { usDate } from "@/lib/utils";
@@ -96,8 +101,9 @@ export default async function ScorecardPage({
   const currentCohortGrossCents = currentCohort?.grossCents ?? null;
   // THE HEADLINE ACTUAL — Gross Written − Cancellations − Financing Denied, for
   // the selected period's own contract month. Null (not 0) when the cohort view
-  // is unreachable, which drops the hero back to its RTP fallback rather than
-  // rendering a confident zero.
+  // is unreachable, which makes the hero render "Unavailable" with the last
+  // known as-of. There is no substitute figure: RTP is a different economic
+  // event and is not a fallback for this tile.
   const currentCohortNetSalesCents = currentCohort ? netSalesCents(currentCohort) : null;
   // Admin-only editor data — never let its fan-out take down the page; the panel
   // simply hides if it can't load.
@@ -125,6 +131,11 @@ export default async function ScorecardPage({
   const lastSellingDay = lastCompletedSellingDay(todayET(), SELLING_CAL);
   const dataLagDays = stalenessSellingDays(dataThrough, lastSellingDay, SELLING_CAL);
   const revenueLagDays = stalenessSellingDays(revenueThrough, lastSellingDay, SELLING_CAL);
+  // Calendar age alongside selling-day lag. "3 selling days behind" is correct
+  // for pacing and reads as understating it — Aug 6 → Aug 11 is 3 selling days
+  // and 5 calendar days. Both go on the banner; see stalenessPhraseFull.
+  const dataCalendarDays = stalenessCalendarDays(dataThrough, todayET());
+  const revenueCalendarDays = stalenessCalendarDays(revenueThrough, todayET());
 
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
@@ -242,22 +253,47 @@ export default async function ScorecardPage({
                     role="status"
                     className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200"
                   >
+                    {/*
+                      ⚠️ SAY WHAT IS STALE, NOT "THE PAGE IS STALE".
+
+                      This banner predates the Net Sales headline. It existed to
+                      caveat the OLD RTP tile, which read `revenue_as_of` — and
+                      when RTP was retired from the hero on 2026-08-12 the
+                      banner stayed, so the page went on announcing that
+                      "figures are behind" while the headline it sits above was
+                      current. On 2026-08-11 that meant a banner citing 08-06
+                      above a Net Sales figure that reached 08-10.
+
+                      The headline now comes from the report-137 cohort
+                      observation and carries its own as-of. `revenue_as_of`
+                      governs the Released panel and nothing else, so the banner
+                      names that panel instead of the page.
+                    */}
                     <strong className="font-semibold">
-                      Live-sync figures are behind.
+                      {isStale
+                        ? "Live-sync counts are behind."
+                        : "Released figures are behind."}
                     </strong>{" "}
                     {isStale && dataThrough
                       ? `Counts and rates from the LP sync reach ${usDate(dataThrough)}${
-                          stalenessPhrase(dataLagDays) ? ` — ${stalenessPhrase(dataLagDays)}` : ""
+                          stalenessPhraseFull(dataLagDays, dataCalendarDays)
+                            ? ` — ${stalenessPhraseFull(dataLagDays, dataCalendarDays)}`
+                            : ""
                         }`
                       : "Counts and rates from the LP sync are current"}
                     {revenueStale && revenueThrough
-                      ? `, and its revenue columns only reach ${usDate(revenueThrough)}${
-                          stalenessPhrase(revenueLagDays) ? ` (${stalenessPhrase(revenueLagDays)})` : ""
-                        }`
+                      ? `. The Net Report's revenue columns reach ${usDate(revenueThrough)}${
+                          stalenessPhraseFull(revenueLagDays, revenueCalendarDays)
+                            ? ` (${stalenessPhraseFull(revenueLagDays, revenueCalendarDays)})`
+                            : ""
+                        }, which affects the Released panel only`
                       : ""}
                     {`. The selected range ends ${usDate(resolved.asOf)}.`}{" "}
-                    Report-sourced panels (Sold, Released, Open backlog, Leads) carry
-                    their own as-of dates and are unaffected.
+                    <strong className="font-semibold">
+                      Net Sales, the goal and the pace are unaffected
+                    </strong>
+                    {cohortAsOf ? ` — they read the sales report through ${usDate(cohortAsOf)}` : ""}
+                    . Sold, Open backlog and Leads carry their own as-of dates too.
                   </div>
                 )}
 

@@ -1,5 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { freshnessChip, stalenessSellingDays, stalenessPhrase } from "./freshness";
+import {
+  freshnessChip,
+  stalenessSellingDays,
+  stalenessPhrase,
+  stalenessCalendarDays,
+  stalenessPhraseFull,
+} from "./freshness";
 import { resolveSellingCalendar } from "@/lib/date/sellingDays";
 
 // ── §6 — the freshness chip says the date, and never says "Live" ───────────
@@ -130,5 +137,73 @@ describe("freshnessChip — partial coverage", () => {
       asOfDate: "2026-08-11", computedFrom: null, isPartial: true, partialThrough: "2026-08-10",
     });
     expect(chip.text.toLowerCase()).not.toContain("live");
+  });
+});
+
+describe("§Freshness — calendar age is a second unit, not a replacement", () => {
+  /**
+   * The banner read "3 selling days behind" above a figure that was five
+   * calendar days old, and that gap is what made it look like it was
+   * understating the lag. Both units are correct; they answer different
+   * questions, so both are shown.
+   */
+  it("counts calendar days to TODAY, not to the last completed selling day", () => {
+    // Aug 6 → Aug 11 is 5 calendar days, and 3 selling days (Aug 7, 8, 10):
+    // Aug 9 is a Sunday and Aug 11 has not completed.
+    expect(stalenessCalendarDays("2026-08-06", "2026-08-11")).toBe(5);
+    expect(stalenessSellingDays("2026-08-06", "2026-08-10", CAL)).toBe(3);
+  });
+
+  it("a figure keeps ageing over a weekend even though no selling happens", () => {
+    // Fri Aug 7 → Mon Aug 10: one selling day missed (Aug 8), three days old.
+    expect(stalenessSellingDays("2026-08-07", "2026-08-10", CAL)).toBe(2);
+    expect(stalenessCalendarDays("2026-08-07", "2026-08-10")).toBe(3);
+  });
+
+  it("is 0, never negative, when the data is current or ahead", () => {
+    expect(stalenessCalendarDays("2026-08-11", "2026-08-11")).toBe(0);
+    expect(stalenessCalendarDays("2026-08-12", "2026-08-11")).toBe(0);
+  });
+
+  it("is null when there is no date to compare", () => {
+    expect(stalenessCalendarDays(null, "2026-08-11")).toBeNull();
+  });
+
+  it("the combined phrase carries BOTH units", () => {
+    expect(stalenessPhraseFull(3, 5)).toBe("3 selling days behind, 5 calendar days old");
+    expect(stalenessPhraseFull(1, 1)).toBe("1 selling day behind, 1 calendar day old");
+  });
+
+  it("degrades to whichever unit is known, and says nothing when current", () => {
+    expect(stalenessPhraseFull(3, null)).toBe("3 selling days behind");
+    expect(stalenessPhraseFull(0, 2)).toBe("2 calendar days old");
+    expect(stalenessPhraseFull(0, 0)).toBeNull();
+    expect(stalenessPhraseFull(null, null)).toBeNull();
+  });
+});
+
+describe("§Freshness — the banner must not implicate the Net Sales headline", () => {
+  const PAGE = "app/(dashboard)/scorecard/page.tsx";
+  const src = readFileSync(PAGE, "utf8");
+
+  it("never claims the whole page is behind", () => {
+    // It said "Live-sync figures are behind." above a current headline, because
+    // the banner outlived the RTP tile it was written to caveat.
+    expect(src).not.toMatch(/Live-sync figures are behind/);
+  });
+
+  it("scopes the revenue watermark to the Released panel", () => {
+    expect(src).toMatch(/affects the Released panel only/);
+  });
+
+  it("says outright that the goal, pace and Net Sales are unaffected", () => {
+    expect(src).toMatch(/Net Sales, the goal and the pace are unaffected/);
+    // …and cites the date the headline actually reads.
+    expect(src).toMatch(/cohortAsOf \? ` — they read the sales report through/);
+  });
+
+  it("shows both staleness units", () => {
+    expect(src).toMatch(/stalenessPhraseFull\(dataLagDays, dataCalendarDays\)/);
+    expect(src).toMatch(/stalenessPhraseFull\(revenueLagDays, revenueCalendarDays\)/);
   });
 });
