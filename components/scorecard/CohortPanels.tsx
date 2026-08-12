@@ -96,7 +96,7 @@ export function ExpectedOutcomePanel({
     fix:
       "The numerator is NET SALES, not Report 137 NSA. The NSA version of this rate is " +
       "71.06% against this one's 71.10% — identical to one decimal place, which is why " +
-      "the distinction has to be stated rather than eyeballed. NSA also removes live " +
+      "the distinction has to be stated rather than eyeballed. Report 137 NSA also removes live " +
       "Working and Hold, which are unresolved business rather than loss. Maturation " +
       "INVERTS here: losses accrue over time, so young cohorts read too GOOD and will " +
       "fall. The rate is re-derived as cohorts age, never hardcoded.",
@@ -223,13 +223,13 @@ export function CohortQualityPanel({
               <th className="px-2 py-2 text-right font-semibold" title="Working + hold. Still undecided.">
                 Pending
               </th>
-              <th className="px-2 py-2 text-right font-semibold" title="LP's NSA — fully settled net.">
-                Net (NSA)
+              <th className="px-2 py-2 text-right font-semibold" title="Report 137's NSA — LP's fully settled net. Not the source of record for Net Sales.">
+                Net (Report 137 NSA)
               </th>
               <th className="px-2 py-2 text-right font-semibold" title="Net Sales ÷ Gross Written. Of what we wrote, how much has NOT been permanently lost? Available on any cohort, including the current month.">
                 Net Retention %
               </th>
-              <th className="px-2 py-2 text-right font-semibold" title="Report 137 NSA ÷ Gross Written. Of what we wrote, how much has LP SETTLED? A diagnostic — NOT the basis of the Expected Settled Net forecast, which uses Net Sales ÷ Gross Written. NSA additionally removes live Working and Hold, so on a young cohort this reads far below Net Retention %: July 2026 is 50.9% here and 76.3% to the left, and the gap is unresolved business, not loss.">
+              <th className="px-2 py-2 text-right font-semibold" title="Report 137 NSA ÷ Gross Written. Of what we wrote, how much has LP SETTLED? A diagnostic — NOT the basis of the Expected Settled Net forecast, which uses Net Sales ÷ Gross Written. Report 137 NSA additionally removes live Working and Hold, so on a young cohort this reads far below Net Retention %: July 2026 is 50.9% here and 76.3% to the left, and the gap is unresolved business, not loss.">
                 Net Survival Rate
               </th>
               <th className="px-2 py-2 text-right font-semibold" title="(net + working + hold + cancelled + cd) − gross. A source-data diagnostic; it never adjusts a rate.">
@@ -318,7 +318,7 @@ export function CohortQualityPanel({
         Written) and <strong className="font-semibold">Net Survival Rate</strong> (Report
         137 NSA ÷ Gross Written) are different questions — not permanently lost, versus
         settled by LP. They converge as a cohort ages and are far apart on a young one,
-        because NSA removes Working and Hold while Net Retention keeps them: a $30,000 job
+        because Report 137 NSA removes Working and Hold while Net Retention keeps them: a $30,000 job
         on permit hold is still good business. The <strong className="font-semibold">first</strong>{" "}
         is the assumption behind Expected Settled Net; the second is a diagnostic.
         <br />

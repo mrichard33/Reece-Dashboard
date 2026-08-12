@@ -17,7 +17,6 @@ import {
   OFFICE_SOURCE_CODES,
   marketSources,
 } from "@/lib/scorecard/markets";
-import { issueRateFromFacts, type IssueRateFactRow } from "@/lib/scorecard/issueRate";
 import {
   targetTotals,
   perDayTargets,
@@ -183,9 +182,6 @@ export type ScorecardDerived = {
   /** True when the anchor came from the selected period (vs the current-month
    *  fallback for period-less reads). */
   rate_period_scoped: boolean;
-  /** Historical issue rate (issued ÷ leads, 0–1) behind the Leads goal — a
-   *  derived data point that MOVES with performance; surfaced, never entered. */
-  issue_rate: number | null;
   /** % gap between the goal-anchored sales target (goal ÷ avg sale) and the funnel
    *  flow (demos × close%). A material value flags inconsistent office assumptions;
    *  null when either side is uncomputable. */
@@ -389,12 +385,6 @@ export type TrailingRates = {
    *  fraction). A DERIVED data point (ruled 2026-08-04), never entered by hand —
    *  it turns issues-needed into leads-needed (leads = issues ÷ this). The
    *  denominator is true top-of-funnel raw_leads_in (ruled 2026-08-05) — the
-   *  warehouse `leads` column is the appointment-set cohort and structurally
-   *  equals Sets. Months without raw_leads_in (pre-June-2026) are excluded from
-   *  BOTH sides of the ratio; a window with no raw-lead months → null (renders
-   *  "—", drives the visible widen/fallback path — never a silent substitute).
-   *  DISTINCT from the pct_issue actual, which is issued ÷ SETS. */
-  issueRate: number | null;
   /** Which window produced the rates (null only when there's no data at all). */
   window: RateWindow | null;
   /** Why nsli/avgSale are null, when they are. Lets a caller render "—" WITH a
@@ -515,10 +505,6 @@ export function computeTrailingRates(
         : w.issued > 0
           ? `${w.issued} issued in this window but no net reported against any of it — net is unmeasured, not zero`
           : "no issued volume in the trailing window yet",
-    // Same window as nsli/avgSale — one window, one internally consistent
-    // chain. Denominator = raw leads in (paired months only); 4-dp fraction;
-    // zero raw leads → null (renders "—", never Infinity).
-    issueRate: w.rawLeads > 0 ? Math.round((w.issuedRaw / w.rawLeads) * 10000) / 10000 : null,
     window,
     sampleN: w.sales,
   });
@@ -545,7 +531,7 @@ export function computeTrailingRates(
   if (c3.sales > 0) return at(c3, "company");
   // No usable data anywhere (brand-new market, empty warehouse).
   return {
-    nsli: null, avgSale: null, issueRate: null, window: null, sampleN: 0,
+    nsli: null, avgSale: null, window: null, sampleN: 0,
     unmeasuredReason: "no usable trailing history for this market or the company",
   };
 }
@@ -631,46 +617,6 @@ export async function getTrailingRates(
     latestRateMonths((company.data ?? []) as Record<string, unknown>[]),
     rateOpts,
   );
-}
-
-/**
- * Current report facts needed for the issue-rate fallback (§8): Sales
- * Efficiency `issued` and Lead Disposition `leads` per market. Small result
- * set (a few dozen rows); a failure degrades to no fallback, never to a wrong
- * rate.
- */
-export async function fetchIssueRateFacts(sb: Sb): Promise<IssueRateFactRow[]> {
-  try {
-    const { data, error } = await sb
-      .from("lp_report_facts")
-      .select("report_type, market, metric, value_count, scope")
-      .eq("is_current", true)
-      .in("report_type", ["sales_efficiency", "lead_disposition"])
-      .in("metric", ["issued", "leads"])
-      .limit(500);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as IssueRateFactRow[];
-  } catch (err) {
-    console.error("[scorecard] issue-rate facts fetch failed:", (err as Error)?.message ?? err);
-    return [];
-  }
-}
-
-/**
- * The issue rate for a market: rolling-window history when it exists, else the
- * current YTD report snapshots (§8). Returns the basis so the UI can say which
- * one answered rather than presenting two different numbers under one label.
- */
-export function resolveIssueRate(
-  trailing: number | null,
-  facts: IssueRateFactRow[],
-  sources: readonly string[],
-): { rate: number | null; basis: "trailing" | "report_ytd" | null } {
-  if (trailing != null) return { rate: trailing, basis: "trailing" };
-  const fromFacts = issueRateFromFacts(facts, sources);
-  return fromFacts.rate != null
-    ? { rate: fromFacts.rate, basis: "report_ytd" }
-    : { rate: null, basis: null };
 }
 
 /**
@@ -774,7 +720,6 @@ function derive(
     rate_sample_n: rates?.sampleN ?? null,
     rate_anchor_month: anchor?.anchorMonth ?? null,
     rate_period_scoped: anchor?.periodScoped ?? false,
-    issue_rate: rates?.issueRate ?? null,
     sales_target_divergence_pct,
     target_leads_per_day: targets.perDay.leadsPerDay,
     target_issued_per_day: targets.perDay.issuedPerDay,
@@ -1002,10 +947,9 @@ async function buildView(
   // computeTrailingRates, and the maturation-lag follow-up noted there.
   const rateOpts = { windowStart: rolling90WindowStart(), excludeFrom: rateAnchorMonth };
 
-  const [{ data: goalsRows }, prior, issueFacts] = await Promise.all([
+  const [{ data: goalsRows }, prior] = await Promise.all([
     sb.from("scorecard_goals").select("*").in("market", goalCodes),
     fetchPriorMonthsBySource(sb, priorCodes, rateAnchorMonth, { includeAnchorMonth: true }),
-    fetchIssueRateFacts(sb),
   ]);
   const goalsBySource = new Map<string, LiveGoalRow>();
   for (const g of (goalsRows ?? []) as LiveGoalRow[]) goalsBySource.set(g.market, g);
@@ -1066,12 +1010,7 @@ async function buildView(
     companyMonths,
     rateOpts,
   );
-  const displayIssue = resolveIssueRate(
-    trailingRates.issueRate,
-    issueFacts,
-    isCompany ? OFFICE_SOURCE_CODES : displaySources,
-  );
-  const rates: TrailingRates = { ...trailingRates, issueRate: displayIssue.rate };
+  const rates: TrailingRates = trailingRates;
   const effectiveGoals: ScorecardGoals = {
     ...primaryGoals,
     market,
@@ -1156,10 +1095,6 @@ async function buildView(
       nsli: uRates.nsli,
       avgSale: uRates.avgSale,
       targetDemoPct: demoPct,
-      // §8: offices carry no raw_leads_in history, so the trailing rate is
-      // null for every one of them — fall back to the current YTD snapshots
-      // (137 issued ÷ 135 leads) so the Leads goal resolves per office.
-      issueRate: resolveIssueRate(uRates.issueRate, issueFacts, srcs).rate,
     });
   });
   const targets: ResolvedTargets = {
@@ -1462,12 +1397,6 @@ export type MarketGoalEntry = {
    *  surfaced so a small-market figure is explainable. */
   rateWindow: RateWindow | null;
   rateSampleN: number;
-  /** CALCULATED historical issue rate (issued ÷ leads, 0–1) — turns issues-needed
-   *  into leads-needed. Derived from actuals (ruled 2026-08-04), never editable. */
-  issueRate: number | null;
-  /** Which source answered: the rolling window, or the current YTD report
-   *  snapshots (§8 fallback while per-office lead history accumulates). */
-  issueRateBasis: "trailing" | "report_ytd" | null;
 };
 
 /** Latest distribution run per month (audit row summary for the editor UI). */
@@ -1521,9 +1450,6 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
     .in("goal_month", months);
   const monthly = (monthlyRows as ScorecardMonthlyGoal[] | null) ?? [];
 
-  // §8 fallback source — fetched once and shared by every market entry.
-  const issueFacts = await fetchIssueRateFacts(sb);
-
   const entries = await Promise.all(
     EDITOR_MARKETS.map(async (market): Promise<MarketGoalEntry> => {
       const { data } = await sb
@@ -1547,15 +1473,6 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         goals.goal_mode === "growth_pct" && goals.growth_pct != null
           ? Math.round(baseline.value * (1 + goals.growth_pct / 100))
           : goals.monthly_goal_dollars;
-      // §8: an office has no raw_leads_in history, so `rates.issueRate` is
-      // null for all of them and every Leads goal read "unavailable". The
-      // current YTD snapshots answer it (137 issued ÷ 135 leads); the basis is
-      // returned so the editor states which one it used.
-      const issue = resolveIssueRate(
-        rates.issueRate,
-        issueFacts,
-        market === "REECE" ? OFFICE_SOURCE_CODES : marketSources(market),
-      );
       return {
         market,
         goals,
@@ -1565,8 +1482,6 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
         avgSale: rates.avgSale,
         rateWindow: rates.window,
         rateSampleN: rates.sampleN,
-        issueRate: issue.rate,
-        issueRateBasis: issue.basis,
       };
     }),
   );

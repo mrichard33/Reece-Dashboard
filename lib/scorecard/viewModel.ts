@@ -11,6 +11,7 @@
 import { usd, num } from "@/lib/utils";
 import { pct } from "@/components/scorecard/format";
 import { prorateGoal } from "@/lib/scorecard/paceTargets";
+import { METRIC_LABELS, METRIC_FORMULAS } from "@/lib/scorecard/labels";
 import type { FunnelStage } from "@/components/scorecard/viz/Funnel";
 import type { RevenueBucket } from "@/components/scorecard/viz/RevenueStack";
 import type { RankedItem } from "@/components/scorecard/viz/RankedBars";
@@ -124,9 +125,6 @@ export type ScorecardVM = {
      *  as a visible flag, never a silent substitution (ruled 2026-08-04). */
     rateWidened: boolean;
     rateSampleN: number | null;
-    /** Historical issue rate (issued ÷ leads, 0–1) from the same window — drives
-     *  the derived Leads goal; surfaced on the NSLI tile. Null = no leads history. */
-    issueRate: number | null;
     /** Period-scoped rate anchor (first-of-month the window ends before). */
     rateAnchorMonth: string | null;
     ratePeriodScoped: boolean;
@@ -414,8 +412,13 @@ export function buildScorecardVM(
 
   // ── rates ──
   const rates = [
-    { key: "close", label: "Close %", actual: a.close_pct ?? 0, target: g.target_close_pct, higher: true, desc: "Sold ÷ demos" },
-    { key: "demo", label: "Demo %", actual: a.demo_pct ?? 0, target: g.target_demo_pct, higher: true, desc: "Demos ÷ net issued" },
+    // ⚠️ `close_pct` is `sold ÷ demos` and its LABEL is "Demo → Sale %".
+    // "Close %" is RESERVED for `sales ÷ issued appointments`, which nothing
+    // computes yet — see lib/scorecard/labels.ts. The column name stays
+    // `close_pct` (the writer emits it, and renaming it is a migration); what
+    // changes is that the screen stops calling it something it isn't.
+    { key: "demoToSale", label: METRIC_LABELS.demoToSale, actual: a.close_pct ?? 0, target: g.target_close_pct, higher: true, desc: METRIC_FORMULAS.demoToSale },
+    { key: "demo", label: METRIC_LABELS.demo, actual: a.demo_pct ?? 0, target: g.target_demo_pct, higher: true, desc: "Demos ÷ net issued" },
     { key: "goodRate", label: "Good Rate %", actual: a.good_rate_pct ?? 0, target: g.target_good_rate_pct, higher: true, desc: "(Sold − cancelled) ÷ sold $" },
     { key: "ko", label: "KO %", actual: a.ko_pct ?? 0, target: g.target_ko_pct, higher: false, desc: "Knocked-off jobs" },
   ];
@@ -597,7 +600,6 @@ export function buildScorecardVM(
       rateWindow: d.rate_window,
       rateWidened: d.rate_window != null && d.rate_window !== "rolling_90d" && d.rate_window !== "trailing_3",
       rateSampleN: d.rate_sample_n,
-      issueRate: d.issue_rate,
       rateAnchorMonth: d.rate_anchor_month,
       ratePeriodScoped: d.rate_period_scoped,
       daysElapsed,

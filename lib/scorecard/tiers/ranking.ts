@@ -12,6 +12,7 @@
  * SECONDARY column that never drives sort order.
  */
 import type { Measured } from "./types";
+import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
 export type RankMetricKey = "close" | "survival" | "nsli" | "cost_per_sale";
 
@@ -24,9 +25,13 @@ export type RankMetricDef = {
 };
 
 export const RANK_METRICS: readonly RankMetricDef[] = [
-  { key: "close", label: "Close %", lowerIsBetter: false, unit: "pct" },
+  // Keys are stable addresses and stay; the LABELS are what a reader sees.
+  // `close` is sold ÷ sat — Demo → Sale %, not Close %. `nsli` is net sales per
+  // ISSUED APPOINTMENT: the denominator is appointment/attempt grain, not lead
+  // grain, and "per Issued Lead" said otherwise for as long as it existed.
+  { key: "close", label: METRIC_LABELS.demoToSale, lowerIsBetter: false, unit: "pct" },
   { key: "survival", label: "Survival %", lowerIsBetter: false, unit: "pct" },
-  { key: "nsli", label: "NSLI", lowerIsBetter: false, unit: "usd" },
+  { key: "nsli", label: METRIC_LABELS.netPerIssuedAppointment, lowerIsBetter: false, unit: "usd" },
   { key: "cost_per_sale", label: "Cost / sale", lowerIsBetter: true, unit: "usd" },
 ];
 

@@ -24,15 +24,19 @@ const round1 = (v: number): number => Math.round(v * 10) / 10;
 export type TargetChainInput = {
   /** Full-period $ goal for this office (Σ of the months in range). */
   periodGoal: number;
-  /** Trailing NSLI (net ÷ leads issued); null/0 → issued & demo targets null. */
+  /**
+   * Trailing NET SALES $ PER ISSUED APPOINTMENT; null/0 → issued & demo targets
+   * null.
+   *
+   * ⚠️ The field is still called `nsli` because the stored column is. The metric
+   * is NOT "Net $ per Issued Lead": the denominator is `NumIssued`, which is
+   * appointment/attempt grain. See lib/scorecard/labels.ts.
+   */
   nsli: number | null;
   /** Trailing NET average sale (net ÷ sales); null/0 → closed target null. */
   avgSale: number | null;
   /** Target demo (sit) rate, 0–100. */
   targetDemoPct: number;
-  /** Historical issue rate (issued ÷ leads, 0–1 fraction); null/0 → leads
-   *  target null (rendered "—"), never NaN/Infinity. */
-  issueRate: number | null;
 };
 
 export type TargetTotals = {
@@ -49,13 +53,30 @@ export type PerDayTargets = {
   closedPerDay: number | null;
 };
 
-/** Full-period target counts for one office via the locked NSLI chain. */
+/**
+ * Full-period target counts for one office.
+ *
+ * ⚠️ `leads` IS ALWAYS NULL, and that is the whole point (§6, §13).
+ *
+ * It used to be `issued ÷ issueRate`, which divides an APPOINTMENT-grain
+ * numerator by a LEAD-grain rate. Those grains have no proven bridge: 78,557
+ * Lead Disposition rows sit over 71,040 distinct leads, one lead carries up to
+ * eleven of them, `num_superseded` reaches 10, and `Reset` appears inside the
+ * verified Issued decomposition. A leads-needed figure built on that ratio is
+ * not approximately right, it is undefined — so it is not shipped, not
+ * approximated, and not quietly rounded into existence.
+ *
+ * It remains in the return shape so callers keep rendering the row as
+ * unmeasured WITH ITS REASON, rather than the row silently disappearing and
+ * taking the open question with it.
+ */
+export const LEADS_NEEDED_UNMEASURED_REASON = "grain bridge not established";
+
 export function targetTotals(i: TargetChainInput): TargetTotals {
   const issued = i.nsli != null && i.nsli > 0 ? i.periodGoal / i.nsli : null;
-  const leads = issued != null && i.issueRate != null && i.issueRate > 0 ? issued / i.issueRate : null;
   const demoed = issued != null ? issued * (i.targetDemoPct / 100) : null;
   const closed = i.avgSale != null && i.avgSale > 0 ? i.periodGoal / i.avgSale : null;
-  return { leads, issued, demoed, closed };
+  return { leads: null, issued, demoed, closed };
 }
 
 /** Total ÷ period selling days, rounded to 0.1. Null on missing total or 0 days. */

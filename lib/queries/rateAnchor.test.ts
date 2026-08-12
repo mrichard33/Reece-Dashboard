@@ -76,7 +76,6 @@ describe("MTD vs YTD produce different rates on the same fixture data (test 23)"
     expect(ytdRates.nsli).toBe(Math.round(570_000 / 144));
 
     expect(mtdRates.nsli).not.toBe(ytdRates.nsli);
-    expect(mtdRates.issueRate).not.toBe(ytdRates.issueRate);
     expect(mtdRates.avgSale).not.toBe(ytdRates.avgSale);
   });
 });

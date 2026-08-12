@@ -84,7 +84,7 @@ describe("§Naming — no rendered label calls gross−cancelled Net or NSA", ()
   it("reserves Net / NSA for LP's nsa_cents", () => {
     const src = readFileSync("components/scorecard/RevenueCard.tsx", "utf8");
     // The NSA row carries the word Net and is bound to netAfterCancels.
-    expect(src).toMatch(/label:\s*"Net \(NSA\)"[\s\S]{0,80}?netValue/);
+    expect(src).toMatch(/label:\s*"Net \(Report 137 NSA\)"[\s\S]{0,80}?netValue/);
     expect(src).toMatch(/const netValue\s*=\s*f\.netAfterCancels/);
   });
 
@@ -94,7 +94,7 @@ describe("§Naming — no rendered label calls gross−cancelled Net or NSA", ()
     // "Net (NSA)"    → LP's nsa_cents (report 137)
     // "Net released" → RTP net by milestone date (report 134)
     // Both are net. Nothing else may use the word.
-    expect(new Set(netLabels)).toEqual(new Set(["Net (NSA)", "Net released"]));
+    expect(new Set(netLabels)).toEqual(new Set(["Net (Report 137 NSA)", "Net released"]));
   });
 });
 
@@ -148,7 +148,7 @@ describe("§Naming — Net Sales is defined wherever it is named", () => {
 
   it("the cohort table distinguishes all four dollar columns by name", () => {
     const src = readFileSync(PANELS, "utf8");
-    for (const label of ["Gross Written", "Net Sales", "Lost", "Pending", "Net (NSA)"]) {
+    for (const label of ["Gross Written", "Net Sales", "Lost", "Pending", "Net (Report 137 NSA)"]) {
       expect(src).toContain(`>\n                ${label}\n              </th>`);
     }
   });

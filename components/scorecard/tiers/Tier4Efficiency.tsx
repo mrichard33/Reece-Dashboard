@@ -1,14 +1,16 @@
 import { CELL, HEAD, LABEL_CELL, SECONDARY, TierShell, Val } from "./TierShell";
 import { num } from "@/lib/utils";
 import type { Tier4, Tier4Row } from "@/lib/scorecard/tiers/tier4";
+import { METRIC_FORMULAS } from "@/lib/scorecard/labels";
 
 /**
- * TIER 4 — Marketing efficiency, plus NSLI by source.
+ * TIER 4 — Marketing efficiency, plus Net Sales $ per issued appointment by source.
  *
- * The by-source table is the allocation tool. NSLI is the ceiling on what a
+ * The by-source table is the allocation tool. Net $ per issued appointment is
+ * the ceiling on what a
  * lead from that source can be worth; ranking by it descending, with volume
  * beside it, is how you decide where the next dollar goes. Volume matters for
- * sizing but never for ordering — a $9,000 NSLI on eleven leads is a curiosity,
+ * sizing but never for ordering — a $9,000 rate on eleven appointments is a curiosity,
  * not a budget line, and the volume column is what stops it being mistaken for
  * one.
  */
@@ -46,7 +48,7 @@ export function Tier4Efficiency({ data, showSources }: { data: Tier4; showSource
       meta={data.meta}
       action={
         <span className="font-mono text-[11px] font-medium text-slate-500 dark:text-slate-400">
-          planning NSLI <Val m={data.planningNsli} kind="usd" /> · {data.nsliWindowLabel}
+          planning Net Sales $ / issued appt <Val m={data.planningNsli} kind="usd" /> · {data.nsliWindowLabel}
         </span>
       }
     >
@@ -59,7 +61,7 @@ export function Tier4Efficiency({ data, showSources }: { data: Tier4; showSource
               <th className={HEAD}>Cost / issue</th>
               <th className={HEAD}>Cost / sale</th>
               <th className={HEAD}>Mktg % of net</th>
-              <th className={HEAD}>NSLI</th>
+              <th className={HEAD} title={METRIC_FORMULAS.netPerIssuedAppointment}>Net $ / issued appt</th>
             </tr>
           </thead>
           <tbody>
@@ -80,9 +82,9 @@ export function Tier4Efficiency({ data, showSources }: { data: Tier4; showSource
       {showSources && (
         <div className="border-t border-slate-100 px-5 py-3 dark:border-slate-800">
           <h4 className="font-display text-[12.5px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
-            NSLI by source
+            Net Sales $ per issued appointment, by source
             <span className="ml-1.5 font-medium normal-case tracking-normal text-slate-400 dark:text-slate-500">
-              — the most payable per issued lead before a source stops being profitable ·{" "}
+              — the most payable per issued APPOINTMENT before a source stops being profitable ·{" "}
               {data.sourceWindowLabel}
             </span>
           </h4>
@@ -97,7 +99,7 @@ export function Tier4Efficiency({ data, showSources }: { data: Tier4; showSource
                   <tr>
                     <th className={`${LABEL_CELL} font-semibold`}>#</th>
                     <th className={`${LABEL_CELL} font-semibold`}>Source</th>
-                    <th className={HEAD}>NSLI</th>
+                    <th className={HEAD} title={METRIC_FORMULAS.netPerIssuedAppointment}>Net $ / issued appt</th>
                     <th className={HEAD}>Issued</th>
                     <th className={HEAD}>Net sold</th>
                   </tr>
