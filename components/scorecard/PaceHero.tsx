@@ -33,17 +33,38 @@ function windowLabel(w: string | null): string {
   }
 }
 
-export function PaceHero({ vm }: { vm: ScorecardVM }) {
+export function PaceHero({
+  vm,
+  netSalesDollars = null,
+}: {
+  vm: ScorecardVM;
+  /**
+   * Net Sales for the period — Gross Written − Cancellations − Financing
+   * Denied, from the cohort layer. THE GOAL-BEARING BASIS (2026-08-12).
+   *
+   * When supplied it replaces RTP as the actual, and the three figures derived
+   * from the actual — Projected Pace, Balance, and the headline itself — are
+   * recomputed from it here rather than read off `vm.pace`. That is deliberate:
+   * the goal, the actual, the pace and the target-to-date must share one
+   * sales-dollar basis, so they are computed in one place from one input. Null
+   * falls back to the previous RTP behaviour so the panel still renders if the
+   * cohort view is unreachable.
+   */
+  netSalesDollars?: number | null;
+}) {
   const p = vm.pace;
 
-  // Projected period-end net = current net run-rate × selling days in the whole
-  // period. `sellingDays` and the `paceGoal` behind Target to Date now come off
-  // the SAME period window (the whole months the goal sums over) — see §1 in
+  const onNetSales = netSalesDollars != null;
+  const actual = onNetSales ? netSalesDollars : p.netSales;
+
+  // Projected period-end = current run-rate × selling days in the whole period.
+  // `sellingDays` and the `paceGoal` behind Target to Date come off the SAME
+  // period window (the whole months the goal sums over) — see §1 in
   // lib/queries/periodBasis.test.ts. Until 2026-08-06 this expanded a YTD
   // run-rate over the whole calendar year while the goal covered eight months,
   // which is how Projected Pace rendered $88.4M against an $84.5M goal on the
   // same screen as a −$22.5M Balance.
-  const projected = p.daysElapsed > 0 ? Math.round((p.netSales / p.daysElapsed) * p.sellingDays) : 0;
+  const projected = p.daysElapsed > 0 ? Math.round((actual / p.daysElapsed) * p.sellingDays) : 0;
   // The formula is unchanged. What changed is the claim it makes about itself:
   // extrapolating a full period from 6 of 26 days is arithmetic, not a forecast,
   // and released dollars are structurally low early because net matures over
@@ -51,8 +72,11 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
   const EARLY_PERIOD_THRESHOLD = 0.3;
   const early =
     p.sellingDays > 0 && p.daysElapsed / p.sellingDays < EARLY_PERIOD_THRESHOLD;
-  // Balance = net vs the prorated target-to-date (dollars ahead of / behind pace).
-  const balance = Math.round(p.gap);
+  // Balance = actual vs the prorated target-to-date (dollars ahead of / behind
+  // pace). Recomputed on the Net Sales basis rather than reusing `p.gap`, which
+  // was measured against RTP — mixing the two would put a Net Sales headline
+  // above a Balance that disagrees with it.
+  const balance = onNetSales ? Math.round(actual - p.paceGoal) : Math.round(p.gap);
   // Projected Pace and Balance share the pace verdict: with a per-working-day goal,
   // beating the projected period goal ⇔ being ahead of the to-date target.
   const balTone: Kpi["tone"] = balance >= 0 ? "pos" : "neg";
@@ -131,20 +155,39 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
         ? `Prorated to ${usDate(p.revenueAsOf!)} — the Net Report's coverage date — not to ${usDate(vm.snapshot.asOfDate)}, which is how far the COUNTS reach. Released dollars are not knowable past the last report, so the target they are measured against stops on the same day.`
         : undefined,
     },
-    {
-      label: `Net — Released ${vm.abbr}`,
-      sub: pending
-        ? "report pending — no released figure yet"
-        : vm.provisional
-          ? "provisional · ties to report at close"
-          : revThrough
-            ? `released ${revThrough}`
-            : "released to production (RTP)",
-      value: pending ? "—" : usd(p.netSales),
-      title: revThrough
-        ? "Released to production (RTP), by production milestone date, from the Net Report. The report is the only source of net — the warehouse cannot produce it — so this figure reaches the report's coverage date and no further."
-        : undefined,
-    },
+    // THE HEADLINE ACTUAL. Until 2026-08-12 this tile showed RTP — report 134,
+    // released to production — which is dated by production MILESTONE, so a
+    // contract sold in April lands in August. It answered a production question
+    // on a sales scoreboard and could not be paced against a sales goal. RTP is
+    // still ingested and still rendered, on the Released panel below, where its
+    // basis is stated and nothing is paced against it.
+    onNetSales
+      ? {
+          label: `Net Sales ${vm.abbr}`,
+          sub: "gross written − cancellations − financing denied",
+          value: usd(actual),
+          title:
+            "Net Sales: the contract value written in this period, less the two " +
+            "TERMINAL losses — cancellations and financing denials. Working and " +
+            "hold dollars are still counted, because they are still live deals. " +
+            "This is the basis the goal, the pace and the efficiency denominator " +
+            "are all measured on. It is dated by CONTRACT date, so it never " +
+            "borrows a dollar from another month.",
+        }
+      : {
+          label: `Net — Released ${vm.abbr}`,
+          sub: pending
+            ? "report pending — no released figure yet"
+            : vm.provisional
+              ? "provisional · ties to report at close"
+              : revThrough
+                ? `released ${revThrough}`
+                : "released to production (RTP)",
+          value: pending ? "—" : usd(p.netSales),
+          title: revThrough
+            ? "FALLBACK — the cohort view is unreachable, so this is released to production (RTP) by production milestone date, from the Net Report. It is a different cohort from the sales goal and should not be paced against it."
+            : undefined,
+        },
     {
       label: "Balance",
       sub: pending ? "report pending" : balance >= 0 ? "ahead of target" : "behind target",
@@ -153,7 +196,7 @@ export function PaceHero({ vm }: { vm: ScorecardVM }) {
     },
     { label: "Elapsed / Working Days", sub: `${num(Math.round(p.elapsedPct))}% of period`, value: `${num(p.daysElapsed)} / ${num(p.sellingDays)}` },
     { label: "Average Sale", sub: `net ÷ sales · ${windowSub}`, value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle, flag: p.rateWidened },
-    { label: "NSLI", sub: `net ÷ leads issued · ${windowSub}${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
+    { label: "Net Sales $ / Issued Lead", sub: `net sales ÷ leads issued · ${windowSub}${issuePct}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
   ];
 
   const toneCls = (t: Kpi["tone"]) =>

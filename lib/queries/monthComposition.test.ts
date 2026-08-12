@@ -5,6 +5,7 @@ import {
   isMonthAligned,
   isPeriodGap,
   monthsInPeriod,
+  type FactScope,
   type ReportFactRow,
 } from "./reportFacts.core";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
@@ -36,7 +37,10 @@ const THREE_M = period({});
 
 const se = (
   monthStart: string,
-  scope: "month" | "mtd" | "ytd",
+  // The full FactScope, not a subset: §6 below builds a "custom"-scope snapshot
+  // to prove a directly-covering snapshot beats composition, and this helper
+  // could not express it.
+  scope: FactScope,
   periodEnd: string,
   asOf: string,
   soldCount: number,

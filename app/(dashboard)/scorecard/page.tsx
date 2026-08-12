@@ -13,7 +13,14 @@ import { FunnelGoalTable } from "@/components/scorecard/FunnelGoalTable";
 import { RevenueCard } from "@/components/scorecard/RevenueCard";
 import { PerDayCard } from "@/components/scorecard/PerDayCard";
 import { ByMarketTable } from "@/components/scorecard/ByMarketTable";
+import { ExpectedOutcomePanel, CohortQualityPanel } from "@/components/scorecard/CohortPanels";
 import { EditGoalsPanel } from "@/components/scorecard/EditGoalsPanel";
+import {
+  fetchCurrentCohorts,
+  foldCohortsByMonth,
+  matureRate,
+  netSalesCents,
+} from "@/lib/queries/cohorts";
 import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries/scorecard";
 import { getByMarket } from "@/lib/queries/byMarket";
 import { getReportFacts, getPartialCoverage } from "@/lib/queries/reportFacts";
@@ -47,7 +54,7 @@ export default async function ScorecardPage({
   // derives "this month" from the browser's local clock.
   const currentMonthET = todayET().slice(0, 7);
 
-  const [view, byMarket, reportFacts, partialCoverage] = await Promise.all([
+  const [view, byMarket, reportFacts, partialCoverage, allCohorts] = await Promise.all([
     getScorecardForPeriod(MARKET, resolved).catch((err) => {
       console.error(`[scorecard] view ${MARKET} failed:`, (err as Error)?.message ?? err);
       return null;
@@ -62,7 +69,36 @@ export default async function ScorecardPage({
     // Partial-coverage flags for the current snapshots. Never rejects — an empty
     // map just leaves the freshness chip at its existing wording.
     getPartialCoverage(),
+    // ⑤ Cohort observations (lp_cohort_maturation). Never rejects; [] hides
+    // panels ② and ③ rather than rendering them at $0.
+    fetchCurrentCohorts(),
   ]);
+
+  // ── Cohorts, folded to the selected market ────────────────────────────────
+  //
+  // §7 applies to the MODEL as much as to the reporting: sum the market's rows
+  // and derive rates from the summed numerator and denominator. For REECE that
+  // means every market summed per contract month — never an average of the
+  // markets' rates, and never one market's row read as the company's.
+  const cohortRows = MARKET === "REECE" ? allCohorts : allCohorts.filter((c) => c.market === MARKET);
+  const companyCohorts = foldCohortsByMonth(cohortRows);
+  // The eligibility window is measured to the period's as-of, not to `new
+  // Date()`, so the figure is reproducible from the same inputs tomorrow.
+  const matureRateM = matureRate(companyCohorts, resolved.asOf);
+  const cohortAsOf = companyCohorts.reduce<string | null>(
+    (max, c) => (max == null || c.observedOn > max ? c.observedOn : max),
+    null,
+  );
+  // Gross Written for the SELECTED period's contract month — the multiplicand
+  // of the forecast. Only the current month; a prior-month dollar must never
+  // enter a current-month figure.
+  const currentCohort = companyCohorts.find((c) => c.contractMonth === resolved.periodStart);
+  const currentCohortGrossCents = currentCohort?.grossCents ?? null;
+  // THE HEADLINE ACTUAL — Gross Written − Cancellations − Financing Denied, for
+  // the selected period's own contract month. Null (not 0) when the cohort view
+  // is unreachable, which drops the hero back to its RTP fallback rather than
+  // rendering a confident zero.
+  const currentCohortNetSalesCents = currentCohort ? netSalesCents(currentCohort) : null;
   // Admin-only editor data — never let its fan-out take down the page; the panel
   // simply hides if it can't load.
   const goalsEditor = isAdmin
@@ -236,10 +272,36 @@ export default async function ScorecardPage({
                   </div>
                 )}
 
-                {/* ① Goal & Pace */}
-                <PaceHero vm={vm} />
+                {/* ① Goal & Pace — SALES PRODUCTION, measured, on a Net Sales basis. */}
+                <PaceHero
+                  vm={vm}
+                  netSalesDollars={
+                    currentCohortNetSalesCents == null
+                      ? null
+                      : Math.round(currentCohortNetSalesCents / 100)
+                  }
+                />
 
-                {/* ② Funnel vs Goal */}
+                {/*
+                  ② Expected Economic Outcome — MODELED. Sits directly under the
+                  measured hero and is drawn as an estimate (dashed, amber) so the
+                  two are never confused. It answers "what is this month's writing
+                  worth once it settles", which is a different question from "how
+                  are we doing", and it is not a quality measure: it is Gross
+                  Written × a historical constant.
+                */}
+                <ExpectedOutcomePanel
+                  grossWrittenCents={currentCohortGrossCents}
+                  monthlyGoalDollars={vm.pace.monthlyGoal}
+                  rate={matureRateM}
+                  abbr={vm.abbr}
+                  asOf={cohortAsOf}
+                />
+
+                {/* ③ Cohort Quality — MEASURED. Where the quality incentive lives. */}
+                <CohortQualityPanel cohorts={companyCohorts} asOf={cohortAsOf} />
+
+                {/* ④ Funnel vs Goal */}
                 <FunnelGoalTable view={view} vm={vm} />
 
                 {/*
