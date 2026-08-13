@@ -173,9 +173,9 @@ export function prorateGoal(
 
 /**
  * The date the REVENUE target prorates to — the earlier of the period's own
- * as-of and the Net Report's coverage date.
+ * as-of and report 134's RTP coverage date.
  *
- * Released dollars are knowable only as far as the Net Report reaches, so a
+ * Released dollars are knowable only as far as report 134 reaches, so a
  * revenue target prorated any further is understated by construction: on
  * 2026-08-11 revenue settled through Aug 6 was measured against a target
  * prorated to Aug 10, and every market read "behind pace" regardless of

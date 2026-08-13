@@ -25,10 +25,26 @@ export type FreshnessChip = {
   tone: FreshnessTone;
 };
 
+/**
+ * ⚠️ D3 — THERE IS NO NET REPORT, and this copy used to promise one.
+ *
+ * It read "not yet reconciled to the official Net Report … expected to move
+ * when the month closes and the report lands", which described a source that
+ * does not exist and is not coming. Reece Net Sales is computed from Report 137
+ * and nothing else: `GSA − GSACancelled − GSACD`. 137 is authoritative BECAUSE
+ * it decomposes the loss into Cancellations and Financing Denied separately — a
+ * single net figure from some other report could not support Permanent Loss %,
+ * Net Retention %, or the §7 cohort quality panel.
+ *
+ * Restatement is already solved without a second source: §15's cohort re-pull
+ * re-observes 137 for the current month and every prior month still young or
+ * still holding Working/Hold. A July cancellation landing in September appears
+ * on the next re-pull, and the demoted snapshots ARE the settlement series.
+ */
 const PROVISIONAL_DEF =
-  "Provisional: computed from the live LP sync, not yet reconciled to the official " +
-  "Net Report. It is an estimate for the in-progress month and is expected to move " +
-  "when the month closes and the report lands.";
+  "Provisional: computed from the live LP sync for the in-progress month. It is " +
+  "an estimate and is expected to move as report 137 re-observes the cohort — " +
+  "cancellations and financing declines land after the sale, not with it.";
 
 /**
  * The header chip. `computedFrom` mirrors `lp_market_scorecard_daily.computed_from`:
@@ -78,11 +94,20 @@ export function freshnessChip(input: {
   }
 
   if (input.computedFrom === "net_report_rtp") {
+    // ⚠️ The COLUMN VALUE stays `net_report_rtp` — it is the warehouse's, and
+    // renaming it is a migration with no reader benefit. The LABEL changes,
+    // because D3 forbids presenting anything as a "Net Report actual".
+    //
+    // Note this row is RELEASED-to-production, not Net Sales: this table's
+    // revenue is `rtp_net_by_milestone_date`. So it is NOT relabelled "Report
+    // 137 actuals" either — that would swap one wrong provenance for another,
+    // on a figure that after A2/B feeds only the Released panel.
     return {
-      text: `${when} · Net Report actual`,
+      text: `${when} · Released actual`,
       title:
-        "Closed month, report-sourced — ties to the official Net Report " +
-        "(Released-to-Production) to the penny. Not an estimate.",
+        "Closed month, report-sourced — released-to-production value by " +
+        "milestone date, exact rather than estimated. A different cohort from " +
+        "Net Sales, which comes from report 137.",
       tone: "emerald",
     };
   }
