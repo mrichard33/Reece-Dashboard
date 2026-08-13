@@ -151,6 +151,27 @@ export type LeadsFacts = {
   reconLeads: number | null;
   /** 135 − 136. Expected |delta| ≤ 4 on the YTD pull (see §5 gate). */
   reconDelta: number | null;
+  /**
+   * ── THE LEAD GRAIN (2026-08-13) ────────────────────────────────────────────
+   *
+   * `leads` above is a ROW count. Report 135 is emitted at lead ×
+   * disposition-state grain, so it does not answer "how many leads" — history
+   * carries 243,917 rows over 72,570 distinct leads, and one lead's rows can
+   * hold different entry_dates (5,464 do, up to 12) because the date rides the
+   * disposition row.
+   *
+   * `distinctLeads` and `superseded` are the same period at LEAD grain.
+   * `superseded` is LP's own count of duplicate records folded into a
+   * surviving lead — its merge decision, reported, not a match we inferred.
+   *
+   * NULL means the snapshot predates LP-MCP publishing these facts, and MUST
+   * render unmeasured. Zero is a real answer here — a period genuinely can
+   * have no duplicates — so coercing absent to 0 would make "we did not
+   * measure" indistinguishable from "there were none". That is the same defect
+   * class as `raw_leads_in` in this file's own buildLeads header.
+   */
+  distinctLeads: number | null;
+  superseded: number | null;
 };
 
 /**
@@ -728,12 +749,22 @@ function buildLeads(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode:
   );
   const recon = marketCode === "REECE" ? sumMetric(sc, "leads") : { seen: false, count: 0 };
 
+  // Lead-grain facts. Both are additive across a market's branches BY
+  // CONSTRUCTION — LP-MCP assigns each lead to the branch of its lowest
+  // row_num precisely so that summing branch rows here is correct. Without
+  // that, a distinct count would over-add for the 429 leads that appear under
+  // more than one branch. See 2026-08-13d_lead_grain_supersedes.sql.
+  const distinct = sumMetric(ld, "leads_distinct");
+  const superseded = sumMetric(ld, "leads_superseded");
+
   return {
     leads: leads.count,
     basis: "lead_disposition",
     asOf: ld[0]!.as_of_date,
     reconLeads: recon.seen ? recon.count : null,
     reconDelta: recon.seen ? leads.count - recon.count : null,
+    distinctLeads: distinct.seen ? distinct.count : null,
+    superseded: superseded.seen ? superseded.count : null,
   };
 }
 

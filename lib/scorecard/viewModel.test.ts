@@ -400,6 +400,9 @@ const FACTS: ReportFacts = {
     asOf: "2026-08-05",
     reconLeads: 78_561,
     reconDelta: -4,
+    // This snapshot predates the lead-grain facts — unmeasured, not zero.
+    distinctLeads: null,
+    superseded: null,
   },
 };
 

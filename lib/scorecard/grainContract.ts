@@ -85,6 +85,24 @@ export type GrainRow = {
  *
  * `Set` and `Set → Issued %` are ABSENT from the sales scorecard on purpose —
  * 137 has no NumSet column, and set-count is a call-centre measure under A1.
+ *
+ * ══ WHY THE RAW COUNTS ARE NOT IN HERE ══
+ *
+ * Leads, Issued, Demos, Sales — and, from 2026-08-13, "Leads (distinct)" and
+ * "Duplicates merged by LP" — all render on the By Market table and none are
+ * registered. That is the rule at `assertGrainContract`, not an oversight: a
+ * bare count with no denominator is not a publishable METRIC, so registering
+ * one would either fail the assertion or force a denominator to be invented
+ * for it. This registry covers rates and dollar levels — the figures where a
+ * numerator and a denominator can disagree about grain, which is the defect
+ * class it exists to catch.
+ *
+ * The lead-grain pair is worth naming here anyway, because it is the one place
+ * the page shows TWO counts of the same thing: "Leads" is report 135's ROW
+ * count and "Leads (distinct)" is its LEAD count. They are not a numerator and
+ * a denominator and must never be divided into one another — the ratio between
+ * them is an artefact of how many disposition states each lead passed through,
+ * not a rate. §13's grain bridge stays unproven and unbuilt.
  */
 export const GRAIN_CONTRACT: readonly GrainRow[] = [
   // ── Sales scorecard — appointment-date cohort, Report 137 ────────────────

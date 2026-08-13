@@ -349,3 +349,55 @@ describe("coversPeriod", () => {
     expect(coversPeriod({ ...row, period_start: "2026-07-01", period_end: "2026-07-31" }, augMtd)).toBe(false);
   });
 });
+
+/**
+ * The lead grain (2026-08-13). `leads` is report 135's ROW count — 135 is
+ * emitted at lead × disposition-state grain — and these two are the same
+ * period counted by LEAD. `leads_superseded` is LP's own NumSuperseded, its
+ * record of duplicate leads folded into a survivor.
+ */
+describe("Leads at lead grain — the duplicate count", () => {
+  test("both figures read, and SUM across a market's branch rows", () => {
+    // Additive by construction: LP-MCP gives each lead exactly one owning
+    // branch (lowest row_num) so that this summation is correct. Without that
+    // rule the 429 leads appearing under two branches would be double-counted.
+    const { leads } = buildReportFacts(
+      [
+        ld("ORL_MKT", "leads", null, 1_800),
+        ld("ORL_MKT", "leads_distinct", null, 1_700),
+        ld("ORL_MKT", "leads_superseded", null, 22),
+        { ...ld("ORL_MKT", "leads_distinct", null, 300), branch_code_raw: "LAKE" },
+        { ...ld("ORL_MKT", "leads_superseded", null, 5), branch_code_raw: "LAKE" },
+      ],
+      YTD,
+      "REECE",
+    );
+    expect(leads!.distinctLeads).toBe(2_000);
+    expect(leads!.superseded).toBe(27);
+    // The row count is untouched and still readable beside them.
+    expect(leads!.leads).toBe(1_800);
+  });
+
+  test("ABSENT is null, never 0 — snapshots predating the lead-grain facts", () => {
+    const { leads } = buildReportFacts([ld("ORL_MKT", "leads", null, 1_800)], YTD, "REECE");
+    expect(leads!.leads).toBe(1_800);
+    // This is the raw_leads_in defect class: coerce absent to 0 and "we did not
+    // measure" becomes indistinguishable from "there were none".
+    expect(leads!.distinctLeads).toBeNull();
+    expect(leads!.superseded).toBeNull();
+  });
+
+  test("ZERO duplicates is a REAL answer and survives as 0", () => {
+    const { leads } = buildReportFacts(
+      [
+        ld("ORL_MKT", "leads", null, 900),
+        ld("ORL_MKT", "leads_distinct", null, 900),
+        ld("ORL_MKT", "leads_superseded", null, 0),
+      ],
+      YTD,
+      "REECE",
+    );
+    expect(leads!.superseded).toBe(0);
+    expect(leads!.superseded).not.toBeNull();
+  });
+});
