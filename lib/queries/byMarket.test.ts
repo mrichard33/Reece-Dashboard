@@ -20,6 +20,10 @@ const row = (over: Partial<ByMarketRow>): ByMarketRow => ({
   label: "Unassigned",
   utility: true,
   leads: 0,
+  // Not sourced by default — these arrive only from snapshots taken after
+  // LP-MCP began publishing the lead grain, and absent is not zero.
+  leads_distinct: null,
+  leads_superseded: null,
   issued: 0,
   demos: 0,
   sales: 0,

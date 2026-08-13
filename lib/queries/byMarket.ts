@@ -62,6 +62,20 @@ export type ByMarketRow = {
    */
   leads: number | null;
   /**
+   * The same period at LEAD grain, from the same report 135 rows.
+   *
+   * `leads` above counts ROWS — 135 is emitted at lead × disposition-state
+   * grain, so one lead contributes many. `leads_distinct` counts leads.
+   * `leads_superseded` is LP's own count of duplicate records folded into a
+   * surviving lead: its merge decision, reported, not a match inferred here.
+   *
+   * NULL = the snapshot predates LP-MCP publishing these; renders unmeasured.
+   * 0 is a REAL answer (a period can genuinely have no duplicates), so absent
+   * must never be coerced to it.
+   */
+  leads_distinct: number | null;
+  leads_superseded: number | null;
+  /**
    * ── THE SALES FUNNEL, FROM REPORT 137 (Amendment A2) ──────────────────────
    *
    * Issued, Demos and Sales all come from `lp_cohort_maturation` — the SAME
@@ -265,13 +279,25 @@ function funnelFromCohort(cohort: MarketNetSales | null): Pick<
   };
 }
 
+/**
+ * Report 135 for one market, at BOTH grains it publishes. Passed as one object
+ * rather than three positional args so a caller cannot line them up wrong —
+ * `leads` and `distinct` are both plausible-looking counts of the same period.
+ */
+type MarketLeads = {
+  /** Row count — see ByMarketRow.leads. */
+  leads: number | null;
+  distinct: number | null;
+  superseded: number | null;
+};
+
 function rowFromActuals(
   market: string,
   label: string,
   utility: boolean,
   a: Record<string, unknown>,
   goal: number | null,
-  leads: number | null,
+  leads: MarketLeads,
   cohort: MarketNetSales | null,
 ): ByMarketRow {
   // NET SALES — Gross Written − Cancellations − Financing Denied, report 137.
@@ -296,7 +322,9 @@ function rowFromActuals(
     ...paceFields(a, pctToGoal),
     // Leads = report 135, passed in by the caller (see ByMarketRow.leads).
     // NEVER a.raw_leads_in — that column is NULL for every market.
-    leads,
+    leads: leads.leads,
+    leads_distinct: leads.distinct,
+    leads_superseded: leads.superseded,
     // A2: the funnel comes from the cohort, not from `a` (live sync). See
     // `funnelFromCohort` and ByMarketRow.issued.
     ...funnelFromCohort(cohort),
@@ -475,8 +503,14 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   ]);
 
   // Leads come from report 135 only (§3 authoritative source, §4 repoint).
-  const leadsFor = (code: string): number | null =>
-    buildReportFacts(factRows, resolved, code).leads?.leads ?? null;
+  const leadsFor = (code: string): MarketLeads => {
+    const f = buildReportFacts(factRows, resolved, code).leads;
+    return {
+      leads: f?.leads ?? null,
+      distinct: f?.distinctLeads ?? null,
+      superseded: f?.superseded ?? null,
+    };
+  };
 
   // Latest snapshot per SOURCE market (rows are as_of desc).
   const latest = new Map<string, Record<string, unknown>>();
@@ -621,8 +655,14 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
     ...MARKETS.map((m) => safeView(m.code, resolved)),
   ]);
 
-  const leadsFor = (code: string): number | null =>
-    buildReportFacts(factRows, resolved, code).leads?.leads ?? null;
+  const leadsFor = (code: string): MarketLeads => {
+    const f = buildReportFacts(factRows, resolved, code).leads;
+    return {
+      leads: f?.leads ?? null,
+      distinct: f?.distinctLeads ?? null,
+      superseded: f?.superseded ?? null,
+    };
+  };
   const netByMarket = netSalesByMarket(cohorts, resolved.periodStart, resolved.periodEnd);
 
   type V = NonNullable<Awaited<ReturnType<typeof getScorecardForPeriod>>>;
