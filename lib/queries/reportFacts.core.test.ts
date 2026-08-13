@@ -310,7 +310,42 @@ describe("coversPeriod", () => {
   test("different period_start → not covered", () => {
     expect(coversPeriod(row, MTD)).toBe(false);
   });
-  test("stale snapshot (period_end before as-of) → not covered", () => {
+  test("MULTI-MONTH: a snapshot short of the as-of is not covered", () => {
+    // Strict, and it must stay strict. A snapshot covering only January being
+    // accepted as the answer for a Jan–Aug period is the §10 defect in another
+    // costume, and it would suppress the month-composition path below, which
+    // only runs when nothing claims to cover.
     expect(coversPeriod({ ...row, period_end: "2026-07-31" }, YTD)).toBe(false);
+  });
+
+  test("SINGLE MONTH: a one-day-lagging snapshot IS covered (2026-08-13 fix)", () => {
+    // THE BUG. Report 137's MTD file runs the morning AFTER the day it covers,
+    // so its newest snapshot reaches yesterday while `asOf` is the last
+    // completed selling day — every day, structurally. The old rule required
+    // period_end >= asOf, so the current month was permanently blacked out:
+    // Fort Myers August rendered Cancellations "not yet sourced" and Net
+    // (Report 137 NSA) "—" while the warehouse held $28,443 and $366,676 for
+    // exactly that market and window.
+    const augMtd = { ...MTD, asOf: "2026-08-12" } as ResolvedPeriod;
+    expect(coversPeriod({ ...row, period_start: "2026-08-01", period_end: "2026-08-11" }, augMtd)).toBe(true);
+  });
+
+  test("a window that OVERRUNS the as-of is accepted here, and gated elsewhere", () => {
+    // Stated plainly because it is easy to assume otherwise: this predicate does
+    // NOT reject an overshooting window, and never did. LP generates MTD files
+    // with the month-end as the requested range — period_start 2026-08-01,
+    // period_end 2026-08-31, generated on the 10th — so the shape is routine.
+    //
+    // What stops that file being read as a full month is `is_partial_month`,
+    // which the ingest sets and `lp_cohort_maturation` uses to publish a NULL
+    // data_through. The guard lives there, not here. Pinning the behaviour so a
+    // future reader does not add a second, conflicting one.
+    const augMtd = { ...MTD, periodEnd: "2026-08-12", asOf: "2026-08-12" } as ResolvedPeriod;
+    expect(coversPeriod({ ...row, period_start: "2026-08-01", period_end: "2026-08-31" }, augMtd)).toBe(true);
+  });
+
+  test("SINGLE MONTH: a snapshot from a different month is never covered", () => {
+    const augMtd = { ...MTD, asOf: "2026-08-12" } as ResolvedPeriod;
+    expect(coversPeriod({ ...row, period_start: "2026-07-01", period_end: "2026-07-31" }, augMtd)).toBe(false);
   });
 });
