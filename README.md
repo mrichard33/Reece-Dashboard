@@ -1,4 +1,4 @@
-# Antifragile Mission Control
+# Mission Control
 
 Internal operations dashboard for the **Reece Windows & Doors antifragile sales system**.
 
