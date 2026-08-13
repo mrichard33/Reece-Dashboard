@@ -65,6 +65,26 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
     };
   };
 
+  /**
+   * A count row whose ACTUAL is measured but whose TARGET does not exist and is
+   * not going to. Distinct from `countRow` with a null per-day figure, which
+   * means "not sourced yet" — this means "not computable, and here is why".
+   */
+  const unmeasuredTargetRow = (
+    metric: string,
+    actual: number | null,
+    reason: string,
+    infoKey?: string,
+  ): Row => ({
+    metric,
+    monthly: null,
+    targetToDate: null,
+    actual: actual == null ? "—" : num(actual),
+    paceLabel: `not measured — ${reason}`,
+    paceCls: MUTE,
+    infoKey,
+  });
+
   // ── rate rows: percentages don't prorate — target-to-date = the flat target.
   //    A miss on a rate row is red (a quality problem).
   const rateRow = (
@@ -88,15 +108,22 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
   };
 
   const rows: Row[] = [
-    // Leads goal is DERIVED (ruled 2026-08-04): issues-needed ÷ historical
-    // issue rate — it moves when the trailing issue rate moves, hence the (i).
+    // ⚠️ THE LEADS TARGET IS DELETED, NOT MISSING (§6, §13), which is why the
+    // Target-to-Date and Pace cells read "not measured" rather than "—".
     //
-    // Actual comes from report 135 (lead_disposition), NOT `a.raw_leads_in`.
-    // That column is NULL for every market, and numOr0() turned it into a
-    // confident zero — so this table showed 0 (or the company figure) while ⑤ By
-    // Market, already repointed at 135, showed the real per-office count. Two
-    // lead numbers on one page, and the wrong one here. Null now renders "—".
-    countRow("Leads", leads, d.target_leads_per_day, "scorecard.leadsGoal"),
+    // It was issues-needed ÷ a historical issue rate, and that divides an
+    // APPOINTMENT-grain numerator by a LEAD-grain rate. The bridge is unproven:
+    // 78,557 Lead Disposition rows sit over 71,040 distinct leads, one lead
+    // carries up to eleven of them, and `num_superseded` reaches 10. The figure
+    // was not approximately right, it was undefined.
+    //
+    // A bare dash reads as a feed problem someone can go and fix. This row has
+    // to say the target does not exist, or the next person re-derives it.
+    //
+    // The ACTUAL still renders — it comes from report 135 (lead_disposition),
+    // NOT `a.raw_leads_in`, which is NULL for every market and which numOr0()
+    // once turned into a confident zero.
+    unmeasuredTargetRow("Leads", leads, "grain bridge not established", "scorecard.leadsGoal"),
     countRow("Issued", a.issued, d.target_issued_per_day),
     countRow("Demos", a.demos, d.target_demoed_per_day),
     countRow("Sales", a.sales, d.target_closed_per_day),

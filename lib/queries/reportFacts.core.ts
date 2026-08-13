@@ -227,10 +227,57 @@ export type ReportFacts = {
 const dollars = (cents: number | null | undefined): number | null =>
   cents == null ? null : cents / 100;
 
-/** Does this fact's snapshot window answer the resolved (flow) period? */
+/**
+ * Does this fact's snapshot window answer the resolved (flow) period?
+ *
+ * ⚠️ A LATE FEED IS NOT A MISSING ONE — corrected 2026-08-13.
+ *
+ * This used to require `f.period_end >= needEnd`, which sounds conservative and
+ * is actually a permanent blackout on the current month. Report 137's MTD file
+ * runs the MORNING AFTER the day it covers, so on any given day its newest
+ * snapshot reaches yesterday while `resolved.asOf` is the last completed selling
+ * day. `period_end 2026-08-11 >= needEnd 2026-08-12` is false, every day,
+ * structurally.
+ *
+ * The visible symptom: Fort Myers August MTD rendered Cancellations "not yet
+ * sourced" and Net (Report 137 NSA) "—" while the warehouse held $28,443 and
+ * $366,676 for exactly that market and window. The hero and the By Market table
+ * read `lp_cohort_maturation` directly, which has no such gate, so they showed
+ * correct Net Sales beside a panel that showed nothing — from the same report.
+ *
+ * The rule the rest of this page already follows (see lib/scorecard/reportingClock.ts):
+ *
+ *     dataThrough  >  cutoff  →  REFUSED. Contains activity after the period.
+ *     dataThrough  <  cutoff  →  LAGGING. Renders, with the lag stated.
+ *     dataThrough == cutoff   →  CURRENT.
+ *
+ * Only the FIRST is a correctness problem — a file running past the period would
+ * put next period's dollars in this period's total. Falling short is a freshness
+ * problem, and the answer to freshness is to say how fresh, not to render "—"
+ * and let a reader conclude the data does not exist.
+ *
+ * So the gate now rejects only OVERRUN, and the lag travels with the figure via
+ * `asOf`, which every one of these panels already renders.
+ */
 export function coversPeriod(f: ReportFactRow, resolved: ResolvedPeriod): boolean {
+  if (f.period_start !== resolved.periodStart) return false;
   const needEnd = resolved.asOf < resolved.periodEnd ? resolved.asOf : resolved.periodEnd;
-  return f.period_start === resolved.periodStart && f.period_end >= needEnd;
+  if (f.period_end >= needEnd) return true;
+
+  // ── The lag carve-out, and it is deliberately narrow ──────────────────────
+  //
+  // ONLY for a period inside a SINGLE month. A multi-month period must keep the
+  // strict rule, because falling short there is not a one-day lag — it is a
+  // snapshot that covers one month being read as the answer for three. That is
+  // the §10 defect in another costume, and it is exactly what the composition
+  // path below exists to prevent: `composeMonthly` only runs when NO single
+  // snapshot claims to cover, so loosening this would suppress it.
+  //
+  // Within one month the same shortfall is structural and harmless: report
+  // 137's MTD file runs the morning after the day it covers, so it reaches
+  // yesterday while `asOf` is the last completed selling day, every day.
+  if (monthsInPeriod(resolved).length > 1) return false;
+  return f.period_end >= resolved.periodStart;
 }
 
 /** The scope a view of this shape wants, in preference order. */
@@ -272,7 +319,13 @@ function pickSnapshot(rows: ReportFactRow[], resolved: ResolvedPeriod): ReportFa
     const ra = rank(a[0]!), rb = rank(b[0]!);
     if (ra !== rb) return ra - rb;
     if (a[0]!.as_of_date !== b[0]!.as_of_date) return a[0]!.as_of_date < b[0]!.as_of_date ? 1 : -1;
-    return a[0]!.period_end < b[0]!.period_end ? -1 : 1; // tightest window wins ties
+    // WIDEST window wins ties, reversed 2026-08-13 alongside the coversPeriod
+    // fix. "Tightest" was protecting against a snapshot that overshot the
+    // period; `coversPeriod` now rejects overshoot outright, so among windows
+    // that all sit inside the period the one reaching FURTHEST is simply the
+    // most complete. Keeping "tightest" here would have re-imposed the blackout
+    // one layer down — it would pick the 08-10 file over the 08-11 one.
+    return a[0]!.period_end < b[0]!.period_end ? 1 : -1;
   })[0]!;
   return best;
 }
