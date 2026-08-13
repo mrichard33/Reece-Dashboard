@@ -432,8 +432,22 @@ export default async function ScorecardPage({
                 {/* ③ Cohort Quality — MEASURED. Where the quality incentive lives. */}
                 <CohortQualityPanel cohorts={companyCohorts} asOf={cohortObservedOn} />
 
-                {/* ④ Funnel vs Goal */}
-                <FunnelGoalTable view={view} vm={vm} />
+                {/* ④ Funnel vs Goal — performance rows on report 137's
+                    appointment cohort (B0/B5), the SAME rows and the same
+                    period fold that feed ⑤ By Market and the Net Sales headline
+                    above. Passing the totals in rather than letting the panel
+                    re-derive them is what stops two sections of one page
+                    disagreeing about the same funnel. */}
+                <FunnelGoalTable
+                  view={view}
+                  vm={vm}
+                  cohortFunnel={{
+                    issued: periodTotals.issuedCount,
+                    demos: periodTotals.satCount,
+                    sales: periodTotals.soldCount,
+                    dataThrough: netSalesThrough,
+                  }}
+                />
 
                 {/*
                   ③ Daily Pace — promoted out of RevenueCard's `aside`, where it

@@ -408,6 +408,18 @@ export function periodCohortTotals(
   dataThrough: string | null;
   /** Which appointment months fed it, oldest first. */
   months: string[];
+  /**
+   * ── THE FUNNEL COUNTS, on the SAME rows as the dollars (Amendment B0) ─────
+   *
+   * Added 2026-08-13 so ④ Funnel vs Goal can be repointed off the live sync.
+   * They fold exactly as the dollars do — `sumKnown`, so one unmeasured month
+   * makes the total unmeasured rather than quietly smaller — which is the
+   * property that lets a panel put a count and a dollar figure on one row and
+   * mean one population by it.
+   */
+  issuedCount: number | null;
+  satCount: number | null;
+  soldCount: number | null;
 } {
   const inPeriod = cohorts.filter(
     (c) => c.appointmentMonth >= periodStart && c.appointmentMonth <= periodEnd,
@@ -415,6 +427,9 @@ export function periodCohortTotals(
   return {
     grossCents: sumKnown(inPeriod.map((c) => c.grossCents)),
     netSalesCents: sumKnown(inPeriod.map((c) => netSalesCents(c))),
+    issuedCount: sumKnown(inPeriod.map((c) => c.issuedCount)),
+    satCount: sumKnown(inPeriod.map((c) => c.satCount)),
+    soldCount: sumKnown(inPeriod.map((c) => c.soldCount)),
     dataThrough: inPeriod.reduce<string | null>(
       (max, c) => (c.dataThrough != null && (max == null || c.dataThrough > max) ? c.dataThrough : max),
       null,

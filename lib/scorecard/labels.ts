@@ -31,10 +31,26 @@ export const METRIC_LABELS = {
   demo: "Demo %",
   /** issued ÷ sets. */
   issue: "% Issue",
-  /** (sold − cancelled) ÷ sold $. */
-  goodRate: "Good Rate %",
-  /** jobs cancelled after the sale; lower is better. */
-  ko: "KO %",
+  /**
+   * ⚠️ `goodRate` and `ko` REMOVED — Amendment B3, 2026-08-13.
+   *
+   * Neither was in the v4 or Amendment A metric set, and each duplicated a
+   * contracted Report 137 metric with one term dropped:
+   *
+   *   Good Rate % `(Sold − cancelled) ÷ sold $`  =  Net Retention %
+   *     `(GSA − GSACancelled − GSACD) ÷ GSA` without Financing Denied.
+   *   KO % `Cancelled ÷ sold`                    =  the cancellation half of
+   *     Permanent Loss % `(GSACancelled + GSACD) ÷ GSA`.
+   *
+   * Both contracted metrics are correctly sourced from 137 and strictly more
+   * complete, so removal loses nothing measurable. Good Rate % was also not
+   * reading 137 at all — 95.5% for August against 137's gross-after-cancels of
+   * 90.0%, with four markets storing exactly 100.0%.
+   *
+   * These names are NOT reserved the way `close` and `companyDemo` are. They
+   * are retired: if either metric is wanted again it needs a source, a cohort
+   * and a contract entry first, not a label.
+   */
   /**
    * Net Sales ÷ Issued APPOINTMENTS — the pacing driver.
    *
@@ -84,13 +100,7 @@ export const METRIC_FORMULAS: Record<keyof typeof METRIC_LABELS, string> = {
   companyDemo:
     "Demos ÷ issued, on the SET-date cohort (call-center scorecard — not yet computed, see A3)",
   issue: "Issued ÷ sets",
-  goodRate: "(Sold − cancelled) ÷ sold $",
   netPerIssuedAppointment: "Net Sales $ ÷ issued appointments (report 137, both sides)",
-  // Names its cohort deliberately. The ③ "Lost this period" panel counts the
-  // SAME kind of event from report 133's contract-date cohort and will disagree
-  // — 12 here against 14 lost jobs for August. Two cancellation figures on one
-  // page are fine; two unlabelled ones are not.
-  ko: "Cancelled ÷ sold · live sync, sold cohort",
   close: "Sales ÷ leads issued (Monday report definition — not yet computed)",
 };
 

@@ -419,8 +419,13 @@ export function buildScorecardVM(
     // changes is that the screen stops calling it something it isn't.
     { key: "demoToSale", label: METRIC_LABELS.demoToSale, actual: a.close_pct ?? 0, target: g.target_close_pct, higher: true, desc: METRIC_FORMULAS.demoToSale },
     { key: "demo", label: METRIC_LABELS.demo, actual: a.demo_pct ?? 0, target: g.target_demo_pct, higher: true, desc: "Demos ÷ net issued" },
-    { key: "goodRate", label: "Good Rate %", actual: a.good_rate_pct ?? 0, target: g.target_good_rate_pct, higher: true, desc: "(Sold − cancelled) ÷ sold $" },
-    { key: "ko", label: "KO %", actual: a.ko_pct ?? 0, target: g.target_ko_pct, higher: false, desc: "Knocked-off jobs" },
+    // ⚠️ Good Rate % and KO % REMOVED (Amendment B3). Neither is in the v4 or
+    // Amendment A metric set, and each duplicates a contracted 137 metric with
+    // a term dropped: Good Rate % is Net Retention % without Financing Denied,
+    // KO % is the cancellation half of Permanent Loss %. Deleted here rather
+    // than left unrendered, per B3 — a dead path is how a retired metric comes
+    // back. If either is wanted for continuity it belongs in its own
+    // diagnostic panel with its cohort basis stated, not in this list.
   ];
 
   // ── revenue ──
