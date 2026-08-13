@@ -1,9 +1,15 @@
 /**
- * Authoritative Net Report RTP for the CURRENT (in-progress) month.
+ * RTP (released-to-production) net for the CURRENT (in-progress) month.
+ *
+ * ⚠️ D3 — THIS IS NOT A "NET REPORT". No such source exists or is coming.
+ * Reece Net Sales is computed from report 137 alone: GSA − GSACancelled − GSACD.
+ * What this module composes is RELEASED value by milestone date — a different
+ * economic event, feeding the Released panel and the RTP hero path only, never
+ * a sales figure. The name below is historical; the quantity is RTP.
  *
  * The warehouse (lp_market_scorecard_daily) computes the live month on the legacy
  * released/working/cancel basis by SOLD date, which OVERSTATES the RTP net. The LP
- * Net Report (Released-to-Production, by milestone date) is the authoritative net
+ * RTP (Released-to-Production, by milestone date) is the authoritative released
  * source and has no warehouse equivalent for the open month — and no true "net"
  * field at all. So the YTD / period hero must compose from report-sourced values
  * end to end:
@@ -14,7 +20,7 @@
  * the OPEN month lives here. This is a deliberate design decision (the report stays
  * authoritative for net), not a gap to reconcile against the warehouse.
  *
- * ⚠ Update `CURRENT_MONTH_REPORT_RTP` whenever a fresh Net Report is pulled
+ * ⚠ Update `CURRENT_MONTH_REPORT_RTP` whenever a fresh RTP export is pulled
  * (Mark's export). When the month closes and its net_report_rtp row lands in the
  * warehouse, this override deactivates on its own (see composeReportHeroNet).
  */
@@ -28,7 +34,7 @@ export type CurrentMonthReportRtp = {
   rtpNet: number;
 };
 
-// LP Net Report — RTP net, July 1–9 2026 (company). Ties YTD to $48,724,514.60
+// LP RTP export — released net, July 1–9 2026 (company). Ties YTD to $48,724,514.60
 // alongside the Jan–Jun report-sourced closed months ($47,814,304.43).
 export const CURRENT_MONTH_REPORT_RTP: CurrentMonthReportRtp = {
   month: "2026-07-01",
@@ -75,7 +81,7 @@ export function composeReportHeroNet(
   if (rc.month !== currentMonthET) {
     // Surface the staleness visibly instead of silently applying a wrong figure.
     console.error(
-      `[scorecard] CURRENT_MONTH_REPORT_RTP is stale (constant month ${rc.month}, current ET month ${currentMonthET}) — override skipped; update lib/scorecard/reportRtp.ts from the latest Net Report.`,
+      `[scorecard] CURRENT_MONTH_REPORT_RTP is stale (constant month ${rc.month}, current ET month ${currentMonthET}) — override skipped; update lib/scorecard/reportRtp.ts from the latest RTP export.`,
     );
     return null;
   }

@@ -185,6 +185,27 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
         vm.snapshot.asOfDate ? `, data through ${usDate(vm.snapshot.asOfDate)}` : ""
       } — no report 134 snapshot covers this period`;
 
+  // ── D1: RTP's coverage note belongs HERE, not on a page banner ────────────
+  //
+  // This note used to render as a page-level amber banner whose own text said
+  // it "affects the Released panel only" — a page-level alarm that documented
+  // its own irrelevance to the rest of the page, and one that fired on a panel
+  // report 134 no longer feeds any sales figure from.
+  //
+  // The rule D1 sets: a source that feeds exactly ONE panel raises a note on
+  // that panel. Only a source feeding the page's primary figures may raise a
+  // page-level banner. RTP feeds this card and nothing else.
+  //
+  // Computed here rather than passed in, so the note cannot drift from the
+  // figure it describes.
+  const rtpTrails =
+    f.releasedAsOf != null &&
+    vm.snapshot.asOfDate != null &&
+    f.releasedAsOf < vm.snapshot.asOfDate;
+  const releasedWhere = rtpTrails
+    ? `${releasedNote} — RTP reaches ${usDate(f.releasedAsOf!)}, behind the counts. Not late: dated by production milestone rather than contract date, so it answers a different question and moves on its own clock.`
+    : releasedNote;
+
   // LOST THIS PERIOD — report 133's terminal cohort, split by CAUSE.
   //
   // The `lost` bucket was one undifferentiated number covering four completely
@@ -274,7 +295,7 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           title="Released this period"
           info={{
             what: "Contract value RELEASED to production in the selected period, dated by the production milestone. A different cohort from Sold — it includes work contracted in earlier periods and excludes work sold this period that has not shipped.",
-            where: releasedNote,
+            where: releasedWhere,
             fix: NO_CROSSING,
           }}
           accent="border-t-2 border-t-emerald-500"

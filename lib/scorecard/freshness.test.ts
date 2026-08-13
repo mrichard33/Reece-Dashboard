@@ -27,13 +27,23 @@ describe("§6 — freshness chip", () => {
 
   it("defines 'provisional' in the tooltip rather than assuming it is known", () => {
     const chip = freshnessChip({ asOfDate: "2026-08-07", computedFrom: "lp_api" });
-    expect(chip.title).toMatch(/not yet reconciled/i);
-    expect(chip.title).toMatch(/Net Report/);
+    expect(chip.title).toMatch(/estimate/i);
+    // D3 — it used to promise reconciliation "to the official Net Report" when
+    // the month closed. No such source exists or is coming; what actually moves
+    // the figure is report 137 re-observing the cohort as it matures.
+    expect(chip.title).toMatch(/report 137/i);
+    expect(chip.title).not.toMatch(/Net Report/);
   });
 
   it("distinguishes a closed report-sourced month from an estimate", () => {
     const closed = freshnessChip({ asOfDate: "2026-07-31", computedFrom: "net_report_rtp" });
-    expect(closed.text).toBe("Data through 07-31-2026 · Net Report actual");
+    // D3 — the COLUMN VALUE stays `net_report_rtp` (the warehouse's, renaming it
+    // is a migration with no reader benefit); the LABEL may not present a "Net
+    // Report actual". Nor is it relabelled "Report 137" — this row is
+    // released-to-production by milestone date, a different cohort from Net
+    // Sales, and swapping one wrong provenance for another is not a fix.
+    expect(closed.text).toBe("Data through 07-31-2026 · Released actual");
+    expect(closed.text).not.toMatch(/Net Report/);
     expect(closed.tone).toBe("emerald");
     expect(closed.title).not.toMatch(/estimate for/i);
 
@@ -192,8 +202,15 @@ describe("§Freshness — the banner must not implicate the Net Sales headline",
     expect(src).not.toMatch(/Live-sync figures are behind/);
   });
 
-  it("scopes the revenue watermark to the Released panel", () => {
-    expect(src).toMatch(/affects the Released panel only/);
+  it("D1 — the RTP note is ON the Released panel, not scoped from a page banner", () => {
+    // This used to assert the page-level banner SAID it affected one panel.
+    // D1 goes further: a source feeding exactly one panel raises a note on that
+    // panel and no page-level banner at all. A page-wide alarm that has to
+    // document its own irrelevance is the defect, not the disclaimer.
+    expect(src).not.toMatch(/affects the Released panel only/);
+    const card = readFileSync("components/scorecard/RevenueCard.tsx", "utf8");
+    expect(card).toMatch(/answers a different question and moves on its own clock/);
+    expect(card).toMatch(/releasedWhere/);
   });
 
   /**

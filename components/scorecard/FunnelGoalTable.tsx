@@ -7,11 +7,49 @@ import type { ScorecardView } from "@/lib/queries/scorecard";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /**
- * Section ② — Funnel vs Goal. Merges the old Funnel + Rates cards into one table:
- * the four funnel counts (Leads → Issued → Demos → Sales) and the four rates
- * (Close / Demo / Good Rate / KO %), each against Monthly Goal · Target to Date ·
- * Actual · Pace. "Target to Date" = the monthly goal scaled to selling days
- * elapsed (counts) or the flat target (rates). KO% is inverted — lower is better.
+ * Section ② — Funnel vs Goal.
+ *
+ * ══ ONE PANEL, ONE POPULATION (Amendment B0, refined by C0) ══
+ *
+ * A panel must not merely contain individually valid KPIs; it must tell one
+ * coherent story about one population. Two classes of row live here, and the
+ * split is STRUCTURAL rather than a footnote:
+ *
+ *   PERFORMANCE — "what did this population do?" Issued, Demos, Sales, Demo %,
+ *                 Demo → Sale %. These must share one source, cohort and grain.
+ *   PLANNING    — "what does the goal require?" Leads. Derived from historical
+ *                 economics, and legitimately on a different cohort (C0).
+ *
+ * ⚠️ THE PERFORMANCE ROWS MOVED OFF THE LIVE SYNC (2026-08-13).
+ *
+ * B4 described them as already coming from report 137. They did not — A2
+ * repointed ⑤ By Market only, and this panel still read `view.actuals`
+ * (`lp_market_scorecard_daily`, the live LP API sync) while By Market read the
+ * cohort. Two funnels for one month, on one page. Company-wide August:
+ *
+ *     live sync  (as-of 08-11, what this panel showed)  595 issued · 102 sales
+ *     137 cohort (observed 08-12, what ⑤ showed)        674 issued · 109 sales
+ *
+ * They now both read the cohort, summed by the page from the same rows that
+ * produce Net Sales. Per-market the move is larger than the company figure
+ * suggests — ORL 71 → 119 issued, FTLAU 33 → 54 — so pace gaps shift and some
+ * negative ones close. That is a restatement, not an improvement, and it is
+ * written up in the PR rather than left for a manager to discover.
+ *
+ * ⚠️ OUT_OF_AREA and UNASSIGNED have NO 137 cohort. Their funnel reads
+ * unmeasured rather than falling back to the sync — a fallback would put a
+ * live-sync count in a row labelled 137, which is the defect this change
+ * exists to remove.
+ *
+ * ── B3: Good Rate % and KO % are GONE ───────────────────────────────────────
+ * Neither is in the v4 or Amendment A metric set, and both were redundant:
+ *   • Good Rate % = Net Retention % with the Financing Denied term dropped.
+ *     Net Retention % `(GSA − GSACancelled − GSACD) ÷ GSA` is contracted,
+ *     correctly sourced from 137, and strictly more complete.
+ *   • KO % = the cancellation half of Permanent Loss %
+ *     `(GSACancelled + GSACD) ÷ GSA`, which is also contracted.
+ * Good Rate % also rendered 95.5% for August against 137's gross-after-cancels
+ * of 90.0% — it was not reading 137 at all. Removal loses nothing measurable.
  */
 
 type Row = {
@@ -25,6 +63,15 @@ type Row = {
   infoKey?: string;
   /** Denominator, spelled out — every percentage must answer "percent of what?". */
   formula?: string;
+  /**
+   * C0 — a PLANNING row, answering "what does the goal require?" rather than
+   * "what did this population do?". Rendered in its own block above a rule,
+   * with its own basis label, because it sits on a different cohort from the
+   * performance rows and that difference must be structural, never implicit.
+   */
+  planning?: boolean;
+  /** Source · cohort, on screen. Planning rows carry their own; C0 requires it. */
+  basis?: string;
 };
 
 const r0 = (v: number) => Math.round(v);
@@ -34,8 +81,29 @@ const AMBER = "text-amber-600 dark:text-amber-400";
 const BRICK = "text-brick";
 const MUTE = "text-slate-400";
 
-export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: ScorecardVM }) {
-  const { actuals: a, goals: g, derived: d } = view;
+/**
+ * Report 137's appointment cohort for this market and period, summed by the
+ * page from the same rows that feed Net Sales and ⑤ By Market. Null counts mean
+ * a month in range carried no count — unmeasured, never zero.
+ */
+export type CohortFunnel = {
+  issued: number | null;
+  demos: number | null;
+  sales: number | null;
+  /** MAX coverage across the months in range — what the subtitle dates. */
+  dataThrough: string | null;
+};
+
+export function FunnelGoalTable({
+  view,
+  vm,
+  cohortFunnel,
+}: {
+  view: ScorecardView;
+  vm: ScorecardVM;
+  cohortFunnel: CohortFunnel;
+}) {
+  const { goals: g, derived: d } = view;
   // Leads come from report 135, the same figure ⑤ By Market shows. Reusing the
   // view model's already-resolved value rather than re-deriving it is what keeps
   // the two sections from disagreeing on one page.
@@ -107,34 +175,72 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
     };
   };
 
-  const rows: Row[] = [
-    // ⚠️ THE LEADS TARGET IS DELETED, NOT MISSING (§6, §13), which is why the
-    // Target-to-Date and Pace cells read "not measured" rather than "—".
-    //
-    // It was issues-needed ÷ a historical issue rate, and that divides an
-    // APPOINTMENT-grain numerator by a LEAD-grain rate. The bridge is unproven:
-    // 78,557 Lead Disposition rows sit over 71,040 distinct leads, one lead
-    // carries up to eleven of them, and `num_superseded` reaches 10. The figure
-    // was not approximately right, it was undefined.
-    //
-    // A bare dash reads as a feed problem someone can go and fix. This row has
-    // to say the target does not exist, or the next person re-derives it.
-    //
-    // The ACTUAL still renders — it comes from report 135 (lead_disposition),
-    // NOT `a.raw_leads_in`, which is NULL for every market and which numOr0()
-    // once turned into a confident zero.
-    unmeasuredTargetRow("Leads", leads, "grain bridge not established", "scorecard.leadsGoal"),
-    countRow("Issued", a.issued, d.target_issued_per_day),
-    countRow("Demos", a.demos, d.target_demoed_per_day),
-    countRow("Sales", a.sales, d.target_closed_per_day),
+  // ── PLANNING (C0) — a different cohort, separated structurally ────────────
+  //
+  // ⚠️ THE LEADS TARGET IS BLANK BECAUSE IT IS BLOCKED, not because it is
+  // missing — which is why Target-to-Date and Pace read "not measured".
+  //
+  // It used to be issues-needed ÷ a historical issue rate, dividing an
+  // APPOINTMENT-grain numerator by a LEAD-grain rate. That is deleted and stays
+  // deleted (B1): do NOT reinstate `issue_rate` or `raw_leads_needed` in any
+  // form, and do not approximate a target.
+  //
+  // C1 changed the REASON, not the state. The blocker is no longer "the grain
+  // bridge is unproven" — C3 abandons the bridge entirely in favour of
+  // Net Sales $ ÷ Raw Leads, one ratio absorbing every downstream loss. What
+  // now blocks it is C2's four gates on report 135: row grain, cohort date
+  // basis (needs the PDF header read), reconciliation of 135 `NetAmount`
+  // against 137, and cohort compatibility with the goal. Until those pass, the
+  // copy has to name the real blocker or the next person solves the old one.
+  //
+  // The ACTUAL still renders — report 135 via the view model, NOT
+  // `a.raw_leads_in`, which is NULL for every market and which numOr0() once
+  // turned into a confident zero.
+  const planningRows: Row[] = [
+    {
+      ...unmeasuredTargetRow("Leads", leads, "pending Report 135 validation", "scorecard.leadsGoal"),
+      planning: true,
+      basis: "Report 135 · lead cohort · planning requirement, not a 137 target",
+    },
+  ];
+
+  // ── PERFORMANCE — one population, one source, one cohort ──────────────────
+  //
+  // Report 137's appointment cohort, summed by the page. Every row below is the
+  // same population: the appointments that OCCURRED in this period, and the
+  // outcomes those appointments produced.
+  //
+  // ⚠️ THE RATES ARE DERIVED HERE, not read from `view.actuals`. `a.demo_pct`
+  // and `a.close_pct` are live-sync rates over live-sync counts; pairing either
+  // with a 137 count would put a numerator and a denominator from different
+  // populations in one cell — the §7 defect, one level down from the panel.
+  // Same reason `d.variance.*` is not used: it is `live actual − target`, so it
+  // would report a gap against a number no longer on screen.
+  const { issued, demos, sales } = cohortFunnel;
+  const ratio = (n: number | null, dn: number | null): number | null =>
+    n == null || dn == null || dn <= 0 ? null : Math.round((n / dn) * 1000) / 10;
+  const demoPct = ratio(demos, issued);
+  const demoToSalePct = ratio(sales, demos);
+  const gap = (actual: number | null, target: number) =>
+    actual == null ? null : Math.round((actual - target) * 10) / 10;
+
+  const performanceRows: Row[] = [
+    countRow("Issued", issued, d.target_issued_per_day),
+    countRow("Demos", demos, d.target_demoed_per_day),
+    countRow("Sales", sales, d.target_closed_per_day),
     // `close_pct` is sales ÷ demos and always has been. The Monday a.m. report
     // means sales ÷ leads ISSUED by "Close %", so this row no longer borrows
-    // that name — see lib/scorecard/labels.ts. Computation unchanged.
-    rateRow(METRIC_LABELS.demoToSale, a.close_pct, g.target_close_pct, d.variance.close_pts, true, METRIC_FORMULAS.demoToSale),
-    rateRow(METRIC_LABELS.demo, a.demo_pct, g.target_demo_pct, d.variance.demo_pts, true, METRIC_FORMULAS.demo),
-    rateRow(METRIC_LABELS.goodRate, a.good_rate_pct, g.target_good_rate_pct, d.variance.good_rate_pts, true, METRIC_FORMULAS.goodRate),
-    rateRow(METRIC_LABELS.ko, a.ko_pct, g.target_ko_pct, d.variance.ko_pts, false, METRIC_FORMULAS.ko),
+    // that name — see lib/scorecard/labels.ts. Definition unchanged; only the
+    // population it is computed over moved.
+    rateRow(METRIC_LABELS.demoToSale, demoToSalePct, g.target_close_pct, gap(demoToSalePct, g.target_close_pct), true, METRIC_FORMULAS.demoToSale),
+    rateRow(METRIC_LABELS.demo, demoPct, g.target_demo_pct, gap(demoPct, g.target_demo_pct), true, METRIC_FORMULAS.demo),
   ];
+
+  const rows: Row[] = [...planningRows, ...performanceRows];
+  // Index of the first performance row — the structural rule C0 requires sits
+  // above it. Derived, never hardcoded: a literal index silently re-draws the
+  // planning/performance boundary in the wrong place the moment a row moves.
+  const firstPerformance = planningRows.length;
 
   const dotCls = (cls: string) =>
     cls === EMERALD ? "bg-emerald-500" : cls === AMBER ? "bg-amber-500" : cls === BRICK ? "bg-brick" : "bg-slate-300";
@@ -149,10 +255,16 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
     <ScSection
       id="sc-funnel"
       label="Funnel vs Goal"
-      // Every figure in this table comes from the live LP sync, which has no
-      // report equivalent for counts or rates — so it cannot be repointed, only
-      // stamped. A rate rendered bare is a rate presented as current.
-      meta={`Actual vs the prorated ${vm.abbr} target · live sync through ${usDate(vm.snapshot.asOfDate)}`}
+      // B4 — the panel states its own basis, not just each row's. A correct row
+      // inside a mislabelled panel still misleads, which is why there is a test
+      // on this string and not only on the per-row labels.
+      //
+      // It dates the cohort's OWN coverage, not `vm.snapshot.asOfDate` (the
+      // live-sync watermark). Those differ, and dating 137 figures with the
+      // sync's date is the same class of error as labelling their source wrong.
+      meta={`Report 137 · appointment-date cohort · ${vm.abbr}${
+        cohortFunnel.dataThrough ? ` · through ${usDate(cohortFunnel.dataThrough)}` : ""
+      } · Leads is a planning row (report 135)`}
     >
       {showDivergence && (
         <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
@@ -181,7 +293,7 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
             {rows.map((row, i) => (
               <tr
                 key={row.metric}
-                className={`border-t border-slate-50 dark:border-slate-900 ${i === 4 ? "border-t-2 border-t-slate-200 dark:border-t-slate-700" : ""}`}
+                className={`border-t border-slate-50 dark:border-slate-900 ${i === firstPerformance ? "border-t-2 border-t-slate-300 dark:border-t-slate-600" : ""}`}
               >
                 <td className="px-2 py-2 font-sans font-medium text-slate-700 dark:text-slate-200 sm:px-3">
                   <span className="inline-flex items-center gap-1">
@@ -194,6 +306,15 @@ export function FunnelGoalTable({ view, vm }: { view: ScorecardView; vm: Scoreca
                   {row.formula && (
                     <span className="mt-0.5 block font-mono text-[10px] font-normal text-slate-400 dark:text-slate-500">
                       {row.formula}
+                    </span>
+                  )}
+                  {/* C0 — a planning row states its own source and cohort on
+                      screen. It sits on a different population from the
+                      performance block below it, and a reader who cannot see
+                      that will read the two as one funnel. */}
+                  {row.basis && (
+                    <span className="mt-0.5 block font-sans text-[10px] font-normal italic text-slate-400 dark:text-slate-500">
+                      {row.basis}
                     </span>
                   )}
                 </td>

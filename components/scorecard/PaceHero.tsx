@@ -109,7 +109,7 @@ export function PaceHero({
   // above a Balance that disagrees with it.
   //
   // ⚠️ THE TARGET MUST STOP WHERE THE ACTUAL STOPS. `p.paceGoal` prorates to the
-  // Net Report's coverage watermark, which is right for an RTP actual and wrong
+  // report 134's RTP coverage watermark, which is right for an RTP actual and wrong
   // for this one: Net Sales is dated by CONTRACT date and reaches the cohort's
   // own as-of, typically several selling days later. Measuring 8 days of actual
   // against 5 days of target would have flattered Balance by ~38%. On Net Sales
@@ -167,7 +167,7 @@ export function PaceHero({
         ? "behind goal"
         : "on / ahead of goal";
 
-  // Revenue reaches its OWN date — the Net Report's coverage end, which trails the
+  // Revenue reaches its OWN date — report 134's RTP coverage end, which trails the
   // date the COUNTS reach whenever a report has not landed for the most recent
   // days. Both the revenue figure and the target it is measured against now
   // prorate to this date, so the tiles SAY it: two different dates on one screen
@@ -208,7 +208,7 @@ export function PaceHero({
       title: onNetSales
         ? "Prorated to the selling days elapsed — the same days the Net Sales figure covers. Both stop on the same day by construction, because Net Sales is dated by contract date and has no separate coverage watermark."
         : revLags
-        ? `Prorated to ${usDate(p.revenueAsOf!)} — the Net Report's coverage date — not to ${usDate(vm.snapshot.asOfDate)}, which is how far the COUNTS reach. Released dollars are not knowable past the last report, so the target they are measured against stops on the same day.`
+        ? `Prorated to ${usDate(p.revenueAsOf!)} — report 134's RTP coverage date — not to ${usDate(vm.snapshot.asOfDate)}, which is how far the COUNTS reach. Released dollars are not knowable past the last report, so the target they are measured against stops on the same day.`
         : undefined,
     },
     // THE HEADLINE ACTUAL. Until 2026-08-12 this tile showed RTP — report 134,

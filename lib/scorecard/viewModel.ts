@@ -81,7 +81,7 @@ export type ScorecardVM = {
   isSingleMonth: boolean;
   /** True when any part of the view is the live in-progress month (not fully
    *  report-sourced) — the released figure is a provisional estimate that ties to
-   *  the official Net Report when the month closes. */
+   *  report 137's re-observation of the cohort as it matures. */
   provisional: boolean;
   snapshot: {
     asOfDate: string;
@@ -134,7 +134,7 @@ export type ScorecardVM = {
      *  see the day the pace math is NOT counting rather than losing it. */
     calendarDaysElapsed: number;
     sellingDays: number;
-    /** Coverage date of the Net Report behind `netSales` and `paceGoal` — the
+    /** Coverage date of the RTP export behind `netSales` and `paceGoal` — the
      *  date the REVENUE reaches, which is not `snapshot.asOfDate` (what the
      *  counts reach). Null when no report has landed. The hero states it so a
      *  reader can see the two figures share one date. */
@@ -346,14 +346,14 @@ export function buildScorecardVM(
   const netPending = a.released_dollars == null && a.net_sales == null;
   const netReleased = a.released_dollars ?? a.net_sales ?? 0;
   // THE REVENUE TARGET, not the count target. `netReleased` reaches
-  // `a.revenue_as_of` (the Net Report's coverage date); `d.mtd_goal_dollars`
+  // `a.revenue_as_of` (report 134's RTP coverage date); `d.mtd_goal_dollars`
   // reaches the period's own as-of, which is later whenever a report has not
   // landed for the most recent days. Dividing one by the other understates every
   // market every day — on 2026-08-11 revenue settled through Aug 6 was measured
   // against a target prorated to Aug 10, and Fort Lauderdale read 5% of target.
   // Both sides of this ratio now reach the same date. See docs/revenue-as-of.md.
   const paceGoal = d.revenue_goal_to_date_dollars ?? d.mtd_goal_dollars ?? 0;
-  /** The date the revenue figures reach — null when no Net Report has landed. */
+  /** The date the revenue figures reach — null when no RTP export has landed. */
   const revenueAsOf = a.revenue_as_of ?? null;
   /** Selling days elapsed through `revenueAsOf`; the denominator behind paceGoal. */
   const revenueDaysElapsed =
@@ -419,8 +419,13 @@ export function buildScorecardVM(
     // changes is that the screen stops calling it something it isn't.
     { key: "demoToSale", label: METRIC_LABELS.demoToSale, actual: a.close_pct ?? 0, target: g.target_close_pct, higher: true, desc: METRIC_FORMULAS.demoToSale },
     { key: "demo", label: METRIC_LABELS.demo, actual: a.demo_pct ?? 0, target: g.target_demo_pct, higher: true, desc: "Demos ÷ net issued" },
-    { key: "goodRate", label: "Good Rate %", actual: a.good_rate_pct ?? 0, target: g.target_good_rate_pct, higher: true, desc: "(Sold − cancelled) ÷ sold $" },
-    { key: "ko", label: "KO %", actual: a.ko_pct ?? 0, target: g.target_ko_pct, higher: false, desc: "Knocked-off jobs" },
+    // ⚠️ Good Rate % and KO % REMOVED (Amendment B3). Neither is in the v4 or
+    // Amendment A metric set, and each duplicates a contracted 137 metric with
+    // a term dropped: Good Rate % is Net Retention % without Financing Denied,
+    // KO % is the cancellation half of Permanent Loss %. Deleted here rather
+    // than left unrendered, per B3 — a dead path is how a retired metric comes
+    // back. If either is wanted for continuity it belongs in its own
+    // diagnostic panel with its cohort basis stated, not in this list.
   ];
 
   // ── revenue ──

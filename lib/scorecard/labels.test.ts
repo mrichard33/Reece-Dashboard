@@ -24,13 +24,21 @@ describe("§1 — the close-rate vocabulary", () => {
     expect(METRIC_FORMULAS.close).not.toMatch(/÷ demos/);
   });
 
-  it("KO % names its cohort, because the Lost panel counts the same event differently", () => {
-    // ③ "Lost this period" reads report 133's contract-date cohort; KO % reads
-    // the live sync's sold cohort. For August that is 14 lost jobs against a
-    // ko_count of 12. Both are correct and they will never agree. Two
-    // cancellation figures on one page are fine; two unlabelled ones are not.
-    expect(METRIC_FORMULAS.ko).toMatch(/live sync/i);
-    expect(METRIC_FORMULAS.ko).toMatch(/cohort/i);
+  it("Good Rate % and KO % are RETIRED, not merely unrendered (B3)", () => {
+    // This test used to assert that KO % named its cohort, because ③ "Lost this
+    // period" counts the same event on report 133's contract-date cohort and
+    // disagreed — 14 lost jobs against a ko_count of 12. Amendment B3 removes
+    // the metric instead: it is the cancellation half of Permanent Loss %, and
+    // Good Rate % is Net Retention % with Financing Denied dropped. Both
+    // contracted 137 metrics are strictly more complete.
+    //
+    // Asserting the ABSENCE rather than deleting the test: an unrendered label
+    // left in the vocabulary is how a retired metric comes back.
+    const keys = Object.keys(METRIC_LABELS);
+    expect(keys).not.toContain("goodRate");
+    expect(keys).not.toContain("ko");
+    expect(Object.values(METRIC_LABELS)).not.toContain("Good Rate %");
+    expect(Object.values(METRIC_LABELS)).not.toContain("KO %");
   });
 
   it("every rate label can state its own denominator", () => {

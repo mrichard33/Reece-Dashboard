@@ -37,6 +37,7 @@ import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
 // Staleness wording now lives behind reportingClock's lagBadge(), so the page
 // has one source for "how far behind" instead of four inline call sites.
 import { freshnessChip } from "@/lib/scorecard/freshness";
+import { shouldShowCoverageBanner, monthsInRange } from "@/lib/scorecard/coverageBanner";
 import { normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
 import { usDate } from "@/lib/utils";
@@ -182,7 +183,7 @@ export default async function ScorecardPage({
             "dated by production milestone, not contract date — a contract sold in April is " +
             "released in August, so it is answering a different question rather than running late",
         },
-        dataThrough: fromNullable(view?.actuals.revenue_as_of ?? null, "no Net Report has landed"),
+        dataThrough: fromNullable(view?.actuals.revenue_as_of ?? null, "no report 134 snapshot has landed"),
         stampedAt: view?.actuals.revenue_as_of ?? null,
       },
     } satisfies Record<string, SourceClock>,
@@ -192,9 +193,39 @@ export default async function ScorecardPage({
   // Revenue reaches its OWN date, which is not the row's — the exempt RTP
   // clock above carries it now, and the banner below reads that clock rather
   // than re-deriving a second copy of the same comparison.
-  const revenueThrough = view?.actuals.revenue_as_of ?? null;
-  const revenueStale = clock.bySource.released_rtp.lagSellingDays != null
-    && clock.bySource.released_rtp.lagSellingDays > 0;
+  // ⚠️ `revenue_as_of` is deliberately NOT read here any more (D1). It dated
+  // the RTP note this page used to raise as a banner; that note now renders
+  // on the Released card, which reads the date from its own facts so the
+  // wording cannot drift from the figure it describes.
+
+  // ── D2: a CLOSED period raises no coverage banner ─────────────────────────
+  //
+  // "Every current-period figure on this page is reported through 07-31-2026"
+  // rendered on a closed July. A closed period is complete BY DEFINITION —
+  // there is no more data coming, so "reported through the last day of the
+  // month" is the expected end state, not a shortfall. It is the same §10
+  // error as taking MIN across a range: a completeness date read as staleness.
+  //
+  // The banner now needs one of two things to be true:
+  //   • the period INCLUDES TODAY — figures can still move, so how far the
+  //     sources reach is live information; or
+  //   • a constituent month is MISSING — a real hole, closed or not.
+  const periodIncludesToday = resolved.periodEnd >= todayET();
+
+  // Months in range with no report 137 cohort. `periodTotals.months` is what
+  // actually fed the total, so the difference is precisely what is absent —
+  // derived rather than inferred from a count comparison, which cannot name
+  // WHICH month is missing and so cannot be acted on.
+  const reportedMonths = new Set(periodTotals.months.map((d) => d.slice(0, 7)));
+  const missingMonths = monthsInRange(resolved.periodStart, resolved.periodEnd).filter(
+    (m) => !reportedMonths.has(m),
+  );
+  const showCoverageBanner = shouldShowCoverageBanner({
+    periodIncludesToday,
+    laggingCount: clock.lagging.length,
+    refusedCount: clock.refused.length,
+    missingMonths,
+  });
 
   const controls = (
     <div className="flex flex-wrap items-center gap-3">
@@ -337,7 +368,7 @@ export default async function ScorecardPage({
                   source (RTP) is never "behind" — it is on a different basis —
                   so it is described rather than accused.
                 */}
-                {(clock.lagging.length > 0 || clock.refused.length > 0 || revenueStale) && (
+                {showCoverageBanner && (
                   <div
                     role="status"
                     className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200"
@@ -345,9 +376,9 @@ export default async function ScorecardPage({
                     <strong className="font-semibold">
                       {clock.refused.length > 0
                         ? "A source runs past the reporting cutoff."
-                        : clock.lagging.length > 0
-                          ? "A source is behind the reporting cutoff."
-                          : "Released figures are on their own date."}
+                        : missingMonths.length > 0
+                          ? "A month in this range has not reported."
+                          : "A source is behind the reporting cutoff."}
                     </strong>{" "}
                     {`Every current-period figure on this page is reported through ${
                       clock.cutoff.achieved.known
@@ -360,11 +391,15 @@ export default async function ScorecardPage({
                           {clock.bySource[id].note}
                         </li>
                       ))}
-                      {revenueStale && revenueThrough && (
-                        <li>
-                          {`Released to production reaches ${usDate(revenueThrough)}. It is dated by production milestone, not contract date, so it is not late — it answers a different question and affects the Released panel only.`}
+                      {/* D1 — the RTP note moved to the Released panel, which is
+                          the only panel report 134 feeds. A page-level banner
+                          that has to tell you it affects one panel is not a
+                          page-level concern. See RevenueCard `releasedWhere`. */}
+                      {missingMonths.map((m) => (
+                        <li key={m}>
+                          {`${m} is in this range but has no report 137 cohort — the period total excludes it rather than understating it.`}
                         </li>
-                      )}
+                      ))}
                     </ul>
                   </div>
                 )}
@@ -432,8 +467,22 @@ export default async function ScorecardPage({
                 {/* ③ Cohort Quality — MEASURED. Where the quality incentive lives. */}
                 <CohortQualityPanel cohorts={companyCohorts} asOf={cohortObservedOn} />
 
-                {/* ④ Funnel vs Goal */}
-                <FunnelGoalTable view={view} vm={vm} />
+                {/* ④ Funnel vs Goal — performance rows on report 137's
+                    appointment cohort (B0/B5), the SAME rows and the same
+                    period fold that feed ⑤ By Market and the Net Sales headline
+                    above. Passing the totals in rather than letting the panel
+                    re-derive them is what stops two sections of one page
+                    disagreeing about the same funnel. */}
+                <FunnelGoalTable
+                  view={view}
+                  vm={vm}
+                  cohortFunnel={{
+                    issued: periodTotals.issuedCount,
+                    demos: periodTotals.satCount,
+                    sales: periodTotals.soldCount,
+                    dataThrough: netSalesThrough,
+                  }}
+                />
 
                 {/*
                   ③ Daily Pace — promoted out of RevenueCard's `aside`, where it
