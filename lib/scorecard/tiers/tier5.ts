@@ -21,6 +21,7 @@
  */
 import { measured, unmeasured, type Measured, type TierMeta } from "./types";
 import { dollarsOf, forMarket, sumMetric, type RolledFact } from "./factRollup";
+import { keepStockCover } from "@/lib/scorecard/stockCover";
 
 export type BacklogBucket = {
   key: "hoa" | "permit" | "other_pending";
@@ -71,13 +72,21 @@ const NO_SNAP = "no Job Status snapshot for this market";
 const NO_COHORT = "this Job Status snapshot predates the 2026-08-07 cohort realign";
 
 export function buildTier5(rolled: readonly RolledFact[], marketCode: string): Tier5 {
-  // Stock semantics: no period gate. Every current job_status_ytd row for the
-  // market IS the answer, whatever window the rest of the page is showing.
+  // Stock semantics: no period gate, whatever window the rest of the page is
+  // showing. But "every current row for the market" was NOT the answer — report
+  // 133 keeps nine overlapping snapshots current at once and the YTD roll-up
+  // restates every month tile, so the naive sum roughly doubled backlog. See
+  // lib/scorecard/stockCover.ts. (This tier is not currently rendered; the live
+  // path is buildGoodBusiness. Fixed here so wiring it up later cannot
+  // resurrect the double count.)
   const js = forMarket(
-    rolled.filter((r) => r.report_type === "job_status_ytd"),
+    keepStockCover(rolled.filter((r) => r.report_type === "job_status_ytd")),
     marketCode,
   );
-  const asOf = js[0]?.as_of_date ?? null;
+  const asOf = js.reduce<string | null>(
+    (oldest, r) => (oldest == null || r.as_of_date < oldest ? r.as_of_date : oldest),
+    null,
+  );
 
   const read = (bucket: string) => {
     const s = sumMetric(js, "good_business_open", { bucket });

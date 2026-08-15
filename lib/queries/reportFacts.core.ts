@@ -41,6 +41,7 @@
  */
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
 import { marketSources } from "@/lib/scorecard/markets";
+import { keepStockCover } from "@/lib/scorecard/stockCover";
 
 /** Snapshot scope, mirrored onto every fact row by the ingest layer. */
 export type FactScope = "mtd" | "ytd" | "month" | "custom";
@@ -747,9 +748,21 @@ function buildLost(
 
 function buildGoodBusiness(rows: ReportFactRow[], marketCode: string): GoodBusinessFacts | null {
   const inMarket = marketFilter(marketCode);
-  // Stock semantics: the current job_status_ytd snapshot is the open pipeline
-  // as of its own date — no flow-period gate.
-  const js = rows.filter((r) => r.report_type === "job_status_ytd" && inMarket(r.market));
+  // Stock semantics: no flow-period gate — backlog is what is open right now,
+  // whatever window the rest of the page shows.
+  //
+  // ⚠️ "No period gate" is NOT "sum every current row". Report 133 is a
+  // contract-date cohort with nine simultaneously-current snapshots whose
+  // windows overlap — the YTD roll-up restates every month tile. Summing them
+  // showed company backlog as $12,312,052 against a real $6,165,115 until
+  // 2026-08-15. `keepStockCover` reduces them to a non-overlapping tiling,
+  // which is the §SCOPE rule at the top of this file applied to a figure that
+  // needs several disjoint snapshots rather than one.
+  //
+  // The cover is chosen BEFORE the market filter, so every market is summed
+  // over the same windows and the offices still foot to the company.
+  const covered = keepStockCover(rows.filter((r) => r.report_type === "job_status_ytd"));
+  const js = covered.filter((r) => inMarket(r.market));
   if (!js.length) return null;
   const bucket = (name: string): PendingBucket => {
     let count = 0, cents = 0;
@@ -772,8 +785,13 @@ function buildGoodBusiness(rows: ReportFactRow[], marketCode: string): GoodBusin
   // with terminal jobs folded in.
   const lost = bucket("lost");
   const completed = bucket("completed");
+  // OLDEST as-of in the cover, not the first row's. A tiled answer is only as
+  // current as its stalest tile, and the card renders this date as the whole
+  // figure's provenance — taking the freshest would overstate how current the
+  // older tiles are.
+  const asOf = js.reduce((oldest, r) => (r.as_of_date < oldest ? r.as_of_date : oldest), js[0]!.as_of_date);
   return {
-    asOf: js[0]!.as_of_date,
+    asOf,
     hoa,
     permit,
     otherPending,

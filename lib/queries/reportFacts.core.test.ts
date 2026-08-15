@@ -158,6 +158,105 @@ describe("Net (Good Business) pending buckets", () => {
   });
 });
 
+/**
+ * REGRESSION — the open backlog was summed across OVERLAPPING snapshots.
+ *
+ * Report 133 is a contract-date cohort and keeps several snapshots current at
+ * once: a YTD roll-up, a month tile per elapsed month, and an MTD file. Every
+ * job appears in the roll-up AND in its month's tile, so summing every current
+ * row double-counted the year. Live on 2026-08-15 that showed company backlog
+ * as $12,312,052 against a real $6,165,115, and Jacksonville's HOA line as 11
+ * jobs / $206,064 when six were open.
+ *
+ * The fixture is Jacksonville's actual rows that day.
+ */
+describe("REGRESSION: open backlog must not sum overlapping snapshots", () => {
+  const at = (
+    period_start: string,
+    period_end: string,
+    as_of_date: string,
+    market: string,
+    bucket: string,
+    value_cents: number,
+    value_count: number,
+  ): ReportFactRow => ({
+    ...base,
+    period_start,
+    period_end,
+    as_of_date,
+    report_type: "job_status_ytd",
+    market,
+    metric: bucket === "in_production" ? "pipeline_excluded" : "good_business_open",
+    bucket,
+    value_cents,
+    value_count,
+  });
+
+  const MONTH_WINDOWS: [string, string][] = [
+    ["2026-01-01", "2026-01-31"],
+    ["2026-02-01", "2026-02-28"],
+    ["2026-03-01", "2026-03-31"],
+    ["2026-04-01", "2026-04-30"],
+    ["2026-05-01", "2026-05-31"],
+    ["2026-06-01", "2026-06-30"],
+    ["2026-07-01", "2026-07-31"],
+  ];
+
+  const JAX = [
+    // YTD roll-up — restates every tile below it.
+    at("2026-01-01", "2026-08-05", "2026-08-05", "JAX_MKT", "hoa", 84_632_00, 5),
+    at("2026-01-01", "2026-08-05", "2026-08-05", "JAX_MKT", "permit", 47_210_00, 1),
+    at("2026-01-01", "2026-08-05", "2026-08-05", "JAX_MKT", "other_pending", 187_243_00, 7),
+    // Month tiles, as-of 08-10.
+    ...MONTH_WINDOWS.map(([s, e]) => at(s, e, "2026-08-10", "JAX_MKT", "in_production", 0, 0)),
+    at("2026-05-01", "2026-05-31", "2026-08-10", "JAX_MKT", "permit", 7_500_00, 1),
+    at("2026-06-01", "2026-06-30", "2026-08-10", "JAX_MKT", "other_pending", 20_000_00, 1),
+    at("2026-07-01", "2026-07-31", "2026-08-10", "JAX_MKT", "hoa", 84_632_00, 5),
+    at("2026-07-01", "2026-07-31", "2026-08-10", "JAX_MKT", "other_pending", 147_459_00, 8),
+    // MTD file, as-of 08-15.
+    at("2026-08-01", "2026-08-14", "2026-08-15", "JAX_MKT", "hoa", 36_800_00, 1),
+    at("2026-08-01", "2026-08-14", "2026-08-15", "JAX_MKT", "other_pending", 70_558_00, 5),
+  ];
+
+  test("Jacksonville backlog is the tiling, not tiling + roll-up", () => {
+    const { goodBusiness: gb } = buildReportFacts(JAX, MTD, "JAX_MKT");
+    expect(gb!.hoa).toEqual({ count: 6, dollars: 121_432 });
+    expect(gb!.permit).toEqual({ count: 1, dollars: 7_500 });
+    expect(gb!.otherPending).toEqual({ count: 14, dollars: 238_017 });
+    expect(gb!.pendingTotalCount).toBe(21);
+    expect(gb!.pendingTotalDollars).toBe(366_949);
+  });
+
+  test("the figures it replaces — 34 jobs / $686,034 — are gone", () => {
+    const { goodBusiness: gb } = buildReportFacts(JAX, MTD, "JAX_MKT");
+    expect(gb!.pendingTotalCount).not.toBe(34);
+    expect(gb!.pendingTotalDollars).not.toBe(686_034);
+  });
+
+  test("as-of is the STALEST tile, not the freshest — the answer is only that current", () => {
+    const { goodBusiness: gb } = buildReportFacts(JAX, MTD, "JAX_MKT");
+    expect(gb!.asOf).toBe("2026-08-10");
+  });
+
+  test("offices still foot to the company", () => {
+    const orl = JAX.map((r) => ({ ...r, market: "ORL_MKT" }));
+    const both = [...JAX, ...orl];
+    const co = buildReportFacts(both, MTD, "REECE").goodBusiness!;
+    const a = buildReportFacts(both, MTD, "JAX_MKT").goodBusiness!;
+    const b = buildReportFacts(both, MTD, "ORL_MKT").goodBusiness!;
+    expect(co.pendingTotalCount).toBe(a.pendingTotalCount + b.pendingTotalCount);
+    expect(co.pendingTotalDollars).toBe(a.pendingTotalDollars + b.pendingTotalDollars);
+  });
+
+  test("a market present in only one tile is still summed over the whole cover", () => {
+    // FTMYR appears only in the MTD file. Choosing the cover per market would
+    // hand it a different window set than JAX and break the footing above.
+    const rows = [...JAX, at("2026-08-01", "2026-08-14", "2026-08-15", "FTMYR_MKT", "hoa", 10_000_00, 1)];
+    const gb = buildReportFacts(rows, MTD, "FTMYR_MKT").goodBusiness!;
+    expect(gb.hoa).toEqual({ count: 1, dollars: 10_000 });
+  });
+});
+
 describe("Sold This Period (report 137 authoritative — sales_efficiency)", () => {
   const se = (market: string, branch: string, metric: string, value_cents: number | null, value_count: number): ReportFactRow => ({
     ...base, report_type: "sales_efficiency", market, branch_code_raw: branch, metric, value_cents, value_count,
