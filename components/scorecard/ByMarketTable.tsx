@@ -107,9 +107,31 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
   // Render helpers (NOT components — they close over `open`, and defining
   // components during render resets their state; plain function calls don't).
   const renderMobileCard = (r: ByMarketRow, strong?: boolean) => {
+    // ⚠️ THIS LIST IS THE PHONE VIEW, AND IT IS THE ONE MOST PEOPLE READ.
+    //
+    // The desktop <table> below is `hidden lg:block`; everything under 1024px
+    // renders these cards instead. A figure added to the table row and not here
+    // is invisible to every phone — which is exactly what happened when the
+    // Leads requirement shipped to the table alone and read as "still missing".
+    // Anything added to one rendering goes in both.
     const metrics: [string, string][] = [
       ["Leads", num(r.leads)],
-      // Spelled out here — the card has the width the table cell does not.
+      // E3 — the requirement, beside the actual. Spelled out rather than
+      // abbreviated: the card has the width the table cell does not.
+      ...(r.leads_target_to_date != null
+        ? ([
+            [
+              `Leads needed${r.leads_rate_own ? "" : " (co rate)"}`,
+              num(r.leads_target_to_date),
+            ],
+            [
+              "Leads vs pace",
+              r.leads_pace_delta == null
+                ? "—"
+                : `${r.leads_pace_delta >= 0 ? "+" : ""}${num(r.leads_pace_delta)}`,
+            ],
+          ] as [string, string][])
+        : []),
       // Omitted entirely when unsourced; "0 duplicates" is a different claim.
       ...(r.leads_superseded != null
         ? ([
