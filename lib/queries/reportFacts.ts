@@ -20,25 +20,72 @@ export async function getReportFacts(
  * The raw current fact rows, fetched once. Exposed so a caller needing MANY
  * markets (the By-Market table) projects them in memory instead of issuing one
  * identical query per market.
+ *
+ * ══ WHY THIS PAGES (2026-08-15) ══
+ *
+ * It used to be a single `.limit(5000)`, with a comment reasoning about headroom
+ * — "1,844 current rows of 5,000". That headroom never existed. PostgREST
+ * enforces its own `db-max-rows` ceiling and a client `.limit()` cannot raise
+ * it: past the server's cap the response is simply short, with **no error and
+ * no truncation flag**. The comment measured the TABLE and assumed the request
+ * returned it.
+ *
+ * The query also had no `order`, so WHICH rows came back was whatever order the
+ * scan produced — in practice roughly heap order, so the NEWEST facts were the
+ * ones dropped.
+ *
+ * What that looked like on 2026-08-15, at 2,188 current rows: the January–July
+ * month facts were present, so the Leads rate computed and rendered a target of
+ * 5,934. The AUGUST rows — re-inserted by that morning's ingest and therefore
+ * last in the heap — were not, so the same page showed:
+ *
+ *   • "Report 137 has not landed for this period" on the Sold card, while
+ *     report 137 held 54 sales / $1,283,027 for Fort Myers;
+ *   • a Leads ACTUAL of "—" beside a Leads TARGET of 5,934, from one table;
+ *   • the same for every office.
+ *
+ * Every one of those figures existed in the warehouse. Nothing failed, nothing
+ * logged, and the page confidently reported them as unsourced.
+ *
+ * So: page until a short page proves the set is exhausted, on a total order, and
+ * make stopping early LOUD. Any fetch of this table that assumes a single
+ * request returns all of it is wrong, however large the limit looks.
  */
 export async function fetchReportFactRows(): Promise<ReportFactRow[]> {
+  const PAGE = 1000;
+  /** Runaway guard, not a capacity limit. 2,188 current rows on 2026-08-15. */
+  const MAX_PAGES = 50;
+  const out: ReportFactRow[] = [];
   try {
     const sb = await lpServer();
-    const { data, error } = await sb
-      .from("lp_report_facts")
-      .select(
-        "report_type, period_start, period_end, as_of_date, scope, market, branch_code_raw, metric, bucket, value_cents, value_count",
-      )
-      .eq("is_current", true)
-      .in("report_type", ["sales_efficiency", "source_cost", "lead_disposition", "job_status_ytd"])
-      // ⚠️ Undocumented truncation, and it fails SILENTLY — past this ceiling
-      // rows vanish with no error and tiles quietly under-report. Headroom as
-      // of 2026-08-11: 1,844 current rows of 5,000, and adding
-      // `cohort_lost_by_status` cost 164 of them. Every new metric or market
-      // spends more, so raise this deliberately rather than discovering it.
-      .limit(5000);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as ReportFactRow[];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const { data, error } = await sb
+        .from("lp_report_facts")
+        .select(
+          "report_type, period_start, period_end, as_of_date, scope, market, branch_code_raw, metric, bucket, value_cents, value_count",
+        )
+        .eq("is_current", true)
+        .in("report_type", ["sales_efficiency", "source_cost", "lead_disposition", "job_status_ytd"])
+        // A TOTAL order on a unique column. Without it PostgREST pages over an
+        // unordered scan and a row can appear twice, or never — which is a
+        // quieter version of the same defect this function just had.
+        .order("fact_id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as ReportFactRow[];
+      out.push(...rows);
+      // A short page means the set is exhausted. This is the ONLY exit that
+      // means "we have everything".
+      if (rows.length < PAGE) return out;
+    }
+    // Falling out of the loop means we stopped early and are under-reporting.
+    // Loud, because the old failure mode was exactly this and it was silent.
+    console.error(
+      `[reportFacts] page cap hit — read ${out.length} rows and stopped. Figures on ` +
+        `this render are UNDER-REPORTED. Raise MAX_PAGES.`,
+    );
+    return out;
   } catch (err) {
     console.error("[reportFacts] fetch failed:", (err as Error)?.message ?? err);
     return [];
