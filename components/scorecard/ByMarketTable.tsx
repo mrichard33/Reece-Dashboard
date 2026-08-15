@@ -51,6 +51,26 @@ const LEADS_GRAIN_HELP =
   `is matched or scored here, and no confidence threshold is involved. The two counts are at ` +
   `different grains and must never be divided into one another.`;
 
+/**
+ * The whole Leads cell, explained — actual, requirement, pace and provenance.
+ *
+ * Built per row because the requirement's basis differs by row: a market too
+ * thin for its own rate borrows the company's, and a cell that did not say so
+ * would present a borrowed number as a measured one.
+ */
+function leadsHelp(r: ByMarketRow): string {
+  const plan =
+    r.leads_target_to_date == null
+      ? "No lead requirement is derived for this row — it has no net sales goal, or no settled cohort history to price a lead from."
+      : `Needed = this period's net goal ÷ ${usd(r.leads_rate ?? 0)} of Net Sales per lead, prorated to the same selling days the dollar target on this row uses. ` +
+        `Period requirement: ${num(r.leads_target_period)} leads. ` +
+        (r.leads_rate_own
+          ? "Rate is this market's own."
+          : "⚠️ Rate BORROWED from the company — this market has too few leads in the settled window to price its own, so the requirement is indicative.") +
+        " The rate divides DOLLARS by leads; it is not a lead-to-appointment bridge.";
+  return `${plan}\n\n${LEADS_GRAIN_HELP}`;
+}
+
 export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -169,19 +189,31 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
       <td className={`px-3 py-2 text-left ${strong ? "font-semibold text-slate-900 dark:text-slate-100" : "font-medium text-slate-700 dark:text-slate-200"} ${r.utility ? "text-slate-400 dark:text-slate-500" : ""}`}>
         {r.label}
       </td>
-      {/* E7: the headline is report 135's LEAD count; the sub-line is the same
-          period at ROW grain. Absent renders NOTHING rather than "0 duplicates",
-          which would be a claim we cannot make — see
-          ByMarketRow.leads_superseded. */}
-      <td className={`${cell} text-slate-600 dark:text-slate-300`}>
+      {/* E7: the headline is report 135's LEAD count. E3: the sub-line is what
+          the goal REQUIRES by now and how far off that is — the office view is
+          where offices get compared, so an actual with nothing to judge it
+          against was the least useful cell on the row. The row/duplicate grain
+          detail moved into the tooltip; it is provenance, not a decision. */}
+      <td className={`${cell} text-slate-600 dark:text-slate-300`} title={leadsHelp(r)}>
         {num(r.leads)}
-        {r.leads_superseded != null && (
-          <span
-            className="mt-0.5 block text-[10px] font-normal leading-tight text-slate-400 dark:text-slate-500"
-            title={LEADS_GRAIN_HELP}
-          >
-            {num(r.leads_rows)} rows · {num(r.leads_superseded)} dupes
+        {r.leads_target_to_date != null ? (
+          <span className="mt-0.5 block text-[10px] font-normal leading-tight text-slate-400 dark:text-slate-500">
+            {num(r.leads_target_to_date)} needed
+            {r.leads_pace_delta != null && (
+              <span className={r.leads_pace_delta >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
+                {" · "}
+                {r.leads_pace_delta >= 0 ? "+" : ""}
+                {num(r.leads_pace_delta)}
+              </span>
+            )}
+            {!r.leads_rate_own && <span className="text-slate-400"> · co rate</span>}
           </span>
+        ) : (
+          r.leads_superseded != null && (
+            <span className="mt-0.5 block text-[10px] font-normal leading-tight text-slate-400 dark:text-slate-500">
+              {num(r.leads_rows)} rows
+            </span>
+          )
         )}
       </td>
       <td className={`${cell} text-slate-600 dark:text-slate-300`}>{num(r.issued)}</td>

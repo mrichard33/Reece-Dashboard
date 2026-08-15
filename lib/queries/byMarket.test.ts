@@ -4,9 +4,12 @@ import {
   paceFields,
   achievedFrom,
   netSalesByMarket,
+  leadPlanFor,
   type ByMarketRow,
 } from "./byMarket";
 import type { CohortObservation } from "./cohorts.core";
+import { measured, unmeasured } from "@/lib/scorecard/tiers/types";
+import type { LeadRate } from "@/lib/scorecard/leadRate";
 
 /**
  * Guard for the utility-row suppression rule. The old check summed only
@@ -25,6 +28,13 @@ const row = (over: Partial<ByMarketRow>): ByMarketRow => ({
   // LP-MCP began publishing the lead grain, and absent is not zero.
   leads_rows: null,
   leads_superseded: null,
+  // E3: no goal and no rate on the default fixture — the planning figures are
+  // unmeasured, which is what a utility row genuinely is.
+  leads_target_period: null,
+  leads_target_to_date: null,
+  leads_pace_delta: null,
+  leads_rate_own: false,
+  leads_rate: null,
   issued: 0,
   demos: 0,
   sales: 0,
@@ -484,5 +494,65 @@ describe("§11 — Fort Lauderdale is a rollup, and the counts roll up with it",
     expect(rolled.nsaCents! / 100).toBe(85_415);
     expect(dollars(m.get("FTLAU_MKT")!.netSalesCents)).toBe(139_150);
     expect(dollars(m.get("FTLAU_MKT")!.netSalesCents)).not.toBe(85_415);
+  });
+});
+
+// ── E3 — the Leads requirement, per office ──────────────────────────────────
+//
+// The Funnel vs Goal panel has carried these since E3, but only for the ONE
+// selected market. The office-by-office table — which is where offices actually
+// get compared — showed a Leads actual with nothing to judge it against.
+describe("leadPlanFor — needed / pace, per office", () => {
+  const rate = (r: number, own = true) =>
+    measured({
+      rate: r, cohortCount: 5, netSalesCents: 0, distinctLeads: 20_000,
+      eligibilityDays: 90, months: [], ownRate: own,
+    });
+
+  it("divides BOTH goals by the rate — period and to-date", () => {
+    // Orlando's real measured rate. $1.5M period goal, half of it prorated.
+    const p = leadPlanFor({ period: 1_500_000, prorated: 750_000 }, rate(534.21));
+    expect(p.leads_target_period).toBe(2808);
+    expect(p.leads_target_to_date).toBe(1404);
+    expect(p.leads_rate).toBe(534);
+    expect(p.leads_rate_own).toBe(true);
+  });
+
+  it("prorates by DIVIDING the prorated goal, not by re-deriving from days", () => {
+    // The whole point: the Leads target inherits the dollar target's proration,
+    // including this market's own report-137 coverage anchor. Any market whose
+    // 137 file lags would otherwise carry two different elapsed fractions on one
+    // row — a Leads target paced to the calendar beside dollars paced to 08-10.
+    const full = leadPlanFor({ period: 1_000_000, prorated: 1_000_000 }, rate(500));
+    const half = leadPlanFor({ period: 1_000_000, prorated: 500_000 }, rate(500));
+    expect(full.leads_target_to_date).toBe(2000);
+    expect(half.leads_target_to_date).toBe(1000);
+    // The PERIOD requirement does not move with elapsed time — only to-date does.
+    expect(half.leads_target_period).toBe(full.leads_target_period);
+  });
+
+  it("MARKS a borrowed company rate rather than passing it off as measured", () => {
+    const p = leadPlanFor({ period: 400_000, prorated: 200_000 }, rate(735.95, false));
+    expect(p.leads_rate_own).toBe(false);
+    expect(p.leads_target_period).toBe(544);
+  });
+
+  it("no goal → no requirement, and NOT zero", () => {
+    // The utility rows. Zero would read as "this office needs no leads".
+    const p = leadPlanFor({ period: null, prorated: null }, rate(534.21));
+    expect(p.leads_target_period).toBeNull();
+    expect(p.leads_target_to_date).toBeNull();
+  });
+
+  it("no measurable rate → no requirement even when a goal exists", () => {
+    const p = leadPlanFor({ period: 1_500_000, prorated: 750_000 }, unmeasured<LeadRate>("no settled cohort"));
+    expect(p.leads_target_to_date).toBeNull();
+    expect(p.leads_rate).toBeNull();
+  });
+
+  it("a non-positive rate cannot produce a requirement", () => {
+    // Guards a divide-by-zero producing Infinity leads.
+    const p = leadPlanFor({ period: 1_500_000, prorated: 750_000 }, rate(0));
+    expect(p.leads_target_period).toBeNull();
   });
 });
