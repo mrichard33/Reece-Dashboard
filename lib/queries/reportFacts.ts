@@ -1,6 +1,7 @@
 import { lpServer } from "@/lib/supabase/lp";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
 import { buildReportFacts, type ReportFactRow, type ReportFacts } from "./reportFacts.core";
+import { fetchAllPages } from "./fetchAllPages";
 
 /**
  * Fetch the current CSV-era report facts (source_cost / lead_disposition /
@@ -52,40 +53,21 @@ export async function getReportFacts(
  * request returns all of it is wrong, however large the limit looks.
  */
 export async function fetchReportFactRows(): Promise<ReportFactRow[]> {
-  const PAGE = 1000;
-  /** Runaway guard, not a capacity limit. 2,188 current rows on 2026-08-15. */
-  const MAX_PAGES = 50;
-  const out: ReportFactRow[] = [];
   try {
     const sb = await lpServer();
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const from = page * PAGE;
-      const { data, error } = await sb
+    return await fetchAllPages<ReportFactRow>("reportFacts", (from, to) =>
+      sb
         .from("lp_report_facts")
         .select(
           "report_type, period_start, period_end, as_of_date, scope, market, branch_code_raw, metric, bucket, value_cents, value_count",
         )
         .eq("is_current", true)
         .in("report_type", ["sales_efficiency", "source_cost", "lead_disposition", "job_status_ytd"])
-        // A TOTAL order on a unique column. Without it PostgREST pages over an
-        // unordered scan and a row can appear twice, or never — which is a
-        // quieter version of the same defect this function just had.
+        // `fact_id` is the unique key — see fetchAllPages rule 2.
         .order("fact_id", { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw new Error(error.message);
-      const rows = (data ?? []) as ReportFactRow[];
-      out.push(...rows);
-      // A short page means the set is exhausted. This is the ONLY exit that
-      // means "we have everything".
-      if (rows.length < PAGE) return out;
-    }
-    // Falling out of the loop means we stopped early and are under-reporting.
-    // Loud, because the old failure mode was exactly this and it was silent.
-    console.error(
-      `[reportFacts] page cap hit — read ${out.length} rows and stopped. Figures on ` +
-        `this render are UNDER-REPORTED. Raise MAX_PAGES.`,
+        .range(from, to)
+        .returns<ReportFactRow[]>(),
     );
-    return out;
   } catch (err) {
     console.error("[reportFacts] fetch failed:", (err as Error)?.message ?? err);
     return [];

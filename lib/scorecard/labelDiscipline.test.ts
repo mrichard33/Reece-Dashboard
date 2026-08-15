@@ -73,28 +73,45 @@ describe("§Naming — no rendered label calls gross−cancelled Net or NSA", ()
     expect(offenders).toEqual([]);
   });
 
-  it("the Sold panel labels gross−cancelled as Gross after cancels", () => {
+  it("the Sold panel renders REECE NET SALES, not an incomplete subtraction", () => {
     const src = readFileSync("components/scorecard/RevenueCard.tsx", "utf8");
     const labels = labelsIn(src);
-    expect(labels).toContain("Gross after cancels");
-    // And the value bound to that label is the gross-after-cancels field, not NSA.
-    expect(src).toMatch(/label:\s*"Gross after cancels"[\s\S]{0,120}?f\.grossAfterCancels/);
+    // §6: Net Sales = Gross Written − Cancellations − Financing Denied.
+    expect(labels).toContain("Net Sales");
+    expect(src).toMatch(/label:\s*"Net Sales"[\s\S]{0,160}?netValue/);
+    expect(src).toMatch(/const netValue\s*=\s*f\.netSales/);
+    // The label states the whole formula, so a reader never has to guess which
+    // terms were subtracted — the failure that made "Gross after cancels"
+    // unreadable was that it looked complete and was not.
+    expect(src).toMatch(/gross − cancels − financing denied/);
   });
 
-  it("reserves Net / NSA for LP's nsa_cents", () => {
+  it("the old gross-after-cancels row is GONE, not relabelled", () => {
     const src = readFileSync("components/scorecard/RevenueCard.tsx", "utf8");
-    // The NSA row carries the word Net and is bound to netAfterCancels.
-    expect(src).toMatch(/label:\s*"Net \(Report 137 NSA\)"[\s\S]{0,80}?netValue/);
-    expect(src).toMatch(/const netValue\s*=\s*f\.netAfterCancels/);
+    // It subtracted cancellations and silently dropped Financing Denied, landing
+    // on no defined metric: $3,197,420 against a real Net Sales of $3,039,063
+    // for 2026-08 company.
+    expect(labelsIn(src)).not.toContain("Gross after cancels");
+    expect(src).not.toMatch(/f\.grossAfterCancels/);
+  });
+
+  it("LP's NSA is NOT rendered — it is not Net Sales", () => {
+    const src = readFileSync("components/scorecard/RevenueCard.tsx", "utf8");
+    // NSA also removes Working and Hold, so under the word "Net" it read
+    // $655,998 against Net Sales of $3,039,063 — a $2.4M gap that is entirely
+    // unreleased business shown as though it were loss. It survives as a
+    // data-layer control total; it does not appear on the card.
+    expect(labelsIn(src)).not.toContain("Net (Report 137 NSA)");
+    expect(src).not.toMatch(/f\.netAfterCancels/);
   });
 
   it("every Net-bearing label on the Sold panel is a genuine net figure", () => {
     const src = readFileSync("components/scorecard/RevenueCard.tsx", "utf8");
     const netLabels = labelsIn(src).filter((l) => /\bnet\b|\bnsa\b/i.test(l));
-    // "Net (NSA)"    → LP's nsa_cents (report 137)
+    // "Net Sales"    → §6 contracted: gross − cancels − financing denied
     // "Net released" → RTP net by milestone date (report 134)
     // Both are net. Nothing else may use the word.
-    expect(new Set(netLabels)).toEqual(new Set(["Net (Report 137 NSA)", "Net released"]));
+    expect(new Set(netLabels)).toEqual(new Set(["Net Sales", "Net released"]));
   });
 });
 

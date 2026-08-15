@@ -74,7 +74,7 @@ export default async function ScorecardPage({
     }),
     getByMarket(resolved).catch((err) => {
       console.error("[scorecard] byMarket failed:", (err as Error)?.message ?? err);
-      return { rows: [], total: null };
+      return { rows: [], total: null, unrouted: null };
     }),
     // ③ card figures (lp_report_facts) — never rejects; a failure yields [] and
     // the cards render "not yet sourced".

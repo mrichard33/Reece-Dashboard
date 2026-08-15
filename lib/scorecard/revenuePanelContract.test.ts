@@ -53,8 +53,7 @@ describe("Sold this period — one basis per card", () => {
     // the number plainly exists two cards down. Naming the missing REPORT is
     // actionable; naming the absence is not.
     expect(code).toMatch(/const NEEDS_137 = "needs report 137"/);
-    expect(code).toMatch(/note: soldSourced \? "gross − cancels" : NEEDS_137/);
-    expect(code).toMatch(/note: soldSourced \? "LP net" : NEEDS_137/);
+    expect(code).toMatch(/note: soldSourced \? "gross − cancels − financing denied" : NEEDS_137/);
   });
 
   it("never fills a 137-only row from the sync", () => {
@@ -74,10 +73,20 @@ describe("Cancellations live on exactly ONE card", () => {
   });
 
   it("keeps the EFFECT of cancellations in the sold waterfall", () => {
-    // Removing the line item must not remove the subtotal: the card still has to
-    // show what survives cancellation, or the waterfall has a hole in it.
-    expect(code).toMatch(/label: "Gross after cancels"/);
-    expect(code).toMatch(/label: "Net \(Report 137 NSA\)"/);
+    // Removing the line item must not remove the result: the card still has to
+    // show what survives, or the waterfall has a hole in it. Net Sales IS that
+    // result — gross minus BOTH loss terms, which is what the old
+    // "Gross after cancels" row failed to be.
+    expect(code).toMatch(/label: "Net Sales"/);
+    expect(code).not.toMatch(/label: "Gross after cancels"/);
+  });
+
+  it("shows Working + Hold as IN FLIGHT, never subtracted from Net Sales", () => {
+    // This is the whole $2.4M gap that made LP's NSA look like a collapse.
+    // Beside net, not inside it.
+    expect(code).toMatch(/label: "Not yet released"/);
+    expect(code).toMatch(/in flight, not lost/);
+    expect(code).toMatch(/f\.notYetReleased/);
   });
 
   it("the Lost card still carries the cause split", () => {

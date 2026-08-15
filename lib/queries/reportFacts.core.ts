@@ -79,25 +79,63 @@ export type SoldFacts = {
   cancelCount: number | null;
   cancelValueDollars: number | null;
   /**
-   * GROSS SOLD − CANCELLED, and nothing else. This is NOT net and must never be
-   * labelled Net or NSA (see the type note below): it subtracts cancellations
-   * only, while NSA additionally subtracts credit declines, holds and working.
-   * On Fort Myers for 2026-08 the two differ by ~$501K — $844,765 against
-   * $343,676 — with $466,188 of the difference sitting in working alone.
+   * ── REECE NET SALES — the contracted definition, and the goal-bearing one ──
    *
-   * Computable whenever gross and the cancellations bucket are both sourced,
-   * INCLUDING in a cohort-immature month where NSA is still maturing. That is
-   * why the Sold panel's bottom line is no longer blank in an MTD view.
+   *     Net Sales = Gross Written − Cancellations − Financing Denied
+   *
+   * Added 2026-08-15. Until then this card showed two figures and NEITHER was
+   * Net Sales:
+   *
+   *   "Gross after cancels"  gross − cancellations, with the Financing Denied
+   *                          term simply missing. An incomplete subtraction that
+   *                          lands on no defined metric — August company read
+   *                          $3,197,420 against a real Net Sales of $3,039,063.
+   *   "Net (Report 137 NSA)" LP's own NSA, which ALSO removes Working and Hold.
+   *                          $655,998 for the same period — $2,383,065 below Net
+   *                          Sales, and that gap is Working $1,763,438 + Hold
+   *                          $619,627 to the dollar.
+   *
+   * Working and Hold are unresolved business, NOT loss (§6). Subtracting them
+   * answers "what has settled", not "what did we sell that survived" — under a
+   * label reading Net, on the row people plan against.
+   *
+   * This figure ties EXACTLY to `lp_cohort_maturation.net_sales_cents`, which is
+   * what the company hero and the ⑤ By Market Net Sales column already render —
+   * verified to the dollar for 2026-08. That agreement is the point: one Net
+   * Sales on the page, from one definition.
+   *
+   * NULL unless gross, cancellations AND financing denied are all present. A
+   * missing term is unknown, never zero — dropping one silently inflates Net.
    */
-  grossAfterCancelsDollars: number | null;
+  netSalesDollars: number | null;
+  /**
+   * Working + Hold for this cohort: sold business that has NOT been released.
+   *
+   * In flight, not lost — which is exactly why it is shown BESIDE Net Sales
+   * rather than subtracted from it. It is the honest answer to "why hasn't this
+   * become cash", and it is the whole of the gap between Net Sales and LP's NSA.
+   *
+   * NULL unless both components are present; one alone would understate it.
+   */
+  notYetReleasedDollars: number | null;
   /**
    * LP's NSA (`net_sold` on report 137) — gross net of cancellations, credit
-   * declines, holds AND working. The ONLY figure entitled to the words "Net" or
-   * "NSA" on this card.
+   * declines, holds AND working.
+   *
+   * ⚠️ NOT RENDERED SINCE 2026-08-15, and not a synonym for Net Sales. It removes
+   * Working and Hold as well, so it answers "what has SETTLED", not "what did we
+   * sell that survived". Shown under the word Net it read $655,998 against a Net
+   * Sales of $3,039,063 for the same August — a $2.4M gap that is entirely
+   * unreleased business, presented as though it were loss.
+   *
+   * Kept as a data-layer CONTROL TOTAL (§6/§7: "a control total, not a
+   * definition"). If it ever stops equalling `netSalesDollars − working − hold`,
+   * investigate — do not silently switch sources. What the card shows instead is
+   * `notYetReleasedDollars`, which states the same gap as the thing it actually
+   * is.
    *
    * Null when the answering snapshot is cohort-immature (an MTD Sales
-   * Efficiency pull with a blank Net column). `netPendingReason` says why, so
-   * the card can explain instead of showing a bare dash.
+   * Efficiency pull with a blank Net column); `netPendingReason` says why.
    */
   netAfterCancelsDollars: number | null;
   netPendingReason: string | null;
@@ -552,11 +590,30 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
       // A composed figure is as-of the NEWEST part, and its scope is the
       // composition rather than any one snapshot's.
       const asOf = se.reduce((a, r) => (r.as_of_date > a ? r.as_of_date : a), se[0]!.as_of_date);
-      // gross − cancelled, from the EXPLICIT cancellations bucket. Deliberately
-      // independent of `net_sold`: it stays computable through a month whose Net
-      // column is still maturing, which is the common MTD case.
-      const grossAfterCancels =
-        cancelled.seen && cancelled.cents != null ? dollars(sold.cents - cancelled.cents)! : null;
+      // REECE NET SALES = gross − cancellations − financing denied, from the two
+      // EXPLICIT loss buckets. Deliberately independent of `net_sold`: it stays
+      // computable through a month whose NSA column is still maturing, which is
+      // the common MTD case — and it is the figure people plan against.
+      //
+      // All-or-unknown. A missing loss term is not zero: dropping one inflates
+      // Net Sales, which fails in the flattering direction.
+      const creditDecline = sumMetric(se, "credit_decline");
+      const netSales =
+        cancelled.seen &&
+        cancelled.cents != null &&
+        creditDecline.seen &&
+        creditDecline.cents != null
+          ? dollars(sold.cents - cancelled.cents - creditDecline.cents)!
+          : null;
+      // Working + Hold — sold, not released, NOT lost. Shown beside Net Sales
+      // rather than subtracted from it; subtracting is what makes LP's NSA read
+      // $2.4M below Net Sales and look like a collapse.
+      const workingOpen = sumMetric(se, "working_open");
+      const held = sumMetric(se, "hold");
+      const notYetReleased =
+        workingOpen.seen && workingOpen.cents != null && held.seen && held.cents != null
+          ? dollars(workingOpen.cents + held.cents)!
+          : null;
       return {
         basis: "sales_efficiency",
         asOf: composedFrom ? asOf : se[0]!.as_of_date,
@@ -568,7 +625,8 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
         cancelValueDollars: cancelled.seen && cancelled.cents != null
           ? dollars(cancelled.cents)!
           : netSourced ? dollars(sold.cents - netSold.cents!)! : null,
-        grossAfterCancelsDollars: grossAfterCancels,
+        netSalesDollars: netSales,
+        notYetReleasedDollars: notYetReleased,
         netAfterCancelsDollars: netSourced ? dollars(netSold.cents)! : null,
         netPendingReason: netSourced
           ? null
@@ -599,7 +657,8 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
       // already the gross−NSA residual, so gross − that residual is just NSA
       // again. Reporting it as gross-after-cancels would assert a distinction
       // this source cannot make, so it stays null and the card omits the line.
-      grossAfterCancelsDollars: null,
+      netSalesDollars: null,
+      notYetReleasedDollars: null,
       netAfterCancelsDollars: dollars(nsa.cents)!,
       netPendingReason: null,
     };
@@ -624,7 +683,8 @@ function buildSold(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: 
     cancelValueDollars: dollars((sold.cents ?? 0) - (netSold.cents ?? 0))!,
     // Same as the control-totals fallback: no explicit cancellations bucket, so
     // there is no gross-after-cancels this source can honestly assert.
-    grossAfterCancelsDollars: null,
+    netSalesDollars: null,
+    notYetReleasedDollars: null,
     netAfterCancelsDollars: dollars(netSold.cents ?? 0)!,
     netPendingReason: null,
   };

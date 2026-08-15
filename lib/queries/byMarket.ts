@@ -200,7 +200,36 @@ export type ByMarketRow = {
   paceDeltaPts: number | null;
 };
 
-export type ByMarketView = { rows: ByMarketRow[]; total: ByMarketRow | null };
+export type ByMarketView = {
+  rows: ByMarketRow[];
+  total: ByMarketRow | null;
+  /**
+   * ── LEADS THAT REACHED NO MARKET (2026-08-15) ─────────────────────────────
+   *
+   * The UNASSIGNED display entity — warehouse codes UNASSIGNED + OUT_OF_AREA —
+   * lifted OUT of `rows` and returned separately.
+   *
+   * It used to render as a market row. It never could look like one: unrouted
+   * leads get no report-137 appointment cohort, so Issued, Demos, Sales, Gross
+   * and Net are structurally "—" forever, and the row carried a lead count
+   * beside six dashes in a table about market performance. Readers learn to
+   * skip a row like that, which is the opposite of what it is for.
+   *
+   * The signal itself is real and is NOT dropped: 173 leads in August MTD, ~3,494
+   * YTD, 4.9% of every lead — flat at 4–5% a month since January, so the
+   * 2026-08-05 "keep it visible so it can be driven to zero" ruling has had eight
+   * months and has not worked. It now renders as a one-line alert, which states
+   * the count and the share and is much harder to skip than a row of dashes.
+   *
+   * ⚠️ `total` still INCLUDES these leads — it is the company figure and they are
+   * company leads. So the office rows deliberately do NOT sum to the total's
+   * Leads, and the alert is what explains the gap. Do not "fix" the footing by
+   * silently dropping them from the total; that would hide the leak entirely.
+   *
+   * Null when there is no unrouted activity at all — the good case.
+   */
+  unrouted: ByMarketRow | null;
+};
 
 /**
  * Does a utility row (UNASSIGNED / OUT_OF_AREA) carry anything worth showing?
@@ -749,11 +778,16 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
   };
 
   const rows: ByMarketRow[] = [];
+  let unrouted: ByMarketRow | null = null;
   for (const m of MARKETS) {
     const row = buildRow(m.code, m.label, !!m.utility, m.sources);
     if (!row) continue;
-    // Utility rows only when they carry activity.
-    if (m.utility && !rowHasActivity(row)) continue;
+    if (m.utility) {
+      // Lifted out of the table and surfaced as an alert — see ByMarketView.
+      // Still only when it carries activity: no leak, nothing to say.
+      if (rowHasActivity(row)) unrouted = row;
+      continue;
+    }
     rows.push(row);
   }
   // Unmeasured sorts last, not as if it were zero.
@@ -775,7 +809,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     // elapsedPct is calendar-only and already correct on the row.
     Object.assign(total, achievedFrom(total.pctToGoal, total.elapsedPct));
   }
-  return { rows, total };
+  return { rows, total, unrouted };
 }
 
 /** Per-market fetch that never rejects — a bad market must not take down the page. */
@@ -865,11 +899,16 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
   };
 
   const rows: ByMarketRow[] = [];
+  let unrouted: ByMarketRow | null = null;
   marketViews.forEach((v, i) => {
     const m = MARKETS[i];
     if (!v || !m) return;
     const row = toRow(m.code, m.label, !!m.utility, v);
-    if (m.utility && !rowHasActivity(row)) return;
+    if (m.utility) {
+      // Lifted out of the table — see ByMarketView.unrouted.
+      if (rowHasActivity(row)) unrouted = row;
+      return;
+    }
     rows.push(row);
   });
   rows.sort(
@@ -877,7 +916,7 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
   );
 
   const total = reece ? toRow("REECE", "All Markets", false, reece) : null;
-  return { rows, total };
+  return { rows, total, unrouted };
 }
 
 export async function getByMarket(resolved: ResolvedPeriod): Promise<ByMarketView> {

@@ -198,7 +198,13 @@ export type ScorecardVM = {
       cancelCount: number | null;
       cancelValue: number | null;
       /** gross − cancelled ONLY. Not net, not NSA — see SoldFacts. */
-      grossAfterCancels: number | null;
+      /** Reece Net Sales = gross − cancellations − financing denied (§6). Ties
+       *  to lp_cohort_maturation.net_sales_cents, so the Sold card, the hero and
+       *  ⑤ By Market all render ONE Net Sales from one definition. */
+      netSales: number | null;
+      /** Working + Hold — sold, unreleased, NOT lost. The whole gap between Net
+       *  Sales and LP's NSA. */
+      notYetReleased: number | null;
       /** LP's NSA — the only figure on this card that may be called Net/NSA. */
       netAfterCancels: number | null;
       /** Why netAfterCancels is null despite a covering snapshot (cohort). */
@@ -488,7 +494,8 @@ export function buildScorecardVM(
     grossSold: sf?.grossSoldDollars ?? null,
     cancelCount: sf?.cancelCount ?? null,
     cancelValue: sf?.cancelValueDollars ?? null,
-    grossAfterCancels: sf?.grossAfterCancelsDollars ?? null,
+    netSales: sf?.netSalesDollars ?? null,
+    notYetReleased: sf?.notYetReleasedDollars ?? null,
     netAfterCancels: sf?.netAfterCancelsDollars ?? null,
     netPendingReason: sf?.netPendingReason ?? null,
     releasedBasis: rf?.basis ?? null,

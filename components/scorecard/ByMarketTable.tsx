@@ -74,7 +74,14 @@ function leadsHelp(r: ByMarketRow): string {
 export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string }) {
   const router = useRouter();
   const params = useSearchParams();
-  const { rows, total } = data;
+  const { rows, total, unrouted } = data;
+  // Share of every lead this period. Derived from the TOTAL row, which still
+  // includes the unrouted leads — that is what makes the percentage meaningful
+  // and the footing gap explainable in the same breath.
+  const unroutedPct =
+    unrouted?.leads != null && total?.leads != null && total.leads > 0
+      ? Math.round((unrouted.leads / total.leads) * 1000) / 10
+      : null;
 
   function open(code: string) {
     const next = new URLSearchParams(params.toString());
@@ -339,6 +346,27 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
           </tbody>
         </table>
       </div>
+
+      {/* ── Leads that reached no market ────────────────────────────────────
+          OUTSIDE both viewport wrappers on purpose: this is the one line that
+          explains why the rows above do not sum to All Markets, and hiding it
+          on phones would leave the gap unexplained exactly where the table is
+          hardest to read.
+
+          It replaces the old "Unassigned" ROW. That row could never look like a
+          market — unrouted leads get no report-137 cohort, so Issued, Demos,
+          Sales, Gross and Net were structurally "—" forever — so it was a lead
+          count beside six dashes in a table about market performance, and
+          readers learn to skip a row like that. A sentence with a share in it
+          is harder to ignore. */}
+      {unrouted && (unrouted.leads ?? 0) > 0 && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-[11.5px] leading-snug text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+          <span className="font-semibold">{num(unrouted.leads)} leads reached no market</span>
+          {unroutedPct != null && <> · {unroutedPct}% of all leads this period</>} — counted in
+          All Markets but in no office row, so the rows above do not sum to the total.{" "}
+          Check branch→market mapping in <code className="font-mono">lp_branch_market_map</code>.
+        </div>
+      )}
     </ScSection>
   );
 }
