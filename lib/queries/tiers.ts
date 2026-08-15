@@ -15,6 +15,7 @@ import {
 import { firstOfMonthET, todayET } from "@/lib/date/sellingDays";
 import { SCORECARD_MARKETS, UTILITY_MARKETS, displayMarketOf } from "@/lib/scorecard/markets";
 import type { ReportFactRow } from "@/lib/queries/reportFacts.core";
+import { fetchAllPages } from "@/lib/queries/fetchAllPages";
 import { rollupFacts, type RolledFact } from "@/lib/scorecard/tiers/factRollup";
 import { buildTier1, type GoalByMarket, type Tier1 } from "@/lib/scorecard/tiers/tier1";
 import { buildTier2, type Tier2 } from "@/lib/scorecard/tiers/tier2";
@@ -54,15 +55,21 @@ const num = (v: unknown): number | null => {
 async function fetchFacts(): Promise<RolledFact[]> {
   try {
     const sb = await lpServer();
-    const { data, error } = await sb
-      .from("lp_report_facts")
-      .select(
-        "report_type, period_start, period_end, as_of_date, scope, market, branch_code_raw, metric, bucket, value_cents, value_count",
-      )
-      .eq("is_current", true)
-      .limit(5000);
-    if (error) throw new Error(error.message);
-    return rollupFacts((data ?? []) as ReportFactRow[]);
+    // 2,347 current rows on 2026-08-15 — over any realistic PostgREST ceiling,
+    // so the old `.limit(5000)` was silently returning a subset. See
+    // lib/queries/fetchAllPages.ts for what that looked like on the scorecard.
+    const rows = await fetchAllPages<ReportFactRow>("tiers/facts", (from, to) =>
+      sb
+        .from("lp_report_facts")
+        .select(
+          "report_type, period_start, period_end, as_of_date, scope, market, branch_code_raw, metric, bucket, value_cents, value_count",
+        )
+        .eq("is_current", true)
+        .order("fact_id", { ascending: true })
+        .range(from, to)
+        .returns<ReportFactRow[]>(),
+    );
+    return rollupFacts(rows);
   } catch (err) {
     console.error("[tiers] facts fetch failed:", (err as Error)?.message ?? err);
     return [];
@@ -102,14 +109,21 @@ async function fetchGoals(): Promise<GoalByMarket> {
 async function fetchJobDates(): Promise<JobDateRow[]> {
   try {
     const sb = await lpServer();
-    const { data, error } = await sb
-      .from("scorecard_report_rows_a")
-      .select("job_number, market, contract_date, rtp_date")
-      .not("contract_date", "is", null)
-      .not("rtp_date", "is", null)
-      .limit(5000);
-    if (error) throw new Error(error.message);
-    return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    // ⚠️ 6,181 matching rows on 2026-08-15. The old `.limit(5000)` was short by
+    // over a thousand on its OWN limit, before PostgREST's ceiling even applied
+    // — so this has been reading a partial set for as long as the table has
+    // been this size, and never said so.
+    const data = await fetchAllPages<Record<string, unknown>>("tiers/jobDates", (from, to) =>
+      sb
+        .from("scorecard_report_rows_a")
+        .select("id, job_number, market, contract_date, rtp_date")
+        .not("contract_date", "is", null)
+        .not("rtp_date", "is", null)
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<Record<string, unknown>[]>(),
+    );
+    return (data as Record<string, unknown>[]).map((r) => ({
       job_number: r.job_number == null ? null : String(r.job_number),
       market: String(r.market ?? ""),
       contract_date: r.contract_date == null ? null : String(r.contract_date),
@@ -134,14 +148,21 @@ async function fetchSourceNsli(): Promise<{ rows: SourceNsliRow[]; windowLabel: 
   const windowStart = rolling90WindowStart();
   try {
     const sb = await lpServer();
-    const { data, error } = await sb
-      .from("lp_source_scorecard_daily")
-      .select("source, sub_source, period_start, as_of_date, issued, net_sales")
-      .eq("market", "REECE")
-      .gte("period_start", windowStart.slice(0, 8) + "01")
-      .order("as_of_date", { ascending: false })
-      .limit(5000);
-    if (error) throw new Error(error.message);
+    // 1,860 matching rows on 2026-08-15. The previous `.order("as_of_date")` is
+    // not unique — many rows share one as-of — so it could not page safely
+    // either; `id` is added as the tiebreaker. The as-of ordering is kept
+    // because the reducer below relies on it to pick each month's final state.
+    const data = await fetchAllPages<Record<string, unknown>>("tiers/sourceNsli", (from, to) =>
+      sb
+        .from("lp_source_scorecard_daily")
+        .select("id, source, sub_source, period_start, as_of_date, issued, net_sales")
+        .eq("market", "REECE")
+        .gte("period_start", windowStart.slice(0, 8) + "01")
+        .order("as_of_date", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<Record<string, unknown>[]>(),
+    );
 
     // Latest as-of per (source, sub_source, month) — the month's final state.
     const latest = new Map<string, { issued: number; net: number }>();
