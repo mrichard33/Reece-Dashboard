@@ -22,7 +22,7 @@ import type { ByMarketRow, ByMarketView } from "@/lib/queries/byMarket";
  * colour, no market moves.
  */
 /**
- * Report 135's two LEAD-grain figures.
+ * Report 135's SECONDARY figures, at ROW grain.
  *
  * Deliberately NOT in `labels.ts`. That module is the vocabulary for RATES —
  * `labels.test.ts` requires every entry to carry a "÷" formula, and
@@ -30,18 +30,26 @@ import type { ByMarketRow, ByMarketView } from "@/lib/queries/byMarket";
  * here as literals, exactly like "Leads", "Issued", "Demos" and "Sales" beside
  * them.
  *
- * ⚠️ "Leads" is report 135's ROW count; LEADS_DISTINCT is its LEAD count. Two
- * counts of one period at two grains — NOT a numerator and a denominator.
- * Dividing one into the other yields an artefact of how many disposition states
- * each lead passed through, not a rate. §13's grain bridge stays unproven.
+ * ⚠️ INVERTED 2026-08-15 (Amendment E7). "Leads" is now report 135's LEAD count
+ * (distinct `lp_lead_id`); LEADS_ROWS is its ROW count and is the sub-line. The
+ * headline had to move to distinct because the Leads TARGET derives from a rate
+ * whose denominator is distinct leads — a row-count actual against a
+ * distinct-based target is a pace error with nothing on screen to reveal it.
+ *
+ * Still two counts of one period at two grains — NOT a numerator and a
+ * denominator. Dividing one into the other yields an artefact of how many
+ * disposition states each lead passed through, not a rate. §13's grain bridge
+ * stays unproven.
  */
-const LEADS_DISTINCT = "Leads (distinct)";
+const LEADS_ROWS = "Disposition rows";
 const LEADS_SUPERSEDED = "Duplicates merged by LP";
 /** Why the duplicate figure can be trusted without a confidence score. */
 const LEADS_GRAIN_HELP =
-  `${LEADS_DISTINCT} — distinct lp_lead_id, not rows. ${LEADS_SUPERSEDED} — Σ LP's NumSuperseded, ` +
-  `counted once per lead. This is LP's own merge decision reported as-is; nothing is matched or ` +
-  `scored here, and no confidence threshold is involved.`;
+  `Leads — distinct lp_lead_id, not rows. ${LEADS_ROWS} — report 135 is emitted at lead × ` +
+  `disposition-state grain, so one lead contributes several rows. ${LEADS_SUPERSEDED} — Σ LP's ` +
+  `NumSuperseded, counted once per lead. This is LP's own merge decision reported as-is; nothing ` +
+  `is matched or scored here, and no confidence threshold is involved. The two counts are at ` +
+  `different grains and must never be divided into one another.`;
 
 export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string }) {
   const router = useRouter();
@@ -85,7 +93,7 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
       // Omitted entirely when unsourced; "0 duplicates" is a different claim.
       ...(r.leads_superseded != null
         ? ([
-            [LEADS_DISTINCT, num(r.leads_distinct)],
+            [LEADS_ROWS, num(r.leads_rows)],
             [LEADS_SUPERSEDED, num(r.leads_superseded)],
           ] as [string, string][])
         : []),
@@ -161,10 +169,10 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
       <td className={`px-3 py-2 text-left ${strong ? "font-semibold text-slate-900 dark:text-slate-100" : "font-medium text-slate-700 dark:text-slate-200"} ${r.utility ? "text-slate-400 dark:text-slate-500" : ""}`}>
         {r.label}
       </td>
-      {/* The headline is report 135's ROW count; the sub-line is the same
-          period at LEAD grain. Absent (pre-2026-08-13 snapshots) renders
-          NOTHING rather than "0 duplicates", which would be a claim we cannot
-          make — see ByMarketRow.leads_superseded. */}
+      {/* E7: the headline is report 135's LEAD count; the sub-line is the same
+          period at ROW grain. Absent renders NOTHING rather than "0 duplicates",
+          which would be a claim we cannot make — see
+          ByMarketRow.leads_superseded. */}
       <td className={`${cell} text-slate-600 dark:text-slate-300`}>
         {num(r.leads)}
         {r.leads_superseded != null && (
@@ -172,7 +180,7 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
             className="mt-0.5 block text-[10px] font-normal leading-tight text-slate-400 dark:text-slate-500"
             title={LEADS_GRAIN_HELP}
           >
-            {num(r.leads_distinct)} distinct · {num(r.leads_superseded)} dupes
+            {num(r.leads_rows)} rows · {num(r.leads_superseded)} dupes
           </span>
         )}
       </td>
@@ -246,7 +254,7 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
           <thead>
             <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               <th className="px-3 py-2.5 text-left font-semibold">Market</th>
-              <th className={headCell} title={`Leads bought in this window. Report 135 (Lead Disposition), lead-cohort basis — NOT the appointment cohort the rest of this row is on, and deliberately not divided into it: lead grain and appointment grain have no proven bridge.\n\nThe headline is a ROW count. 135 is emitted at lead × disposition-state grain, so one lead contributes several rows — which is why "${LEADS_DISTINCT}" is smaller, and why the duplicate figure is shown against IT and not against the row count.`}>Leads</th>
+              <th className={headCell} title={`Leads bought in this window, counted as DISTINCT leads (distinct lp_lead_id). Report 135 (Lead Disposition), lead-cohort basis — NOT the appointment cohort the rest of this row is on, and deliberately not divided into it: lead grain and appointment grain have no proven bridge.\n\nThe sub-line is the raw ROW count. 135 is emitted at lead × disposition-state grain, so one lead contributes several rows — which is why "${LEADS_ROWS}" is larger. The two are different grains and must never be divided into one another.\n\nThis is the same figure the Leads target is measured against: the target's denominator is distinct leads, so the actual is too.`}>Leads</th>
               {/* A4: every appointment count names its cohort basis and its
                   report. These three and the two rates beside them are all
                   report 137, all appointment-date — the same rows as the

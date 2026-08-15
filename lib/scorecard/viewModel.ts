@@ -245,12 +245,23 @@ export type ScorecardVM = {
        * market's branch-grain rows. Null = not sourced → "—", never 0. This
        * replaces `raw_leads_in`, which is NULL for every market and rendered a
        * confident 0 leads per office (§4).
+       *
+       * ⚠️ DISTINCT leads since Amendment E7 (2026-08-15), not the raw row
+       * count — 135 is emitted at lead × disposition-state grain, so a row count
+       * overstates leads by ~7%. This is the figure the Leads TARGET is measured
+       * against, and the target's denominator resolves from the same
+       * `LeadsFacts.leads` expression, which is what keeps actual and target in
+       * one unit. The row count is `LeadsFacts.leadRows` and renders as the
+       * By Market sub-line.
        */
       leads: number | null;
       leadsAsOf: string | null;
       /** Report 136's company control total — shown alongside, never instead. */
       leadsRecon: number | null;
-      /** 135 − 136; |delta| ≤ 4 is report 135's validation gate (§5). */
+      /** 135 − 136 on the ROW basis both sides share; |delta| ≤ 4 is report
+       *  135's validation gate (§5). Not re-based to distinct: 136 publishes no
+       *  distinct count, so that comparison would be between two different
+       *  things. */
       leadsReconDelta: number | null;
     };
   };

@@ -19,10 +19,11 @@ const row = (over: Partial<ByMarketRow>): ByMarketRow => ({
   market: "UNASSIGNED",
   label: "Unassigned",
   utility: true,
+  // E7: the published actual is the DISTINCT count.
   leads: 0,
   // Not sourced by default — these arrive only from snapshots taken after
   // LP-MCP began publishing the lead grain, and absent is not zero.
-  leads_distinct: null,
+  leads_rows: null,
   leads_superseded: null,
   issued: 0,
   demos: 0,

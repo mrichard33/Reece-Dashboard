@@ -66,7 +66,34 @@ export type GrainRow = {
   aggregation: readonly AggregationGrain[];
   /** Named so a reader can go and check. */
   source: string;
+  /** The cohort the NUMERATOR is filed under. */
   cohortDate: CohortDate;
+  /**
+   * The cohort the DENOMINATOR is filed under, when it differs from the
+   * numerator's.
+   *
+   * ⚠️ A6's default is that these are the same, and a KPI mixing two cohorts is
+   * "two periods divided by each other". That default stands for every
+   * PERFORMANCE metric and is why this field is optional rather than required.
+   *
+   * C0 carves out exactly one legal exception: a PLANNING metric — "what does
+   * the goal require?" — may span cohorts, because it is not describing one
+   * population's behaviour. It converts a goal denominated on one cohort into a
+   * requirement counted on another. The exception is only legal when the
+   * difference is STRUCTURAL and LABELLED on screen, which is why setting this
+   * field forces `crossCohortReason` below.
+   *
+   * Declaring it is what stops the mix being invisible. Leaving it unset on a
+   * metric that actually spans cohorts is the failure mode; the field existing
+   * does not make spanning ordinary.
+   */
+  denominatorCohortDate?: CohortDate;
+  /**
+   * Why this metric is allowed to span cohorts. REQUIRED whenever
+   * `denominatorCohortDate` differs from `cohortDate` — an exemption that does
+   * not record its reason is how a gate gets quietly widened.
+   */
+  crossCohortReason?: string;
   /**
    * Set when the metric is registered but NOT SHIPPED, with the reason. A held
    * metric still has to declare its grain — that is how the hold stays visible
@@ -88,7 +115,7 @@ export type GrainRow = {
  *
  * ══ WHY THE RAW COUNTS ARE NOT IN HERE ══
  *
- * Leads, Issued, Demos, Sales — and, from 2026-08-13, "Leads (distinct)" and
+ * Leads, Issued, Demos, Sales — and, from 2026-08-13, the raw row count and
  * "Duplicates merged by LP" — all render on the By Market table and none are
  * registered. That is the rule at `assertGrainContract`, not an oversight: a
  * bare count with no denominator is not a publishable METRIC, so registering
@@ -98,11 +125,15 @@ export type GrainRow = {
  * class it exists to catch.
  *
  * The lead-grain pair is worth naming here anyway, because it is the one place
- * the page shows TWO counts of the same thing: "Leads" is report 135's ROW
- * count and "Leads (distinct)" is its LEAD count. They are not a numerator and
- * a denominator and must never be divided into one another — the ratio between
- * them is an artefact of how many disposition states each lead passed through,
- * not a rate. §13's grain bridge stays unproven and unbuilt.
+ * the page shows TWO counts of the same thing. Since Amendment E7 "Leads" is
+ * report 135's LEAD count (distinct `lp_lead_id`) and the sub-line is its ROW
+ * count — the headline and secondary swapped, because the Leads TARGET derives
+ * from a distinct-based rate and an actual in the other unit would make the
+ * pace wrong undetectably. They are still not a numerator and a denominator and
+ * must never be divided into one another — the ratio between them is an
+ * artefact of how many disposition states each lead passed through, not a rate.
+ * §13's grain bridge stays unproven and unbuilt, and the lead rate below does
+ * NOT build it: that ratio divides DOLLARS by leads, never appointments.
  */
 export const GRAIN_CONTRACT: readonly GrainRow[] = [
   // ── Sales scorecard — appointment-date cohort, Report 137 ────────────────
@@ -162,6 +193,35 @@ export const GRAIN_CONTRACT: readonly GrainRow[] = [
     // sides from one report is retired along with the split.
     source: "Report 137 (both sides)",
     cohortDate: "appointment",
+  },
+
+  // ── The one PLANNING row (C0/E1) — and the only legal cross-cohort KPI ────
+  //
+  // "What does the goal require?", not "what did this population do?". It
+  // converts a Net Sales goal into a lead requirement, so its numerator is 137
+  // dollars on the appointment cohort and its denominator is 135 leads on the
+  // lead cohort. That mix is declared rather than hidden — see
+  // `denominatorCohortDate` — and C0 permits it only because the row renders in
+  // its own block above a rule, carrying its own basis label.
+  //
+  // ⚠️ 135's DOLLARS are never consumed. E1 retires C2's Gate 3 rather than
+  // satisfying it: there is nothing to reconcile, because only the lead COUNT
+  // crosses over. Do not "simplify" this by sourcing both sides from one report.
+  {
+    metric: "Net Sales $ per Raw Lead",
+    scorecard: "sales",
+    numerator: "sales_dollars",
+    denominator: "lead",
+    aggregation: ["market", "company"],
+    source: "Report 137 Net Sales ÷ Report 135 distinct leads (lib/scorecard/leadRate.ts)",
+    cohortDate: "appointment",
+    denominatorCohortDate: "lead",
+    crossCohortReason:
+      "C0 planning carve-out: this sizes a goal, it does not measure a population. " +
+      "The Leads row is rendered in its own block above a rule and labelled " +
+      "'Report 135 · lead cohort · planning requirement, not a 137 target', so the " +
+      "cohort difference is structural and visible rather than implicit. It is NOT " +
+      "the §13 grain bridge — it divides dollars by leads, never appointments by leads.",
   },
 
   // ── Call-centre scorecard — set-date cohort. HELD, and declared anyway. ───
@@ -245,6 +305,21 @@ export function assertGrainContract(
     // A HELD metric must say why. "Held" with no reason decays into "missing".
     if (r.held !== undefined && !r.held.trim()) {
       out.push({ metric: r.metric, problem: "held with no stated reason" });
+    }
+    // A6's rule, now checkable rather than only true by construction: a metric
+    // whose two sides sit on different cohorts must SAY it spans them and say
+    // why. C0 permits it for planning rows only.
+    if (r.denominatorCohortDate !== undefined && r.denominatorCohortDate !== r.cohortDate) {
+      if (!r.crossCohortReason?.trim()) {
+        out.push({
+          metric: r.metric,
+          problem:
+            `numerator is on the ${r.cohortDate} cohort and denominator on the ` +
+            `${r.denominatorCohortDate} cohort, with no crossCohortReason — a KPI ` +
+            `spanning cohorts is two periods divided by each other unless C0's ` +
+            `planning carve-out is claimed explicitly`,
+        });
+      }
     }
   }
 

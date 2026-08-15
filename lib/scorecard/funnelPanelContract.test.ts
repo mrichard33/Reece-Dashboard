@@ -110,20 +110,33 @@ describe("④ Funnel vs Goal — one panel, one population", () => {
     // distinction is structural and labelled. A footnote does not qualify.
     expect(src).toMatch(/planningRows/);
     expect(src).toMatch(/performanceRows/);
-    expect(src).toMatch(/basis:\s*"Report 135/);
+    // The LABEL itself, not the property syntax — E1 made `basis` a computed
+    // string (it now appends the rate's provenance), so matching `basis: "…"`
+    // tested the assignment style rather than the requirement.
+    expect(src).toMatch(/"Report 135 · lead cohort · planning requirement, not a 137 target"/);
     // The rule between the blocks is derived from the block length, never a
     // literal index that silently misplaces the boundary when a row moves.
     expect(src).toMatch(/const firstPerformance = planningRows\.length/);
     expect(code).not.toMatch(/i === 4/);
   });
 
-  it("names the real blocker on the Leads target (C1)", () => {
-    // C1 changed the REASON, not the state: C3 abandons the grain bridge for
-    // Net Sales ÷ Raw Leads, so "grain bridge not established" now points at a
-    // problem nobody needs to solve.
-    expect(src).toMatch(/pending Report 135 validation/);
+  it("SHIPS the Leads target, and keeps the deleted routes deleted (E0–E3)", () => {
+    // E0: rendering a Leads period goal, target-to-date and pace is the founding
+    // purpose of this scorecard. C1's placeholder is gone — the row no longer
+    // announces a blocker, because E1 removed it by sourcing the numerator from
+    // 137 and only the lead COUNT from 135.
+    // On `code`, not `src`: the panel's comments narrate the history of this row
+    // (including the placeholder it used to render), and that history is worth
+    // keeping. What must be gone is the RENDERED string.
+    expect(code).not.toMatch(/pending Report 135 validation/);
     expect(code).not.toMatch(/"grain bridge not established"/);
-    // B1 — the deleted target stays deleted.
+    expect(code).toMatch(/leadPlan/);
+
+    // B1 — the deleted target stays deleted. `target_leads_per_day` is the same
+    // defect surviving as a field on ScorecardDerived: issues-needed ÷ a
+    // historical ISSUE rate, an appointment-grain numerator over a lead-grain
+    // rate. It must not be read here however convenient it looks.
     expect(code).not.toMatch(/issue_rate|raw_leads_needed/);
+    expect(code).not.toMatch(/target_leads_per_day/);
   });
 });

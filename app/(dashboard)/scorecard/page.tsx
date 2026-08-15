@@ -31,7 +31,9 @@ import {
 import { fromNullable } from "@/lib/scorecard/tiers/types";
 import { getScorecardForPeriod, getScorecardGoalsForEditor } from "@/lib/queries/scorecard";
 import { getByMarket } from "@/lib/queries/byMarket";
-import { getReportFacts, getPartialCoverage } from "@/lib/queries/reportFacts";
+import { fetchReportFactRows, getPartialCoverage } from "@/lib/queries/reportFacts";
+import { buildReportFacts } from "@/lib/queries/reportFacts.core";
+import { netSalesPerRawLead, leadTarget } from "@/lib/scorecard/leadRate";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
 // Staleness wording now lives behind reportingClock's lagBadge(), so the page
@@ -65,7 +67,7 @@ export default async function ScorecardPage({
   // derives "this month" from the browser's local clock.
   const currentMonthET = todayET().slice(0, 7);
 
-  const [view, byMarket, reportFacts, partialCoverage, allCohorts] = await Promise.all([
+  const [view, byMarket, factRows, partialCoverage, allCohorts] = await Promise.all([
     getScorecardForPeriod(MARKET, resolved).catch((err) => {
       console.error(`[scorecard] view ${MARKET} failed:`, (err as Error)?.message ?? err);
       return null;
@@ -74,9 +76,14 @@ export default async function ScorecardPage({
       console.error("[scorecard] byMarket failed:", (err as Error)?.message ?? err);
       return { rows: [], total: null };
     }),
-    // ③ card figures (lp_report_facts) — getReportFacts never rejects; a
-    // failure yields nulls and the cards render "not yet sourced".
-    getReportFacts(MARKET, resolved),
+    // ③ card figures (lp_report_facts) — never rejects; a failure yields [] and
+    // the cards render "not yet sourced".
+    //
+    // The RAW rows, not `getReportFacts(MARKET, resolved)`. Same single query —
+    // that helper's first act is this fetch — but the Leads rate needs the
+    // per-MONTH lead series, which a projection onto one resolved period has
+    // already collapsed. Projected below.
+    fetchReportFactRows(),
     // Partial-coverage flags for the current snapshots. Never rejects — an empty
     // map just leaves the freshness chip at its existing wording.
     getPartialCoverage(),
@@ -84,6 +91,10 @@ export default async function ScorecardPage({
     // panels ② and ③ rather than rendering them at $0.
     fetchCurrentCohorts(),
   ]);
+
+  // The ③ card figures, projected onto the resolved period for this market —
+  // exactly what `getReportFacts` returns, from rows already in hand.
+  const reportFacts = buildReportFacts(factRows, resolved, MARKET);
 
   // ── Cohorts, folded to the selected market ────────────────────────────────
   //
@@ -96,6 +107,30 @@ export default async function ScorecardPage({
   // The eligibility window is measured to the period's as-of, not to `new
   // Date()`, so the figure is reproducible from the same inputs tomorrow.
   const settledNetRetentionM = settledNetRetention(companyCohorts, resolved.asOf);
+  // ── The Leads rate (E1/E2) ────────────────────────────────────────────────
+  //
+  // Σ Net Sales (137) ÷ Σ distinct leads (135) over the SAME start-anchored
+  // 90-day eligible set `settledNetRetention` above uses — sharing the window is
+  // what stops the two published rates disagreeing about which months count.
+  //
+  // The company rate is computed FIRST and passed in as the fallback, because a
+  // market too thin to carry its own rate must borrow the company's rather than
+  // render nothing. For the company view the two calls are the same figure; the
+  // fallback is inert and the row reports `ownRate`.
+  //
+  // ⚠️ Company cohorts for the fallback are ALL markets folded, not the selected
+  // market's — otherwise "the company rate" would mean a different number on
+  // every market's page.
+  const leadRateCompany = netSalesPerRawLead(
+    foldCohortsByMonth(allCohorts),
+    factRows,
+    resolved.asOf,
+    "REECE",
+  );
+  const leadRateM =
+    MARKET === "REECE"
+      ? leadRateCompany
+      : netSalesPerRawLead(companyCohorts, factRows, resolved.asOf, MARKET, leadRateCompany);
   // The latest OBSERVATION across cohorts — "when did we last look at any of
   // this". Correct for the maturation panels and for nothing else. It reads
   // 08-11 while the dollars stop 08-10, which is precisely why it must not date
@@ -342,6 +377,26 @@ export default async function ScorecardPage({
               SELLING_CAL,
               clock.cutoff.paceElapsedDays,
             );
+            // E3's three figures. Prorated over the SAME elapsed and selling
+            // days the count rows beside it use — `vm.snapshot`, which carries
+            // the clock's elapsed — so Leads cannot pace against a different
+            // calendar from Issued one row below it.
+            //
+            // The ACTUAL is `vm.revenue.facts.leads`, which since E7 is the
+            // DISTINCT count: the same `LeadsFacts.leads` expression the rate's
+            // denominator resolves from. That shared expression is the whole
+            // point — a row-count actual against a distinct-based target is a
+            // ~7% pace error with nothing on screen to reveal it.
+            const leadPlan = {
+              rate: leadRateM,
+              target: leadTarget(
+                view.derived.period_goal_dollars,
+                leadRateM,
+                vm.snapshot.daysElapsed,
+                vm.snapshot.sellingDays,
+                vm.revenue.facts.leads,
+              ),
+            };
             return (
               <>
                 {/*
@@ -482,6 +537,7 @@ export default async function ScorecardPage({
                     sales: periodTotals.soldCount,
                     dataThrough: netSalesThrough,
                   }}
+                  leadPlan={leadPlan}
                 />
 
                 {/*
