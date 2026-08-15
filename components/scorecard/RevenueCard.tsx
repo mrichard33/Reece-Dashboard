@@ -150,11 +150,10 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
   // A covering snapshot can source the flow figures and still have no net —
   // an MTD Sales Efficiency pull prints a blank Net column. Say why rather
   // than showing a bare dash (and never a $0, which reads as "all cancelled").
-  const netValue = f.netAfterCancels != null
-    ? usd(f.netAfterCancels)
-    : f.netPendingReason
-      ? "still maturing"
-      : usd(null);
+  // Net Sales is computable from the two EXPLICIT loss buckets, so unlike LP's
+  // NSA it does not wait on the cohort maturing. It is blank only when a loss
+  // term is genuinely unsourced.
+  const netValue = f.netSales != null ? usd(f.netSales) : usd(null);
   // TWO DIFFERENT NUMBERS, TWO DIFFERENT LABELS.
   //
   // "Gross after cancels" is gross − cancellations. NSA additionally subtracts
@@ -177,9 +176,27 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
   // report 137 here, report 133 there — which reads as a contradiction the
   // moment the two disagree, and as duplication when they agree.
   //
-  // This card keeps the WATERFALL: what was written, what survives cancellation,
-  // what LP nets it to. "Gross after cancels" is the effect of the cancellations;
-  // the line items behind it belong to the Lost card.
+  // ══ THE WATERFALL, AND ONLY DEFINED FIGURES IN IT (2026-08-15) ══
+  //
+  // This card showed two bottom lines and NEITHER was Net Sales:
+  //
+  //   "Gross after cancels"  gross − cancellations, with Financing Denied simply
+  //                          missing. An incomplete subtraction landing on no
+  //                          defined metric — $3,197,420 against a real Net
+  //                          Sales of $3,039,063 for August company.
+  //   "Net (Report 137 NSA)" LP's NSA, which ALSO removes Working and Hold:
+  //                          $655,998, i.e. $2.38M below Net Sales, all of it
+  //                          unreleased business presented as though it were
+  //                          loss — under a label reading "Net".
+  //
+  // Now: Gross written → Net Sales, the contracted §6 definition, which ties to
+  // the dollar with `lp_cohort_maturation.net_sales_cents` — the same figure the
+  // company hero and ⑤ By Market already render. ONE Net Sales on the page.
+  //
+  // "Not yet released" carries what NSA was really describing: Working + Hold,
+  // sold and unreleased, NOT lost. Shown BESIDE Net Sales rather than subtracted
+  // from it, which is the whole difference between an in-flight figure and a
+  // loss.
   const soldLines: Line[] = [
     {
       label: "Total sales count",
@@ -187,24 +204,30 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
       value: num(soldSourced ? f.soldCount : r.salesCount),
     },
     {
-      label: "Gross sales value",
+      label: "Gross written",
       note: soldSourced ? undefined : SYNC,
       value: usd(soldSourced ? f.grossSold : fallbackGross),
     },
-    // NOTE: no "Cancellations" row — see the block comment above.
+    // NOTE: no "Cancellations" row — see the block comment above. The Lost card
+    // owns the line items; this card owns their EFFECT.
     {
-      label: "Gross after cancels",
-      note: soldSourced ? "gross − cancels" : NEEDS_137,
-      value: f.grossAfterCancels != null ? usd(f.grossAfterCancels) : "—",
-      strong: f.grossAfterCancels != null,
-    },
-    // NSA keeps the word "Net", and nothing else on this panel may use it.
-    {
-      label: "Net (Report 137 NSA)",
-      note: soldSourced ? "LP net" : NEEDS_137,
+      label: "Net Sales",
+      note: soldSourced ? "gross − cancels − financing denied" : NEEDS_137,
       value: soldSourced ? netValue : "—",
-      strong: f.grossAfterCancels == null,
+      strong: true,
     },
+    // Not a subtraction from Net Sales — an annotation on it. Omitted entirely
+    // rather than dashed when unsourced: a card that has already said it is
+    // missing report 137 does not need to say it a fourth time.
+    ...(f.notYetReleased != null
+      ? [
+          {
+            label: "Not yet released",
+            note: "working + hold · in flight, not lost",
+            value: usd(f.notYetReleased),
+          } as Line,
+        ]
+      : []),
   ];
 
   // RELEASED THIS PERIOD — RTP milestone date (report 134). One figure on its
@@ -331,13 +354,14 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           title="Sold this period"
           info={{
             what:
-              "Contract value written in the selected period, on SOLD date. The waterfall: what was written, what survives cancellation, what LP nets it to. " +
+              "Contract value written in the selected period, on SOLD date, and what survived. " +
+              "Net Sales = Gross Written − Cancellations − Financing Denied — the contracted definition, and the figure the company goal is set against. " +
+              "It ties exactly to the Net Sales in the company hero and the By Market table: one definition, one number, everywhere. " +
               "The cancellation LINE ITEMS are on Lost this period, which owns loss and splits it by cause — they are not repeated here, because the same jobs under two headings from two different reports reads as a contradiction the moment the reports disagree. " +
-              "Two bottom lines, deliberately: Gross after cancels = gross − cancellations. " +
-              "Net (Report 137 NSA) is LP's figure and subtracts cancellations, credit declines, holds AND working. " +
-              "They are not the same number — on Fort Myers in August 2026 they differ by about $501K, most of it working — so they never share a label.",
+              "\"Not yet released\" is Working + Hold: sold business that has not shipped. It is shown BESIDE Net Sales, never subtracted from it — unresolved is not lost. " +
+              "LP's own report 137 NSA subtracts it anyway, which is why that figure reads about $2.4M below Net Sales for August 2026 and is no longer rendered here.",
             where: `Basis: sold date · ${basisNote}${f.soldAsOf ? ` · as of ${usDate(f.soldAsOf)}` : ""}`,
-            fix: `${NO_CROSSING}${f.netPendingReason ? ` Net (Report 137 NSA) reads "still maturing" because ${f.netPendingReason}. Gross after cancels is unaffected — it needs only gross and the cancellations bucket.` : ""}`,
+            fix: `${NO_CROSSING} Net Sales needs BOTH loss buckets — if either is unsourced it renders "—" rather than gross minus whichever one arrived, which would overstate it.`,
           }}
           accent="border-t-2 border-t-navy-900 dark:border-t-slate-200"
           lines={soldLines}

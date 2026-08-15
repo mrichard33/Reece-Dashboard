@@ -345,9 +345,10 @@ const FACTS: ReportFacts = {
     grossSoldDollars: 79_904_667.2,
     cancelCount: 955,
     cancelValueDollars: 23_010_879.77,
-    // control_totals carries no explicit cancellations bucket, so it cannot
-    // assert a gross-after-cancels distinct from NSA.
-    grossAfterCancelsDollars: null,
+    // control_totals carries neither an explicit cancellations bucket nor a
+    // financing-denied one, so it cannot assert Reece Net Sales at all.
+    netSalesDollars: null,
+    notYetReleasedDollars: null,
     netAfterCancelsDollars: 56_893_787.43,
   },
   // Report 134's own released figure. The fixture carries it so the "Released

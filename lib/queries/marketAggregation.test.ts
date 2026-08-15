@@ -17,9 +17,14 @@ import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
  * 7b76f264-6e2b-4e1c-ab5f-41e3838090bd (9 rows, market-attributed, 0
  * UNRESOLVED), read from lp_report_facts on 2026-08-11:
  *
- *   BOCA   gross $94,415   net $85,415  cancelled $0       issued 16  sat  9  sold 2
- *   FTLAU  gross $140,433  net $0       cancelled $95,698  issued 20  sat 13  sold 2
- *   MIAMI  gross $0        net $0       cancelled $0       issued 11  sat  3  sold 0
+ *   BOCA   gross $94,415   NSA $85,415  cancelled $0       issued 16  sat  9  sold 2
+ *   FTLAU  gross $140,433  NSA $0       cancelled $95,698  issued 20  sat 13  sold 2
+ *   MIAMI  gross $0        NSA $0       cancelled $0       issued 11  sat  3  sold 0
+ *
+ * Financing-denied, working and hold rows were ADDED to this fixture on
+ * 2026-08-15 (they exist on every real snapshot — scorecard_rebuild_facts emits
+ * the whole metric set per branch). Without them Net Sales is correctly null,
+ * which is a different test and is pinned separately below.
  *
  * The market totals are the sums, and they are what the dashboard must render.
  *
@@ -64,18 +69,27 @@ const FTLAU_ROWS: ReportFactRow[] = [
   se("BOCA", "sold", 9_441_500, 2),
   se("BOCA", "net_sold", 8_541_500, 1),
   se("BOCA", "cancelled", 0, 0),
+  se("BOCA", "credit_decline", 0, 0),
+  se("BOCA", "working_open", 1_000_000, 1),
+  se("BOCA", "hold", 0, 0),
   se("BOCA", "issued", null, 16),
   se("BOCA", "sat", null, 9),
 
   se("FTLAU", "sold", 14_043_300, 2),
   se("FTLAU", "net_sold", 0, 0),
   se("FTLAU", "cancelled", 9_569_800, 1),
+  se("FTLAU", "credit_decline", 1_000_000, 1),
+  se("FTLAU", "working_open", 0, 0),
+  se("FTLAU", "hold", 500_000, 1),
   se("FTLAU", "issued", null, 20),
   se("FTLAU", "sat", null, 13),
 
   se("MIAMI", "sold", 0, 0),
   se("MIAMI", "net_sold", 0, 0),
   se("MIAMI", "cancelled", 0, 0),
+  se("MIAMI", "credit_decline", 0, 0),
+  se("MIAMI", "working_open", 0, 0),
+  se("MIAMI", "hold", 0, 0),
   se("MIAMI", "issued", null, 11),
   se("MIAMI", "sat", null, 3),
 ];
@@ -104,11 +118,30 @@ describe("§P — BOCA + FTLAU + MIAMI aggregate into FTLAU_MKT", () => {
     expect(facts.sold!.netAfterCancelsDollars).not.toBe(0); // FTLAU alone
   });
 
-  it("computes gross-after-cancels from the SUMMED numerator and denominator", () => {
-    // 234,848 − 95,698. Computed from market totals, never per branch: summing
-    // each branch's own gross−cancelled happens to agree here, but a rate does
-    // not, which the next test pins.
-    expect(facts.sold!.grossAfterCancelsDollars).toBe(139_150);
+  it("computes NET SALES from the SUMMED terms, never per branch", () => {
+    // 234,848 − 95,698 cancelled − 10,000 financing denied. Summing each
+    // branch's own subtraction happens to agree here, but a rate does not,
+    // which the next test pins.
+    //
+    // ⚠️ This is the §6 contracted Net Sales, NOT LP's NSA ($85,415 above) and
+    // NOT the old "gross after cancels" ($139,150), which dropped the financing
+    // denied term entirely and landed on no defined metric.
+    expect(facts.sold!.netSalesDollars).toBe(129_150);
+  });
+
+  it("sums Working + Hold as 'not yet released' — in flight, not lost", () => {
+    // 10,000 working + 5,000 hold. This is the whole gap between Net Sales and
+    // LP's NSA, and it is shown BESIDE net rather than subtracted from it.
+    expect(facts.sold!.notYetReleasedDollars).toBe(15_000);
+  });
+
+  it("NET SALES is null when a loss term is unsourced, never gross-minus-what-it-has", () => {
+    // Absent is unknown, not zero. Dropping a term inflates Net Sales, which
+    // fails in the flattering direction.
+    const withoutCd = FTLAU_ROWS.filter((r) => r.metric !== "credit_decline");
+    const f = buildReportFacts(withoutCd, MTD, "FTLAU_MKT");
+    expect(f.sold!.grossSoldDollars).toBe(234_848);
+    expect(f.sold!.netSalesDollars).toBeNull();
   });
 
   it("derives rates from summed numerator ÷ summed denominator, never one row", () => {
