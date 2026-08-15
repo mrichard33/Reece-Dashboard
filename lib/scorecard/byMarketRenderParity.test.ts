@@ -77,3 +77,53 @@ describe("By Market — phone and desktop show the same figures", () => {
     expect(desktop).toMatch(/co rate/);
   });
 });
+
+// ── The unrouted-leads note (2026-08-15) ───────────────────────────────────
+//
+// Replaces the old "Unassigned" ROW. That row could never look like a market —
+// unrouted leads get no report-137 cohort, so Issued/Demos/Sales/Gross/Net were
+// structurally "—" forever — so it was a lead count beside six dashes in a table
+// about market performance, and readers learn to skip a row like that.
+//
+// Removing it leaves the office rows NOT summing to All Markets, because the
+// company total still includes those leads. The note is what explains that gap,
+// which makes it load-bearing rather than decorative.
+describe("unrouted-leads note", () => {
+  it("renders at ALL viewports, not inside one branch", () => {
+    // The #152 mistake, one section down: a figure added to the desktop table
+    // and invisible on the phone. This note explains a footing gap, so hiding it
+    // on mobile leaves the gap unexplained exactly where the table is hardest to
+    // read.
+    const block = src.slice(src.indexOf("{unrouted &&"));
+    const container = block.slice(0, block.indexOf(">"));
+    expect(block.length).toBeGreaterThan(50);
+    expect(container).not.toMatch(/lg:hidden/);
+    expect(container).not.toMatch(/\bhidden\b/);
+  });
+
+  it("states the COUNT and the SHARE — one without the other is not actionable", () => {
+    // 173 sounds small until it is 5% of everything bought that period.
+    expect(src).toMatch(/reached no market/);
+    expect(src).toMatch(/unroutedPct/);
+    expect(src).toMatch(/% of all leads this period/);
+  });
+
+  it("explains the footing gap it creates", () => {
+    expect(src).toMatch(/do not sum to the total/);
+  });
+
+  it("names where to go and fix it", () => {
+    // An alarm with no next step gets ignored as fast as a row of dashes.
+    expect(src).toMatch(/lp_branch_market_map/);
+  });
+
+  it("derives the share from the TOTAL, which still contains those leads", () => {
+    // If the total ever stops including them the percentage becomes a lie, and
+    // the footing gap it explains disappears with it.
+    expect(src).toMatch(/unrouted\.leads \/ total\.leads/);
+  });
+
+  it("says nothing when nothing is unrouted", () => {
+    expect(src).toMatch(/\(unrouted\.leads \?\? 0\) > 0/);
+  });
+});
