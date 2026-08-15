@@ -38,12 +38,30 @@ const base = {
   scope: "ytd" as const,
 };
 
+/** Report 135 ROW count — the secondary figure since E7 (`LeadsFacts.leadRows`). */
 const ld = (market: string, branch: string | null, count: number): ReportFactRow => ({
   ...base, report_type: "lead_disposition", market, branch_code_raw: branch,
   metric: "leads", value_count: count,
 });
 
-/** The real live YTD rows, at their real branch grain (Σ = 78,557). */
+/** Report 135 DISTINCT count — the PUBLISHED actual since E7 (`LeadsFacts.leads`). */
+const ldd = (market: string, branch: string | null, count: number): ReportFactRow => ({
+  ...base, report_type: "lead_disposition", market, branch_code_raw: branch,
+  metric: "leads_distinct", value_count: count,
+});
+
+/**
+ * The real live YTD rows, at their real branch grain.
+ *
+ * Both grains, because both ship: Σ rows = 78,557 and Σ distinct = 71,040. Every
+ * figure below is the warehouse's, read from `lp_report_facts` for the current
+ * YTD snapshot — not scaled or invented, so a branch that moves here is a branch
+ * that moved in LP.
+ *
+ * The distinct rows are what make the §4 summation test meaningful after E7:
+ * they are emitted at the SAME branch grain, one row per lead assigned to that
+ * lead's owning branch, so they must sum exactly the way the row counts do.
+ */
 const LIVE: ReportFactRow[] = [
   ld("STPET_MKT", "STPET", 17_405), ld("STPET_MKT", null, 89),
   ld("ORL_MKT", "ORL", 16_527), ld("ORL_MKT", null, 28),
@@ -56,8 +74,22 @@ const LIVE: ReportFactRow[] = [
   ld("FTLAU_MKT", "MIAMI", 1_608), ld("FTLAU_MKT", "RFED", 286),
   ld("FTLAU_MKT", null, 29),
   ld("UNASSIGNED", null, 2_693), ld("OUT_OF_AREA", null, 1_082),
-  ld("OUT_OF_AREA", null, 2),
+  ld("OUT_OF_AREA", "0", 2),
+
+  ldd("STPET_MKT", "STPET", 15_710), ldd("STPET_MKT", null, 83),
+  ldd("ORL_MKT", "ORL", 14_903), ldd("ORL_MKT", null, 28),
+  ldd("FTMYR_MKT", "FTMYR", 10_332), ldd("FTMYR_MKT", null, 40),
+  ldd("JAX_MKT", "JAX", 8_268), ldd("JAX_MKT", null, 19),
+  ldd("SAR_MKT", "SAR", 5_743), ldd("SAR_MKT", null, 29),
+  ldd("LAKE_MKT", "LAKE", 2_603), ldd("LAKE_MKT", null, 18),
+  ldd("FTLAU_MKT", "FTLAU", 2_966), ldd("FTLAU_MKT", "BOCA", 5_015),
+  ldd("FTLAU_MKT", "MIAMI", 1_476), ldd("FTLAU_MKT", "RFED", 285),
+  ldd("FTLAU_MKT", null, 28),
+  ldd("UNASSIGNED", null, 2_490), ldd("OUT_OF_AREA", null, 1_002),
+  ldd("OUT_OF_AREA", "0", 2),
+
   // Report 136's company control total — reconciliation ONLY, never a read path.
+  // Stays on the ROW basis: 136 publishes no distinct count.
   { ...base, report_type: "source_cost", market: "REECE", branch_code_raw: null,
     metric: "leads", value_count: 78_561 },
 ];
@@ -73,36 +105,56 @@ describe("§4 — Leads resolve per market and sum to the company total", () => 
 
   test("Fort Lauderdale sums all FIVE branch rows, not one of them", () => {
     const { leads } = buildReportFacts(LIVE, YTD, "FTLAU_MKT");
-    expect(leads!.leads).toBe(3_181 + 5_427 + 1_608 + 286 + 29); // 10,531
+    // E7: the published actual is DISTINCT. Both grains must sum across all
+    // five branches — the trap is the summation, not the metric.
+    expect(leads!.leads).toBe(2_966 + 5_015 + 1_476 + 285 + 28); // 9,770
+    expect(leads!.leadRows).toBe(3_181 + 5_427 + 1_608 + 286 + 29); // 10,531
     // The grain trap: any single branch would have been a plausible-looking
-    // number. 5,427 (BOCA) is the largest and the likeliest wrong answer.
-    expect(leads!.leads).not.toBe(5_427);
+    // number. 5,015 (BOCA) is the largest and the likeliest wrong answer.
+    expect(leads!.leads).not.toBe(5_015);
   });
 
-  test("company leads read ~78,557 — not an issued-like figure", () => {
+  test("company leads read 71,040 distinct over 78,557 rows", () => {
     const { leads } = buildReportFacts(LIVE, YTD, "REECE");
-    expect(leads!.leads).toBe(78_557);
-    // The displayed figure was 15,164 — off by a factor of five and close to
-    // the Issued total (15,441). Nothing in that range can be leads.
+    expect(leads!.leads).toBe(71_040);
+    expect(leads!.leadRows).toBe(78_557);
+    // ⚠️ E7: publishing the ROW count here overstated leads by 7,517 — 10.6% —
+    // and would put the Leads actual in a different unit from the target's
+    // denominator, making the pace wrong with nothing on screen to reveal it.
+    expect(leads!.leads).not.toBe(leads!.leadRows);
+    // The originally displayed figure was 15,164 — off by a factor of five and
+    // close to the Issued total (15,441). Nothing in that range can be leads.
     expect(leads!.leads).toBeGreaterThan(70_000);
   });
 
-  test("per-office totals sum to the company figure exactly", () => {
-    const company = buildReportFacts(LIVE, YTD, "REECE").leads!.leads!;
-    const offices = SCORECARD_MARKETS.reduce(
-      (a, m) => a + (buildReportFacts(LIVE, YTD, m.code).leads?.leads ?? 0),
-      0,
-    );
-    const unassigned = buildReportFacts(LIVE, YTD, "UNASSIGNED").leads?.leads ?? 0;
-    expect(offices + unassigned).toBe(company);
+  test("per-office totals sum to the company figure exactly, at BOTH grains", () => {
+    // This is E7's additivity contract at the read layer: it holds only because
+    // LP-MCP assigns each lead to the branch of its lowest row_num. It is an
+    // EQUALITY — do not relax it to `<=` if it ever fires. See
+    // `assertLeadDistinctAdditive`.
+    const company = buildReportFacts(LIVE, YTD, "REECE").leads!;
+    const sumOf = (pick: (f: NonNullable<ReturnType<typeof buildReportFacts>["leads"]>) => number | null) => {
+      const offices = SCORECARD_MARKETS.reduce((a, m) => {
+        const f = buildReportFacts(LIVE, YTD, m.code).leads;
+        return a + (f ? pick(f) ?? 0 : 0);
+      }, 0);
+      // ONE utility read, not two. UNASSIGNED is a single display entity whose
+      // sources are ["UNASSIGNED", "OUT_OF_AREA"] (§7 cardinality ruling), so
+      // asking for OUT_OF_AREA as well returns the same rows a second time and
+      // over-counts the company by the utility total.
+      const f = buildReportFacts(LIVE, YTD, "UNASSIGNED").leads;
+      return offices + (f ? pick(f) ?? 0 : 0);
+    };
+    expect(sumOf((f) => f.leads)).toBe(company.leads);
+    expect(sumOf((f) => f.leadRows)).toBe(company.leadRows);
   });
 
   test("Lakeland carries its own leads, and Orlando's exclude them", () => {
     const orl = buildReportFacts(LIVE, YTD, "ORL_MKT").leads!.leads;
     const lake = buildReportFacts(LIVE, YTD, "LAKE_MKT").leads!.leads;
-    expect(orl).toBe(16_527 + 28);
-    expect(lake).toBe(2_899 + 28);
-    expect(orl).not.toBe(16_527 + 28 + 2_899 + 28); // the old fold
+    expect(orl).toBe(14_903 + 28);
+    expect(lake).toBe(2_603 + 18);
+    expect(orl).not.toBe(14_903 + 28 + 2_603 + 18); // the old fold
   });
 });
 
@@ -110,9 +162,13 @@ describe("§3 — one authoritative source per metric", () => {
   test("leads come from 135; 136 rides along as a reconciliation only", () => {
     const { leads } = buildReportFacts(LIVE, YTD, "REECE");
     expect(leads!.basis).toBe("lead_disposition");
-    expect(leads!.leads).toBe(78_557); // 135
+    expect(leads!.leads).toBe(71_040); // 135, distinct — the published actual
+    expect(leads!.leadRows).toBe(78_557); // 135, rows — the secondary figure
     expect(leads!.reconLeads).toBe(78_561); // 136, displayed but never read from
-    expect(leads!.leads).not.toBe(leads!.reconLeads);
+    // The 135↔136 gate compares ROW to ROW: 136 has no distinct count, so
+    // re-basing this half would compare two different things and turn a
+    // 4-row tolerance into a 7,521 "failure".
+    expect(leads!.reconDelta).toBe(78_557 - 78_561);
   });
 
   test("the 135↔136 delta stays within report 135's validation gate of 4", () => {

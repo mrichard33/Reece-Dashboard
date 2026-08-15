@@ -53,27 +53,34 @@ export type ByMarketRow = {
   label: string;
   utility: boolean;
   /**
-   * Leads from report 135 (lead_disposition), summed over the market's
+   * DISTINCT leads from report 135 (lead_disposition), summed over the market's
    * branch-grain fact rows. NULL means "not sourced for this period" and MUST
-   * render "—" with a reason. It used to read `raw_leads_in` off
-   * lp_market_scorecard_daily, which is NULL for every market — coerced through
-   * numOr0() that produced a confident 0 leads for every office while the
-   * company row showed a non-zero total (§4).
+   * render "—" with a reason.
+   *
+   * ⚠️ RE-BASED 2026-08-15 (Amendment E7). This was 135's ROW count; it is now
+   * its LEAD count, and `leads_rows` below carries what this used to hold.
+   * January reads 9,387 where it read 10,032. The re-base is what keeps this
+   * figure in the same unit as the Leads target's denominator — see
+   * lib/scorecard/leadRate.ts.
+   *
+   * Before that it read `raw_leads_in` off lp_market_scorecard_daily, which is
+   * NULL for every market — coerced through numOr0() into a confident 0 leads
+   * for every office while the company row showed a non-zero total (§4).
    */
   leads: number | null;
   /**
-   * The same period at LEAD grain, from the same report 135 rows.
+   * The same period at ROW grain, from the same report 135 rows, plus LP's own
+   * count of duplicate records folded into a surviving lead.
    *
-   * `leads` above counts ROWS — 135 is emitted at lead × disposition-state
-   * grain, so one lead contributes many. `leads_distinct` counts leads.
-   * `leads_superseded` is LP's own count of duplicate records folded into a
-   * surviving lead: its merge decision, reported, not a match inferred here.
+   * 135 is emitted at lead × disposition-state grain, so one lead contributes
+   * many rows; `leads_rows` counts those. It is the SECONDARY figure now — two
+   * counts of one period at two grains, NOT a numerator and a denominator.
    *
    * NULL = the snapshot predates LP-MCP publishing these; renders unmeasured.
    * 0 is a REAL answer (a period can genuinely have no duplicates), so absent
    * must never be coerced to it.
    */
-  leads_distinct: number | null;
+  leads_rows: number | null;
   leads_superseded: number | null;
   /**
    * ── THE SALES FUNNEL, FROM REPORT 137 (Amendment A2) ──────────────────────
@@ -285,9 +292,10 @@ function funnelFromCohort(cohort: MarketNetSales | null): Pick<
  * `leads` and `distinct` are both plausible-looking counts of the same period.
  */
 type MarketLeads = {
-  /** Row count — see ByMarketRow.leads. */
+  /** DISTINCT lead count — the published actual since E7. See ByMarketRow.leads. */
   leads: number | null;
-  distinct: number | null;
+  /** Row count — the secondary figure. */
+  rows: number | null;
   superseded: number | null;
 };
 
@@ -323,7 +331,7 @@ function rowFromActuals(
     // Leads = report 135, passed in by the caller (see ByMarketRow.leads).
     // NEVER a.raw_leads_in — that column is NULL for every market.
     leads: leads.leads,
-    leads_distinct: leads.distinct,
+    leads_rows: leads.rows,
     leads_superseded: leads.superseded,
     // A2: the funnel comes from the cohort, not from `a` (live sync). See
     // `funnelFromCohort` and ByMarketRow.issued.
@@ -507,7 +515,7 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     const f = buildReportFacts(factRows, resolved, code).leads;
     return {
       leads: f?.leads ?? null,
-      distinct: f?.distinctLeads ?? null,
+      rows: f?.leadRows ?? null,
       superseded: f?.superseded ?? null,
     };
   };
@@ -659,7 +667,7 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
     const f = buildReportFacts(factRows, resolved, code).leads;
     return {
       leads: f?.leads ?? null,
-      distinct: f?.distinctLeads ?? null,
+      rows: f?.leadRows ?? null,
       superseded: f?.superseded ?? null,
     };
   };

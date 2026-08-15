@@ -395,13 +395,15 @@ const FACTS: ReportFacts = {
   // 136's company control total reads 78,561 — 4 apart, which IS report 135's
   // validation gate (it has no footer total row of its own).
   leads: {
-    leads: 78_557,
+    // E7: the published actual is DISTINCT leads. The YTD pull is 78,557 rows
+    // over 71,040 leads — the gap the re-base exists to stop publishing.
+    leads: 71_040,
     basis: "lead_disposition",
     asOf: "2026-08-05",
     reconLeads: 78_561,
+    // Row-vs-row against 136, which has no distinct count: 78,557 − 78,561.
     reconDelta: -4,
-    // This snapshot predates the lead-grain facts — unmeasured, not zero.
-    distinctLeads: null,
+    leadRows: 78_557,
     superseded: null,
   },
 };

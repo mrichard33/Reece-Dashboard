@@ -372,18 +372,23 @@ describe("Leads at lead grain — the duplicate count", () => {
       YTD,
       "REECE",
     );
-    expect(leads!.distinctLeads).toBe(2_000);
+    // E7: the PUBLISHED actual is the distinct count.
+    expect(leads!.leads).toBe(2_000);
     expect(leads!.superseded).toBe(27);
-    // The row count is untouched and still readable beside them.
-    expect(leads!.leads).toBe(1_800);
+    // The row count is untouched and still readable beside it, as the secondary.
+    expect(leads!.leadRows).toBe(1_800);
   });
 
-  test("ABSENT is null, never 0 — snapshots predating the lead-grain facts", () => {
+  test("ABSENT is null, never the row count — a snapshot with no lead grain", () => {
     const { leads } = buildReportFacts([ld("ORL_MKT", "leads", null, 1_800)], YTD, "REECE");
-    expect(leads!.leads).toBe(1_800);
+    // ⚠️ E7: `leads` must NOT fall back to the row count. A silent unit switch —
+    // rendering 1,800 rows in a cell the Leads TARGET measures in distinct
+    // leads — is the exact defect the re-base removes, and it would be invisible
+    // on screen. Unmeasured is the correct, visible failure.
+    expect(leads!.leads).toBeNull();
+    expect(leads!.leadRows).toBe(1_800);
     // This is the raw_leads_in defect class: coerce absent to 0 and "we did not
     // measure" becomes indistinguishable from "there were none".
-    expect(leads!.distinctLeads).toBeNull();
     expect(leads!.superseded).toBeNull();
   });
 

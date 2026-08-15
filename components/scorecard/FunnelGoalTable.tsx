@@ -1,10 +1,12 @@
-import { num, usDate } from "@/lib/utils";
+import { num, usd, usDate } from "@/lib/utils";
 import { pct } from "./format";
 import { ScSection } from "./ScSection";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { METRIC_LABELS, METRIC_FORMULAS } from "@/lib/scorecard/labels";
 import type { ScorecardView } from "@/lib/queries/scorecard";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
+import type { LeadRate, LeadTarget } from "@/lib/scorecard/leadRate";
+import type { Measured } from "@/lib/scorecard/tiers/types";
 
 /**
  * Section ② — Funnel vs Goal.
@@ -94,14 +96,33 @@ export type CohortFunnel = {
   dataThrough: string | null;
 };
 
+/**
+ * The Leads planning row's inputs, computed by the page (E1–E3).
+ *
+ * Passed in rather than derived here for the same reason `cohortFunnel` is: the
+ * page already holds the cohorts, the fact rows and the selling calendar, and
+ * re-deriving any of them in a component is how two sections of one page come
+ * to disagree about the same figure.
+ *
+ * `rate` rides along beside `target` so the row can state its own provenance —
+ * dollars per lead, how many settled months it rests on, and whether the market
+ * fell back to the company rate.
+ */
+export type LeadPlan = {
+  target: Measured<LeadTarget>;
+  rate: Measured<LeadRate>;
+};
+
 export function FunnelGoalTable({
   view,
   vm,
   cohortFunnel,
+  leadPlan,
 }: {
   view: ScorecardView;
   vm: ScorecardVM;
   cohortFunnel: CohortFunnel;
+  leadPlan: LeadPlan;
 }) {
   const { goals: g, derived: d } = view;
   // Leads come from report 135, the same figure ⑤ By Market shows. Reusing the
@@ -177,32 +198,67 @@ export function FunnelGoalTable({
 
   // ── PLANNING (C0) — a different cohort, separated structurally ────────────
   //
-  // ⚠️ THE LEADS TARGET IS BLANK BECAUSE IT IS BLOCKED, not because it is
-  // missing — which is why Target-to-Date and Pace read "not measured".
+  // ⚠️ SHIPPED 2026-08-15 (Amendment E0–E3). This row rendered "not measured —
+  // pending Report 135 validation" from C1 until now, and showing a Leads
+  // period goal, target-to-date and pace is the founding purpose of this
+  // scorecard.
   //
   // It used to be issues-needed ÷ a historical issue rate, dividing an
   // APPOINTMENT-grain numerator by a LEAD-grain rate. That is deleted and stays
-  // deleted (B1): do NOT reinstate `issue_rate` or `raw_leads_needed` in any
-  // form, and do not approximate a target.
+  // deleted (B1): do NOT reinstate `issue_rate`, `raw_leads_needed`, or
+  // `derived.target_leads_per_day` — the last still exists on the type and is
+  // the same defect in a field.
   //
-  // C1 changed the REASON, not the state. The blocker is no longer "the grain
-  // bridge is unproven" — C3 abandons the bridge entirely in favour of
-  // Net Sales $ ÷ Raw Leads, one ratio absorbing every downstream loss. What
-  // now blocks it is C2's four gates on report 135: row grain, cohort date
-  // basis (needs the PDF header read), reconciliation of 135 `NetAmount`
-  // against 137, and cohort compatibility with the goal. Until those pass, the
-  // copy has to name the real blocker or the next person solves the old one.
+  // What unblocked it is E1, not new data. The rate takes its NUMERATOR from
+  // 137 and only its lead COUNT from 135, so 135's `NetAmount` is never
+  // consumed and C2's Gate 3 — reconciling 135 dollars against 137 — is retired
+  // rather than satisfied. Gate 1 is met by counting DISTINCT leads (January is
+  // 10,032 rows over 9,387 leads; counting rows would overstate leads 6.9% and
+  // understate the target by the same amount). Gate 2 is C0's carve-out, which
+  // is why this row sits above a rule with its own basis label.
   //
-  // The ACTUAL still renders — report 135 via the view model, NOT
+  // ⚠️ EXPECT A LARGE GAP, and do not rescale the goal to close it (E3): a
+  // ~$11.0M company goal implies ~15,000 leads/month against a run rate near
+  // 10,000. Surfacing that is the point of the row.
+  //
+  // The ACTUAL is DISTINCT leads — the same expression the rate's denominator
+  // uses, which is what keeps the two in one unit — via the view model, NOT
   // `a.raw_leads_in`, which is NULL for every market and which numOr0() once
   // turned into a confident zero.
-  const planningRows: Row[] = [
-    {
-      ...unmeasuredTargetRow("Leads", leads, "pending Report 135 validation", "scorecard.leadsGoal"),
+  const planningRows: Row[] = [(() => {
+    const basis =
+      "Report 135 · lead cohort · planning requirement, not a 137 target" +
+      (leadPlan.rate.known
+        ? ` · ${usd(Math.round(leadPlan.rate.value.rate))}/lead over ${leadPlan.rate.value.cohortCount} settled ${
+            leadPlan.rate.value.cohortCount === 1 ? "month" : "months"
+          }${leadPlan.rate.value.ownRate ? "" : ", company rate"}`
+        : "");
+
+    if (!leadPlan.target.known) {
+      return {
+        ...unmeasuredTargetRow("Leads", leads, leadPlan.target.reason, "scorecard.leadsGoal"),
+        planning: true,
+        basis,
+      };
+    }
+    const t = leadPlan.target.value;
+    // Colour on the pace delta, exactly as `countRow` does for the volume rows:
+    // a miss on a volume row is amber (recoverable), never red. The NUMBER is
+    // rendered whatever the colour — E3 requires the gap be visible, and a
+    // colour alone is not a figure a manager can act on.
+    return {
+      metric: "Leads",
+      monthly: num(r0(t.periodGoal)),
+      targetToDate: num(r0(t.targetToDate)),
+      actual: leads == null ? "—" : num(leads),
+      paceLabel:
+        t.paceDelta == null ? null : `${t.paceDelta >= 0 ? "+" : ""}${num(r0(t.paceDelta))} vs pace`,
+      paceCls: t.paceDelta == null ? MUTE : t.paceDelta >= 0 ? EMERALD : AMBER,
+      infoKey: "scorecard.leadsGoal",
       planning: true,
-      basis: "Report 135 · lead cohort · planning requirement, not a 137 target",
-    },
-  ];
+      basis,
+    };
+  })()];
 
   // ── PERFORMANCE — one population, one source, one cohort ──────────────────
   //

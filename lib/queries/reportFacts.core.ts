@@ -143,34 +143,52 @@ export type GoodBusinessFacts = {
  * leads figure too; it is a RECONCILIATION row here, never a second read path.
  */
 export type LeadsFacts = {
-  /** Σ of the market's branch-grain rows. Null = not sourced → renders "—". */
+  /**
+   * ── THE PUBLISHED LEADS ACTUAL — DISTINCT LEADS (Amendment E7) ─────────────
+   *
+   * ⚠️ RE-BASED 2026-08-15. This was report 135's ROW count until E7. It is now
+   * `COUNT(DISTINCT lp_lead_id)`, summed over the market's branch-grain rows.
+   *
+   * 135 is emitted at lead × disposition-state grain, so a row count does not
+   * answer "how many leads": history carries 243,917 rows over 72,570 distinct
+   * leads, and one lead's rows can hold different entry_dates (5,464 do, up to
+   * 12) because the date rides the disposition row. January is 10,032 rows over
+   * 9,387 leads — a row count overstates leads by 6.9%.
+   *
+   * The re-base is not cosmetic. The Leads TARGET derives from a rate whose
+   * denominator is distinct leads (see lib/scorecard/leadRate.ts); if the actual
+   * stayed a row count the two would be in different units and the pace would be
+   * wrong with nothing on screen to reveal it. Actual and denominator must
+   * resolve from the same expression — `leadRate.test.ts` pins that.
+   *
+   * Null = not sourced → renders "—". NEVER falls back to `leadRows`: a silent
+   * unit switch is the exact defect this re-base removes.
+   */
   leads: number | null;
   basis: "lead_disposition";
   asOf: string;
   /** Company control total from 136, for display alongside — never instead. */
   reconLeads: number | null;
-  /** 135 − 136. Expected |delta| ≤ 4 on the YTD pull (see §5 gate). */
+  /** 135 − 136, on the ROW basis both sides share. Expected |delta| ≤ 4 on the
+   *  YTD pull (see §5 gate). Deliberately still row-vs-row: 136 publishes no
+   *  distinct count, so re-basing this half would compare two different things. */
   reconDelta: number | null;
   /**
-   * ── THE LEAD GRAIN (2026-08-13) ────────────────────────────────────────────
+   * The SECONDARY figure: report 135's raw ROW count for the same period, and
+   * LP's own count of duplicate records folded into a surviving lead.
    *
-   * `leads` above is a ROW count. Report 135 is emitted at lead ×
-   * disposition-state grain, so it does not answer "how many leads" — history
-   * carries 243,917 rows over 72,570 distinct leads, and one lead's rows can
-   * hold different entry_dates (5,464 do, up to 12) because the date rides the
-   * disposition row.
+   * ⚠️ `leads` and `leadRows` are two counts of one period at two grains — NOT a
+   * numerator and a denominator. Dividing one into the other yields an artefact
+   * of how many disposition states each lead passed through, not a rate. §13's
+   * grain bridge stays unproven and unbuilt.
    *
-   * `distinctLeads` and `superseded` are the same period at LEAD grain.
-   * `superseded` is LP's own count of duplicate records folded into a
-   * surviving lead — its merge decision, reported, not a match we inferred.
-   *
-   * NULL means the snapshot predates LP-MCP publishing these facts, and MUST
-   * render unmeasured. Zero is a real answer here — a period genuinely can
-   * have no duplicates — so coercing absent to 0 would make "we did not
-   * measure" indistinguishable from "there were none". That is the same defect
-   * class as `raw_leads_in` in this file's own buildLeads header.
+   * `superseded` is LP's merge decision reported as-is, not a match inferred
+   * here. NULL means the snapshot predates LP-MCP publishing these facts and
+   * MUST render unmeasured; zero is a real answer — a period genuinely can have
+   * no duplicates — so coercing absent to 0 would make "we did not measure"
+   * indistinguishable from "there were none".
    */
-  distinctLeads: number | null;
+  leadRows: number | null;
   superseded: number | null;
 };
 
@@ -724,10 +742,17 @@ function buildGoodBusiness(rows: ReportFactRow[], marketCode: string): GoodBusin
  *     confident 0 leads for every office while the company row showed a
  *     non-zero total. Null is "not sourced" and must render "—" with a reason.
  *
- * Per-market leads sum to 78,557, matching lp_lead_disposition_history's row
- * count exactly. Report 136's company figure (78,561) rides along as a
- * reconciliation, 4 apart — which is precisely the tolerance §5 defines as
- * report 135's validation gate, since 135 has no footer total row of its own.
+ * Per-market ROW counts sum to 78,557 on the YTD pull, matching
+ * lp_lead_disposition_history's row count exactly. Report 136's company figure
+ * (78,561) rides along as a reconciliation, 4 apart — which is precisely the
+ * tolerance §5 defines as report 135's validation gate, since 135 has no footer
+ * total row of its own. That comparison stays on the ROW basis because 136
+ * publishes no distinct count.
+ *
+ * ⚠️ WHAT THIS FUNCTION PUBLISHES CHANGED ON 2026-08-15 (Amendment E7). `leads`
+ * is now the DISTINCT lead count (YTD 71,040, not 78,557); the row count moved
+ * to `leadRows`. See the LeadsFacts.leads note for why the actual had to move
+ * with the target.
  */
 function buildLeads(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode: string): LeadsFacts | null {
   const inMarket = marketFilter(marketCode);
@@ -739,8 +764,8 @@ function buildLeads(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode:
   );
   if (!ld.length) return null;
 
-  const leads = sumMetric(ld, "leads");
-  if (!leads.seen) return null;
+  const leadRows = sumMetric(ld, "leads");
+  if (!leadRows.seen) return null;
 
   // Company control total from 136 — reconciliation only, never the read path.
   const sc = pickSnapshot(
@@ -753,17 +778,24 @@ function buildLeads(rows: ReportFactRow[], resolved: ResolvedPeriod, marketCode:
   // CONSTRUCTION — LP-MCP assigns each lead to the branch of its lowest
   // row_num precisely so that summing branch rows here is correct. Without
   // that, a distinct count would over-add for the 429 leads that appear under
-  // more than one branch. See 2026-08-13d_lead_grain_supersedes.sql.
+  // more than one branch. See 2026-08-13d_lead_grain_supersedes.sql, and
+  // `assertLeadDistinctAdditive` for why that equality must not be relaxed.
   const distinct = sumMetric(ld, "leads_distinct");
   const superseded = sumMetric(ld, "leads_superseded");
 
   return {
-    leads: leads.count,
+    // E7: the published actual is the DISTINCT count. Null — never the row
+    // count — when the answering snapshot carries no lead-grain facts. Every
+    // current snapshot has carried them since the 2026-08-15 backfill; a null
+    // here means a NEW snapshot was ingested by a build of LP-MCP that stopped
+    // emitting them, and rendering "—" is the correct, visible failure.
+    leads: distinct.seen ? distinct.count : null,
     basis: "lead_disposition",
     asOf: ld[0]!.as_of_date,
     reconLeads: recon.seen ? recon.count : null,
-    reconDelta: recon.seen ? leads.count - recon.count : null,
-    distinctLeads: distinct.seen ? distinct.count : null,
+    // Row-vs-row on purpose — 136 has no distinct count to compare against.
+    reconDelta: recon.seen ? leadRows.count - recon.count : null,
+    leadRows: leadRows.count,
     superseded: superseded.seen ? superseded.count : null,
   };
 }
