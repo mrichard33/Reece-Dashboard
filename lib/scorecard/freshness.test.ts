@@ -259,3 +259,89 @@ describe("§Freshness — the banner must not implicate the Net Sales headline",
     expect(src).not.toMatch(/\{isStale \? "data through" : "as of"\}/);
   });
 });
+
+// ── E4 — a CLOSED period is complete by definition ─────────────────────────
+//
+// July rendered "Provisional" beside a report-134 snapshot declaring
+// `period_end` 2026-07-31, `is_partial_month` false, generated 2026-08-09. A
+// complete file for a finished month, labelled as an estimate. This is the §10 /
+// D2 defect inside the chip: a COMPLETENESS date read as staleness.
+describe("E4 — closed periods render 'actual', not 'provisional'", () => {
+  it("July: closed and complete → Actual, dated by the PERIOD END", () => {
+    const chip = freshnessChip({
+      // The live-sync watermark stops on the 23rd because the month ended
+      // quietly — NOT because coverage stops there.
+      asOfDate: "2026-07-23",
+      computedFrom: "lp_api",
+      isPartial: false,
+      periodIncludesToday: false,
+      periodEnd: "2026-07-31",
+    });
+    expect(chip.text).toBe("Data through 07-31-2026 · Actual");
+    expect(chip.text.toLowerCase()).not.toContain("provisional");
+    expect(chip.tone).toBe("emerald");
+    // Dated by the boundary, never by the last day something was observed.
+    expect(chip.text).not.toContain("07-23");
+  });
+
+  it("August: includes today → still Provisional", () => {
+    const chip = freshnessChip({
+      asOfDate: "2026-08-13",
+      computedFrom: "lp_api",
+      isPartial: false,
+      periodIncludesToday: true,
+      periodEnd: "2026-08-31",
+    });
+    expect(chip.text).toBe("Data through 08-13-2026 · Provisional");
+    expect(chip.tone).toBe("amber");
+  });
+
+  it("a closed period with a MISSING month cannot claim 'actual'", () => {
+    // A hole is a hole whether the period closed or not (D2). The total is not
+    // complete — it is missing a month — so the estimate wording stands.
+    const chip = freshnessChip({
+      asOfDate: "2026-07-31",
+      computedFrom: "lp_api",
+      periodIncludesToday: false,
+      periodEnd: "2026-07-31",
+      hasMissingMonth: true,
+    });
+    expect(chip.text).toMatch(/Provisional/);
+  });
+
+  it("a PARTIAL file still wins — coverage beats closedness", () => {
+    // Generated before its own period ended, so it does not cover the period it
+    // declares. "Closed" says the clock has moved on; it does not say the file
+    // is complete.
+    const chip = freshnessChip({
+      asOfDate: "2026-07-31",
+      computedFrom: "lp_api",
+      isPartial: true,
+      partialThrough: "2026-07-20",
+      periodIncludesToday: false,
+      periodEnd: "2026-07-31",
+    });
+    expect(chip.text).toMatch(/Partial/);
+    expect(chip.tone).toBe("amber");
+  });
+
+  it("a closed range whose computed_from still reads 'mixed' is Actual", () => {
+    // 'mixed' means "spans closed and live months" — stale metadata once the
+    // whole window has finished. "Provisional" is wrong for all of it.
+    const chip = freshnessChip({
+      asOfDate: "2026-07-31",
+      computedFrom: "mixed",
+      periodIncludesToday: false,
+      periodEnd: "2026-07-31",
+    });
+    expect(chip.text).toMatch(/Actual/);
+    expect(chip.text).not.toMatch(/provisional/i);
+  });
+
+  it("UNKNOWN closedness behaves exactly as before this existed", () => {
+    // Undefined is not false. Omitting the flag must not silently promote every
+    // in-progress period to "actual".
+    const chip = freshnessChip({ asOfDate: "2026-08-07", computedFrom: "lp_api" });
+    expect(chip.text).toBe("Data through 08-07-2026 · Provisional");
+  });
+});

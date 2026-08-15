@@ -63,6 +63,38 @@ export function freshnessChip(input: {
   isPartial?: boolean | null;
   /** `period_end` the partial file reaches — the date it is partial THROUGH. */
   partialThrough?: string | null;
+  /**
+   * ── E4 — A CLOSED PERIOD IS COMPLETE BY DEFINITION ────────────────────────
+   *
+   * Does the selected period include today? When it does not, nothing in it can
+   * still move, and calling its figures "provisional" is false: provisional
+   * means "expected to change", and a closed cohort's re-observation is a
+   * RESTATEMENT, not the settling of an estimate.
+   *
+   * This is the §10 / D2 defect in the chip rather than the banner — a
+   * COMPLETENESS date read as staleness. July rendered "Provisional" beside a
+   * report-134 snapshot with `period_end` 2026-07-31, `is_partial_month` false,
+   * generated 2026-08-09: a complete file for a finished month, labelled as an
+   * estimate.
+   *
+   * Undefined = unknown, and behaves exactly as before this existed.
+   */
+  periodIncludesToday?: boolean;
+  /**
+   * The period's own end — what a CLOSED period is complete THROUGH.
+   *
+   * A closed period is dated by its BOUNDARY, not by the last day something
+   * happened to be observed. Those differ whenever the month ends quietly, and
+   * showing the latter invites "the data stops on the 23rd" when the data
+   * covers the whole month and the month simply had a quiet last week.
+   */
+  periodEnd?: string | null;
+  /**
+   * A constituent month has NO snapshot. A hole is a hole whether the period
+   * closed or not (D2), and it disqualifies the "actual" claim — the total is
+   * not complete, it is missing a month.
+   */
+  hasMissingMonth?: boolean;
 }): FreshnessChip {
   // A partial file is a different claim from a stale one: the data is current,
   // it just does not cover all of the period it names. Saying "Data through" for
@@ -90,6 +122,28 @@ export function freshnessChip(input: {
         `does not include every day through ${through ? usDate(through) : "the period end"}. ` +
         "Treat the totals as incomplete rather than low.",
       tone: "amber",
+    };
+  }
+
+  // ── E4: closed, complete → ACTUAL, and dated by the period boundary ───────
+  //
+  // Ordered AFTER the RTP branch below only in intent, not in effect: that
+  // branch keeps its own wording where it already applied. This one catches
+  // every other closed period, including a closed multi-month range whose
+  // `computed_from` still reads 'mixed' — stale metadata describing a window
+  // that has since finished, and "provisional" is wrong for all of it.
+  const periodClosed = input.periodIncludesToday === false && !input.hasMissingMonth;
+  if (periodClosed && input.computedFrom !== "net_report_rtp") {
+    const through = input.periodEnd ?? input.asOfDate;
+    return {
+      text: through ? `Data through ${usDate(through)} · Actual` : "Actual",
+      title:
+        "This period has ended, so these figures are complete rather than an " +
+        "estimate — a closed period is dated by its own end, not by the last day " +
+        "something happened to be observed. They can still RESTATE if report 137 " +
+        "re-observes the cohort (a cancellation landing later moves Net Sales), " +
+        "which is a correction to a settled figure, not an estimate resolving.",
+      tone: "emerald",
     };
   }
 

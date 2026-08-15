@@ -199,6 +199,12 @@ function judge(
   today: string,
   periodStart: string,
   cal: SellingCalendar,
+  /**
+   * Has the period fully elapsed? Equivalent to `declaredCutoff` having clamped
+   * to `period_end` — the last completed selling day is past the period, so
+   * nothing in it can still move. See the E4 note in the exempt branch.
+   */
+  periodClosed: boolean,
 ): SourceAudit {
   const exempt = clock.role.kind === "exempt";
 
@@ -224,13 +230,34 @@ function judge(
   // An exempt source is never judged against the cutoff — that is what the
   // exemption IS. It still reports its lag so the panel can state its own date.
   if (exempt) {
+    const why = (clock.role as { why: string }).why;
+    // ── E4 — A CLOSED PERIOD IS DATED BY ITS BOUNDARY ───────────────────────
+    //
+    // `through` on an exempt source is its last OBSERVED ACTIVITY — for report
+    // 134 that is the most recent production milestone, i.e. `max(milestone
+    // date)`. On a still-running period that is a genuine watermark. On a
+    // CLOSED one it is a completeness date, and reporting it as reach reads as
+    // missing data: July rendered "Released to production reaches 07-23-2026"
+    // for a month whose snapshot declares `period_end` 2026-07-31, is not
+    // partial, and was generated on 08-09. Nothing was missing — the month
+    // ended quietly.
+    //
+    // Same defect class as §10's MIN-across-a-range and D2's banner: a
+    // COMPLETENESS date read as staleness. So for a closed period the coverage
+    // statement is the period end, with the last-activity date kept beside it
+    // rather than dropped.
+    const note =
+      periodClosed && through <= cutoff
+        ? `${clock.label} covers this closed period in full, through ${cutoff}. Its latest ` +
+          `activity was ${through} — a completeness date, not a shortfall: ${why}`
+        : `${clock.label} reaches ${through} on its own basis: ${why}`;
     return {
       clock,
       status: "current",
       lagSellingDays: lagSelling,
       lagCalendarDays: lagCalendar,
       elapsed,
-      note: `${clock.label} reaches ${through} on its own basis: ${(clock.role as { why: string }).why}`,
+      note,
     };
   }
 
@@ -294,7 +321,9 @@ export function buildReportingClock(input: {
   for (const id of Object.keys(sources) as SourceId[]) {
     const clock = sources[id];
     if (clock.id !== id) problems.push(`clock registered under "${id}" declares id "${clock.id}"`);
-    bySource[id] = judge(clock, declared, today, period.periodStart, cal);
+    // `basis === "period_end"` IS the closed test: declaredCutoff only clamps
+    // there when the last completed selling day has run past the period.
+    bySource[id] = judge(clock, declared, today, period.periodStart, cal, basis === "period_end");
   }
 
   const currentPeriod = (Object.keys(bySource) as SourceId[]).filter(

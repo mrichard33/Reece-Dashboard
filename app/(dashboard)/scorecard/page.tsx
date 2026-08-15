@@ -300,6 +300,14 @@ export default async function ScorecardPage({
           computedFrom: view.actuals.computed_from,
           isPartial: cover?.isPartial ?? null,
           partialThrough: cover?.periodEnd ?? null,
+          // E4 — a closed period is complete by definition, and is dated by its
+          // own boundary rather than by the last day something was observed.
+          // Reuses the same two inputs the D2 coverage banner reads, so the
+          // chip and the banner cannot disagree about whether this period is
+          // still moving.
+          periodIncludesToday,
+          periodEnd: resolved.periodEnd,
+          hasMissingMonth: missingMonths.length > 0,
         });
         const tone =
           chip.tone === "emerald"
