@@ -365,3 +365,63 @@ describe("source discipline", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+// ═══ E4 · a CLOSED period is dated by its BOUNDARY, not by last activity ═════
+//
+// The exempt branch reported `${label} reaches ${through}` unconditionally. On a
+// still-running period `through` is a genuine watermark; on a closed one it is
+// `max(milestone date)` — a COMPLETENESS date — and reads as missing data.
+// Live symptom: "Released to production reaches 07-23-2026" for a July whose
+// report-134 snapshot declares period_end 2026-07-31, is not partial, and was
+// generated 2026-08-09. Nothing was missing; the month ended quietly.
+describe("E4 — the exempt source on a closed period", () => {
+  const JUL = { periodStart: "2026-07-01", periodEnd: "2026-07-31" };
+  const buildJul = (today: string, through: string) =>
+    buildReportingClock({
+      today,
+      period: JUL,
+      cal: CAL,
+      sources: {
+        net_sales: netSales({ dataThrough: measured("2026-07-31") }),
+        live_sync: liveSync({ dataThrough: measured("2026-07-31") }),
+        released_rtp: rtp({ dataThrough: measured(through), stampedAt: through }),
+      },
+    });
+
+  it("states coverage as the PERIOD END, keeping last activity beside it", () => {
+    // Viewed on 2026-08-15, July is closed: declaredCutoff clamps to 07-31.
+    const a = buildJul("2026-08-15", "2026-07-23");
+    expect(a.cutoff.declaredBasis).toBe("period_end");
+    const note = a.bySource.released_rtp.note;
+    expect(note).toMatch(/covers this closed period in full, through 2026-07-31/);
+    // The quiet-week date survives — dropped, it could not be investigated.
+    expect(note).toMatch(/latest activity was 2026-07-23/);
+    expect(note).toMatch(/completeness date, not a shortfall/);
+    // It must NOT read as reach falling short of the month.
+    expect(note).not.toMatch(/reaches 2026-07-23/);
+  });
+
+  it("is still CURRENT — the exemption is unchanged, only the wording", () => {
+    const a = buildJul("2026-08-15", "2026-07-23");
+    expect(a.bySource.released_rtp.status).toBe("current");
+    expect(a.refused).not.toContain("released_rtp");
+  });
+
+  it("an OPEN period keeps the watermark wording — it is real information there", () => {
+    // Mid-August, August selected: the period can still move, so how far RTP
+    // reaches is live information rather than a completeness statement.
+    const a = build("2026-08-11");
+    expect(a.cutoff.declaredBasis).toBe("last_completed_selling_day");
+    expect(a.bySource.released_rtp.note).toMatch(/reaches 2026-08-06 on its own basis/);
+    expect(a.bySource.released_rtp.note).not.toMatch(/closed period/);
+  });
+
+  it("data running PAST a closed period keeps the plain wording", () => {
+    // An August release against a July cohort is exactly what the exemption
+    // exists for, but it is not evidence July is 'covered through 07-31' — that
+    // claim belongs only to data sitting inside the period.
+    const a = buildJul("2026-08-15", "2026-08-09");
+    expect(a.bySource.released_rtp.note).toMatch(/reaches 2026-08-09 on its own basis/);
+    expect(a.bySource.released_rtp.note).not.toMatch(/covers this closed period/);
+  });
+});
