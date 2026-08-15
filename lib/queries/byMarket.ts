@@ -14,8 +14,19 @@ import {
 import { fetchReportFactRows } from "@/lib/queries/reportFacts";
 import { buildReportFacts } from "@/lib/queries/reportFacts.core";
 import { fetchCurrentCohorts } from "@/lib/queries/cohorts";
-import { netSalesCents, sumKnown, minCoverage, type CohortObservation } from "@/lib/queries/cohorts.core";
+import {
+  netSalesCents,
+  sumKnown,
+  minCoverage,
+  foldCohortsByMonth,
+  type CohortObservation,
+} from "@/lib/queries/cohorts.core";
 import { assertNetActualMetric } from "@/lib/scorecard/goalBasis";
+// `leadTarget` is deliberately NOT used here — see `leadPlanFor`, which divides
+// the goal figures this row already carries so the Leads target inherits the
+// dollar target's exact proration.
+import { netSalesPerRawLead, type LeadRate } from "@/lib/scorecard/leadRate";
+import type { Measured } from "@/lib/scorecard/tiers/types";
 
 /**
  * By-Market rollup for the scorecard ⑤ table. For the default month-to-date
@@ -82,6 +93,32 @@ export type ByMarketRow = {
    */
   leads_rows: number | null;
   leads_superseded: number | null;
+  /**
+   * ── THE LEADS PLANNING FIGURES, PER OFFICE (Amendment E3) ─────────────────
+   *
+   * The Funnel vs Goal panel has carried these since E3, but only for the ONE
+   * market selected — so the office-by-office view, which is where a manager
+   * actually compares offices, showed a Leads actual with nothing to judge it
+   * against. These put the requirement beside the actual on every row.
+   *
+   *   leads_target_period = this period's net goal ÷ Net Sales $ per raw lead
+   *   leads_target_to_date = the same, prorated to selling days elapsed
+   *   leads_pace_delta     = leads − leads_target_to_date
+   *
+   * NULL when the market has no goal (the utility rows) or no measurable rate —
+   * a market with no settled cohort history cannot have a lead requirement
+   * derived, and rendering 0 there would read as "needs no leads".
+   *
+   * ⚠️ The rate's denominator is DISTINCT leads, which is what `leads` above is
+   * since E7. Pace is only meaningful because the two are in the same unit.
+   */
+  leads_target_period: number | null;
+  leads_target_to_date: number | null;
+  leads_pace_delta: number | null;
+  /** False when this market borrowed the company rate — the cell must say so. */
+  leads_rate_own: boolean;
+  /** $ of Net Sales per distinct lead behind the target, for the tooltip. */
+  leads_rate: number | null;
   /**
    * ── THE SALES FUNNEL, FROM REPORT 137 (Amendment A2) ──────────────────────
    *
@@ -208,6 +245,18 @@ type GoalRow = {
 
 /** Prorated to-date goal $ for ONE source market — mirrors derive() in
  *  lib/queries/scorecard via the shared prorateGoal helper. */
+/**
+ * Both goal figures for one source market.
+ *
+ * `prorated` is the to-date target the dollar columns pace against. `period` is
+ * the SAME goal unprorated — the whole period's number. The Leads planning row
+ * needs both: `period ÷ rate` is how many leads the period requires, and
+ * `prorated ÷ rate` is how many it should have bought by now. Returning them
+ * together keeps one derivation instead of letting a caller re-inflate the
+ * prorated figure by the elapsed fraction and drift by a rounding.
+ */
+type MarketGoal = { prorated: number | null; period: number | null };
+
 function mtdGoalFor(
   actualsRow: Record<string, unknown>,
   goalRow: GoalRow | undefined,
@@ -228,8 +277,8 @@ function mtdGoalFor(
    * row behaves exactly as it did before this existed.
    */
   netSalesElapsed: number | null,
-): number | null {
-  if (!goalRow) return null;
+): MarketGoal {
+  if (!goalRow) return { prorated: null, period: null };
   const growth = numOrNull(goalRow.growth_pct);
   const effective =
     goalRow.goal_mode === "growth_pct" && growth != null
@@ -238,7 +287,10 @@ function mtdGoalFor(
   const wd = numOrNull(actualsRow.working_days_in_period) ?? numOr0(goalRow.working_days);
   const elapsed = netSalesElapsed ?? numOr0(actualsRow.days_elapsed);
   const prorated = prorateGoal(effective, elapsed, wd ?? 0);
-  return prorated == null ? null : Math.round(prorated);
+  return {
+    prorated: prorated == null ? null : Math.round(prorated),
+    period: effective > 0 ? effective : null,
+  };
 }
 
 /**
@@ -287,6 +339,43 @@ function funnelFromCohort(cohort: MarketNetSales | null): Pick<
 }
 
 /**
+ * The Leads planning figures for one market (E3), derived from the goal already
+ * computed for this row.
+ *
+ * ⚠️ DIVIDES THE GOAL FIGURES, rather than re-prorating from selling days.
+ * `goal.prorated` is what the dollar columns on this very row pace against, so
+ * dividing it by the rate makes the Leads target prorate over EXACTLY the same
+ * days — including this market's own report-137 coverage anchor. Re-deriving the
+ * proration here from `days_elapsed` would look equivalent and quietly disagree
+ * on any market whose 137 file lags, putting two different elapsed fractions on
+ * one row.
+ */
+export function leadPlanFor(
+  goal: MarketGoal,
+  rate: Measured<LeadRate>,
+): Pick<
+  ByMarketRow,
+  "leads_target_period" | "leads_target_to_date" | "leads_pace_delta" | "leads_rate_own" | "leads_rate"
+> {
+  const none = {
+    leads_target_period: null,
+    leads_target_to_date: null,
+    leads_pace_delta: null,
+    leads_rate_own: false,
+    leads_rate: null,
+  };
+  if (!rate.known || !(rate.value.rate > 0)) return none;
+  const r = rate.value.rate;
+  return {
+    leads_target_period: goal.period == null ? null : Math.round(goal.period / r),
+    leads_target_to_date: goal.prorated == null ? null : Math.round(goal.prorated / r),
+    leads_pace_delta: null, // filled by the caller, which holds the actual
+    leads_rate_own: rate.value.ownRate,
+    leads_rate: Math.round(r),
+  };
+}
+
+/**
  * Report 135 for one market, at BOTH grains it publishes. Passed as one object
  * rather than three positional args so a caller cannot line them up wrong —
  * `leads` and `distinct` are both plausible-looking counts of the same period.
@@ -307,6 +396,7 @@ function rowFromActuals(
   goal: number | null,
   leads: MarketLeads,
   cohort: MarketNetSales | null,
+  leadPlan: ReturnType<typeof leadPlanFor>,
 ): ByMarketRow {
   // NET SALES — Gross Written − Cancellations − Financing Denied, report 137.
   //
@@ -333,6 +423,14 @@ function rowFromActuals(
     leads: leads.leads,
     leads_rows: leads.rows,
     leads_superseded: leads.superseded,
+    ...leadPlan,
+    // Pace needs BOTH sides, and only this function holds them. Null when either
+    // is unmeasured — a market with no rate has no pace, and 0 would read as
+    // "exactly on target".
+    leads_pace_delta:
+      leads.leads == null || leadPlan.leads_target_to_date == null
+        ? null
+        : leads.leads - leadPlan.leads_target_to_date,
     // A2: the funnel comes from the cohort, not from `a` (live sync). See
     // `funnelFromCohort` and ByMarketRow.issued.
     ...funnelFromCohort(cohort),
@@ -519,6 +617,36 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
       superseded: f?.superseded ?? null,
     };
   };
+  // The Leads rate per market (E1/E2). The COMPANY rate is computed first and
+  // passed as the fallback, so a market too thin to carry its own borrows it
+  // rather than rendering nothing — and `ownRate` marks which cells did.
+  // Memoised: `buildRow` runs per market and the fold is not free.
+  const companyRate = netSalesPerRawLead(
+    foldCohortsByMonth(cohorts),
+    factRows,
+    resolved.asOf,
+    "REECE",
+  );
+  const rateCache = new Map<string, Measured<LeadRate>>();
+  const rateFor = (code: string): Measured<LeadRate> => {
+    const hit = rateCache.get(code);
+    if (hit) return hit;
+    const r =
+      code === "REECE"
+        ? companyRate
+        : netSalesPerRawLead(
+            // Already at display-market grain in the view — filter, never
+            // re-sum over `sources`, for the same reason `netSalesByMarket`
+            // does not: that would double Fort Lauderdale.
+            foldCohortsByMonth(cohorts.filter((c) => c.market === code)),
+            factRows,
+            resolved.asOf,
+            code,
+            companyRate,
+          );
+    rateCache.set(code, r);
+    return r;
+  };
 
   // Latest snapshot per SOURCE market (rows are as_of desc).
   const latest = new Map<string, Record<string, unknown>>();
@@ -593,8 +721,8 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
     const netElapsed = cohort?.dataThrough
       ? sellingDaysElapsed(periodStart, revenueAnchorDate(resolved.asOf, cohort.dataThrough), cal)
       : null;
-    // Goal = Σ of the source markets' prorated goals.
-    let goal: number | null = null;
+    // Goal = Σ of the source markets' goals, at BOTH prorations.
+    const goal: MarketGoal = { prorated: null, period: null };
     if (!utility) {
       for (const src of sources) {
         const g = mtdGoalFor(
@@ -604,10 +732,20 @@ async function getByMarketSnapshot(resolved: ResolvedPeriod): Promise<ByMarketVi
           periodStart,
           netElapsed,
         );
-        if (g != null) goal = (goal ?? 0) + g;
+        if (g.prorated != null) goal.prorated = (goal.prorated ?? 0) + g.prorated;
+        if (g.period != null) goal.period = (goal.period ?? 0) + g.period;
       }
     }
-    return rowFromActuals(code, label, utility, a, goal, leadsFor(code), cohort);
+    return rowFromActuals(
+      code,
+      label,
+      utility,
+      a,
+      goal.prorated,
+      leadsFor(code),
+      cohort,
+      leadPlanFor(goal, rateFor(code)),
+    );
   };
 
   const rows: ByMarketRow[] = [];
@@ -672,6 +810,30 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
     };
   };
   const netByMarket = netSalesByMarket(cohorts, resolved.periodStart, resolved.periodEnd);
+  // Same rate derivation as the snapshot path — see the note there.
+  const companyRate = netSalesPerRawLead(
+    foldCohortsByMonth(cohorts),
+    factRows,
+    resolved.asOf,
+    "REECE",
+  );
+  const rateCache = new Map<string, Measured<LeadRate>>();
+  const rateFor = (code: string): Measured<LeadRate> => {
+    const hit = rateCache.get(code);
+    if (hit) return hit;
+    const r =
+      code === "REECE"
+        ? companyRate
+        : netSalesPerRawLead(
+            foldCohortsByMonth(cohorts.filter((c) => c.market === code)),
+            factRows,
+            resolved.asOf,
+            code,
+            companyRate,
+          );
+    rateCache.set(code, r);
+    return r;
+  };
 
   type V = NonNullable<Awaited<ReturnType<typeof getScorecardForPeriod>>>;
   const toRow = (market: string, label: string, utility: boolean, v: V): ByMarketRow => {
@@ -684,7 +846,22 @@ async function getByMarketFanout(resolved: ResolvedPeriod): Promise<ByMarketView
     // carry a per-market coverage date, so it uses the period anchor and is
     // documented as the coarser of the two.
     const goal = utility ? null : v.derived.mtd_goal_dollars || null;
-    return rowFromActuals(market, label, utility, a, goal, leadsFor(market), netByMarket.get(market) ?? null);
+    // This path has the period goal directly from the view model, so both
+    // prorations come from one place exactly as they do in the snapshot path.
+    const goals: MarketGoal = {
+      prorated: goal,
+      period: utility ? null : v.derived.period_goal_dollars || null,
+    };
+    return rowFromActuals(
+      market,
+      label,
+      utility,
+      a,
+      goal,
+      leadsFor(market),
+      netByMarket.get(market) ?? null,
+      leadPlanFor(goals, rateFor(market)),
+    );
   };
 
   const rows: ByMarketRow[] = [];

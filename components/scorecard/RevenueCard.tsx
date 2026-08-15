@@ -45,11 +45,24 @@ function SplitCard({
   info,
   accent,
   lines,
+  banner,
 }: {
   title: string;
   info: { title?: string; what: string; where: string; fix: string };
   accent: string;
   lines: Line[];
+  /**
+   * Set ONLY when the card is off its primary source, and says so in one place
+   * for the whole card.
+   *
+   * This does not reopen the rule above — routine lineage stays behind the ⓘ.
+   * A FALLBACK is not lineage, it is an exception: the figures below are not
+   * the ones the card normally shows, and a reader who screenshots the panel
+   * has to be able to see that without opening anything. That is exactly what
+   * went wrong here — a card half-filled from the live sync was read as report
+   * 137 and looked broken.
+   */
+  banner?: string | null;
 }) {
   return (
     <div
@@ -61,6 +74,11 @@ function SplitCard({
         </h3>
         <InfoPopover info={{ title, ...info }} align="right" className="-mt-0.5 shrink-0" />
       </div>
+      {banner && (
+        <div className="border-t border-amber-200 bg-amber-50 px-5 py-2 text-[11px] leading-snug text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+          {banner}
+        </div>
+      )}
       <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800/70 dark:border-slate-800/70">
         {lines.map((l) => (
           <div
@@ -108,10 +126,27 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
   // defect rendered cancellations equal to gross sold and surviving $0).
   // Without a facts snapshot covering this period, count/gross fall back to
   // the scorecard actuals and the cancel lines show "—" (usd/num null-safe).
+  // ── THE FALLBACK IS A DECISION ABOUT THE WHOLE CARD, NOT PER LINE ─────────
+  //
+  // This used to fall back per row: count and gross quietly switched to the live
+  // LP sync while Cancellations and Net — which have no live-sync equivalent —
+  // rendered "not yet sourced". So the card showed 142 sales / $3,278,106 from
+  // one system directly above two rows labelled "Report 137" from another, with
+  // nothing saying the top half had changed basis. 137's own answer for that
+  // same period was 150 / $3,408,689: a reader could not tell the two apart, and
+  // the panel looked broken when it was merely mixed.
+  //
+  // Now the card decides ONCE. When 137 answers, every line is 137. When it does
+  // not, the card says so in its subtitle, the two 137-only rows say what they
+  // need rather than a bare "not yet sourced", and the figures that DO come from
+  // the sync are labelled as the sync's. One basis per card, stated on the card.
   const soldSourced = f.soldCount != null;
   // In a pending period the legacy gross computes from zeroed buckets — a
   // fabricated $0; fall back to "—" instead (usd(null)).
   const fallbackGross = pending ? null : r.gross;
+  /** Named so every fallen-back row carries the same words. */
+  const SYNC = "live LP sync";
+  const NEEDS_137 = "needs report 137";
   // A covering snapshot can source the flow figures and still have no net —
   // an MTD Sales Efficiency pull prints a blank Net column. Say why rather
   // than showing a bare dash (and never a $0, which reads as "all cancelled").
@@ -135,26 +170,41 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
   // The bottom line is also no longer blank in an MTD view: gross − cancelled
   // is computable while the Net column is still maturing, which is exactly when
   // the old row rendered "still maturing" and left the panel footless.
+  // ⚠️ CANCELLATIONS ARE NOT LISTED HERE. They live on "Lost this period",
+  // which owns the loss detail and splits it by cause (cancelled vs credit
+  // decline). Showing "Cancellations 8 · $242,976" here as well put the same
+  // eight jobs on two cards under two headings from two different reports —
+  // report 137 here, report 133 there — which reads as a contradiction the
+  // moment the two disagree, and as duplication when they agree.
+  //
+  // This card keeps the WATERFALL: what was written, what survives cancellation,
+  // what LP nets it to. "Gross after cancels" is the effect of the cancellations;
+  // the line items behind it belong to the Lost card.
   const soldLines: Line[] = [
-    { label: "Total sales count", value: num(soldSourced ? f.soldCount : r.salesCount) },
-    { label: "Gross sales value", value: usd(soldSourced ? f.grossSold : fallbackGross) },
     {
-      label: "Cancellations",
-      value: f.cancelCount == null ? "not yet sourced" : `${num(f.cancelCount)} · ${usd(f.cancelValue)}`,
-      tone: "red",
+      label: "Total sales count",
+      note: soldSourced ? undefined : SYNC,
+      value: num(soldSourced ? f.soldCount : r.salesCount),
     },
-    ...(f.grossAfterCancels != null
-      ? [
-          {
-            label: "Gross after cancels",
-            note: "gross − cancels",
-            value: usd(f.grossAfterCancels),
-            strong: true,
-          } as Line,
-        ]
-      : []),
+    {
+      label: "Gross sales value",
+      note: soldSourced ? undefined : SYNC,
+      value: usd(soldSourced ? f.grossSold : fallbackGross),
+    },
+    // NOTE: no "Cancellations" row — see the block comment above.
+    {
+      label: "Gross after cancels",
+      note: soldSourced ? "gross − cancels" : NEEDS_137,
+      value: f.grossAfterCancels != null ? usd(f.grossAfterCancels) : "—",
+      strong: f.grossAfterCancels != null,
+    },
     // NSA keeps the word "Net", and nothing else on this panel may use it.
-    { label: "Net (Report 137 NSA)", note: "LP net", value: netValue, strong: f.grossAfterCancels == null },
+    {
+      label: "Net (Report 137 NSA)",
+      note: soldSourced ? "LP net" : NEEDS_137,
+      value: soldSourced ? netValue : "—",
+      strong: f.grossAfterCancels == null,
+    },
   ];
 
   // RELEASED THIS PERIOD — RTP milestone date (report 134). One figure on its
@@ -281,7 +331,8 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           title="Sold this period"
           info={{
             what:
-              "Contract value written in the selected period, on SOLD date, with cancellations shown explicitly rather than derived as a gross-minus-net residual. " +
+              "Contract value written in the selected period, on SOLD date. The waterfall: what was written, what survives cancellation, what LP nets it to. " +
+              "The cancellation LINE ITEMS are on Lost this period, which owns loss and splits it by cause — they are not repeated here, because the same jobs under two headings from two different reports reads as a contradiction the moment the reports disagree. " +
               "Two bottom lines, deliberately: Gross after cancels = gross − cancellations. " +
               "Net (Report 137 NSA) is LP's figure and subtracts cancellations, credit declines, holds AND working. " +
               "They are not the same number — on Fort Myers in August 2026 they differ by about $501K, most of it working — so they never share a label.",
@@ -290,6 +341,15 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           }}
           accent="border-t-2 border-t-navy-900 dark:border-t-slate-200"
           lines={soldLines}
+          // The whole card fell back, so it says so once — rather than two rows
+          // quietly changing source while two others read "not yet sourced".
+          banner={
+            soldSourced
+              ? null
+              : "Report 137 has not landed for this period. Count and gross below are the " +
+                "live LP sync — a different system, and usually a different number. Gross " +
+                "after cancels and Net are report-137-only and cannot be shown from the sync."
+          }
         />
         <SplitCard
           title="Released this period"
