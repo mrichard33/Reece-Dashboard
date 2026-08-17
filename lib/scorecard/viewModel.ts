@@ -327,10 +327,11 @@ export function buildScorecardVM(
   // miss renders as on-pace. The feed going quiet must make the page look WORSE,
   // not better.
   //
-  // resolved.asOf is lastCompletedSellingDay(today) for the MTD key — derived
-  // from the calendar, never from the feed — so counting to it is immune.
-  // `today never counts` is already true by construction: asOf is the last
-  // COMPLETED selling day.
+  // resolved.asOf is previousCalendarDay(today) for the MTD key — derived from
+  // the calendar, never from the feed — so counting to it is immune. `today
+  // never counts` is already true by construction: asOf is yesterday. A Sunday
+  // asOf adds nothing here — sellingDaysElapsed skips non-selling days — so
+  // coverage reaching through the bonus day never inflates the pace basis.
   const calendarElapsed = cal
     ? sellingDaysElapsed(resolved.periodStart, resolved.asOf, cal)
     : null;

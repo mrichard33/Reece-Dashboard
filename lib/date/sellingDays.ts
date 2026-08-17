@@ -131,6 +131,22 @@ export function sellingDaysInPeriod(
   return sellingDaysElapsed(periodStart, periodEnd, cal);
 }
 
+/**
+ * Yesterday — the last COMPLETED calendar day.
+ *
+ * THE COVERAGE ANCHOR (ruling 2026-08-17): every "data through" claim on the
+ * scorecard anchors here, not on `lastCompletedSellingDay`. Sundays are outside
+ * the selling calendar — they add nothing to elapsed days or targets — but they
+ * are not outside the business: Sunday sales are real ("a bonus day"). Anchoring
+ * coverage to the selling calendar made every Monday claim Saturday's date while
+ * Sunday's sales sat invisible. The selling calendar remains the basis for PACE
+ * arithmetic only; `sellingDaysElapsed` through a Sunday endpoint counts the
+ * same as through the Saturday before it, so widening coverage never moves pace.
+ */
+export function previousCalendarDay(today: string): string {
+  return addDays(today, -1);
+}
+
 /** Last COMPLETED selling day strictly before `today` (today is in progress). */
 export function lastCompletedSellingDay(today: string, cal: SellingCalendar): string {
   let cur = addDays(today, -1);
