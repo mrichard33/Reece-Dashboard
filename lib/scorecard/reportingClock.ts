@@ -65,7 +65,7 @@
  */
 
 import type { SellingCalendar } from "@/lib/date/sellingDays";
-import { lastCompletedSellingDay, sellingDaysElapsed, sellingDaysInPeriod } from "@/lib/date/sellingDays";
+import { previousCalendarDay, sellingDaysElapsed, sellingDaysInPeriod } from "@/lib/date/sellingDays";
 import { stalenessSellingDays, stalenessCalendarDays, stalenessPhraseFull } from "@/lib/scorecard/freshness";
 import { measured, unmeasured, type Measured } from "@/lib/scorecard/tiers/types";
 
@@ -124,12 +124,12 @@ export type SourceAudit = {
 
 export type ReportingCutoff = {
   /**
-   * The calendar cutoff: last completed selling day, clamped to the period end.
-   * Pure arithmetic over `today` — no data input, so it cannot fail and no feed
-   * can move it. THE GATE CEILING.
+   * The calendar cutoff: yesterday (previous calendar day), clamped to the
+   * period end. Pure arithmetic over `today` — no data input, so it cannot
+   * fail and no feed can move it. THE GATE CEILING.
    */
   readonly declared: string;
-  readonly declaredBasis: "last_completed_selling_day" | "period_end";
+  readonly declaredBasis: "previous_calendar_day" | "period_end";
   /** What the goal-bearing source actually reached. */
   readonly achieved: Measured<string>;
   readonly achievedFrom: SourceId | null;
@@ -185,11 +185,15 @@ export type Gated<T> =
 export function declaredCutoff(
   today: string,
   period: { periodStart: string; periodEnd: string },
-  cal: SellingCalendar,
 ): { date: string; basis: ReportingCutoff["declaredBasis"] } {
-  const lastDone = lastCompletedSellingDay(today, cal);
+  // Yesterday, not the last selling day: Sunday business is real and a source
+  // covering it must be judged current, not "ahead" (ruling 2026-08-17). The
+  // selling calendar still owns pace and lag ARITHMETIC — a source reaching
+  // only Saturday when the cutoff is Sunday shows a calendar-day gap but zero
+  // selling-day lag, which is exactly the right verdict for a bonus day.
+  const lastDone = previousCalendarDay(today);
   return lastDone <= period.periodEnd
-    ? { date: lastDone, basis: "last_completed_selling_day" }
+    ? { date: lastDone, basis: "previous_calendar_day" }
     : { date: period.periodEnd, basis: "period_end" };
 }
 
@@ -314,7 +318,7 @@ export function buildReportingClock(input: {
   sources: Record<SourceId, SourceClock>;
 }): ClockAudit {
   const { today, period, cal, sources } = input;
-  const { date: declared, basis } = declaredCutoff(today, period, cal);
+  const { date: declared, basis } = declaredCutoff(today, period);
 
   const bySource = {} as Record<SourceId, SourceAudit>;
   const problems: string[] = [];

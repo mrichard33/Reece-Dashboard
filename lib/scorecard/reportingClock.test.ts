@@ -77,24 +77,29 @@ const build = (today: string, over: Partial<Record<SourceId, SourceClock>> = {})
 // ═══ A · the calendar facts everything else rests on ═════════════════════════
 
 describe("the declared cutoff", () => {
-  it("is the last completed selling day — today never counts", () => {
-    // Derived from the function, not a literal, so a calendar change moves the
-    // assertion instead of silently invalidating it.
-    expect(declaredCutoff("2026-08-12", AUG, CAL).date).toBe(lastCompletedSellingDay("2026-08-12", CAL));
-    expect(declaredCutoff("2026-08-12", AUG, CAL).date).toBe("2026-08-11");
+  it("is yesterday — today never counts", () => {
+    expect(declaredCutoff("2026-08-12", AUG).date).toBe("2026-08-11");
     // The user's own framing: at 11pm ET on Aug 11, the cutoff is Aug 10.
-    expect(declaredCutoff("2026-08-11", AUG, CAL).date).toBe("2026-08-10");
+    expect(declaredCutoff("2026-08-11", AUG).date).toBe("2026-08-10");
   });
 
-  it("skips Sunday rather than reporting a non-selling day", () => {
-    // 2026-08-09 is a Sunday; the last completed selling day before Monday the
-    // 10th is Saturday the 8th.
-    expect(declaredCutoff("2026-08-10", AUG, CAL).date).toBe("2026-08-08");
+  it("Monday's cutoff IS Sunday — a bonus day, covered but never paced (ruling 2026-08-17)", () => {
+    // 2026-08-09 is a Sunday. It is not a selling day — pace math never counts
+    // it — but Sunday business is real, so Monday the 10th claims data through
+    // the 9th, NOT through Saturday the 8th. The pre-ruling behavior (cutoff
+    // 08-08) is exactly how the header spent every Monday two days behind.
+    const c = declaredCutoff("2026-08-10", AUG);
+    expect(c.date).toBe("2026-08-09");
+    expect(c.basis).toBe("previous_calendar_day");
+    // The selling calendar still refuses to count the bonus day as elapsed:
+    expect(sellingDaysElapsed("2026-08-01", "2026-08-09", CAL)).toBe(
+      sellingDaysElapsed("2026-08-01", "2026-08-08", CAL),
+    );
   });
 
   it("CLAMPS to the period end, so a closed month is not permanently 'behind'", () => {
     const july = { periodStart: "2026-07-01", periodEnd: "2026-07-31" };
-    const c = declaredCutoff("2026-08-12", july, CAL);
+    const c = declaredCutoff("2026-08-12", july);
     expect(c.date).toBe("2026-07-31");
     expect(c.basis).toBe("period_end");
     // Anti-vacuity: without the clamp this would be August's cutoff, and every
@@ -285,7 +290,7 @@ describe("degradation", () => {
       },
     });
     expect(a.cutoff.declared).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(a.cutoff.declared).toBe(declaredCutoff("2026-08-12", AUG, CAL).date);
+    expect(a.cutoff.declared).toBe(declaredCutoff("2026-08-12", AUG).date);
     expect(a.refused).toHaveLength(0);
   });
 
@@ -411,7 +416,7 @@ describe("E4 — the exempt source on a closed period", () => {
     // Mid-August, August selected: the period can still move, so how far RTP
     // reaches is live information rather than a completeness statement.
     const a = build("2026-08-11");
-    expect(a.cutoff.declaredBasis).toBe("last_completed_selling_day");
+    expect(a.cutoff.declaredBasis).toBe("previous_calendar_day");
     expect(a.bySource.released_rtp.note).toMatch(/reaches 2026-08-06 on its own basis/);
     expect(a.bySource.released_rtp.note).not.toMatch(/closed period/);
   });

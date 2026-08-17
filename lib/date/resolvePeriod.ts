@@ -17,7 +17,7 @@ import {
   type SellingCalendar,
   todayET,
   addDays,
-  lastCompletedSellingDay,
+  previousCalendarDay,
 } from "./sellingDays";
 
 export type PeriodKey =
@@ -132,7 +132,13 @@ export function resolvePeriod(
   cal: SellingCalendar,
 ): ResolvedPeriod {
   const today = todayET();
-  const lastDone = lastCompletedSellingDay(today, cal);
+  // Coverage anchor: YESTERDAY, the previous calendar day — not the last
+  // selling day. Sundays are non-selling (pace never counts them) but Sunday
+  // business is real, so every period that reaches "now" claims data through
+  // yesterday, seven days a week. Pace math stays on the selling calendar via
+  // sellingDaysElapsed, which counts a Sunday endpoint as zero elapsed. See
+  // previousCalendarDay in sellingDays.ts (ruling 2026-08-17).
+  const lastDone = previousCalendarDay(today);
   const k: PeriodKey = VALID_KEYS.has(key as PeriodKey) ? (key as PeriodKey) : "month";
 
   // Helper to build the result with asOf = periodEnd (data current-through).
@@ -180,7 +186,7 @@ export function resolvePeriod(
           : null;
       if (!anchor) break; // fall through to month
       const start = monthStart(anchor);
-      // Current month → cap at last completed selling day; past month → full month.
+      // Current month → cap at yesterday; past month → full month.
       const end = start.slice(0, 7) === today.slice(0, 7) ? lastDone : monthEnd(start);
       return make("select_month", start, end, "aggregate", monthLabel(start));
     }
@@ -217,7 +223,7 @@ export function resolvePeriod(
 
   // Default / fallback: month-to-date snapshot. The label always spells out the
   // resolved completed-day range ("Aug 1–3") so the active window is never
-  // ambiguous; on the 1st (no completed selling days yet) it says so instead.
+  // ambiguous; on the 1st (no completed days yet) it says so instead.
   const start = monthStart(today);
   const range = lastDone >= start ? fmtRange(start, lastDone) : "no completed days yet";
   return make("month", start, lastDone, "snapshot", `${monthLabel(start)} (MTD) · ${range}`);

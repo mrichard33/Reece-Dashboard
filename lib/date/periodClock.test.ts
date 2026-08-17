@@ -53,13 +53,19 @@ describe("MTD on Aug 1 (ET) — no completed days yet", () => {
 });
 
 describe("ET vs UTC day boundary", () => {
-  it("02:00 UTC on Aug 4 is still Aug 3 in ET — MTD ends Aug 1, not Aug 3", () => {
+  it("02:00 UTC on Aug 4 is still Aug 3 in ET — MTD ends Aug 2, not Aug 3", () => {
     at("2026-08-04T02:00:00Z"); // Aug 3 22:00 ET
     expect(todayET()).toBe("2026-08-03");
     const r = resolvePeriod("month", {}, cal);
     expect(r.periodStart).toBe("2026-08-01");
-    // Yesterday ET from Aug 3 skips Sunday Aug 2 → Sat Aug 1.
-    expect(r.asOf).toBe("2026-08-01");
+    // Yesterday ET from Mon Aug 3 is Sun Aug 2 — a non-selling bonus day, but
+    // covered (ruling 2026-08-17): coverage anchors to the previous calendar
+    // day; only PACE skips Sundays. The ET/UTC point this test exists for is
+    // unchanged: the anchor is derived from Aug 3 ET, not Aug 4 UTC.
+    expect(r.asOf).toBe("2026-08-02");
+    expect(sellingDaysElapsed(r.periodStart, r.asOf, cal)).toBe(
+      sellingDaysElapsed("2026-08-01", "2026-08-01", cal),
+    );
   });
 
   it("firstOfMonthET stays on the ET month late on a month's last evening", () => {
