@@ -3,11 +3,17 @@ import { num } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getPageMetrics, type DailyPoint } from "@/lib/queries/guideMetrics";
+import { getCalculatorMetrics } from "@/lib/queries/calculatorMetrics";
 
 export const dynamic = "force-dynamic";
 
 function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
+}
+
+function money(n: number | null): string {
+  if (n === null) return "—";
+  return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -85,12 +91,19 @@ function DailyBars({ daily, emptyText }: { daily: DailyPoint[]; emptyText: strin
 
 export default async function PageMetricsPage() {
   const user = await requireUser();
-  const m = await getPageMetrics(30);
+  // Independent queries against two different HL tables — run in parallel so a
+  // slow one doesn't serialise the page.
+  const [m, calc] = await Promise.all([getPageMetrics(30), getCalculatorMetrics(30)]);
   const g = m.guide;
   const wp = m.wp;
 
   const maxGuideScroll = Math.max(1, g.uniqueSessions);
   const maxWpFunnel = Math.max(1, wp.filmSessions);
+  const maxCalcFunnel = Math.max(1, calc.funnel.pageViews);
+
+  // Sources with no page views tell us nothing; hide them rather than pad the
+  // table with zero rows.
+  const calcSources = calc.bySource.filter((s) => s.views > 0).slice(0, 8);
 
   return (
     <>
@@ -98,7 +111,7 @@ export default async function PageMetricsPage() {
         email={user.email}
         role={user.role}
         title="Page Metrics"
-        subtitle="Guide & Weakest Point journey — report.getreecewindows.com"
+        subtitle="Estimate calculator, Guide & Weakest Point journey"
       />
 
       <div className="space-y-6 p-6">
@@ -110,8 +123,153 @@ export default async function PageMetricsPage() {
           </div>
         ) : null}
 
-        {/* ============ DHP GUIDE ============ */}
+        {calc.error ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            Calculator metrics unavailable: {calc.error}. Confirm the
+            estimator_events table exists in HL Supabase.
+          </div>
+        ) : null}
+
+        {/* ============ ESTIMATE CALCULATOR ============ */}
         <section>
+          <h2 className="mb-3 font-display text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Estimate calculator · reecewindows.com/window-estimate · last {calc.windowDays} days
+          </h2>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+            <Stat label="Page views" value={num(calc.funnel.pageViews)} sub="Unique sessions" />
+            <Stat
+              label="Started"
+              value={num(calc.funnel.step1)}
+              sub="Gave contact details"
+            />
+            <Stat
+              label="Estimates completed"
+              value={num(calc.funnel.estimates)}
+              sub={`${num(calc.funnel.verifyClicks)} clicked for exact pricing`}
+            />
+            <Stat
+              label="View → estimate"
+              value={pct(calc.completionRate)}
+              sub={`${pct(calc.step1ToEstimate)} of those who started`}
+            />
+            <Stat
+              label="Avg estimate"
+              value={money(calc.avgEstimateTotal)}
+              sub="Completed estimates only"
+            />
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Calculator — step drop-off</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <BarRow label="Page view" value={calc.funnel.pageViews} max={maxCalcFunnel} />
+                <BarRow label="Step 1 done" value={calc.funnel.step1} max={maxCalcFunnel} />
+                <BarRow label="Added window" value={calc.funnel.windowAdded} max={maxCalcFunnel} />
+                <BarRow label="Step 3 done" value={calc.funnel.step3} max={maxCalcFunnel} />
+                <BarRow label="Saw estimate" value={calc.funnel.estimates} max={maxCalcFunnel} />
+                <BarRow label="Wants exact" value={calc.funnel.verifyClicks} max={maxCalcFunnel} />
+              </div>
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Unique sessions reaching each step. The steepest drop is the step
+                to fix first — everyone past &ldquo;Step 1 done&rdquo; is already
+                a lead in GoHighLevel.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Calculator — daily views &amp; exact-price clicks</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DailyBars
+                daily={calc.daily}
+                emptyText="No calculator traffic recorded yet. Data appears once the calculator is live on reecewindows.com/window-estimate and sending events."
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Calculator — which sources complete estimates</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {calcSources.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-500">
+                No source data yet. Sources appear once the calculator starts
+                recording page views.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left dark:border-slate-700">
+                      <th className="pb-2 pr-4 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Source
+                      </th>
+                      <th className="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Views
+                      </th>
+                      <th className="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Started
+                      </th>
+                      <th className="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Estimates
+                      </th>
+                      <th className="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Wants exact
+                      </th>
+                      <th className="pb-2 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Completion
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calcSources.map((s) => (
+                      <tr
+                        key={s.source}
+                        className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                      >
+                        <td className="py-2 pr-4 font-medium text-slate-900 dark:text-white">
+                          {s.source}
+                        </td>
+                        <td className="py-2 pr-4 text-right tabular text-slate-700 dark:text-slate-300">
+                          {num(s.views)}
+                        </td>
+                        <td className="py-2 pr-4 text-right tabular text-slate-700 dark:text-slate-300">
+                          {num(s.step1)}
+                        </td>
+                        <td className="py-2 pr-4 text-right tabular text-slate-700 dark:text-slate-300">
+                          {num(s.estimates)}
+                        </td>
+                        <td className="py-2 pr-4 text-right tabular text-slate-700 dark:text-slate-300">
+                          {num(s.verifyClicks)}
+                        </td>
+                        <td className="py-2 text-right tabular font-medium text-slate-900 dark:text-white">
+                          {pct(s.completionRate)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                  Completion = estimates ÷ views. A source sending traffic that
+                  never completes is a targeting problem, not a page problem.
+                  &ldquo;(none)&rdquo; means the visit carried no UTM parameters.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ============ DHP GUIDE ============ */}
+        <section className="pt-2">
           <h2 className="mb-3 font-display text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Documented Home Protection Guide · /guide · last {m.windowDays} days
           </h2>
