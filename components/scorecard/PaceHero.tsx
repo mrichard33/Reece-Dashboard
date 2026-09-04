@@ -315,7 +315,11 @@ export function PaceHero({
       tail="the 5-second read"
       meta={`${p.sellingDays} working days · ${p.daysElapsed} elapsed`}
     >
-      <div className="grid grid-cols-2 gap-x-4 gap-y-5 border-t border-slate-100 px-4 py-5 dark:border-slate-800/70 sm:grid-cols-4 sm:gap-x-6 sm:px-5 xl:grid-cols-8">
+      {/* Nine tiles since the Leads-Needed tile landed (2026-09-04), so the xl
+          track count moved 8 → 9 with them. A ninth tile in an 8-column grid
+          wraps alone onto a second row, which reads as a rendering fault rather
+          than as a KPI. */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-5 border-t border-slate-100 px-4 py-5 dark:border-slate-800/70 sm:grid-cols-4 sm:gap-x-6 sm:px-5 xl:grid-cols-9">
         {kpis.map((k) => (
           <div key={k.label} className="min-w-0" title={k.title}>
             <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
