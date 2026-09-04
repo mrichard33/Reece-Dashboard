@@ -40,6 +40,8 @@ export function PaceHero({
   netSalesAsOf = null,
   netSalesLag = null,
   netSalesRefused = null,
+  periodAvgSaleDollars = 0,
+  periodSalesCount = 0,
 }: {
   vm: ScorecardVM;
   /**
@@ -80,6 +82,10 @@ export function PaceHero({
    * unavailable with the reason, never as a number.
    */
   netSalesRefused?: string | null;
+  /** This period's Net Sales ÷ sales count. 0 = no sales yet — DISPLAY ONLY. */
+  periodAvgSaleDollars?: number;
+  /** Sales count behind it, so the tile can say "no sales yet" rather than $0. */
+  periodSalesCount?: number;
 }) {
   const p = vm.pace;
 
@@ -181,6 +187,29 @@ export function PaceHero({
       ? ` · ${num(p.revenueDaysElapsed)} of ${num(p.sellingDays)} selling days`
       : "";
 
+  // ── Leads Issued Needed to Goal ───────────────────────────────────────────
+  //
+  // ⚠️ "LEAD ISSUED" MEANS AN ISSUED APPOINTMENT, which is the house term and
+  // the same one the "Net Sales $ / Issued Lead" tile below already uses. The
+  // denominator here is `NumIssued` — appointment grain — so this is NOT a
+  // raw-lead count and must never be divided into one. The label carries
+  // "Issued" for exactly that reason: "Leads Needed to Goal" read as a
+  // top-of-funnel figure it has never been. See §13 and lib/scorecard/leadRate.ts
+  // for the grain bridge that stays unproven.
+  //
+  // Leads Issued Needed = period goal ÷ trailing-90 Net Sales per Lead Issued.
+  // The SAME NSLI that drives target_issued_per_day, so the headline number and
+  // the daily pace row can never disagree. Null NSLI renders "—" with the reason,
+  // never a fabricated target.
+  const nsli = p.nsli;
+  const periodGoal = p.monthlyGoal;
+  // The issued ACTUAL already on this view model — the same stage figure the
+  // funnel renders, so "still needed" counts down against the number a manager
+  // is looking at one section below.
+  const issuedActual = vm.funnel.find((f) => f.key === "issued")?.actual ?? 0;
+  const leadsNeeded = nsli && nsli > 0 ? Math.ceil(periodGoal / nsli) : null;
+  const leadsRemaining = leadsNeeded == null ? null : Math.max(0, leadsNeeded - issuedActual);
+
   const kpis: Kpi[] = [
     { label: goalLabel, sub: goalSub, value: usd(p.monthlyGoal) },
     {
@@ -240,6 +269,15 @@ export function PaceHero({
       tone: pending ? "plain" : balTone,
     },
     {
+      label: "Leads Issued Needed to Goal",
+      sub:
+        leadsNeeded == null
+          ? "no rate history — not computable"
+          : `${num(leadsRemaining ?? 0)} still needed · ${usd(nsli)}/lead issued`,
+      value: leadsNeeded == null ? "—" : num(leadsNeeded),
+      title: "Period goal ÷ trailing-90-day Net Sales per Lead Issued.",
+    },
+    {
       label: "Elapsed / Working Days",
       // When the goal-bearing feed lags, the pace math counts FEWER days than
       // the calendar has. Naming the gap here is what stops that reading as a
@@ -256,7 +294,18 @@ export function PaceHero({
           ? `The target is prorated over ${num(p.daysElapsed)} selling days — the days the sales report actually covers — so it stops where the actual stops. ${num(p.calendarDaysElapsed)} selling days have elapsed on the calendar; the difference is a feed that has not reported yet, not days that did not happen.`
           : undefined,
     },
-    { label: "Average Sale", sub: `net ÷ sales · ${windowSub}`, value: p.avgSale > 0 ? usd(p.avgSale) : "—", title: rateTitle, flag: p.rateWidened },
+    {
+      label: "Average Sale",
+      sub:
+        periodSalesCount && periodSalesCount > 0
+          ? `this period · ${periodSalesCount} sales`
+          : "no sales this period yet",
+      value: usd(periodAvgSaleDollars ?? 0),
+      title:
+        "This period's Net Sales ÷ this period's sales count. Shown for the " +
+        "meeting only — every target on this page is still derived from the " +
+        `trailing-90-day average sale (${p.avgSale > 0 ? usd(p.avgSale) : "—"}).`,
+    },
     { label: "Net Sales $ / Issued Lead", sub: `net sales ÷ leads issued · ${windowSub}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
   ];
 
@@ -274,7 +323,11 @@ export function PaceHero({
       tail="the 5-second read"
       meta={`${p.sellingDays} working days · ${p.daysElapsed} elapsed`}
     >
-      <div className="grid grid-cols-2 gap-x-4 gap-y-5 border-t border-slate-100 px-4 py-5 dark:border-slate-800/70 sm:grid-cols-4 sm:gap-x-6 sm:px-5 xl:grid-cols-8">
+      {/* Nine tiles since the Leads-Needed tile landed (2026-09-04), so the xl
+          track count moved 8 → 9 with them. A ninth tile in an 8-column grid
+          wraps alone onto a second row, which reads as a rendering fault rather
+          than as a KPI. */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-5 border-t border-slate-100 px-4 py-5 dark:border-slate-800/70 sm:grid-cols-4 sm:gap-x-6 sm:px-5 xl:grid-cols-9">
         {kpis.map((k) => (
           <div key={k.label} className="min-w-0" title={k.title}>
             <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">

@@ -188,7 +188,28 @@ export type ScorecardDerived = {
   sales_target_divergence_pct: number | null;
   // ⚠ TIE-OUT pace targets (per-office NSLI chain: period goal ÷ NSLI ÷ period
   // selling days; company = Σ office per-day targets, never blended NSLI).
-  // Leads = issues-needed ÷ historical issue rate (derived, ruled 2026-08-04).
+  /**
+   * ⚠️ ALWAYS NULL AT RUNTIME. DO NOT READ THIS FIELD.
+   *
+   * It is populated from `targets.perDay.leadsPerDay`, which is
+   * `perDayTarget(t.leads, …)`, and `targetTotals()` returns `leads: null`
+   * unconditionally — see lib/scorecard/paceTargets.ts. So anything derived
+   * from this renders "—" on every market and every period, permanently.
+   *
+   * This comment used to read "Leads = issues-needed ÷ historical issue rate
+   * (derived, ruled 2026-08-04)", which described the field as it behaved
+   * BEFORE Amendment B1 deleted that computation for dividing an
+   * appointment-grain numerator by a lead-grain rate — the §13 bridge nothing
+   * has proven. The stale line outlived the behaviour it described and has
+   * since led a reader to re-derive a leads target from it (2026-09-04), which
+   * is why it now says this instead.
+   *
+   * The field survives on the type only because removing it is a writer
+   * migration. A real leads target comes from `leadTarget()` — see
+   * lib/scorecard/leadRate.ts, which carries the same warning at its
+   * `LeadTarget` type, and funnelPanelContract.test.ts, which fails if this
+   * name reappears in the funnel panel.
+   */
   target_leads_per_day: number | null;
   target_issued_per_day: number | null;
   target_demoed_per_day: number | null;
