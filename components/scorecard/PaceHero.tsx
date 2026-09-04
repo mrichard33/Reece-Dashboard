@@ -187,9 +187,17 @@ export function PaceHero({
       ? ` · ${num(p.revenueDaysElapsed)} of ${num(p.sellingDays)} selling days`
       : "";
 
-  // ── Leads Needed to Goal ──────────────────────────────────────────────────
+  // ── Leads Issued Needed to Goal ───────────────────────────────────────────
   //
-  // Leads Needed = period goal ÷ trailing-90 Net Sales per Lead Issued.
+  // ⚠️ "LEAD ISSUED" MEANS AN ISSUED APPOINTMENT, which is the house term and
+  // the same one the "Net Sales $ / Issued Lead" tile below already uses. The
+  // denominator here is `NumIssued` — appointment grain — so this is NOT a
+  // raw-lead count and must never be divided into one. The label carries
+  // "Issued" for exactly that reason: "Leads Needed to Goal" read as a
+  // top-of-funnel figure it has never been. See §13 and lib/scorecard/leadRate.ts
+  // for the grain bridge that stays unproven.
+  //
+  // Leads Issued Needed = period goal ÷ trailing-90 Net Sales per Lead Issued.
   // The SAME NSLI that drives target_issued_per_day, so the headline number and
   // the daily pace row can never disagree. Null NSLI renders "—" with the reason,
   // never a fabricated target.
@@ -261,7 +269,7 @@ export function PaceHero({
       tone: pending ? "plain" : balTone,
     },
     {
-      label: "Leads Needed to Goal",
+      label: "Leads Issued Needed to Goal",
       sub:
         leadsNeeded == null
           ? "no rate history — not computable"
