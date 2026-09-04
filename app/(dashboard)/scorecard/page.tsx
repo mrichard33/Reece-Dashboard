@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Layers } from "lucide-react";
 import { requireUser } from "@/components/shell/RoleGate";
 import { getAccessContext } from "@/lib/auth";
 import { TopBar } from "@/components/shell/TopBar";
@@ -42,6 +42,7 @@ import { freshnessChip } from "@/lib/scorecard/freshness";
 import { shouldShowCoverageBanner, monthsInRange } from "@/lib/scorecard/coverageBanner";
 import { normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
+import { MEETING_VIEW } from "@/lib/scorecard/meetingView";
 import { usDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -166,6 +167,22 @@ export default async function ScorecardPage({
   // range, because a closed month's coverage date marks completeness rather
   // than staleness — see periodCohortTotals.
   const netSalesThrough = periodTotals.dataThrough;
+  /**
+   * DISPLAY average sale for the selected period: this period's Net Sales ÷ this
+   * period's sales count. Requested 2026-09-04 — a manager wants to see what his
+   * office is actually writing right now, not a 90-day blend.
+   *
+   * ⚠️ 0 means "no sales yet this period", and 0 IS DISPLAYED. It must never
+   * reach a divisor: every target still runs off the trailing-90 rate
+   * (`derived.avg_sale_target` → `vm.pace.avgSale` → `targetTotals`), which this
+   * value does not touch. Dividing a goal by a $0 average sale yields Infinity.
+   */
+  const periodAvgSaleDollars =
+    periodTotals.soldCount != null &&
+    periodTotals.soldCount > 0 &&
+    periodTotals.netSalesCents != null
+      ? Math.round(periodTotals.netSalesCents / 100 / periodTotals.soldCount)
+      : 0;
   const currentCohort = companyCohorts.find((c) => c.appointmentMonth === resolved.periodStart);
   // Admin-only editor data — never let its fan-out take down the page; the panel
   // simply hides if it can't load.
@@ -328,6 +345,14 @@ export default async function ScorecardPage({
       >
         <BarChart3 size={13} /> Sources & lead cost
       </Link>
+      {/* Everything the meeting view hides still renders, one click away, on the
+          same data. See lib/scorecard/meetingView.ts. */}
+      <Link
+        href="/scorecard/detail"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 sm:h-7"
+      >
+        <Layers size={13} /> Cohorts &amp; market detail
+      </Link>
     </div>
   );
 
@@ -480,7 +505,7 @@ export default async function ScorecardPage({
                   </div>
                 )}
 
-                {!view.derived.reconciled && (
+                {MEETING_VIEW.showProvisionalBanner && !view.derived.reconciled && (
                   <div
                     role="status"
                     className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200"
@@ -490,6 +515,16 @@ export default async function ScorecardPage({
                     to the official LP report. Do not use for commitments.
                   </div>
                 )}
+
+                {/* Provenance, not a warning — slate, so it reads as context.
+                    The amber banner above fired on every market and every
+                    period because nothing sets `reconciled` any more; what a
+                    reader actually needed from it was the source and how far
+                    it reaches, which is all this line says. */}
+                <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                  Net Sales · report 137 Sales Efficiency By Mode · appointment-date cohort
+                  {netSalesThrough ? ` · through ${usDate(netSalesThrough)}` : ""}
+                </p>
 
                 {/* ① Goal & Pace — SALES PRODUCTION, measured, on a Net Sales basis. */}
                 <PaceHero
@@ -509,6 +544,8 @@ export default async function ScorecardPage({
                   // discharges that, and it must not be separable from the tile.
                   netSalesLag={lagBadge(clock.bySource.net_sales)}
                   netSalesRefused={netSalesGate.status === "refused" ? netSalesGate.reason : null}
+                  periodAvgSaleDollars={periodAvgSaleDollars}
+                  periodSalesCount={periodTotals.soldCount ?? 0}
                 />
 
                 {/*
@@ -519,16 +556,20 @@ export default async function ScorecardPage({
                   are we doing", and it is not a quality measure: it is Gross
                   Written × a historical constant.
                 */}
-                <ExpectedOutcomePanel
-                  grossWrittenCents={currentCohortGrossCents}
-                  monthlyGoalDollars={vm.pace.monthlyGoal}
-                  rate={settledNetRetentionM}
-                  abbr={vm.abbr}
-                  asOf={cohortObservedOn}
-                />
+                {MEETING_VIEW.showExpectedOutcome && (
+                  <ExpectedOutcomePanel
+                    grossWrittenCents={currentCohortGrossCents}
+                    monthlyGoalDollars={vm.pace.monthlyGoal}
+                    rate={settledNetRetentionM}
+                    abbr={vm.abbr}
+                    asOf={cohortObservedOn}
+                  />
+                )}
 
                 {/* ③ Cohort Quality — MEASURED. Where the quality incentive lives. */}
-                <CohortQualityPanel cohorts={companyCohorts} asOf={cohortObservedOn} />
+                {MEETING_VIEW.showCohortQuality && (
+                  <CohortQualityPanel cohorts={companyCohorts} asOf={cohortObservedOn} />
+                )}
 
                 {/* ④ Funnel vs Goal — performance rows on report 137's
                     appointment cohort (B0/B5), the SAME rows and the same
@@ -561,7 +602,9 @@ export default async function ScorecardPage({
                 <RevenueCard vm={vm} />
 
                 {/* ⑤ By Market — every market for the period; rows sum to All Markets. */}
-                {byMarket.rows.length > 0 && <ByMarketTable data={byMarket} abbr={vm.abbr} />}
+                {MEETING_VIEW.showByMarket && byMarket.rows.length > 0 && (
+                  <ByMarketTable data={byMarket} abbr={vm.abbr} />
+                )}
               </>
             );
           })()
