@@ -20,6 +20,8 @@ export type BoardOfficeLike = {
   confirmed: number;
   set_pending: number;
   fill_pct: number | null;
+  /** Live Five9 dial priority, 1 = dialed first. null when Five9 is unreadable. */
+  dial_rank?: number | null;
 };
 
 export function mergeBoardOffices(offices: BoardOfficeLike[]): BoardOfficeLike[] {
