@@ -35,6 +35,9 @@
  *    board; the streak tolerance keeps the last good numbers on screen through
  *    a blip and still surfaces a genuinely dead feed. Either way the poll keeps
  *    retrying — the kiosk never dies to a white screen.
+ *  - Each market tile carries a small numbered circle in its bottom-right corner:
+ *    the LIVE Five9 dial priority (1 dials first), served as `dial_rank` on each
+ *    office by LP-MCP. No badge renders when Five9 is unreadable.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -54,6 +57,7 @@ type BoardOffice = BoardBucket & {
   market: string;
   office_label: string;
   fill_pct: number | null;
+  dial_rank?: number | null;
 };
 
 export type CapacityBoardResponse = {
@@ -178,6 +182,8 @@ type TileVM = {
   border: string;
   tileOpacity: number;
   empty: boolean;
+  /** Five9 dial priority badge, 1..7. null = no badge. */
+  rank: number | null;
 };
 
 export default function CapacityBoard({
@@ -292,12 +298,12 @@ export default function CapacityBoard({
     return a.market.localeCompare(b.market);
   });
 
-  const tileFor = (name: string, b: BoardBucket): TileVM => {
+  const tileFor = (name: string, b: BoardBucket, rank: number | null): TileVM => {
     if (b.requested === 0) {
       return {
         key: name, name, req: 0, conf: 0, risk: 0, overbooked: false, unresolved: false,
         pct: "—", unitTxt: "", color: "#64748b", stateWord: "NO SLOTS", barW: "0%",
-        border: "#1e293b", tileOpacity: 0.4, empty: true,
+        border: "#1e293b", tileOpacity: 0.4, empty: true, rank,
       };
     }
     const pct = Math.round((100 * b.confirmed) / b.requested);
@@ -310,12 +316,12 @@ export default function CapacityBoard({
       // 100%+ = green outline (Mark, 2026-07-22) — full counts as done, not
       // just overbooked.
       border: pct >= 100 ? OVERBOOK : pct < thCrit ? "#be123c" : "#1e293b",
-      tileOpacity: 1, empty: false,
+      tileOpacity: 1, empty: false, rank,
     };
   };
 
   const tiles: TileVM[] = orderedOffices.map((o) =>
-    tileFor(o.office_label.toUpperCase(), o),
+    tileFor(o.office_label.toUpperCase(), o, o.dial_rank ?? null),
   );
 
   // UNRESOLVED safety strip (fix-pass 2): no longer a grid tile — it has no
@@ -438,14 +444,31 @@ export default function CapacityBoard({
                 <div style={{ height: 6, borderRadius: 9999, background: "#1e293b", overflow: "hidden" }}>
                   <div style={{ height: "100%", borderRadius: 9999, background: t.color, width: t.barW }} />
                 </div>
-                {t.empty ? (
-                  <div style={{ fontSize: 12, color: "#64748b" }}>No slots requested</div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                    {t.overbooked && <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: OVERBOOK }}>+{t.conf - t.req} OVER</span>}
-                    {t.risk > 0 && <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: HOPPER }}>{t.risk} in hopper</span>}
-                  </div>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "nowrap" }}>
+                  {t.empty ? (
+                    <span style={{ fontSize: 12, color: "#64748b" }}>No slots requested</span>
+                  ) : (
+                    <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
+                      {t.overbooked && <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: OVERBOOK }}>+{t.conf - t.req} OVER</span>}
+                      {t.risk > 0 && <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: HOPPER }}>{t.risk} in hopper</span>}
+                    </span>
+                  )}
+                  {t.rank !== null && (
+                    <span
+                      title="Five9 dial priority — 1 dials first"
+                      style={{
+                        marginLeft: "auto", flex: "none",
+                        width: 22, height: 22, borderRadius: 9999,
+                        border: "1px solid #334155", background: "rgba(148,163,184,.08)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontFamily: MONO, fontVariantNumeric: "tabular-nums",
+                        fontSize: 12, fontWeight: 700, lineHeight: 1, color: "#94a3b8",
+                      }}
+                    >
+                      {t.rank}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -662,6 +685,21 @@ export default function CapacityBoard({
                         <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: HOPPER }}>{t.risk}</span>
                         <span style={{ fontSize: u(20), fontWeight: 600, color: "#94a3b8" }}>in hopper</span>
                       </div>
+                    )}
+                    {t.rank !== null && (
+                      <span
+                        title="Five9 dial priority — 1 dials first"
+                        style={{
+                          marginLeft: "auto", flex: "none",
+                          width: u(46), height: u(46), borderRadius: 9999,
+                          border: "1px solid #334155", background: "rgba(148,163,184,.08)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontFamily: MONO, fontVariantNumeric: "tabular-nums",
+                          fontSize: u(24), fontWeight: 700, lineHeight: 1, color: "#94a3b8",
+                        }}
+                      >
+                        {t.rank}
+                      </span>
                     )}
                   </div>
                 </div>
