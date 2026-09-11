@@ -9,7 +9,7 @@ import { ConversationThread, type UnderReview } from "./ConversationThread";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { UndoToast, StopBotModal } from "./Overlays";
 import { submitFeedback, editFeedback, undoFeedback, stopBotForLead } from "@/lib/actions/botReview";
-import { formatEt, type FeedbackDraft, type MessageType } from "@/lib/botReview/core";
+import { formatEt, contactLabel, contactNameOnly, type FeedbackDraft, type MessageType } from "@/lib/botReview/core";
 import type { QueueRow, MyFeedback, Reason, ThreadTurn } from "@/lib/queries/botReview";
 
 /**
@@ -109,7 +109,7 @@ export function ReviewWorkspace({
       message: `Saved · ${verdictLabel}`,
       detail: res.data.uncalibrated
         ? "Stored, but it won't count until you're calibrated."
-        : `${selected.office ? `Lead · ${selected.office}` : "Lead"} · ${formatEt(selected.generated_at)} message`,
+        : `${contactLabel(selected)} · ${formatEt(selected.generated_at)} message`,
       id: res.data.id,
     });
     advance(selected.context_id);
@@ -135,14 +135,14 @@ export function ReviewWorkspace({
     }
     setToast({
       message: res.alreadyStopped
-        ? `Bot was already stopped for ${selected.office ? `Lead · ${selected.office}` : "this lead"}`
-        : `Bot stopped for ${selected.office ? `Lead · ${selected.office}` : "this lead"}`,
+        ? `Bot was already stopped for ${contactNameOnly(selected)}`
+        : `Bot stopped for ${contactNameOnly(selected)}`,
       detail: res.alreadyStopped ? "The stop-bot tag was already on the contact." : `Tag queued ${formatEt(new Date().toISOString())}`,
       id: null,
     });
   }
 
-  const leadLabel = selected?.office ? `Lead · ${selected.office}` : "Lead";
+  const leadLabel = selected ? contactLabel(selected) : "Lead";
   const underReview: UnderReview | null = selected
     ? {
         kind: selected.message_type,

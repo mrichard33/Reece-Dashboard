@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Mail, MessagesSquare, Check } from "lucide-react";
-import { queueSignal, formatEt, PAGE_SIZE } from "@/lib/botReview/core";
+import { queueSignal, formatEt, contactLabel, PAGE_SIZE } from "@/lib/botReview/core";
 import type { QueueRow } from "@/lib/queries/botReview";
 
 /**
@@ -95,7 +95,7 @@ export function QueueList({
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 truncate text-sm font-medium text-navy-900 dark:text-white">
                       <ChannelIcon channel={r.channel} />
-                      {r.office ? `Lead · ${r.office}` : "Lead"}
+                      {contactLabel(r)}
                     </p>
                     <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
                       <span className="font-mono">{r.rule_applied ?? r.workflow_code ?? "—"}</span>
