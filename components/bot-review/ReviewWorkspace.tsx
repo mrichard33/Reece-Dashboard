@@ -5,12 +5,19 @@ import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { QueueList } from "./QueueList";
 import { ContextStrip } from "./ContextStrip";
-import { ConversationThread, type UnderReview } from "./ConversationThread";
+import { ConversationThread } from "./ConversationThread";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { UndoToast, StopBotModal } from "./Overlays";
 import { submitFeedback, editFeedback, undoFeedback, stopBotForLead } from "@/lib/actions/botReview";
-import { formatEt, contactLabel, contactNameOnly, type FeedbackDraft, type MessageType } from "@/lib/botReview/core";
-import type { QueueRow, MyFeedback, Reason, ThreadTurn } from "@/lib/queries/botReview";
+import {
+  formatEt,
+  contactLabel,
+  contactNameOnly,
+  type FeedbackDraft,
+  type MessageType,
+  type TimelineItem,
+} from "@/lib/botReview/core";
+import type { QueueRow, MyFeedback, Reason } from "@/lib/queries/botReview";
 
 /**
  * The Review tab's client shell.
@@ -31,7 +38,9 @@ export function ReviewWorkspace({
   total,
   page,
   selected,
-  thread,
+  conversation,
+  timeline,
+  feedbackByContext,
   myFeedback,
   reasons,
   canStopBot,
@@ -40,7 +49,9 @@ export function ReviewWorkspace({
   total: number;
   page: number;
   selected: QueueRow | null;
-  thread: ThreadTurn[];
+  conversation: QueueRow[];
+  timeline: TimelineItem[];
+  feedbackByContext: Record<number, MyFeedback>;
   myFeedback: MyFeedback | null;
   reasons: Reason[];
   canStopBot: boolean;
@@ -70,12 +81,22 @@ export function ReviewWorkspace({
 
   const selectRow = useCallback((contextId: number) => go({ ctx: String(contextId) }), [go]);
 
-  /** The next unreviewed row after the current one — where "and next" goes. */
+  /**
+   * Where "and next" goes: finish this conversation before moving on.
+   *
+   * The queue is ordered by priority across all leads, so the next row in it is
+   * often a different person. Jumping away mid-conversation and coming back
+   * later means re-reading the whole thread — so the rest of this lead's
+   * messages come first, and only then the queue's next unreviewed message.
+   */
   function advance(fromId: number) {
-    const i = rows.findIndex((r) => r.context_id === fromId);
-    const after = rows.slice(i + 1).find((r) => r.review_count === 0 && !reviewedIds.has(r.context_id));
-    const fallback = rows.find((r) => r.review_count === 0 && !reviewedIds.has(r.context_id) && r.context_id !== fromId);
-    const next = after ?? fallback;
+    const open = (r: QueueRow) => r.review_count === 0 && !reviewedIds.has(r.context_id) && r.context_id !== fromId;
+    const here = conversation.findIndex((r) => r.context_id === fromId);
+    const next =
+      conversation.slice(here + 1).find(open) ??
+      conversation.find(open) ??
+      rows.slice(rows.findIndex((r) => r.context_id === fromId) + 1).find(open) ??
+      rows.find(open);
     if (next) selectRow(next.context_id);
     else go({ ctx: null });
   }
@@ -143,17 +164,6 @@ export function ReviewWorkspace({
   }
 
   const leadLabel = selected ? contactLabel(selected) : "Lead";
-  const underReview: UnderReview | null = selected
-    ? {
-        kind: selected.message_type,
-        text: selected.reply_text,
-        skipReason: selected.skip_reason,
-        at: selected.sent_at ?? selected.generated_at,
-        channel: selected.channel,
-        workflowCode: selected.workflow_code,
-        subject: null,
-      }
-    : null;
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -179,19 +189,27 @@ export function ReviewWorkspace({
         {!selected ? (
           <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 p-10 text-center dark:border-slate-700">
             <p className="font-display text-lg font-semibold text-navy-900 dark:text-white">
-              {rows.length === 0 ? "You're caught up." : "Pick a message to review."}
+              {rows.length === 0 ? "You're caught up." : "Pick a conversation to review."}
             </p>
             <p className="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">
               {rows.length === 0
                 ? "New messages show up here as the bot sends them."
-                : "Use J and K to move through the queue."}
+                : "Open a lead on the left, then click the message you want to score. J and K step through them."}
             </p>
           </div>
         ) : (
           <>
             <ContextStrip row={selected} canStopBot={canStopBot} onStopBot={() => setStopOpen(true)} />
             <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-              <ConversationThread turns={thread} underReview={underReview!} leadLabel={leadLabel} />
+              <ConversationThread
+                timeline={timeline}
+                rows={conversation}
+                selectedId={selected.context_id}
+                feedbackByContext={feedbackByContext}
+                reviewedIds={reviewedIds}
+                leadLabel={leadLabel}
+                onSelect={selectRow}
+              />
             </div>
             <FeedbackPanel
               key={selected.context_id}

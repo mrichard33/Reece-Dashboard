@@ -74,8 +74,14 @@ export function ContextStrip({
         </div>
       )}
 
+      {/* Everything above the line is the conversation; everything below it is
+          the one message being scored. Saying so matters now that the thread
+          holds several messages to the same lead. */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
       <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          This message
+        </span>
         <Badge tone="navy">
           <span className="font-mono text-[11px]">{row.rule_applied ?? row.workflow_code ?? "no rule"}</span>
         </Badge>

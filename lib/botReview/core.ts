@@ -348,3 +348,169 @@ export function contactLabel(row: {
 export function contactNameOnly(row: { contact_name?: string | null }): string {
   return row.contact_name?.trim() || "Unnamed lead";
 }
+
+// ─── Conversations ──────────────────────────────────────────────────
+
+/**
+ * The queue's unit is a conversation, not a message.
+ *
+ * The bot sends one lead several messages over days. Listing each one as its
+ * own box made four messages to Alfredo Fontan look like four different leads,
+ * and it asked the reviewer to judge a reply without the replies around it —
+ * which is exactly the context needed to tell a good reply from a bad one.
+ *
+ * So: group by contact, show the whole thread, and let the reviewer click the
+ * message they want to score.
+ */
+
+export type ConversationRow = {
+  context_id: number;
+  ghl_contact_id: string | null;
+  channel: string | null;
+  message_type?: string | null;
+  generated_at: string;
+  sent_at?: string | null;
+  review_count: number;
+  opted_out_at?: string | null;
+  ai_score?: number | null;
+  contact_name?: string | null;
+  contact_city?: string | null;
+  office?: string | null;
+};
+
+export type Conversation<R extends ConversationRow> = {
+  /** Stable key for React and for the `?contact=` param. */
+  key: string;
+  contactId: string | null;
+  label: string;
+  rows: R[];
+  messageCount: number;
+  unreviewedCount: number;
+  latestAt: string;
+  channels: string[];
+  signal: { label: string; tone: "emerald" | "amber" | "rose" | "slate" };
+};
+
+/**
+ * Fold queue rows into one entry per contact.
+ *
+ * Order is preserved: a conversation sits where its FIRST row sat, so the
+ * view's priority sort still decides what a reviewer sees first. That also
+ * means the group's headline signal is the first row's — by the view's own
+ * priority the most urgent message in the group — rather than a second ranking
+ * invented here that could disagree with the sort.
+ *
+ * A row with no GHL contact id gets its own group. Two such rows cannot be
+ * shown to be the same person, and merging them on a guess would put one
+ * lead's messages in another lead's thread.
+ */
+export function groupByContact<R extends ConversationRow>(rows: R[]): Array<Conversation<R>> {
+  const out: Array<Conversation<R>> = [];
+  const byKey = new Map<string, Conversation<R>>();
+
+  for (const row of rows) {
+    const key = row.ghl_contact_id ? `c:${row.ghl_contact_id}` : `x:${row.context_id}`;
+    let group = byKey.get(key);
+    if (!group) {
+      group = {
+        key,
+        contactId: row.ghl_contact_id,
+        label: contactLabel(row),
+        rows: [],
+        messageCount: 0,
+        unreviewedCount: 0,
+        latestAt: row.generated_at,
+        channels: [],
+        signal: queueSignal(row),
+      };
+      byKey.set(key, group);
+      out.push(group);
+    }
+    group.rows.push(row);
+    group.messageCount += 1;
+    if (row.review_count === 0) group.unreviewedCount += 1;
+    if (row.generated_at > group.latestAt) group.latestAt = row.generated_at;
+    if (row.channel && !group.channels.includes(row.channel)) group.channels.push(row.channel);
+  }
+
+  return out;
+}
+
+/** The conversation a given message belongs to. */
+export function findConversation<R extends ConversationRow>(
+  groups: Array<Conversation<R>>,
+  contextId: number | null,
+): Conversation<R> | null {
+  if (contextId == null) return null;
+  return groups.find((g) => g.rows.some((r) => r.context_id === contextId)) ?? null;
+}
+
+export type TimelineTurn = {
+  kind: "turn";
+  key: string;
+  at: string | null;
+  inbound: boolean;
+  body: string | null;
+};
+
+export type TimelineMessage = {
+  kind: "message";
+  key: string;
+  at: string;
+  contextId: number;
+};
+
+export type TimelineItem = TimelineTurn | TimelineMessage;
+
+type SnapshotTurn = { direction?: string | null; body?: string | null; at?: string | null };
+
+/** Whitespace and case are not differences worth keeping two copies over. */
+function normText(s: string | null | undefined): string {
+  return (s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * One timeline for a whole conversation.
+ *
+ * Each message carries its own snapshot of the thread AS THE BOT SAW IT, so
+ * consecutive messages overlap heavily — and every bot reply reappears as a
+ * plain outbound turn inside every later snapshot. Both are deduped here:
+ * identical turns collapse, and an outbound turn that repeats a reviewable
+ * message is dropped so the message itself is the only copy on screen. A
+ * reviewer must never see the same reply twice and have to guess which one the
+ * verdict lands on.
+ *
+ * `rows` are the reviewable messages; `snapshots` maps a context id to the
+ * thread captured for it.
+ */
+export function buildTimeline(
+  rows: Array<{ context_id: number; reply_text?: string | null; sent_at?: string | null; generated_at: string }>,
+  snapshots: Map<number, SnapshotTurn[]>,
+): TimelineItem[] {
+  const messages: TimelineMessage[] = rows.map((r) => ({
+    kind: "message",
+    key: `m:${r.context_id}`,
+    at: r.sent_at ?? r.generated_at,
+    contextId: r.context_id,
+  }));
+
+  const reviewable = new Set(rows.map((r) => normText(r.reply_text)).filter(Boolean));
+
+  const turns: TimelineTurn[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    for (const t of snapshots.get(row.context_id) ?? []) {
+      const inbound = t.direction === "inbound";
+      const body = normText(t.body);
+      if (!inbound && body && reviewable.has(body)) continue;
+      const key = `${inbound ? "in" : "out"}|${t.at ?? ""}|${body}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      turns.push({ kind: "turn", key: `t:${seen.size}`, at: t.at ?? null, inbound, body: t.body ?? null });
+    }
+  }
+
+  // Oldest first. A turn with no timestamp keeps its snapshot order at the top
+  // rather than being dropped — it is still part of what the bot read.
+  return [...turns, ...messages].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""));
+}
