@@ -18,6 +18,63 @@ export type HelpEntry = {
 };
 
 export const helpContent: Record<string, HelpEntry> = {
+
+  // ── /bot-review · Phase 1 ───────────────────────────────────────────
+  "botReview.aiScore": {
+    title: "AI score",
+    what: "The AI judge's score for this message, 0–100. It is the LOWEST of five dimensions (relevance, stage fit, trust, clarity, forward momentum), not the average — one broken axis drags the whole score down on purpose, because the queue exists to surface the worst messages.",
+    where:
+      "`message_scores.overall_score` for replies, `agentic_messages.confidence_score` for nurture, both x100, read through `v_bot_review_queue`.",
+    fix: "A dash means the judge has not scored it yet — scoring runs within minutes of the send. If dashes persist for hours, check `BOT_JUDGE_PERSIST` on LP MCP and the Railway logs for `[BotJudge]`.",
+  },
+  "botReview.messagesSent": {
+    title: "Messages sent",
+    what: "Bot messages sent to homeowners this ET week — replies, nurture and skips, SMS and email.",
+    where: "`v_bot_quality_weekly`, summed across paths and channels for the current ET week.",
+    fix: "If this drops near zero, the bot is not sending. Check the Decision Engine heartbeat and agent_actions in Issues before assuming it is a reporting problem.",
+  },
+  "botReview.reviewedPct": {
+    title: "Reviewed",
+    what: "The share of this week's sent messages a human has scored.",
+    where: "Reviews in `v_bot_current_feedback` joined to sent messages in `v_bot_quality_weekly`.",
+    fix: "The program gate is 90% within 24 hours. Below 70% the Scoreboard gets noisy — add a reviewer shift before reading the other tiles.",
+  },
+  "botReview.goodRate": {
+    title: "Good rate",
+    what: "Reviews marked Good as a share of all reviews this week. A message several reviewers disagree on is counted once, at its worst reading.",
+    where: "`v_bot_quality_weekly.good_rate`, counting only reviews from calibrated reviewers.",
+    fix: "Shows a dash under 30 reviewed — that is deliberate, not a bug. When it falls, open Top issues to see which reason is pulling it down.",
+  },
+  "botReview.issuesPer100": {
+    title: "Issues per 100",
+    what: "Needs work plus Unsafe verdicts per 100 reviewed messages. Normalised by volume so a busy week and a quiet week can be compared.",
+    where: "`v_bot_quality_weekly.issues_per_100`.",
+    fix: "Use Weakest paths to find the rule behind a jump, then read the actual messages on that path in the Review tab.",
+  },
+  "botReview.unsafe": {
+    title: "Unsafe",
+    what: "Messages a reviewer marked Unsafe this week. Each one also raised a GroupMe alert within a minute of being flagged.",
+    where: "`v_bot_current_feedback` where verdict = 'unsafe'.",
+    fix: "Read the note on each — Unsafe is never a judgement call to leave sitting. If one needs the bot off a lead now, use Stop the bot for this lead in the Review tab.",
+  },
+  "botReview.aiJudgeAverage": {
+    title: "AI judge average",
+    what: "The average AI score across messages sent this week, before any human review.",
+    where: "`v_bot_quality_weekly.avg_ai_score`, weighted by messages sent.",
+    fix: "A wide gap between this and the Good rate means the judge is calibrated differently from your reviewers. Phase 3 reports the agreement directly; until then, treat the judge as a sorting aid, not a verdict.",
+  },
+  "botReview.topIssues": {
+    title: "Top issues",
+    what: "How often each reason was picked this ET week, next to last week. Counted per flag, not per message — two reviewers picking the same reason is two pieces of evidence.",
+    where: "`v_bot_top_issues`, built from the reason codes on live (non-undone, non-superseded) reviews.",
+    fix: "A reason climbing week over week is what Phase 2's nightly grouping turns into a proposed fix. Nothing here changes bot behavior on its own.",
+  },
+  "botReview.weakestPaths": {
+    title: "Weakest paths",
+    what: "Good rate by rule or nurture workflow, worst first. A path is a rule like OBJ_PRICE_STRIKE1 or a workflow code like S4.5.",
+    where: "`v_bot_quality_weekly`, grouped by path and channel for the current ET week.",
+    fix: "Paths under 30 reviewed show 'Not enough data yet' rather than a percentage — at roughly 90 messages a week that is most paths at first. Review more on a path to make its number real.",
+  },
   // ── /overview · Row 1: service health ───────────────────────────────
   "overview.lpMcp": {
     title: "LP MCP",

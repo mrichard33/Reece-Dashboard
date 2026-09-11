@@ -36,6 +36,13 @@ export function Sidebar({
     // Content (FB engine) is open to operators AND executives — including
     // approver-only execs, who would otherwise be filtered out below.
     if (i.href === "/content") return isExecutive || role === "operator";
+    // Bot Review ships behind a flag so it can be hidden without a revert.
+    // Reviewers are operators AND team members, so it is not role-gated here —
+    // the page sends exec-only users away and limits team to Review + Compare.
+    if (i.href === "/bot-review") {
+      if (process.env.NEXT_PUBLIC_BOT_REVIEW_ENABLED === "false") return false;
+      return !isExecOnly && (role === "operator" || role === "team");
+    }
     if (i.audience === "admin") return isAdmin;
     if (i.audience === "executive") return isExecutive;
     // Approver-only executives see nothing but the Executive Review tab.

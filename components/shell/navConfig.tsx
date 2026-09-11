@@ -12,6 +12,7 @@ import {
   Gauge,
   BookOpen,
   Scale,
+  MessageSquareQuote,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -59,6 +60,19 @@ export const NAV_GROUPS: NavGroup[] = [
         desc: "Rule, review, roll back",
         Icon: Scale,
         audience: "operator",
+      },
+      {
+        // Reviewers are operators AND team members (team reviews count once
+        // they calibrate), so this is audience "all" — the page itself sends
+        // exec-only users away and limits team to Review + Compare.
+        href: "/bot-review",
+        label: "Bot review",
+        desc: "Score what the bot said",
+        // The design asks for message-check; this lucide version has no such
+        // icon, and a quoted message reads the same way for "the message under
+        // review". Swap it if the icon set gains message-square-check.
+        Icon: MessageSquareQuote,
+        audience: "all",
       },
       {
         href: "/approvals",
