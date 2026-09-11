@@ -16,6 +16,8 @@ import {
   enoughData,
   ratePct,
   PAGE_SIZE,
+  contactLabel,
+  contactNameOnly,
   type FeedbackDraft,
 } from "./core";
 
@@ -306,5 +308,52 @@ describe("honest numbers", () => {
 
   it("hides a missing rate even when the sample is large", () => {
     expect(ratePct(null, 100)).toBeNull();
+  });
+});
+
+// ─── contact identity ───────────────────────────────────────────────
+
+describe("contactLabel", () => {
+  it("leads with the person's name and their city", () => {
+    expect(contactLabel({ contact_name: "Alfredo Fontan", contact_city: "Orlando", office: "ORL_MKT" }))
+      .toBe("Alfredo Fontan · Orlando");
+  });
+
+  it("prefers the real city to the internal market code", () => {
+    // ORL_MKT is a routing label, not somewhere a person lives.
+    expect(contactLabel({ contact_name: "Maritza Rodriguez", contact_city: "Orlando", office: "ORL_MKT" }))
+      .toContain("Orlando");
+    expect(contactLabel({ contact_name: "Maritza Rodriguez", contact_city: "Orlando", office: "ORL_MKT" }))
+      .not.toContain("ORL_MKT");
+  });
+
+  it("falls back to the market when there is no city", () => {
+    expect(contactLabel({ contact_name: "Greg Hansen", contact_city: null, office: "ORL_MKT" }))
+      .toBe("Greg Hansen · ORL_MKT");
+  });
+
+  it("degrades to the old label when the lead has not resolved", () => {
+    // A GHL contact with no LP lead yet must still render a usable row.
+    expect(contactLabel({ contact_name: null, contact_city: null, office: "ORL_MKT" })).toBe("Lead · ORL_MKT");
+    expect(contactLabel({ contact_name: null, contact_city: null, office: null })).toBe("Lead");
+  });
+
+  it("ignores whitespace-only names", () => {
+    expect(contactLabel({ contact_name: "   ", contact_city: "Tampa" })).toBe("Lead · Tampa");
+  });
+
+  it("shows a bare name when there is no location at all", () => {
+    expect(contactLabel({ contact_name: "Mark Test" })).toBe("Mark Test");
+  });
+});
+
+describe("contactNameOnly", () => {
+  it("returns just the person, for places already showing the location", () => {
+    expect(contactNameOnly({ contact_name: "Alfredo Fontan" })).toBe("Alfredo Fontan");
+  });
+
+  it("says so plainly when the name is missing", () => {
+    expect(contactNameOnly({ contact_name: null })).toBe("Unnamed lead");
+    expect(contactNameOnly({ contact_name: "  " })).toBe("Unnamed lead");
   });
 });

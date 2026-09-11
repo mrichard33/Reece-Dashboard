@@ -41,7 +41,40 @@ export function ContextStrip({
   const outcome = outcomeLabel(row);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+      {/* Who this actually is. First line, because a reviewer who finds a bad
+          reply has to be able to look this person up in LeadPerfection or GHL —
+          and because a market label made four messages to the SAME contact look
+          like four different leads. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="font-display text-sm font-semibold text-navy-900 dark:text-white">
+            {row.contact_name?.trim() || "Unnamed lead"}
+          </span>
+          {(row.contact_city || row.office) && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {row.contact_city || row.office}
+            </span>
+          )}
+          {row.rep_name && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">· Rep {row.rep_name}</span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+          {row.lp_prospect_id && <IdChip label="Prospect" value={row.lp_prospect_id} />}
+          {row.lp_lead_id && <IdChip label="LP lead" value={row.lp_lead_id} />}
+          {row.ghl_contact_id && <IdChip label="GHL" value={row.ghl_contact_id} />}
+        </div>
+      </div>
+
+      {(row.contact_phone || row.contact_email) && (
+        <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-slate-500 dark:text-slate-400">
+          {row.contact_phone && <span className="font-mono">{formatPhone(row.contact_phone)}</span>}
+          {row.contact_email && <span className="truncate">{row.contact_email}</span>}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge tone="navy">
           <span className="font-mono text-[11px]">{row.rule_applied ?? row.workflow_code ?? "no rule"}</span>
@@ -124,6 +157,29 @@ export function ContextStrip({
           </div>
         )}
       </div>
+      </div>
     </div>
   );
+}
+
+/**
+ * One copyable id. The value is monospace because these get pasted into
+ * LeadPerfection and GHL search boxes, where a transcription slip costs more
+ * time than the lookup saves.
+ */
+function IdChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1" title={`${label}: ${value}`}>
+      <span className="font-sans text-slate-400 dark:text-slate-500">{label}</span>
+      <span className="select-all text-slate-700 dark:text-slate-200">{value}</span>
+    </span>
+  );
+}
+
+/** US 10-digit numbers read as (407) 376-3631; anything else is left alone. */
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  if (d.length === 11 && d.startsWith("1")) return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  return raw;
 }

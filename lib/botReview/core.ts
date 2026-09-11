@@ -323,3 +323,28 @@ export function ratePct(rate: number | null | undefined, reviewed: number | null
   if (!enoughData(reviewed) || rate == null) return null;
   return `${Math.round(rate * 100)}%`;
 }
+
+/**
+ * How a conversation is labelled everywhere in the Review tab.
+ *
+ * The name first, because a reviewer who spots a bad reply needs to find that
+ * person in LeadPerfection or GHL — and because "Lead · ORL_MKT" made four
+ * separate messages to the SAME contact look like four different leads.
+ * The city, not the market code: ORL_MKT is an internal routing label.
+ * Falls back through city → market → "Lead" so a row is never blank.
+ */
+export function contactLabel(row: {
+  contact_name?: string | null;
+  contact_city?: string | null;
+  office?: string | null;
+}): string {
+  const name = row.contact_name?.trim();
+  const where = row.contact_city?.trim() || row.office?.trim() || null;
+  if (name) return where ? `${name} · ${where}` : name;
+  return where ? `Lead · ${where}` : "Lead";
+}
+
+/** Just the person, for places where the location is already on screen. */
+export function contactNameOnly(row: { contact_name?: string | null }): string {
+  return row.contact_name?.trim() || "Unnamed lead";
+}

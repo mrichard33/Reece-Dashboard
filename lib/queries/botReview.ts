@@ -43,6 +43,16 @@ export type QueueRow = {
   learned_items_count: number;
   review_count: number;
   consensus_verdict: string | null;
+  // sql/105 — who the conversation is actually with. Nullable: a GHL contact
+  // with no LP lead yet resolves to nothing, and the UI falls back to the
+  // market label rather than showing a blank row.
+  contact_name: string | null;
+  lp_prospect_id: string | null;
+  lp_lead_id: string | null;
+  contact_city: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  rep_name: string | null;
 };
 
 export type MyFeedback = {
@@ -62,7 +72,8 @@ export type MyFeedback = {
 const QUEUE_COLUMNS =
   "context_id,message_type,message_ref,ghl_contact_id,channel,rule_applied,workflow_code," +
   "intent_class,buyer_stage,inbound_text,reply_text,skip_reason,generated_at,sent_at,office," +
-  "ai_score,replied_at,booked_at,opted_out_at,learned_items_count,review_count,consensus_verdict";
+  "ai_score,replied_at,booked_at,opted_out_at,learned_items_count,review_count,consensus_verdict," +
+  "contact_name,lp_prospect_id,lp_lead_id,contact_city,contact_phone,contact_email,rep_name";
 
 export type QueueResult = {
   rows: QueueRow[];
