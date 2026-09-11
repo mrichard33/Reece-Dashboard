@@ -399,6 +399,80 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "Reads `raw_inputs` (bucket_tally / status_tally / non_demo_tally) from the latest `lp_market_scorecard_daily` snapshot — emitted by LP-MCP `computeActuals`.",
     fix: "Use the status tally to decide whether any 'other pending' status belongs in `SCORECARD_WORKING_STATUSES`, then re-run the scorecard. When figures match the Reece export, add the market to `SCORECARD_RECONCILED_MARKETS` to clear the PROVISIONAL banner.",
   },
+
+  // ── /command-center · Release 1 (Rulings lane) ──────────────────────
+  "commandCenter.rulingsOpen": {
+    title: "Waiting on you",
+    what: "Everything in memory that needs a ruling: open or blocked pending items of the four ruling types (decision needed, unconfirmed, open question, approval needed), plus open conflicts where two memory rows disagree. Snoozed cards are not counted until their date comes round.",
+    where: "`SELECT count(*) FROM v_command_center_queue WHERE lane = 'rulings'` (LP Supabase, sql/102).",
+    fix: "If this looks far too high, check the Area and Type filters are clear. If it is stuck at the same number while you rule, something is failing to save — look for a red line on the card.",
+  },
+  "commandCenter.oldest": {
+    title: "Oldest",
+    what: "How many days the longest-waiting card in the queue has been open. The queue already sorts risk-first, so a large number here is usually something low-risk rather than something forgotten.",
+    where: "The largest `age_days` in `v_command_center_queue`.",
+    fix: "Filter by that card's area to find it. If it genuinely no longer matters, rule it 'No longer relevant' rather than leaving it to age.",
+  },
+  "commandCenter.ruledThisWeek": {
+    title: "Ruled this week",
+    what: "How many rulings were made in the last seven days, and the change against the seven days before that. Counts every ruling — from this page and from chat — including flips.",
+    where: "Rows in `claude_rulings_log` by `at` (LP Supabase, sql/102).",
+    fix: "Zero while you have been ruling means the audit rows are not landing: check the LP MCP deploy is ACTIVE and that sql/102 section B applied.",
+  },
+  "commandCenter.release2": {
+    title: "Coming in Release 2",
+    what: "The two lanes that are counted but not yet built: stale issues (open issues nobody has verified in a long time) and to-dos (open work items that are not rulings). Release 1 is the Rulings lane only.",
+    where: "`claude_known_issues` where stale, and `claude_pending_items` open/blocked outside the four ruling types.",
+    fix: "Nothing to do here yet. These become workable lanes in Release 2.",
+  },
+  "commandCenter.staleLane": {
+    title: "Stale issues",
+    what: "Open issues with no verification in 60+ days and no activity in 60+ days — the nightly job flags them. Counted here so the number is visible; ruling on them comes in Release 2.",
+    where: "`claude_known_issues` where `status` is open/in_progress and `stale` is true.",
+    fix: "For now, verify one in chat with memory_checkpoint's `verified_issues` — that clears the stale flag.",
+  },
+  "commandCenter.todoLane": {
+    title: "To-dos",
+    what: "Open work items that are not rulings: builds, actions, verifications. Includes anything a ruling filed as 'needs building', and any ROLL BACK item a flip created.",
+    where: "`claude_pending_items` open/blocked, excluding the four ruling item types.",
+    fix: "Work them in chat for now. A ROLL BACK item means a built decision was flipped and the build still needs undoing — those are worth doing first.",
+  },
+  "commandCenter.recommendation": {
+    title: "Suggested",
+    what: "What the record supports, written by the nightly recommendation step: a verdict, two sentences of reason, and the evidence behind it. It is NEVER a ruling — nothing here closes a card or writes a decision. Confidence is capped at medium whenever money, live leads or customer messaging are at stake.",
+    where: "The `rec_*` columns on the card, written by `src/jobs/memory-recommend.js` when MEMORY_RECOMMEND_MODE is live.",
+    fix: "Missing means the nightly has not reached this card, or the mode is off — hit Re-check, or set MEMORY_RECOMMEND_MODE. Disagreeing with it is normal: choose the other answer and say why in one line.",
+  },
+  "commandCenter.riskBadge": {
+    title: "Risk badge",
+    what: "Money, Live leads or Customer messaging — flagged when a ruling could move revenue, affect leads in flight, or change what a customer receives. Payroll and partner/vendor areas are always treated as money, whatever the model said.",
+    where: "`rec_risk` on the card. The area backstop is in `normalizeOutput()` in memory-recommend.js.",
+    fix: "A risk badge is a reason to read the tradeoff before clicking, not a reason to stop. If it is wrong, rule it and say why — that reason is what trains the next look.",
+  },
+  "commandCenter.omiBadge": {
+    title: "Heard on Omi",
+    what: "This card came from something said out loud, captured by the Omi recorder, not from a chat session. Omi items are ALWAYS unconfirmed — nothing heard is ever treated as decided until it is ruled here or in chat.",
+    where: "`origin = 'omi'` on the pending item (sql/101). The '[Omi date]' prefix is stripped from the text on screen and on save.",
+    fix: "Treat it as a proposal, not a decision. Approving it is what makes it real.",
+  },
+  "commandCenter.conflictCard": {
+    title: "Conflict",
+    what: "Two memory rows on the same subject that contradict each other — the nightly conflict scan files these when their similarity is at or above 0.85. Until one is ruled, memory holds both as true.",
+    where: "`claude_memory_conflicts` where status is open, with both sides resolved in `v_command_center_queue`.",
+    fix: "Read the origin and confidence on each side: a decision Mark confirmed outranks a reconstructed one regardless of date. Keep one, or write a new answer that supersedes both.",
+  },
+  "commandCenter.flip": {
+    title: "Flip",
+    what: "Undo a ruling. The exact values it changed are restored from the audit row, and the flip is recorded as its own row — nothing is ever erased and there is no time limit. A two-sided ruling flips across (approve becomes reject, keep left becomes keep right).",
+    where: "`claude_rulings_log.changes` holds the before/after of every column the ruling touched; the flip is applied by `claude_rule_apply`.",
+    fix: "If a flip is refused with 'changed since', something the ruling touched has been edited elsewhere, so it can no longer be put back exactly — rule the card again instead.",
+  },
+  "commandCenter.stage": {
+    title: "Rollout stage",
+    what: "How far a decision has got: Decided, Built, Verified, or No build needed. Only decisions made through the Command Center carry a stage — every decision that existed before stays untracked. Verified requires a line saying what proved it.",
+    where: "`claude_decision_log.rollout_stage`, `built_at` and `verification_note` (sql/102 section A).",
+    fix: "Set Built when the work ships and Verified when you have actually seen it working. Flipping a decision that reached Built or Verified files a ROLL BACK to-do, because the record going back does not undo the build.",
+  },
 };
 
 export function getHelp(key: string): HelpEntry | null {

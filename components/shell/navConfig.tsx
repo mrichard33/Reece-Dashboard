@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Gauge,
   BookOpen,
+  Scale,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -52,6 +53,13 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Needs you",
     items: [
+      {
+        href: "/command-center",
+        label: "Command Center",
+        desc: "Rule, review, roll back",
+        Icon: Scale,
+        audience: "operator",
+      },
       {
         href: "/approvals",
         label: "Executive Review",
