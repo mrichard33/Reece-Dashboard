@@ -156,6 +156,49 @@ export async function getThread(contextId: number): Promise<{ turns: ThreadTurn[
   return { turns, source: turns.length ? "snapshot" : "none" };
 }
 
+/**
+ * Every bot message to one contact, oldest first.
+ *
+ * The queue page is 25 messages, so the contact's other messages may well sit
+ * on a page the reviewer has not loaded. The conversation is fetched on its
+ * own rather than assembled from the rows on screen — otherwise the thread
+ * would silently change shape depending on which page you arrived from.
+ *
+ * Capped at 200: past that it is no longer a conversation a person reads, and
+ * an unbounded fetch on a contact the bot has messaged for months would stall
+ * the page.
+ */
+const CONVERSATION_CAP = 200;
+
+export async function getConversation(contactId: string): Promise<QueueRow[]> {
+  const { data, error } = await lpService()
+    .from("v_bot_review_queue")
+    .select(QUEUE_COLUMNS)
+    .eq("ghl_contact_id", contactId)
+    .order("generated_at", { ascending: true })
+    .limit(CONVERSATION_CAP);
+  if (error || !data) return [];
+  return data as unknown as QueueRow[];
+}
+
+/** The captured thread for each message in a conversation, keyed by context id. */
+export async function getThreads(contextIds: number[]): Promise<Map<number, ThreadTurn[]>> {
+  const out = new Map<number, ThreadTurn[]>();
+  if (!contextIds.length) return out;
+
+  const { data, error } = await lpService()
+    .from("bot_message_context")
+    .select("id,input_snapshot")
+    .in("id", contextIds);
+
+  if (error || !data) return out;
+  for (const r of data as Array<{ id: number; input_snapshot: { thread?: ThreadTurn[] } | null }>) {
+    const turns = Array.isArray(r.input_snapshot?.thread) ? r.input_snapshot.thread : [];
+    out.set(r.id, turns);
+  }
+  return out;
+}
+
 /** This reviewer's own live verdicts for the rows on screen. */
 export async function getMyFeedback(email: string, refs: Array<{ type: string; ref: string }>): Promise<Map<string, MyFeedback>> {
   const out = new Map<string, MyFeedback>();

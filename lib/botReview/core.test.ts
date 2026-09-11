@@ -18,6 +18,9 @@ import {
   PAGE_SIZE,
   contactLabel,
   contactNameOnly,
+  groupByContact,
+  findConversation,
+  buildTimeline,
   type FeedbackDraft,
 } from "./core";
 
@@ -355,5 +358,158 @@ describe("contactNameOnly", () => {
   it("says so plainly when the name is missing", () => {
     expect(contactNameOnly({ contact_name: null })).toBe("Unnamed lead");
     expect(contactNameOnly({ contact_name: "  " })).toBe("Unnamed lead");
+  });
+});
+
+// ─── conversations ──────────────────────────────────────────────────
+
+const row = (over: Record<string, unknown> = {}) => ({
+  context_id: 1,
+  ghl_contact_id: "abc",
+  channel: "sms",
+  message_type: "reply",
+  generated_at: "2026-09-10T12:00:00Z",
+  sent_at: null,
+  review_count: 0,
+  ...over,
+}) as Parameters<typeof groupByContact>[0][number];
+
+describe("groupByContact", () => {
+  it("folds every message to one contact into a single conversation", () => {
+    const groups = groupByContact([
+      row({ context_id: 1, generated_at: "2026-09-10T12:00:00Z" }),
+      row({ context_id: 2, generated_at: "2026-09-11T09:00:00Z" }),
+      row({ context_id: 3, generated_at: "2026-09-09T08:00:00Z" }),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.messageCount).toBe(3);
+    expect(groups[0]!.latestAt).toBe("2026-09-11T09:00:00Z");
+  });
+
+  it("keeps the view's priority order — a conversation sits where its first message sat", () => {
+    const groups = groupByContact([
+      row({ context_id: 1, ghl_contact_id: "bbb" }),
+      row({ context_id: 2, ghl_contact_id: "aaa" }),
+      row({ context_id: 3, ghl_contact_id: "bbb" }),
+    ]);
+    expect(groups.map((g) => g.contactId)).toEqual(["bbb", "aaa"]);
+  });
+
+  it("counts only the messages still to review", () => {
+    const groups = groupByContact([
+      row({ context_id: 1, review_count: 2 }),
+      row({ context_id: 2, review_count: 0 }),
+      row({ context_id: 3, review_count: 0 }),
+    ]);
+    expect(groups[0]!.messageCount).toBe(3);
+    expect(groups[0]!.unreviewedCount).toBe(2);
+  });
+
+  it("never merges two leads that have no contact id", () => {
+    const groups = groupByContact([
+      row({ context_id: 1, ghl_contact_id: null }),
+      row({ context_id: 2, ghl_contact_id: null }),
+    ]);
+    expect(groups).toHaveLength(2);
+  });
+
+  it("collects the channels the conversation actually used, without repeats", () => {
+    const groups = groupByContact([
+      row({ context_id: 1, channel: "sms" }),
+      row({ context_id: 2, channel: "email" }),
+      row({ context_id: 3, channel: "sms" }),
+    ]);
+    expect(groups[0]!.channels).toEqual(["sms", "email"]);
+  });
+
+  it("takes its headline signal from the highest-priority message in the group", () => {
+    const groups = groupByContact([
+      row({ context_id: 1, message_type: "skip" }),
+      row({ context_id: 2, ai_score: 95 }),
+    ]);
+    expect(groups[0]!.signal.label).toBe("Bot stayed silent");
+  });
+});
+
+describe("findConversation", () => {
+  it("finds the conversation a message belongs to", () => {
+    const groups = groupByContact([row({ context_id: 1 }), row({ context_id: 2, ghl_contact_id: "zzz" })]);
+    expect(findConversation(groups, 2)!.contactId).toBe("zzz");
+    expect(findConversation(groups, 99)).toBeNull();
+    expect(findConversation(groups, null)).toBeNull();
+  });
+});
+
+describe("buildTimeline", () => {
+  const snap = (turns: Array<{ direction: string; body: string; at: string }>) => turns;
+
+  it("puts the lead's turns and the bot's messages on one clock, oldest first", () => {
+    const items = buildTimeline(
+      [{ context_id: 1, reply_text: "We can do Tuesday.", generated_at: "2026-09-10T12:05:00Z" }],
+      new Map([[1, snap([{ direction: "inbound", body: "Are you open?", at: "2026-09-10T12:00:00Z" }])]]),
+    );
+    expect(items.map((i) => i.kind)).toEqual(["turn", "message"]);
+  });
+
+  it("shows a reply once, not again as a plain turn in the next message's snapshot", () => {
+    const items = buildTimeline(
+      [
+        { context_id: 1, reply_text: "We can do Tuesday.", generated_at: "2026-09-10T12:05:00Z" },
+        { context_id: 2, reply_text: "Still free Tuesday?", generated_at: "2026-09-11T12:00:00Z" },
+      ],
+      new Map([
+        [1, snap([{ direction: "inbound", body: "Are you open?", at: "2026-09-10T12:00:00Z" }])],
+        [
+          2,
+          snap([
+            { direction: "inbound", body: "Are you open?", at: "2026-09-10T12:00:00Z" },
+            { direction: "outbound", body: "We can do Tuesday.", at: "2026-09-10T12:05:00Z" },
+          ]),
+        ],
+      ]),
+    );
+    expect(items.filter((i) => i.kind === "turn")).toHaveLength(1);
+    expect(items.filter((i) => i.kind === "message")).toHaveLength(2);
+  });
+
+  it("ignores whitespace and case when deciding two turns are the same", () => {
+    const items = buildTimeline(
+      [{ context_id: 1, reply_text: "We can  do TUESDAY.", generated_at: "2026-09-10T12:05:00Z" }],
+      new Map([[1, snap([{ direction: "outbound", body: "we can do tuesday.", at: "2026-09-10T12:05:00Z" }])]]),
+    );
+    expect(items.filter((i) => i.kind === "turn")).toHaveLength(0);
+  });
+
+  it("keeps two identical lead messages sent at different times", () => {
+    const items = buildTimeline(
+      [{ context_id: 1, reply_text: null, generated_at: "2026-09-10T13:00:00Z" }],
+      new Map([
+        [
+          1,
+          snap([
+            { direction: "inbound", body: "hello?", at: "2026-09-10T12:00:00Z" },
+            { direction: "inbound", body: "hello?", at: "2026-09-10T12:30:00Z" },
+          ]),
+        ],
+      ]),
+    );
+    expect(items.filter((i) => i.kind === "turn")).toHaveLength(2);
+  });
+
+  it("dates a message by when it was sent, falling back to when it was generated", () => {
+    const items = buildTimeline(
+      [{ context_id: 1, reply_text: "hi", sent_at: "2026-09-10T12:09:00Z", generated_at: "2026-09-10T12:05:00Z" }],
+      new Map(),
+    );
+    expect((items[0] as { at: string }).at).toBe("2026-09-10T12:09:00Z");
+  });
+
+  it("keeps an undated turn rather than dropping part of what the bot read", () => {
+    const items = buildTimeline(
+      [{ context_id: 1, reply_text: "hi", generated_at: "2026-09-10T12:05:00Z" }],
+      new Map([[1, [{ direction: "inbound", body: "no timestamp", at: null }]]]),
+    );
+    expect(items).toHaveLength(2);
+    expect(items[0]!.kind).toBe("turn");
   });
 });

@@ -12,14 +12,16 @@ import { CalibrationBanner } from "@/components/bot-review/Overlays";
 import {
   getQueue,
   getContext,
-  getThread,
+  getConversation,
+  getThreads,
   getMyFeedback,
   getReasons,
   getCalibration,
   getHeaderCounts,
   getScoreboard,
+  type MyFeedback,
 } from "@/lib/queries/botReview";
-import { resolveTab, visibleTabs, canStopBot, TABS, type TabKey } from "@/lib/botReview/core";
+import { resolveTab, visibleTabs, canStopBot, buildTimeline, TABS, type TabKey } from "@/lib/botReview/core";
 
 export const dynamic = "force-dynamic";
 
@@ -172,13 +174,31 @@ async function ReviewTab({
     ? wanted
     : (queue.rows[0]?.context_id ?? 0);
 
-  const [selected, thread, mine] = await Promise.all([
-    selectedId ? getContext(selectedId) : Promise.resolve(null),
-    selectedId ? getThread(selectedId) : Promise.resolve({ turns: [], source: "none" as const }),
-    getMyFeedback(ctx.email, queue.rows.map((r) => ({ type: r.message_type, ref: r.message_ref }))),
+  const selected = selectedId ? await getContext(selectedId) : null;
+
+  // The whole conversation, not just the clicked message. A contact with no
+  // GHL id cannot be shown to have other messages, so it stands alone.
+  const conversation = selected?.ghl_contact_id
+    ? await getConversation(selected.ghl_contact_id)
+    : selected
+      ? [selected]
+      : [];
+
+  const [snapshots, mine] = await Promise.all([
+    getThreads(conversation.map((r) => r.context_id)),
+    getMyFeedback(ctx.email, [...queue.rows, ...conversation].map((r) => ({ type: r.message_type, ref: r.message_ref }))),
   ]);
 
-  const myFeedback = selected ? (mine.get(`${selected.message_type}::${selected.message_ref}`) ?? null) : null;
+  const timeline = buildTimeline(conversation, snapshots);
+
+  // Keyed by context id for the thread, which knows a bubble by the message it
+  // renders, not by the (type, ref) pair the feedback table is keyed on.
+  const feedbackByContext: Record<number, MyFeedback> = {};
+  for (const r of conversation) {
+    const f = mine.get(`${r.message_type}::${r.message_ref}`);
+    if (f) feedbackByContext[r.context_id] = f;
+  }
+  const myFeedback = selected ? (feedbackByContext[selected.context_id] ?? null) : null;
 
   // Filter dropdown options come from what is actually in the queue, so a rule
   // with no messages never appears as a choice that returns nothing.
@@ -203,7 +223,9 @@ async function ReviewTab({
         total={queue.total}
         page={page}
         selected={selected}
-        thread={thread.turns}
+        conversation={conversation}
+        timeline={timeline}
+        feedbackByContext={feedbackByContext}
         myFeedback={myFeedback}
         reasons={reasons}
         canStopBot={canStopBot(ctx)}
