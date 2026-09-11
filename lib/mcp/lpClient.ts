@@ -55,4 +55,40 @@ export const lpMcp = {
    * fresh so the operator sees the real current auth/reachability state.
    */
   ping: () => client.call<SyncHealthRaw>("get_sync_health"),
+
+  /**
+   * Command Center: one ruling through LP MCP memory_rule. Never cached —
+   * a ruling is a write, and the card it addresses must be read fresh.
+   * `confirm: true` is set here because the dashboard never wants the dry run;
+   * `via: "dashboard"` is what makes the audit row say where it came from.
+   */
+  rule: (args: Record<string, unknown>) =>
+    client.call<RuleResult>("memory_rule", {
+      args: { ...args, via: "dashboard", confirm: true },
+      timeoutMs: 30_000,
+    }),
 };
+
+/**
+ * What memory_rule returns. Note the failure shape is ordinary JSON with
+ * ok:false — NOT an MCP isError — so a rejected ruling is a normal result the
+ * page reads and acts on, not a transport failure.
+ */
+export type RuleResult =
+  | {
+      ok: true;
+      ruling_id: number;
+      session_id: number;
+      decision_id?: number;
+      build_item_id?: number;
+      rollback_item_id?: number;
+      rec?: Record<string, unknown>;
+    }
+  | {
+      ok: false;
+      code: string;
+      message?: string;
+      error?: string;
+      /** guard_conflict only: the active decision this ruling looks like. */
+      match?: { id: number; text: string; similarity: number };
+    };

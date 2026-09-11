@@ -1,0 +1,274 @@
+import { lpService } from "@/lib/supabase/lp";
+import type { QueueCard } from "@/lib/commandCenter/rules";
+
+/**
+ * Command Center reads. Straight from LP Supabase through the service client —
+ * the page NEVER writes a memory table from here. Every write goes through
+ * lib/actions/commandCenter.ts → LP MCP memory_rule → claude_rule_apply, which
+ * is the only thing that can close a card, and the only thing that leaves an
+ * audit row.
+ *
+ * Everything here degrades: if sql/102 has not been applied yet the view and the
+ * log do not exist, and each function returns an empty result with
+ * `needsMigration` set so the page can say so instead of crashing.
+ */
+
+export const PAGE_SIZE = 25;
+
+/** Postgres says 42P01 for "relation does not exist" — i.e. sql/102 isn't applied. */
+function isMissingRelation(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "42P01" || /does not exist/i.test(error.message ?? "");
+}
+
+export type QueueFilters = {
+  area?: string | null;
+  type?: string | null;
+  omiOnly?: boolean;
+  highConfidenceOnly?: boolean;
+  page?: number;
+};
+
+export type QueueResult = {
+  cards: QueueCard[];
+  total: number;
+  page: number;
+  pageSize: number;
+  areas: string[];
+  needsMigration: boolean;
+  error: string | null;
+};
+
+/**
+ * The Rulings lane, in the view's own risk-first order: conflicts, then money /
+ * live-leads / customer-messaging, then whatever is blocking the most other
+ * work, then the area ranking, then oldest first. The ordering lives in the view
+ * so chat and this page never disagree about what is next.
+ */
+export async function getQueue(filters: QueueFilters = {}): Promise<QueueResult> {
+  const page = Math.max(1, filters.page ?? 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const empty: QueueResult = {
+    cards: [], total: 0, page, pageSize: PAGE_SIZE, areas: [],
+    needsMigration: false, error: null,
+  };
+
+  let sb;
+  try { sb = lpService(); } catch (err) {
+    return { ...empty, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  let q = sb
+    .from("v_command_center_queue")
+    .select("*", { count: "exact" })
+    .eq("lane", "rulings");
+
+  if (filters.area) q = q.eq("area", filters.area);
+  if (filters.type) q = q.eq("card_type", filters.type);
+  if (filters.omiOnly) q = q.eq("origin", "omi");
+  if (filters.highConfidenceOnly) q = q.eq("rec_confidence", "high");
+
+  const { data, error, count } = await q
+    .order("sort_conflict", { ascending: true })
+    .order("sort_risk", { ascending: true })
+    .order("sort_blocks", { ascending: true })
+    .order("area_rank", { ascending: true })
+    .order("area", { ascending: true })
+    .order("created_at", { ascending: true })
+    .range(from, from + PAGE_SIZE - 1);
+
+  if (error) {
+    if (isMissingRelation(error)) return { ...empty, needsMigration: true };
+    return { ...empty, error: error.message };
+  }
+
+  // The filter dropdown offers only the areas that actually have open cards.
+  const areaRes = await sb
+    .from("v_command_center_queue")
+    .select("area")
+    .eq("lane", "rulings")
+    .not("area", "is", null);
+  const areas = [...new Set((areaRes.data ?? []).map((r) => r.area as string))].sort();
+
+  return {
+    cards: (data ?? []) as QueueCard[],
+    total: count ?? 0,
+    page, pageSize: PAGE_SIZE, areas,
+    needsMigration: false, error: null,
+  };
+}
+
+export type HeaderStats = {
+  rulingsOpen: number;
+  staleIssuesOpen: number;
+  todosOpen: number;
+  oldestRulingDays: number | null;
+  ruledThisWeek: number;
+  ruledLastWeek: number;
+  needsMigration: boolean;
+  error: string | null;
+};
+
+/** The four tiles across the top. */
+export async function getHeader(): Promise<HeaderStats> {
+  const empty: HeaderStats = {
+    rulingsOpen: 0, staleIssuesOpen: 0, todosOpen: 0, oldestRulingDays: null,
+    ruledThisWeek: 0, ruledLastWeek: 0, needsMigration: false, error: null,
+  };
+  let sb;
+  try { sb = lpService(); } catch (err) {
+    return { ...empty, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  const queue = await sb
+    .from("v_command_center_queue")
+    .select("age_days", { count: "exact" })
+    .eq("lane", "rulings")
+    .order("age_days", { ascending: false })
+    .limit(1);
+  if (queue.error) {
+    if (isMissingRelation(queue.error)) return { ...empty, needsMigration: true };
+    return { ...empty, error: queue.error.message };
+  }
+
+  // Release 2 lanes: counted, not shown.
+  const stale = await sb
+    .from("claude_known_issues")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["open", "in_progress"])
+    .eq("stale", true);
+
+  const todos = await sb
+    .from("claude_pending_items")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["open", "blocked"])
+    .not("item_type", "in", "(decision_needed,unconfirmed_decision,open_question,approval_needed)");
+
+  // This week against last week, so the header shows movement rather than a pile.
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+  const twoWeeksAgo = new Date(now.getTime() - 14 * 86_400_000).toISOString();
+  const thisWeek = await sb
+    .from("claude_rulings_log")
+    .select("id", { count: "exact", head: true })
+    .gte("at", weekAgo);
+  const lastWeek = await sb
+    .from("claude_rulings_log")
+    .select("id", { count: "exact", head: true })
+    .gte("at", twoWeeksAgo)
+    .lt("at", weekAgo);
+
+  return {
+    rulingsOpen: queue.count ?? 0,
+    staleIssuesOpen: stale.count ?? 0,
+    todosOpen: todos.count ?? 0,
+    oldestRulingDays: queue.data?.[0]?.age_days ?? null,
+    ruledThisWeek: thisWeek.count ?? 0,
+    ruledLastWeek: lastWeek.count ?? 0,
+    needsMigration: false,
+    error: null,
+  };
+}
+
+export type DecidedRow = {
+  id: number;
+  at: string;
+  ruled_by: string;
+  via: string;
+  action: string;
+  target_table: string;
+  target_id: number;
+  reason: string | null;
+  reverses_id: number | null;
+  reversed_by: number | null;
+  decision_id: number | null;
+  rec_verdict: string | null;
+  /** Joined from claude_decision_log. */
+  decision_text: string | null;
+  decision_status: string | null;
+  rollout_stage: string | null;
+  /** How many times this same card has been ruled — the flip count. */
+  flip_count: number;
+  /** The card's own words, for the row heading. */
+  card_title: string | null;
+};
+
+export type DecidedResult = {
+  rows: DecidedRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  needsMigration: boolean;
+  error: string | null;
+};
+
+/**
+ * The Decided tab: what has been ruled, newest first, with enough context to
+ * flip one back — the decision it wrote, its rollout stage, and whether it has
+ * already been reversed.
+ */
+export async function getDecided({ page = 1 }: { page?: number } = {}): Promise<DecidedResult> {
+  const p = Math.max(1, page);
+  const from = (p - 1) * PAGE_SIZE;
+  const empty: DecidedResult = { rows: [], total: 0, page: p, pageSize: PAGE_SIZE, needsMigration: false, error: null };
+
+  let sb;
+  try { sb = lpService(); } catch (err) {
+    return { ...empty, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  const { data, error, count } = await sb
+    .from("claude_rulings_log")
+    .select("*", { count: "exact" })
+    .order("at", { ascending: false })
+    .range(from, from + PAGE_SIZE - 1);
+  if (error) {
+    if (isMissingRelation(error)) return { ...empty, needsMigration: true };
+    return { ...empty, error: error.message };
+  }
+  const log = data ?? [];
+  if (log.length === 0) return { ...empty, total: count ?? 0 };
+
+  // One round-trip each for the decisions and the card titles, not one per row.
+  const decisionIds = [...new Set(log.map((r) => r.decision_id).filter((n): n is number => typeof n === "number"))];
+  const decisions = decisionIds.length
+    ? (await sb.from("claude_decision_log").select("id, decision, status, rollout_stage").in("id", decisionIds)).data ?? []
+    : [];
+  const decisionById = new Map(decisions.map((d) => [d.id as number, d]));
+
+  const pendingIds = [...new Set(log.filter((r) => r.target_table === "claude_pending_items").map((r) => r.target_id))];
+  const pending = pendingIds.length
+    ? (await sb.from("claude_pending_items").select("id, description").in("id", pendingIds)).data ?? []
+    : [];
+  const pendingById = new Map(pending.map((r) => [r.id as number, r.description as string]));
+
+  // Flip count per card: how many rulings that card has accumulated beyond the first.
+  const counts = new Map<string, number>();
+  const allTargets = await sb
+    .from("claude_rulings_log")
+    .select("target_table, target_id")
+    .in("target_id", [...new Set(log.map((r) => r.target_id))]);
+  for (const r of allTargets.data ?? []) {
+    const k = `${r.target_table}:${r.target_id}`;
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+
+  const rows: DecidedRow[] = log.map((r) => {
+    const d = r.decision_id != null ? decisionById.get(r.decision_id) : undefined;
+    return {
+      id: r.id, at: r.at, ruled_by: r.ruled_by, via: r.via, action: r.action,
+      target_table: r.target_table, target_id: r.target_id, reason: r.reason,
+      reverses_id: r.reverses_id, reversed_by: r.reversed_by,
+      decision_id: r.decision_id, rec_verdict: r.rec_verdict,
+      decision_text: (d?.decision as string) ?? null,
+      decision_status: (d?.status as string) ?? null,
+      rollout_stage: (d?.rollout_stage as string) ?? null,
+      flip_count: Math.max(0, (counts.get(`${r.target_table}:${r.target_id}`) ?? 1) - 1),
+      card_title: r.target_table === "claude_pending_items"
+        ? pendingById.get(r.target_id) ?? null
+        : `Conflict #${r.target_id}`,
+    };
+  });
+
+  return { rows, total: count ?? 0, page: p, pageSize: PAGE_SIZE, needsMigration: false, error: null };
+}
