@@ -84,6 +84,11 @@ async function call<T>(
   }
 }
 
+/**
+ * `seen_before` is deliberately absent (increment 2 §6B). LP MCP stopped
+ * reading it from the request and always writes false; sending it would be a
+ * field that looks meaningful and is silently discarded.
+ */
 export type SubmitFeedbackBody = {
   message_type: string;
   message_ref: string;
@@ -91,7 +96,6 @@ export type SubmitFeedbackBody = {
   reason_codes: string[];
   better_text?: string | null;
   note?: string | null;
-  seen_before: boolean;
   gold: boolean;
   is_calibration?: boolean;
 };
@@ -118,6 +122,47 @@ export const botFeedbackApi = {
     call<SubmitFeedbackData & { supersedes_id: number }>(
       `/api/bot-feedback/feedback/${encodeURIComponent(String(id))}/edit`,
       { actorEmail, body },
+    ),
+
+  /**
+   * Remove a review after the undo window has closed (increment 2 §5).
+   *
+   * The reason is required by LP MCP AND by the DB trigger — this client does
+   * not validate it, because a client-side check that disagreed with either
+   * gate would be the bug, not the guard.
+   */
+  retract: (actorEmail: string, id: number, reason: string) =>
+    call<{
+      id: number;
+      already_retracted: boolean;
+      retracted_at: string;
+      retracted_by: string;
+      context_id?: number;
+    }>(`/api/bot-feedback/feedback/${encodeURIComponent(String(id))}/retract`, {
+      actorEmail,
+      body: { reason },
+    }),
+
+  /** "Nothing to review here" — one message, or a whole conversation. */
+  dismiss: (
+    actorEmail: string,
+    body: { scope: "message" | "conversation"; context_id?: number; ghl_contact_id?: string; reason?: string | null },
+  ) =>
+    call<{
+      id: number;
+      scope: string;
+      context_id: number | null;
+      ghl_contact_id: string | null;
+      reason: string | null;
+      dismissed_by: string;
+      dismissed_at: string;
+      already_dismissed: boolean;
+    }>("/api/bot-feedback/dismiss", { actorEmail, body }),
+
+  undoDismiss: (actorEmail: string, id: number) =>
+    call<{ id: number; already_undone: boolean }>(
+      `/api/bot-feedback/dismiss/${encodeURIComponent(String(id))}/undo`,
+      { actorEmail },
     ),
 
   stopBot: (actorEmail: string, contactId: string, reason?: string) =>

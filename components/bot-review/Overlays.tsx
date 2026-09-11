@@ -176,6 +176,150 @@ export function CalibrationBanner({
   );
 }
 
+/**
+ * Remove-review confirm (increment 2 §6D).
+ *
+ * The reason is required, and the button stays disabled until there is one —
+ * the DB trigger refuses a reasonless retraction too, and a modal that lets you
+ * click through to a server error is worse than one that waits.
+ *
+ * The wording says what actually happens to the row, because "delete" would be
+ * a lie: the review stays in the system's history, it just stops counting.
+ */
+export function RetractModal({
+  verdict,
+  at,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  verdict: string;
+  at: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const ready = reason.trim().length > 0 && !busy;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Remove this review?"
+        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+      >
+        <h2 className="font-display text-lg font-semibold text-navy-900 dark:text-white">Remove this review?</h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {verdict} · {at}
+        </p>
+        <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">
+          This review will stop counting and won&apos;t appear in your Completed list. It stays in the system&apos;s
+          history. Tell us why:
+        </p>
+        <textarea
+          autoFocus
+          rows={3}
+          value={reason}
+          disabled={busy}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Scored the wrong message, changed my mind, misread the thread…"
+          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm text-slate-800 focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+        />
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="sm" onClick={() => onConfirm(reason.trim())} disabled={!ready}>
+            {busy ? "Removing…" : "Remove review"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Nothing to review here" confirm (increment 2 §6C).
+ *
+ * The reason is OPTIONAL here, unlike a retraction: a dismissal removes work
+ * from a queue, a retraction removes evidence from the record. The one line
+ * about scope is the whole point of the dialog — a reviewer has to know this
+ * leaves the queue for everyone, not just for them.
+ */
+export function DismissModal({
+  scope,
+  leadLabel,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  scope: "message" | "conversation";
+  leadLabel: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Nothing to review here?"
+        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+      >
+        <h2 className="font-display text-lg font-semibold text-navy-900 dark:text-white">
+          {scope === "message" ? "Set this message aside?" : "Set this whole conversation aside?"}
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{leadLabel}</p>
+        <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">
+          This leaves the review queue for everyone. You can undo it from the Completed tab.
+        </p>
+        <label className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-300">
+          Reason <span className="font-normal text-slate-400">optional</span>
+          <input
+            autoFocus
+            type="text"
+            value={reason}
+            disabled={busy}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Test lead, duplicate, nothing to judge here…"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-normal text-slate-800 focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          />
+        </label>
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => onConfirm(reason.trim())} disabled={busy}>
+            {busy ? "Saving…" : "Nothing to review here"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Shown wherever a rate would be built on fewer than 30 reviews. */
 export function NotEnoughData({ reviewed }: { reviewed?: number | null }) {
   return (
