@@ -29,9 +29,20 @@ export type BotFeedbackResult<T> =
 
 export const botFeedbackConfigured = BASE.length > 0;
 
-async function call<T>(
+/**
+ * One call against the LP MCP REST surface.
+ *
+ * Exported as `lpMcpCall` so the prompt editor client (lib/mcp/prompts.ts)
+ * shares the same headers, timeout and error wording rather than keeping a
+ * second copy that could drift on any of the three.
+ */
+export async function lpMcpCall<T>(
   path: string,
-  { method = "POST", actorEmail, body }: { method?: "GET" | "POST"; actorEmail: string; body?: unknown },
+  {
+    method = "POST",
+    actorEmail,
+    body,
+  }: { method?: "GET" | "POST" | "DELETE"; actorEmail: string; body?: unknown },
 ): Promise<BotFeedbackResult<T>> {
   if (!BASE) {
     return { ok: false, error: "LP_MCP_URL is not set on the dashboard — nothing was saved." };
@@ -83,6 +94,8 @@ async function call<T>(
     clearTimeout(timer);
   }
 }
+
+const call = lpMcpCall;
 
 /**
  * `seen_before` is deliberately absent (increment 2 §6B). LP MCP stopped
