@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
@@ -10,6 +11,14 @@ import { ReviewWorkspace } from "@/components/bot-review/ReviewWorkspace";
 import { Scoreboard } from "@/components/bot-review/Scoreboard";
 import { CompletedTable } from "@/components/bot-review/CompletedTable";
 import { CalibrationBanner } from "@/components/bot-review/Overlays";
+import { PromptList } from "@/components/bot-review/prompts/PromptList";
+import { PromptEditor } from "@/components/bot-review/prompts/PromptEditor";
+import { getPromptList, getPromptDetail } from "@/lib/queries/prompts";
+import {
+  ReviewTabSkeleton,
+  TableTabSkeleton,
+  ScoreboardTabSkeleton,
+} from "@/components/bot-review/Skeletons";
 import {
   getQueue,
   getContext,
@@ -37,7 +46,6 @@ import {
   canUndoDismiss,
   buildTimeline,
   resolveLane,
-  LANES,
   TABS,
   type TabKey,
   type LaneKey,
@@ -57,10 +65,11 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
  *   operator  → every tab. Admin adds the approval actions (Phase 2+).
  * LP MCP re-checks all of it on every write. Hiding a tab is the courtesy.
  *
- * Phase 1 ships Review and the basic Scoreboard. Compare, Fixes and
- * "What the bot has learned" are Phase 2–3: they render a short note saying
- * which phase builds them, rather than an empty tab that reads as broken —
- * the same choice the Command Center made for its Stale-issue lane.
+ * Phase 1 ships Review and the basic Scoreboard. "What the bot has learned" is
+ * now the prompt editor — the live nurture prompts, editable as drafts and
+ * promoted deliberately. Compare and Fixes remain Phase 2–3 and render a short
+ * note saying which phase builds them, rather than an empty tab that reads as
+ * broken — the same choice the Command Center made for its Stale-issue lane.
  */
 export default async function BotReviewPage({ searchParams }: { searchParams: Promise<Search> }) {
   // The flag is the off switch for the whole feature — no revert needed to
@@ -141,10 +150,34 @@ export default async function BotReviewPage({ searchParams }: { searchParams: Pr
           ))}
         </nav>
 
-        {tab === "review" && <ReviewTab ctx={ctx} sp={sp} page={page} />}
-        {tab === "completed" && <CompletedTab ctx={ctx} sp={sp} page={page} />}
-        {tab === "scoreboard" && <ScoreboardTab />}
-        {(tab === "compare" || tab === "fixes" || tab === "learned") && <ComingIn tab={tab} />}
+        {/*
+          * Keyed on the tab, not on the full query string. A key that changed
+          * with ?ctx= would drop back to the skeleton on every message click;
+          * with a stable key React keeps the previous message on screen while
+          * the next one streams, which is what makes clicking through the queue
+          * feel immediate. Switching tabs IS a new view, so that one re-keys.
+          */}
+        {tab === "review" && (
+          <Suspense key="review" fallback={<ReviewTabSkeleton />}>
+            <ReviewTab ctx={ctx} sp={sp} page={page} />
+          </Suspense>
+        )}
+        {tab === "completed" && (
+          <Suspense key="completed" fallback={<TableTabSkeleton />}>
+            <CompletedTab ctx={ctx} sp={sp} page={page} />
+          </Suspense>
+        )}
+        {tab === "scoreboard" && (
+          <Suspense key="scoreboard" fallback={<ScoreboardTabSkeleton />}>
+            <ScoreboardTab />
+          </Suspense>
+        )}
+        {tab === "learned" && (
+          <Suspense key="learned" fallback={<ReviewTabSkeleton />}>
+            <PromptsTab ctx={ctx} sp={sp} />
+          </Suspense>
+        )}
+        {(tab === "compare" || tab === "fixes") && <ComingIn tab={tab} />}
       </div>
     </>
   );
@@ -159,6 +192,17 @@ async function ReviewTab({
   sp: Search;
   page: number;
 }) {
+  /*
+   * Kick off everything that does not depend on the lane BEFORE awaiting the
+   * lane counts. Reasons and calibration were previously awaited in a
+   * Promise.all that could not start until getLaneCounts() had resolved, which
+   * put two independent round trips on the critical path for no reason. Started
+   * here they overlap with the lane counts and the queue, and are almost always
+   * already settled by the time they are awaited below.
+   */
+  const reasonsPromise = getReasons();
+  const calibrationPromise = getCalibration(ctx.email);
+
   const laneCounts = await getLaneCounts();
 
   /*
@@ -194,8 +238,8 @@ async function ReviewTab({
 
   const [queue, reasons, calibration] = await Promise.all([
     getQueue(filters),
-    getReasons(),
-    getCalibration(ctx.email),
+    reasonsPromise,
+    calibrationPromise,
   ]);
 
   if (queue.error) {
@@ -216,7 +260,20 @@ async function ReviewTab({
     ? wanted
     : (queue.rows[0]?.context_id ?? 0);
 
-  const selected = selectedId ? await getContext(selectedId) : null;
+  /*
+   * The selected row is already in hand. `selectedId` is derived from
+   * queue.rows immediately above — it is either `wanted` (checked present) or
+   * rows[0] — and getContext() selects the SAME columns from the SAME view
+   * that getQueue() just read. Fetching it again was a guaranteed-redundant
+   * round trip on every render and, worse, on every message click.
+   *
+   * The getContext() fallback is unreachable today; it stays so that a future
+   * change to how selectedId is chosen degrades to a fetch rather than to a
+   * blank panel.
+   */
+  const selected =
+    queue.rows.find((r) => r.context_id === selectedId) ??
+    (selectedId ? await getContext(selectedId) : null);
 
   // The whole conversation, not just the clicked message. A contact with no
   // GHL id cannot be shown to have other messages, so it stands alone.
@@ -388,6 +445,76 @@ async function ScoreboardTab() {
   return <Scoreboard weeks={board.weeks} issues={board.issues} lanes={lanes} />;
 }
 
+/**
+ * What the bot has learned — the live prompt editor.
+ *
+ * These are the instructions the nurture generator actually runs. LP MCP reads
+ * them fresh on every message, so an activation here is in front of a customer
+ * on the next send — which is why the editor stages drafts and the list is read
+ * through LP MCP rather than straight from Supabase.
+ */
+async function PromptsTab({
+  ctx,
+  sp,
+}: {
+  ctx: Awaited<ReturnType<typeof getAccessContext>> & object;
+  sp: Search;
+}) {
+  const list = await getPromptList(ctx.email);
+
+  if (!list.ok) {
+    return (
+      <Card>
+        <CardContent>
+          <p className="text-sm font-semibold text-navy-900 dark:text-white">
+            We couldn&apos;t load the prompts.
+          </p>
+          <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{list.error}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const prompts = list.data.prompts;
+  // Default to the first prompt so the tab opens on something to read rather
+  // than an empty panel — the same choice the Review queue makes.
+  const wanted = one(sp.prompt);
+  const selectedId = prompts.some((p) => p.id === wanted) ? wanted : (prompts[0]?.id ?? null);
+  const detail = selectedId ? await getPromptDetail(ctx.email, selectedId) : null;
+
+  return (
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="min-h-0 lg:h-[calc(100vh-16rem)]">
+        <PromptList prompts={prompts} selectedId={selectedId} />
+      </div>
+      <div className="min-h-0">
+        {detail?.ok ? (
+          <PromptEditor key={selectedId} detail={detail.data} />
+        ) : detail ? (
+          <Card>
+            <CardContent>
+              <p className="text-sm font-semibold text-navy-900 dark:text-white">
+                We couldn&apos;t open that prompt.
+              </p>
+              <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
+                {detail.error}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Pick a prompt on the left to read or edit it.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const PHASE_NOTE: Record<string, { title: string; body: string }> = {
   compare: {
     title: "Compare arrives with Phase 3.",
@@ -396,10 +523,6 @@ const PHASE_NOTE: Record<string, { title: string; body: string }> = {
   fixes: {
     title: "Fixes arrives with Phase 2.",
     body: "Patterns grouped from your reviews, and each proposed fix from drafted through verified. Phase 1 is collecting the reviews those patterns are built from.",
-  },
-  learned: {
-    title: "What the bot has learned arrives with Phase 2.",
-    body: "Every approved instruction and example currently shaping bot messages. Nothing reaches the bot yet — Phase 1 is review only.",
   },
 };
 

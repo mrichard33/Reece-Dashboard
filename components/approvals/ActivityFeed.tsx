@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Activity, MessageSquare } from "lucide-react";
+import { usePolledJson } from "@/lib/usePolledJson";
 import { Badge } from "@/components/ui/Badge";
 import { CATEGORY_META } from "./meta";
 import { relTime } from "@/lib/utils";
@@ -19,26 +19,11 @@ export type FeedRow = {
 const POLL_MS = 25_000;
 
 export function ActivityFeed({ initial }: { initial: FeedRow[] }) {
-  const [items, setItems] = useState<FeedRow[]>(initial);
-
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      try {
-        const res = await fetch("/api/activity-feed", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as FeedRow[];
-        if (alive) setItems(data);
-      } catch {
-        /* transient — keep last good feed */
-      }
-    }
-    const t = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
+  // The page server-renders the first page of the feed, so skip the mount
+  // fetch and keep showing `initial` until a poll actually returns something.
+  // A failed poll leaves the last good feed in place, as before.
+  const polled = usePolledJson<FeedRow[]>("/api/activity-feed", POLL_MS, { immediate: false });
+  const items = polled ?? initial;
 
   if (items.length === 0) {
     return <p className="py-4 text-center text-sm text-slate-500">No activity yet.</p>;

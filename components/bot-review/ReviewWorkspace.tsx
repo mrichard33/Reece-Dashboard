@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useOptimistic, useState, useTransition } from "react";
 import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { QueueList } from "./QueueList";
@@ -83,6 +83,22 @@ export function ReviewWorkspace({
   // the row from being re-offered before the next render lands.
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
 
+  /*
+   * Selection lives in the URL, which means every click is a server round trip.
+   * That is the right model — the panel is server-rendered and a reviewer can
+   * share a link to one message — but on its own it gave the reviewer NO
+   * feedback until the server answered, which is what made clicking through the
+   * queue feel slow even when it wasn't.
+   *
+   * Two things fix the feel without changing the model: the navigation runs
+   * inside a transition (so `pending` is true for its duration), and the
+   * selected id is tracked optimistically so the clicked row highlights on the
+   * same frame as the click. The server still decides what is rendered; this
+   * only stops the UI from looking frozen while it does.
+   */
+  const [pending, startTransition] = useTransition();
+  const [optimisticId, setOptimisticId] = useOptimistic(selected?.context_id ?? null);
+
   const go = useCallback(
     (params: Record<string, string | null>) => {
       const next = new URLSearchParams(sp.toString());
@@ -90,12 +106,24 @@ export function ReviewWorkspace({
         if (v === null) next.delete(k);
         else next.set(k, v);
       }
-      router.push(`${pathname}?${next.toString()}` as Route);
+      startTransition(() => {
+        // scroll:false — the queue and the thread are their own scroll areas,
+        // so jumping the window to the top on every selection is just noise.
+        router.push(`${pathname}?${next.toString()}` as Route, { scroll: false });
+      });
     },
     [pathname, router, sp],
   );
 
-  const selectRow = useCallback((contextId: number) => go({ ctx: String(contextId) }), [go]);
+  const selectRow = useCallback(
+    (contextId: number) => {
+      startTransition(() => {
+        setOptimisticId(contextId);
+        go({ ctx: String(contextId) });
+      });
+    },
+    [go, setOptimisticId],
+  );
 
   /**
    * Where "and next" goes: finish this conversation before moving on.
@@ -252,12 +280,23 @@ export function ReviewWorkspace({
 
   const leadLabel = selected ? contactLabel(selected) : "Lead";
 
+  /*
+   * Three panes on a wide screen, two on a laptop, stacked on a phone.
+   *
+   * The scoring panel used to sit UNDER the conversation in a single right-hand
+   * column, so the two fought over the same vertical space: a long thread
+   * squeezed the verdict controls, and a tall panel squeezed the thread. Giving
+   * scoring its own column at xl lets the conversation use the full height and
+   * keeps the verdict buttons in the same place on every message. Below xl the
+   * panel drops back under the thread, which is the right call when there isn't
+   * width for three.
+   */
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <div className="min-h-0 lg:h-[calc(100vh-19rem)]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_22rem]">
+      <div className="min-h-0 lg:row-span-2 lg:h-[calc(100vh-19rem)] xl:row-span-1">
         <QueueList
           rows={rows}
-          selectedId={selected?.context_id ?? null}
+          selectedId={optimisticId}
           total={total}
           page={page}
           reviewedIds={reviewedIds}
@@ -267,7 +306,7 @@ export function ReviewWorkspace({
         />
       </div>
 
-      <div className="flex min-h-0 flex-col gap-3">
+      <div className={`flex min-h-0 flex-col gap-3${selected ? "" : " xl:col-span-2"}`}>
         {errorMsg && (
           <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
             {errorMsg}
@@ -288,7 +327,12 @@ export function ReviewWorkspace({
         ) : (
           <>
             <ContextStrip row={selected} canStopBot={canStopBot} onStopBot={() => setStopOpen(true)} />
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+            <div
+              aria-busy={pending}
+              className={`min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 transition-opacity dark:border-slate-800 dark:bg-slate-900${
+                pending ? " opacity-60" : ""
+              }`}
+            >
               <ConversationThread
                 timeline={timeline}
                 rows={conversation}
@@ -299,34 +343,47 @@ export function ReviewWorkspace({
                 onSelect={selectRow}
               />
             </div>
-            <FeedbackPanel
-              key={selected.context_id}
-              messageType={selected.message_type as MessageType}
-              originalText={selected.reply_text}
-              reasons={reasons}
-              readOnly={myFeedback != null}
-              existingVerdict={
-                myFeedback
-                  ? {
-                      verdict: myFeedback.verdict,
-                      reasonCodes: myFeedback.reason_codes,
-                      note: myFeedback.note,
-                      gold: myFeedback.gold,
-                      at: formatEt(myFeedback.created_at),
-                    }
-                  : null
-              }
-              canDismissConversation={Boolean(selected.ghl_contact_id)}
-              canRemoveReview={canRemoveReview && myFeedback != null}
-              onSubmit={onSubmit}
-              onSkip={() => advance(selected.context_id)}
-              onDismiss={(scope) => setDismissScope(scope)}
-              onRetract={() => setRetractOpen(true)}
-              submitting={submitting}
-            />
           </>
         )}
       </div>
+
+      {/*
+        * Scoring is its own grid child, not a third item inside the middle
+        * column. It must be rendered EXACTLY once: FeedbackPanel registers a
+        * window keydown listener, so a second copy (one for wide screens, one
+        * for narrow) would double-fire Enter and submit twice. Auto-placement
+        * does the responsive work instead — with the queue spanning two rows at
+        * lg, this lands under the thread; at xl it lands in the third column.
+        */}
+      {selected && (
+        <div className="min-h-0 xl:h-[calc(100vh-19rem)] xl:overflow-y-auto">
+          <FeedbackPanel
+            key={selected.context_id}
+            messageType={selected.message_type as MessageType}
+            originalText={selected.reply_text}
+            reasons={reasons}
+            readOnly={myFeedback != null}
+            existingVerdict={
+              myFeedback
+                ? {
+                    verdict: myFeedback.verdict,
+                    reasonCodes: myFeedback.reason_codes,
+                    note: myFeedback.note,
+                    gold: myFeedback.gold,
+                    at: formatEt(myFeedback.created_at),
+                  }
+                : null
+            }
+            canDismissConversation={Boolean(selected.ghl_contact_id)}
+            canRemoveReview={canRemoveReview && myFeedback != null}
+            onSubmit={onSubmit}
+            onSkip={() => advance(selected.context_id)}
+            onDismiss={(scope) => setDismissScope(scope)}
+            onRetract={() => setRetractOpen(true)}
+            submitting={submitting}
+          />
+        </div>
+      )}
 
       {toast && (
         <UndoToast
