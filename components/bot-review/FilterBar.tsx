@@ -4,16 +4,23 @@ import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
-import { SAVED_VIEWS } from "@/lib/botReview/core";
+import { InfoPopover } from "@/components/help/InfoPopover";
+import { LANES, SAVED_VIEWS, resolveLane } from "@/lib/botReview/core";
+import type { LaneCounts } from "@/lib/botReview/core";
 
 /**
- * Saved views + dropdown filters + active chips.
+ * Lane switcher + dropdown filters + active chips.
  *
  * Filters live in the URL, not in component state: the queue is server-rendered
  * and a reviewer needs to be able to send someone a link to what they are
  * looking at. Changing any control replaces the URL and drops `ctx` and `page`,
  * because the selected message and the page number almost never still apply
  * under a different filter.
+ *
+ * Increment 2 (§6A): the saved views lost the top-level position to the lane
+ * switcher. They survive inside Everything, as ordinary filters — the questions
+ * they answer ("show me the price objections") are still worth asking, they are
+ * just not how the day's work gets chosen any more.
  */
 
 const DROPDOWNS: Array<{ param: string; label: string; options: Array<[string, string]> }> = [
@@ -24,7 +31,15 @@ const DROPDOWNS: Array<{ param: string; label: string; options: Array<[string, s
   { param: "status", label: "Status", options: [["all", "All"], ["unreviewed", "Unreviewed"], ["flagged", "Flagged"]] },
 ];
 
-export function FilterBar({ rules, offices }: { rules: string[]; offices: string[] }) {
+export function FilterBar({
+  rules,
+  offices,
+  laneCounts,
+}: {
+  rules: string[];
+  offices: string[];
+  laneCounts: LaneCounts;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -40,10 +55,16 @@ export function FilterBar({ rules, offices }: { rules: string[]; offices: string
     router.push(`${pathname}?${next.toString()}` as Route);
   }
 
+  const activeLane = resolveLane(sp.get("lane"));
+
   function clearAll() {
     const next = new URLSearchParams();
     const tab = sp.get("tab");
     if (tab) next.set("tab", tab);
+    // The lane is not a filter — it is which queue you are in. Clearing filters
+    // must not eject a reviewer from the lane they are working.
+    const lane = sp.get("lane");
+    if (lane) next.set("lane", lane);
     router.push(`${pathname}?${next.toString()}` as Route);
   }
 
@@ -60,24 +81,65 @@ export function FilterBar({ rules, offices }: { rules: string[]; offices: string
 
   return (
     <div className="flex flex-col gap-2">
+      {/* The lane switcher takes the segmented control's old position, because
+          it is now the first decision a reviewer makes: what am I working on. */}
+      <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+        {LANES.map((l) => {
+          const count = laneCounts[l.key];
+          const on = activeLane === l.key;
+          return (
+            <span key={l.key} className="flex items-center">
+              <button
+                type="button"
+                onClick={() => set("lane", l.key)}
+                aria-current={on}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition",
+                  on
+                    ? "bg-white text-navy-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                    : "text-slate-600 hover:text-navy-800 dark:text-slate-300 dark:hover:text-white",
+                )}
+              >
+                {l.label}
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-px font-mono text-[10px]",
+                    on
+                      ? "bg-navy-100 text-navy-800 dark:bg-navy-900 dark:text-navy-100"
+                      : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+              <InfoPopover helpKey={`botReview.lane.${l.key}`} />
+            </span>
+          );
+        })}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
-          {SAVED_VIEWS.map((v) => (
-            <button
-              key={v.key}
-              type="button"
-              onClick={() => set("view", v.key === "riskiest" ? "all" : v.key)}
-              className={cn(
-                "rounded-md px-2.5 py-1 text-xs font-medium transition",
-                activeView === v.key
-                  ? "bg-white text-navy-900 shadow-sm dark:bg-slate-900 dark:text-white"
-                  : "text-slate-600 hover:text-navy-800 dark:text-slate-300 dark:hover:text-white",
-              )}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
+        {/* The saved views are Everything's filters now. Showing them in the
+            work lanes would offer a filter that fights the lane it sits in. */}
+        {activeLane === "everything" && (
+          <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+            {SAVED_VIEWS.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                onClick={() => set("view", v.key === "riskiest" ? "all" : v.key)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-medium transition",
+                  activeView === v.key
+                    ? "bg-white text-navy-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                    : "text-slate-600 hover:text-navy-800 dark:text-slate-300 dark:hover:text-white",
+                )}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {DROPDOWNS.map((d) => (
           <select

@@ -40,6 +40,7 @@ export function QueueList({
   total,
   page,
   reviewedIds,
+  dismissedIds,
   onSelect,
   onLoadMore,
 }: {
@@ -48,6 +49,7 @@ export function QueueList({
   total: number;
   page: number;
   reviewedIds: Set<number>;
+  dismissedIds: Set<number>;
   onSelect: (contextId: number) => void;
   onLoadMore: () => void;
 }) {
@@ -89,10 +91,20 @@ export function QueueList({
             // Selected when the message being reviewed is one of this
             // conversation's, so the box and the thread never disagree.
             const selected = g.rows.some((r) => r.context_id === selectedId);
-            const left = g.rows.filter((r) => r.review_count === 0 && !reviewedIds.has(r.context_id)).length;
+            const open = (r: QueueRow) =>
+              r.review_count === 0 && !reviewedIds.has(r.context_id) && !dismissedIds.has(r.context_id);
+            const left = g.rows.filter(open).length;
             // Opening a conversation lands on its first message still to
             // review — the one the reviewer came for.
-            const target = g.rows.find((r) => r.review_count === 0 && !reviewedIds.has(r.context_id)) ?? g.rows[0]!;
+            const target = g.rows.find(open) ?? g.rows[0]!;
+            // The cause of the FIRST must-review message in the group. The
+            // queue's own priority sort put it first, so it is the most urgent
+            // reason this conversation is on screen — not an arbitrary pick.
+            const cause = g.rows.find((r) => r.must_review_cause)?.must_review_cause ?? null;
+            // Dismissed rows only appear in Everything; the work lanes filter
+            // them out in SQL. Showing the chip here is what makes an undo
+            // findable without opening Completed.
+            const setAside = g.rows.every((r) => r.dismissed || dismissedIds.has(r.context_id));
             return (
               <li key={g.key}>
                 <button
@@ -125,6 +137,20 @@ export function QueueList({
                       <span>{formatEt(g.latestAt)}</span>
                     </p>
                     <p className={cn("mt-0.5 text-[11px] font-medium", TONE[g.signal.tone])}>{g.signal.label}</p>
+                    {(cause || setAside) && (
+                      <p className="mt-1 flex flex-wrap items-center gap-1">
+                        {cause && (
+                          <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-900">
+                            {cause}
+                          </span>
+                        )}
+                        {setAside && (
+                          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 ring-1 ring-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
+                            Dismissed
+                          </span>
+                        )}
+                      </p>
+                    )}
                   </div>
                   {left === 0 && <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-600" aria-label="Reviewed" />}
                 </button>

@@ -8,6 +8,8 @@ import {
   effectiveRewrite,
   canReview,
   canStopBot,
+  canRetract,
+  canUndoDismiss,
   type FeedbackDraft,
   type MessageType,
 } from "@/lib/botReview/core";
@@ -57,7 +59,6 @@ export async function submitFeedback(input: {
     // effectiveRewrite. Sending it would poison the Phase 2 example library.
     better_text: effectiveRewrite(input.draft.betterText, input.originalText),
     note: input.draft.note.trim() || null,
-    seen_before: input.draft.seenBefore,
     gold: input.draft.gold,
     is_calibration: input.isCalibration === true,
   });
@@ -112,7 +113,6 @@ export async function editFeedback(input: {
     reason_codes: input.draft.reasonCodes,
     better_text: effectiveRewrite(input.draft.betterText, input.originalText),
     note: input.draft.note.trim() || null,
-    seen_before: input.draft.seenBefore,
     gold: input.draft.gold,
   });
 
@@ -152,4 +152,78 @@ export async function stopBotForLead(
 
   revalidatePath("/bot-review");
   return { ok: true, alreadyStopped: res.data.already_stopped, actionId: res.data.action_id };
+}
+
+// ─── Increment 2 (handoff §6C, §6D) ─────────────────────────────────
+
+/**
+ * Remove a review. Not a delete — the row stays, stops counting, and leaves
+ * the queue, so the message reads as unreviewed again.
+ *
+ * `reviewerEmail` lets this fail fast for someone clicking a link they should
+ * not have been shown. It is the caller's claim about the review's author, so
+ * it is a courtesy check only: LP MCP re-reads the row and decides for itself.
+ */
+export async function retractReview(input: {
+  id: number;
+  reason: string;
+  reviewerEmail?: string | null;
+}): Promise<{ ok: boolean; error?: string; alreadyRetracted?: boolean }> {
+  const ctx = await getAccessContext();
+  if (!ctx) return { ok: false, error: "You are signed out." };
+
+  const reason = input.reason.trim();
+  if (!reason) return { ok: false, error: "Tell us why this review is being removed." };
+
+  if (input.reviewerEmail && !canRetract(ctx, { reviewer_email: input.reviewerEmail })) {
+    return { ok: false, error: "You can only remove your own review." };
+  }
+
+  const res = await botFeedbackApi.retract(ctx.email, input.id, reason);
+  if (!res.ok) return { ok: false, error: res.error };
+
+  revalidatePath("/bot-review");
+  return { ok: true, alreadyRetracted: res.data.already_retracted };
+}
+
+/**
+ * "Nothing to review here." Persistent and team-wide, so it leaves the queue
+ * for everyone rather than just for the person who clicked.
+ */
+export async function dismissFromReview(input: {
+  scope: "message" | "conversation";
+  contextId?: number;
+  contactId?: string | null;
+  reason?: string;
+}): Promise<{ ok: boolean; error?: string; id?: number; alreadyDismissed?: boolean }> {
+  const ctx = await getAccessContext();
+  if (!ctx) return { ok: false, error: "You are signed out." };
+  if (!canReview(ctx)) return { ok: false, error: "You do not have access to review bot messages." };
+
+  if (input.scope === "conversation" && !input.contactId) {
+    return { ok: false, error: "This message has no lead record, so there is no conversation to set aside." };
+  }
+
+  const res = await botFeedbackApi.dismiss(ctx.email, {
+    scope: input.scope,
+    ...(input.scope === "message" ? { context_id: input.contextId } : { ghl_contact_id: input.contactId ?? undefined }),
+    reason: input.reason?.trim() || null,
+  });
+  if (!res.ok) return { ok: false, error: res.error };
+
+  revalidatePath("/bot-review");
+  return { ok: true, id: res.data.id, alreadyDismissed: res.data.already_dismissed };
+}
+
+/** Put a dismissed message back in the queue for everyone. */
+export async function undoDismissal(id: number): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await getAccessContext();
+  if (!ctx) return { ok: false, error: "You are signed out." };
+  if (!canUndoDismiss(ctx)) return { ok: false, error: "Undoing a dismissal is for operators and admins." };
+
+  const res = await botFeedbackApi.undoDismiss(ctx.email, id);
+  if (!res.ok) return { ok: false, error: res.error };
+
+  revalidatePath("/bot-review");
+  return { ok: true };
 }

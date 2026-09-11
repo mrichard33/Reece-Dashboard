@@ -4,10 +4,10 @@ import { StatTile } from "@/components/tiles/StatTile";
 import { NotEnoughData } from "./Overlays";
 import { cn } from "@/lib/utils";
 import { enoughData, MIN_SAMPLE } from "@/lib/botReview/core";
-import type { WeeklyRow, TopIssue } from "@/lib/queries/botReview";
+import type { WeeklyRow, TopIssue, LaneScoreboard } from "@/lib/queries/botReview";
 
 /**
- * Scoreboard — Phase 1 (basic): six tiles, top issues, weakest paths.
+ * Scoreboard — six tiles, top issues, weakest paths.
  *
  * The trend chart, fix report card and learning impact are Phase 3 and are
  * deliberately absent rather than stubbed: an empty chart reads as broken.
@@ -15,6 +15,15 @@ import type { WeeklyRow, TopIssue } from "@/lib/queries/botReview";
  * Every rate obeys the honest-numbers rule (plan Part 8) — below 30 reviewed,
  * the number is replaced by "Not enough data yet" rather than shown as a
  * percentage nobody should act on.
+ *
+ * Increment 2 (§6F) changed two tiles, for the same reason:
+ *   · The Good rate now comes from the SPOT CHECK sample alone. Must-review
+ *     messages are selected because something went wrong with them, so folding
+ *     them in drags the rate down by construction — it would measure how good
+ *     the triage is, not how good the bot is.
+ *   · "% reviewed" became "Problems caught". Under a lane system most messages
+ *     are never meant to be reviewed, so the old tile showed a small number
+ *     that looked like failure while the system worked exactly as designed.
  */
 
 type Totals = {
@@ -53,7 +62,15 @@ function delta(now: number | null, prev: number | null, unit: string): { text: s
   };
 }
 
-export function Scoreboard({ weeks, issues }: { weeks: WeeklyRow[]; issues: TopIssue[] }) {
+export function Scoreboard({
+  weeks,
+  issues,
+  lanes,
+}: {
+  weeks: WeeklyRow[];
+  issues: TopIssue[];
+  lanes: LaneScoreboard;
+}) {
   const sorted = [...new Set(weeks.map((w) => w.et_week))].sort().reverse();
   const thisWeek = weeks.filter((w) => w.et_week === sorted[0]);
   const lastWeek = weeks.filter((w) => w.et_week === sorted[1]);
@@ -61,12 +78,12 @@ export function Scoreboard({ weeks, issues }: { weeks: WeeklyRow[]; issues: TopI
   const t = fold(thisWeek);
   const p = fold(lastWeek);
 
-  const goodRate = enoughData(t.reviewed) ? (t.good / t.reviewed) * 100 : null;
-  const prevGoodRate = enoughData(p.reviewed) ? (p.good / p.reviewed) * 100 : null;
+  // The Good rate is the SPOT CHECK's, not the whole queue's — see the header.
+  // MIN_SAMPLE still guards it, so a sample of four shows a dash, not a number.
+  const goodRate =
+    enoughData(lanes.spotReviewed) && lanes.spotGoodRate != null ? lanes.spotGoodRate * 100 : null;
   const per100 = enoughData(t.reviewed) ? (t.issues / t.reviewed) * 100 : null;
   const prevPer100 = enoughData(p.reviewed) ? (p.issues / p.reviewed) * 100 : null;
-  const reviewedPct = t.sent > 0 ? (t.reviewed / t.sent) * 100 : null;
-  const prevReviewedPct = p.sent > 0 ? (p.reviewed / p.sent) * 100 : null;
   const aiAvg = t.aiN > 0 ? t.aiSum / t.aiN : null;
   const prevAiAvg = p.aiN > 0 ? p.aiSum / p.aiN : null;
 
@@ -77,7 +94,6 @@ export function Scoreboard({ weeks, issues }: { weeks: WeeklyRow[]; issues: TopI
     return ar - br;
   });
 
-  const dGood = delta(goodRate, prevGoodRate, " pts");
   const dPer100 = delta(per100, prevPer100, "");
 
   return (
@@ -91,19 +107,22 @@ export function Scoreboard({ weeks, issues }: { weeks: WeeklyRow[]; issues: TopI
           helpKey="botReview.messagesSent"
         />
         <StatTile
-          label="Reviewed"
-          value={reviewedPct == null ? "—" : Math.round(reviewedPct)}
-          suffix={reviewedPct == null ? undefined : "%"}
-          delta={delta(reviewedPct, prevReviewedPct, " pts").text}
-          deltaTone={delta(reviewedPct, prevReviewedPct, " pts").tone}
-          helpKey="botReview.reviewedPct"
+          label="Problems caught"
+          value={lanes.problemsCaught}
+          delta={lanes.mustOpen > 0 ? `${lanes.mustOpen} still waiting` : "Nothing waiting"}
+          deltaTone={lanes.mustOpen > 0 ? "rose" : "emerald"}
+          helpKey="botReview.problemsCaught"
         />
         <StatTile
           label="Good rate"
           value={goodRate == null ? "—" : Math.round(goodRate)}
           suffix={goodRate == null ? undefined : "%"}
-          delta={goodRate == null ? `Under ${MIN_SAMPLE} reviewed` : dGood.text}
-          deltaTone={goodRate == null ? "slate" : dGood.tone}
+          delta={
+            goodRate == null
+              ? `Under ${MIN_SAMPLE} spot checks`
+              : `From ${lanes.spotReviewed} spot checks`
+          }
+          deltaTone="slate"
           helpKey="botReview.goodRate"
         />
         <StatTile
@@ -129,6 +148,16 @@ export function Scoreboard({ weeks, issues }: { weeks: WeeklyRow[]; issues: TopI
           helpKey="botReview.aiJudgeAverage"
         />
       </div>
+
+      {/* The coverage line exists so nobody reads "12 reviewed" as "we only
+          looked at 12 of 90". Every message IS scored, automatically — the
+          human lanes are a deliberately small slice on top of that. */}
+      <p className="-mt-3 text-xs text-slate-500 dark:text-slate-400">
+        All {lanes.sent.toLocaleString()} message{lanes.sent === 1 ? "" : "s"} scored automatically ·{" "}
+        {lanes.problemsCaught} must-review cleared
+        {lanes.mustOpen > 0 && `, ${lanes.mustOpen} still open`} ·{" "}
+        {lanes.spotReviewed} of {lanes.spotReviewed + lanes.spotOpen} spot checks done.
+      </p>
 
       <section className="flex flex-col gap-2">
         <SubHeader title="Top issues" helpKey="botReview.topIssues" />

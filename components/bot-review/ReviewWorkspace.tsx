@@ -7,8 +7,15 @@ import { QueueList } from "./QueueList";
 import { ContextStrip } from "./ContextStrip";
 import { ConversationThread } from "./ConversationThread";
 import { FeedbackPanel } from "./FeedbackPanel";
-import { UndoToast, StopBotModal } from "./Overlays";
-import { submitFeedback, editFeedback, undoFeedback, stopBotForLead } from "@/lib/actions/botReview";
+import { UndoToast, StopBotModal, RetractModal, DismissModal } from "./Overlays";
+import {
+  submitFeedback,
+  editFeedback,
+  undoFeedback,
+  stopBotForLead,
+  retractReview,
+  dismissFromReview,
+} from "@/lib/actions/botReview";
 import {
   formatEt,
   contactLabel,
@@ -44,6 +51,7 @@ export function ReviewWorkspace({
   myFeedback,
   reasons,
   canStopBot,
+  canRemoveReview,
 }: {
   rows: QueueRow[];
   total: number;
@@ -55,6 +63,7 @@ export function ReviewWorkspace({
   myFeedback: MyFeedback | null;
   reasons: Reason[];
   canStopBot: boolean;
+  canRemoveReview: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -66,6 +75,13 @@ export function ReviewWorkspace({
   const [stopOpen, setStopOpen] = useState(false);
   const [stopBusy, setStopBusy] = useState(false);
   const [reviewedIds, setReviewedIds] = useState<Set<number>>(new Set());
+  const [retractOpen, setRetractOpen] = useState(false);
+  const [retractBusy, setRetractBusy] = useState(false);
+  const [dismissScope, setDismissScope] = useState<"message" | "conversation" | null>(null);
+  const [dismissBusy, setDismissBusy] = useState(false);
+  // Set aside in THIS session. The server has the durable copy; this only keeps
+  // the row from being re-offered before the next render lands.
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
 
   const go = useCallback(
     (params: Record<string, string | null>) => {
@@ -90,7 +106,11 @@ export function ReviewWorkspace({
    * messages come first, and only then the queue's next unreviewed message.
    */
   function advance(fromId: number) {
-    const open = (r: QueueRow) => r.review_count === 0 && !reviewedIds.has(r.context_id) && r.context_id !== fromId;
+    const open = (r: QueueRow) =>
+      r.review_count === 0 &&
+      !reviewedIds.has(r.context_id) &&
+      !dismissedIds.has(r.context_id) &&
+      r.context_id !== fromId;
     const here = conversation.findIndex((r) => r.context_id === fromId);
     const next =
       conversation.slice(here + 1).find(open) ??
@@ -163,6 +183,73 @@ export function ReviewWorkspace({
     });
   }
 
+  /**
+   * Remove a review. Afterwards the message is unreviewed again, so the page is
+   * refreshed rather than advanced — the reviewer asked to undo a decision, and
+   * jumping them to the next message would hide whether it worked.
+   */
+  async function onConfirmRetract(reason: string) {
+    if (!myFeedback) return;
+    setRetractBusy(true);
+    const res = await retractReview({
+      id: myFeedback.id,
+      reason,
+      reviewerEmail: myFeedback.reviewer_email,
+    });
+    setRetractBusy(false);
+    setRetractOpen(false);
+    if (!res.ok) {
+      setErrorMsg(res.error ?? "Could not remove the review.");
+      return;
+    }
+    setReviewedIds((s) => {
+      const next = new Set(s);
+      if (selected) next.delete(selected.context_id);
+      return next;
+    });
+    setToast({
+      message: res.alreadyRetracted ? "That review was already removed" : "Review removed",
+      detail: "It stops counting everywhere. The message is back in its lane.",
+      id: null,
+    });
+    router.refresh();
+  }
+
+  async function onConfirmDismiss(reason: string) {
+    if (!selected || !dismissScope) return;
+    setDismissBusy(true);
+    const res = await dismissFromReview({
+      scope: dismissScope,
+      contextId: selected.context_id,
+      contactId: selected.ghl_contact_id,
+      reason,
+    });
+    setDismissBusy(false);
+    const scope = dismissScope;
+    setDismissScope(null);
+    if (!res.ok) {
+      setErrorMsg(res.error ?? "Could not set this aside.");
+      return;
+    }
+
+    // A conversation dismissal takes every message in the thread, so the whole
+    // group is marked locally — otherwise "and next" would walk straight into a
+    // sibling the server has already hidden.
+    const gone =
+      scope === "conversation"
+        ? conversation.map((r) => r.context_id)
+        : [selected.context_id];
+    setDismissedIds((s) => new Set([...s, ...gone]));
+
+    setToast({
+      message: scope === "message" ? "Message set aside" : "Conversation set aside",
+      detail: "It has left the queue for everyone. Undo it from the Completed tab.",
+      id: null,
+    });
+    advance(selected.context_id);
+    router.refresh();
+  }
+
   const leadLabel = selected ? contactLabel(selected) : "Lead";
 
   return (
@@ -174,6 +261,7 @@ export function ReviewWorkspace({
           total={total}
           page={page}
           reviewedIds={reviewedIds}
+          dismissedIds={dismissedIds}
           onSelect={selectRow}
           onLoadMore={() => go({ page: String(page + 1) })}
         />
@@ -228,8 +316,12 @@ export function ReviewWorkspace({
                     }
                   : null
               }
+              canDismissConversation={Boolean(selected.ghl_contact_id)}
+              canRemoveReview={canRemoveReview && myFeedback != null}
               onSubmit={onSubmit}
               onSkip={() => advance(selected.context_id)}
+              onDismiss={(scope) => setDismissScope(scope)}
+              onRetract={() => setRetractOpen(true)}
               submitting={submitting}
             />
           </>
@@ -253,6 +345,32 @@ export function ReviewWorkspace({
           busy={stopBusy}
           onCancel={() => setStopOpen(false)}
           onConfirm={onConfirmStop}
+        />
+      )}
+
+      {retractOpen && myFeedback && (
+        <RetractModal
+          verdict={
+            myFeedback.verdict === "good"
+              ? "Good"
+              : myFeedback.verdict === "needs_work"
+                ? "Needs work"
+                : "Unsafe"
+          }
+          at={formatEt(myFeedback.created_at)}
+          busy={retractBusy}
+          onCancel={() => setRetractOpen(false)}
+          onConfirm={onConfirmRetract}
+        />
+      )}
+
+      {dismissScope && selected && (
+        <DismissModal
+          scope={dismissScope}
+          leadLabel={leadLabel}
+          busy={dismissBusy}
+          onCancel={() => setDismissScope(null)}
+          onConfirm={onConfirmDismiss}
         />
       )}
     </div>

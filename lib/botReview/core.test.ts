@@ -11,6 +11,14 @@ import {
   canStopBot,
   canApprove,
   buildQueuePlan,
+  resolveLane,
+  canRetract,
+  canUndoDismiss,
+  canSeeOtherReviewers,
+  canSeeRetracted,
+  LANES,
+  DEFAULT_LANE,
+  TABS,
   scoreTone,
   queueSignal,
   enoughData,
@@ -142,12 +150,21 @@ describe("tab access", () => {
   const execOnly = { role: "team" as const, isAdmin: false, isExecOnly: true };
 
   it("gives operators and admins every tab", () => {
-    expect(visibleTabs(operator)).toHaveLength(5);
-    expect(visibleTabs(admin)).toHaveLength(5);
+    expect(visibleTabs(operator)).toHaveLength(TABS.length);
+    expect(visibleTabs(admin)).toHaveLength(TABS.length);
   });
 
-  it("limits team to Review and Compare", () => {
-    expect(visibleTabs(team)).toEqual(["review", "compare"]);
+  it("limits team to Review, Completed and Compare", () => {
+    // Completed is their OWN work. Hiding it would mean a team member could
+    // not find, edit or remove a review they had just submitted.
+    expect(visibleTabs(team)).toEqual(["review", "completed", "compare"]);
+  });
+
+  it("offers Completed to everyone who may review", () => {
+    expect(visibleTabs(operator)).toContain("completed");
+    expect(visibleTabs(team)).toContain("completed");
+    expect(visibleTabs(execOnly)).not.toContain("completed");
+    expect(resolveTab("completed", team)).toBe("completed");
   });
 
   it("gives exec-only nothing", () => {
@@ -198,49 +215,52 @@ describe("action gating", () => {
 
 describe("buildQueuePlan", () => {
   it("defaults to riskiest-first and the first page of 25", () => {
-    const p = buildQueuePlan({});
+    const p = buildQueuePlan({ lane: "everything" });
     expect(p.order[0]).toEqual({ column: "priority", ascending: true });
     expect(p.order[1]).toEqual({ column: "generated_at", ascending: false });
     expect(p.range).toEqual([0, PAGE_SIZE - 1]);
   });
 
   it("pages correctly", () => {
-    expect(buildQueuePlan({ page: 2 }).range).toEqual([25, 49]);
-    expect(buildQueuePlan({ page: 3 }).range).toEqual([50, 74]);
+    expect(buildQueuePlan({ lane: "everything", page: 2 }).range).toEqual([25, 49]);
+    expect(buildQueuePlan({ lane: "everything", page: 3 }).range).toEqual([50, 74]);
     // A junk page never produces a negative range.
-    expect(buildQueuePlan({ page: 0 }).range).toEqual([0, 24]);
-    expect(buildQueuePlan({ page: -5 }).range).toEqual([0, 24]);
+    expect(buildQueuePlan({ lane: "everything", page: 0 }).range).toEqual([0, 24]);
+    expect(buildQueuePlan({ lane: "everything", page: -5 }).range).toEqual([0, 24]);
   });
 
   it("maps each saved view to the filter it promises", () => {
-    expect(buildQueuePlan({ view: "silent" }).eq).toContainEqual(["message_type", "skip"]);
-    expect(buildQueuePlan({ view: "optedout" }).notNull).toContain("opted_out_at");
-    expect(buildQueuePlan({ view: "lowscore" }).lt).toContainEqual(["ai_score", 60]);
-    expect(buildQueuePlan({ view: "unreviewed" }).eq).toContainEqual(["review_count", "0"]);
-    expect(buildQueuePlan({ view: "price" }).in[0]?.[1]).toContain("OBJ_PRICE_STRIKE1");
+    const ev = (view: string) => buildQueuePlan({ lane: "everything", view });
+    expect(ev("silent").eq).toContainEqual(["message_type", "skip"]);
+    expect(ev("optedout").notNull).toContain("opted_out_at");
+    expect(ev("lowscore").lt).toContainEqual(["ai_score", 60]);
+    expect(ev("unreviewed").eq).toContainEqual(["review_count", "0"]);
+    expect(ev("price").in[0]?.[1]).toContain("OBJ_PRICE_STRIKE1");
   });
 
   it("riskiest first adds no filter — it is the default order, not a subset", () => {
-    const p = buildQueuePlan({ view: "riskiest" });
+    const p = buildQueuePlan({ lane: "everything", view: "riskiest" });
     expect(p.eq).toHaveLength(0);
     expect(p.notNull).toHaveLength(0);
     expect(p.lt).toHaveLength(0);
   });
 
   it("maps the type filter onto message_type", () => {
-    expect(buildQueuePlan({ type: "replies" }).eq).toContainEqual(["message_type", "reply"]);
-    expect(buildQueuePlan({ type: "nurture" }).eq).toContainEqual(["message_type", "nurture"]);
-    expect(buildQueuePlan({ type: "skipped" }).eq).toContainEqual(["message_type", "skip"]);
+    const ev = (type: string) => buildQueuePlan({ lane: "everything", type });
+    expect(ev("replies").eq).toContainEqual(["message_type", "reply"]);
+    expect(ev("nurture").eq).toContainEqual(["message_type", "nurture"]);
+    expect(ev("skipped").eq).toContainEqual(["message_type", "skip"]);
   });
 
   it("maps outcomes to presence or absence, not to equality", () => {
-    expect(buildQueuePlan({ outcome: "booked" }).notNull).toContain("booked_at");
-    expect(buildQueuePlan({ outcome: "no_reply" }).isNull).toContain("replied_at");
-    expect(buildQueuePlan({ outcome: "opted_out" }).notNull).toContain("opted_out_at");
+    const ev = (outcome: string) => buildQueuePlan({ lane: "everything", outcome });
+    expect(ev("booked").notNull).toContain("booked_at");
+    expect(ev("no_reply").isNull).toContain("replied_at");
+    expect(ev("opted_out").notNull).toContain("opted_out_at");
   });
 
   it("treats 'all' as no filter at all", () => {
-    const p = buildQueuePlan({ channel: "all", office: "all", rule: "all", type: "all", outcome: "all", date: "all" });
+    const p = buildQueuePlan({ lane: "everything", channel: "all", office: "all", rule: "all", type: "all", outcome: "all", date: "all" });
     expect(p.eq).toHaveLength(0);
     expect(p.notNull).toHaveLength(0);
     expect(p.gte).toHaveLength(0);
@@ -248,12 +268,12 @@ describe("buildQueuePlan", () => {
 
   it("turns a date window into a lower bound from a fixed clock", () => {
     const now = new Date("2026-09-11T12:00:00Z");
-    expect(buildQueuePlan({ date: "today" }, now).gte[0]?.[1]).toBe("2026-09-10T12:00:00.000Z");
-    expect(buildQueuePlan({ date: "7d" }, now).gte[0]?.[1]).toBe("2026-09-04T12:00:00.000Z");
+    expect(buildQueuePlan({ lane: "everything", date: "today" }, now).gte[0]?.[1]).toBe("2026-09-10T12:00:00.000Z");
+    expect(buildQueuePlan({ lane: "everything", date: "7d" }, now).gte[0]?.[1]).toBe("2026-09-04T12:00:00.000Z");
   });
 
   it("combines filters rather than letting the last one win", () => {
-    const p = buildQueuePlan({ view: "lowscore", channel: "sms", type: "replies", page: 2 });
+    const p = buildQueuePlan({ lane: "everything", view: "lowscore", channel: "sms", type: "replies", page: 2 });
     expect(p.lt).toContainEqual(["ai_score", 60]);
     expect(p.eq).toContainEqual(["channel", "sms"]);
     expect(p.eq).toContainEqual(["message_type", "reply"]);
@@ -511,5 +531,149 @@ describe("buildTimeline", () => {
     );
     expect(items).toHaveLength(2);
     expect(items[0]!.kind).toBe("turn");
+  });
+});
+
+// ─── review lanes (increment 2 §6A) ─────────────────────────────────
+
+describe("review lanes", () => {
+  it("defaults to Must review and falls back rather than throwing", () => {
+    expect(DEFAULT_LANE).toBe("must_review");
+    expect(resolveLane(null)).toBe("must_review");
+    expect(resolveLane(undefined)).toBe("must_review");
+    expect(resolveLane("")).toBe("must_review");
+    // A hand-typed or stale URL lands somewhere usable instead of 404ing.
+    expect(resolveLane("nonsense")).toBe("must_review");
+  });
+
+  it("honours each real lane", () => {
+    for (const l of LANES) expect(resolveLane(l.key)).toBe(l.key);
+  });
+
+  it("filters a work lane to open, undismissed, unreviewed messages", () => {
+    // All three conditions, or the lane is a to-do list that never empties.
+    for (const lane of ["must_review", "spot_check"]) {
+      const p = buildQueuePlan({ lane });
+      expect(p.eq).toContainEqual(["review_lane", lane]);
+      expect(p.eq).toContainEqual(["review_count", "0"]);
+      expect(p.is).toContainEqual(["dismissed", false]);
+    }
+  });
+
+  it("leaves Everything unfiltered — it is a lookup, not a queue", () => {
+    const p = buildQueuePlan({ lane: "everything" });
+    expect(p.eq).toHaveLength(0);
+    expect(p.is).toHaveLength(0);
+  });
+
+  it("keeps riskiest-first ordering in every lane", () => {
+    for (const l of LANES) {
+      const p = buildQueuePlan({ lane: l.key });
+      expect(p.order[0]).toEqual({ column: "priority", ascending: true });
+      expect(p.order[1]).toEqual({ column: "generated_at", ascending: false });
+    }
+  });
+
+  it("keeps every existing filter working inside a lane", () => {
+    const p = buildQueuePlan({ lane: "spot_check", channel: "sms", type: "replies", office: "ORL_MKT", page: 2 });
+    expect(p.eq).toContainEqual(["review_lane", "spot_check"]);
+    expect(p.eq).toContainEqual(["channel", "sms"]);
+    expect(p.eq).toContainEqual(["message_type", "reply"]);
+    expect(p.eq).toContainEqual(["office", "ORL_MKT"]);
+    expect(p.range).toEqual([25, 49]);
+  });
+
+  /*
+   * The stability guarantee, from this side of the wire.
+   *
+   * The hash itself lives in sql/106 and depends only on (message_type,
+   * message_ref). What the query builder must never do is add a term that
+   * makes lane membership depend on data that arrives later — a score, an
+   * outcome, a review count on the message itself. If it did, a message would
+   * move between lanes when an outcome landed and the "random sample" would
+   * quietly become "messages whose outcomes arrived early".
+   */
+  it("asks for a lane by name only — never by score or outcome", () => {
+    const before = buildQueuePlan({ lane: "spot_check" });
+    const after = buildQueuePlan({ lane: "spot_check" });
+    expect(after).toEqual(before);
+
+    const laneTerms = before.eq.filter(([col]) => col === "review_lane");
+    expect(laneTerms).toEqual([["review_lane", "spot_check"]]);
+    // Nothing outcome-shaped leaks into how the lane is selected.
+    for (const col of [...before.notNull, ...before.isNull]) {
+      expect(["ai_score", "replied_at", "booked_at", "opted_out_at"]).not.toContain(col);
+    }
+    expect(before.lt).toHaveLength(0);
+  });
+
+  it("does not re-rank the queue when outcome filters are added", () => {
+    // Same lane, extra filter: the ORDER must be untouched, so a message's
+    // position comes from priority alone and not from what a filter implies.
+    const plain = buildQueuePlan({ lane: "must_review" });
+    const filtered = buildQueuePlan({ lane: "must_review", outcome: "booked" });
+    expect(filtered.order).toEqual(plain.order);
+  });
+});
+
+// ─── retraction and dismissal permissions (increment 2 §6C, §6D) ────
+
+describe("retraction and dismissal permissions", () => {
+  const author = { email: "kim@reecewindows.com", isAdmin: false };
+  const other = { email: "sam@reecewindows.com", isAdmin: false };
+  const admin = { email: "mark@reecewindows.com", isAdmin: true };
+  const review = { reviewer_email: "Kim@ReeceWindows.com" };
+
+  it("lets the author and any admin remove a review, and nobody else", () => {
+    // Case-insensitive: kim@ and Kim@ are one person, and the author must not
+    // be locked out of their own review by how they typed their address.
+    expect(canRetract(author, review)).toBe(true);
+    expect(canRetract(admin, review)).toBe(true);
+    expect(canRetract(other, review)).toBe(false);
+  });
+
+  it("has nothing to remove when there is no review", () => {
+    expect(canRetract(admin, null)).toBe(false);
+    expect(canRetract(author, undefined)).toBe(false);
+  });
+
+  it("keeps undoing a dismissal narrower than making one", () => {
+    // Dismissing hides one message; undoing puts it back for everyone.
+    expect(canUndoDismiss({ role: "team", isAdmin: false })).toBe(false);
+    expect(canUndoDismiss({ role: "operator", isAdmin: false })).toBe(true);
+    expect(canUndoDismiss({ role: "team", isAdmin: true })).toBe(true);
+  });
+
+  it("shows other people's reviews only to operators and admins", () => {
+    expect(canSeeOtherReviewers({ role: "team", isAdmin: false })).toBe(false);
+    expect(canSeeOtherReviewers({ role: "operator", isAdmin: false })).toBe(true);
+    expect(canSeeOtherReviewers({ role: "team", isAdmin: true })).toBe(true);
+  });
+
+  it("keeps the retracted audit list admin-only", () => {
+    expect(canSeeRetracted({ isAdmin: false })).toBe(false);
+    expect(canSeeRetracted({ isAdmin: true })).toBe(true);
+  });
+});
+
+// ─── plain-English feedback controls (increment 2 §6B) ──────────────
+
+describe("plain-English feedback controls", () => {
+  it("has no seenBefore field left on the draft", () => {
+    expect(Object.keys(emptyDraft)).not.toContain("seenBefore");
+    expect(Object.keys(emptyDraft).sort()).toEqual(
+      ["betterText", "gold", "note", "reasonCodes", "verdict"],
+    );
+  });
+
+  it("rejects a teaching example on anything but Good, in words a reviewer reads", () => {
+    const bad = validateDraft(draft({ verdict: "needs_work", reasonCodes: ["tone_voice"], gold: true }));
+    expect(bad?.field).toBe("gold");
+    expect(bad?.message).toBe("Only a Good message can be used as a teaching example.");
+    expect(bad?.message).not.toMatch(/gold/i);
+  });
+
+  it("still allows a teaching example on Good", () => {
+    expect(validateDraft(draft({ verdict: "good", gold: true }))).toBeNull();
   });
 });

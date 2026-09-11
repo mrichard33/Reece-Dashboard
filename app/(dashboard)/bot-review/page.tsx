@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { FilterBar } from "@/components/bot-review/FilterBar";
 import { ReviewWorkspace } from "@/components/bot-review/ReviewWorkspace";
 import { Scoreboard } from "@/components/bot-review/Scoreboard";
+import { CompletedTable } from "@/components/bot-review/CompletedTable";
 import { CalibrationBanner } from "@/components/bot-review/Overlays";
 import {
   getQueue,
@@ -19,9 +20,28 @@ import {
   getCalibration,
   getHeaderCounts,
   getScoreboard,
+  getLaneCounts,
+  getLaneScoreboard,
+  getCompleted,
+  getCompletedSummary,
+  getDismissals,
   type MyFeedback,
 } from "@/lib/queries/botReview";
-import { resolveTab, visibleTabs, canStopBot, buildTimeline, TABS, type TabKey } from "@/lib/botReview/core";
+import {
+  resolveTab,
+  visibleTabs,
+  canStopBot,
+  canReview,
+  canSeeOtherReviewers,
+  canSeeRetracted,
+  canUndoDismiss,
+  buildTimeline,
+  resolveLane,
+  LANES,
+  TABS,
+  type TabKey,
+  type LaneKey,
+} from "@/lib/botReview/core";
 
 export const dynamic = "force-dynamic";
 
@@ -122,6 +142,7 @@ export default async function BotReviewPage({ searchParams }: { searchParams: Pr
         </nav>
 
         {tab === "review" && <ReviewTab ctx={ctx} sp={sp} page={page} />}
+        {tab === "completed" && <CompletedTab ctx={ctx} sp={sp} page={page} />}
         {tab === "scoreboard" && <ScoreboardTab />}
         {(tab === "compare" || tab === "fixes" || tab === "learned") && <ComingIn tab={tab} />}
       </div>
@@ -138,7 +159,28 @@ async function ReviewTab({
   sp: Search;
   page: number;
 }) {
+  const laneCounts = await getLaneCounts();
+
+  /*
+   * Which lane the reviewer lands in.
+   *
+   * Must review is the default — it is the work that matters. When it is empty
+   * and the reviewer has not asked for a specific lane, fall through to Spot
+   * check rather than showing them an empty screen: "nothing needs you" is good
+   * news, and the right next action is the sample, not the exit.
+   *
+   * An EXPLICIT ?lane= is always honored, empty or not. A reviewer who clicked
+   * Must review and got moved somewhere else would not trust the control again.
+   */
+  const asked = one(sp.lane);
+  const lane: LaneKey =
+    asked == null && laneCounts.must_review === 0 && laneCounts.spot_check > 0
+      ? "spot_check"
+      : resolveLane(asked);
+  const autoSwitched = asked == null && lane === "spot_check";
+
   const filters = {
+    lane,
     view: one(sp.view),
     channel: one(sp.channel),
     type: one(sp.type),
@@ -217,7 +259,13 @@ async function ReviewTab({
           agreementTarget={calibration.agreement_target}
         />
       )}
-      <FilterBar rules={rules.sort()} offices={offices.sort()} />
+      <FilterBar rules={rules.sort()} offices={offices.sort()} laneCounts={laneCounts} />
+      {autoSwitched && (
+        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+          Nothing needs you right now. Every message is still being scored automatically — this is a sample to
+          spot check.
+        </p>
+      )}
       <ReviewWorkspace
         rows={queue.rows}
         total={queue.total}
@@ -229,13 +277,93 @@ async function ReviewTab({
         myFeedback={myFeedback}
         reasons={reasons}
         canStopBot={canStopBot(ctx)}
+        // The panel hides Remove review for anyone who could not use it. LP MCP
+        // re-checks the actual row's author either way.
+        canRemoveReview={canReview(ctx)}
       />
     </div>
   );
 }
 
+/**
+ * Completed — the record of what has been reviewed, set aside, or removed.
+ *
+ * Team members are PINNED to their own email here (`forceReviewer`). It is not
+ * a default they can change: Completed is a record of your own work, and a team
+ * member browsing everyone else's verdicts before they are calibrated is how
+ * calibration stops measuring anything.
+ */
+async function CompletedTab({
+  ctx,
+  sp,
+  page,
+}: {
+  ctx: Awaited<ReturnType<typeof getAccessContext>> & object;
+  sp: Search;
+  page: number;
+}) {
+  const wide = canSeeOtherReviewers(ctx);
+  const show = one(sp.show) ?? "reviews";
+
+  const filters = {
+    reviewer: one(sp.reviewer),
+    verdict: one(sp.verdict),
+    lane: one(sp.lane),
+    date: one(sp.date),
+    show,
+    page,
+  };
+
+  const [completed, summary, dismissals] = await Promise.all([
+    getCompleted(filters, wide ? null : ctx.email),
+    getCompletedSummary(ctx.email),
+    show === "dismissed" ? getDismissals(page) : Promise.resolve({ rows: [], total: 0, needsMigration: false }),
+  ]);
+
+  if (completed.needsMigration) {
+    return (
+      <Card>
+        <CardContent>
+          <p className="text-sm font-semibold text-navy-900 dark:text-white">Not migrated yet.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            Apply <span className="font-mono text-xs">sql/106_bot_review_inc2.sql</span> in the LP Supabase SQL
+            editor to see Completed. The Review tab keeps working without it.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (completed.error) {
+    return (
+      <Card>
+        <CardContent>
+          <p className="text-sm font-semibold text-navy-900 dark:text-white">We couldn&apos;t load Completed.</p>
+          <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{completed.error}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <CompletedTable
+      rows={completed.rows}
+      total={completed.total}
+      page={page}
+      summary={summary}
+      dismissals={dismissals.rows}
+      reviewers={completed.reviewers}
+      myEmail={ctx.email}
+      isAdmin={ctx.isAdmin === true}
+      canPickReviewer={wide}
+      canUndoDismiss={canUndoDismiss(ctx)}
+      canSeeRetracted={canSeeRetracted(ctx)}
+    />
+  );
+}
+
 async function ScoreboardTab() {
-  const board = await getScoreboard();
+  const [board, lanes] = await Promise.all([getScoreboard(), getLaneScoreboard()]);
   if (board.needsMigration) {
     return (
       <Card>
@@ -257,7 +385,7 @@ async function ScoreboardTab() {
       </Card>
     );
   }
-  return <Scoreboard weeks={board.weeks} issues={board.issues} />;
+  return <Scoreboard weeks={board.weeks} issues={board.issues} lanes={lanes} />;
 }
 
 const PHASE_NOTE: Record<string, { title: string; body: string }> = {

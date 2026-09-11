@@ -25,8 +25,20 @@ import type { Reason } from "@/lib/queries/botReview";
  *     reviewer could never type the letter "g" into a note.
  *   · Reason chips appear only after Needs work or Unsafe.
  *   · Errors sit UNDER the control they belong to, never as a banner.
- *   · Gold is enabled only on Good.
+ *   · The teaching-example checkbox is enabled only on Good.
  *   · "Submit and next" is the only primary button on the screen.
+ *
+ * Increment 2 (§6B, §6C, §6D):
+ *   · The "I've seen this before" toggle is GONE. The nightly Phase 2 grouping
+ *     counts recurrence itself, from every review at once — the toggle asked a
+ *     reviewer to do that from memory, with worse information.
+ *   · "Save as a gold example" is now "Teach the bot to reply like this". Same
+ *     column, words someone can act on.
+ *   · Two ways past a message without scoring it: Skip for now (this session
+ *     only, records nothing) and Nothing to review here (persistent, team-wide,
+ *     undoable from Completed).
+ *   · A message already carrying your review offers Edit review and Remove
+ *     review side by side.
  */
 
 export function FeedbackPanel({
@@ -35,8 +47,12 @@ export function FeedbackPanel({
   reasons,
   readOnly,
   existingVerdict,
+  canDismissConversation,
+  canRemoveReview,
   onSubmit,
   onSkip,
+  onDismiss,
+  onRetract,
   submitting,
 }: {
   messageType: MessageType;
@@ -44,8 +60,12 @@ export function FeedbackPanel({
   reasons: Reason[];
   readOnly: boolean;
   existingVerdict?: { verdict: string; reasonCodes: string[]; note: string | null; gold: boolean; at: string } | null;
+  canDismissConversation: boolean;
+  canRemoveReview: boolean;
   onSubmit: (draft: FeedbackDraft) => void | Promise<void>;
   onSkip: () => void;
+  onDismiss: (scope: "message" | "conversation") => void;
+  onRetract: () => void;
   submitting: boolean;
 }) {
   const [draft, setDraft] = useState<FeedbackDraft>({ ...emptyDraft, betterText: originalText ?? "" });
@@ -136,7 +156,7 @@ export function FeedbackPanel({
               {existingVerdict?.verdict === "unsafe" && <span className="text-rose-600">Unsafe</span>}
               {existingVerdict?.gold && (
                 <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
-                  ⭐ Gold example
+                  ⭐ Teaching example
                 </span>
               )}
             </p>
@@ -144,13 +164,26 @@ export function FeedbackPanel({
               <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Note: {existingVerdict.note}</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="text-sm font-medium text-navy-700 hover:underline dark:text-navy-200"
-          >
-            Edit review
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-sm font-medium text-navy-700 hover:underline dark:text-navy-200"
+            >
+              Edit review
+            </button>
+            {/* Remove is a link, not a button: it is rarer than Edit and must
+                never be the thing a tired reviewer hits by muscle memory. */}
+            {canRemoveReview && (
+              <button
+                type="button"
+                onClick={onRetract}
+                className="text-sm font-medium text-rose-700 hover:underline dark:text-rose-400"
+              >
+                Remove review
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -261,46 +294,126 @@ export function FeedbackPanel({
         {error?.field === "note" && <FieldError>{error.message}</FieldError>}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-          <input
-            type="checkbox"
-            disabled={disabled}
-            checked={draft.seenBefore}
-            onChange={(e) => setDraft((d) => ({ ...d, seenBefore: e.target.checked }))}
-            className="h-3.5 w-3.5 rounded border-slate-300"
-          />
-          I&apos;ve seen this before
-        </label>
+      <div className="mt-3">
         <label
           className={cn(
-            "flex items-center gap-2 text-xs",
+            "flex items-start gap-2 text-xs",
             draft.verdict === "good"
               ? "text-slate-600 dark:text-slate-300"
               : "cursor-not-allowed text-slate-400 dark:text-slate-600",
           )}
-          title={draft.verdict === "good" ? undefined : "Good only"}
+          title={draft.verdict === "good" ? undefined : "Good messages only"}
         >
           <input
             type="checkbox"
             disabled={disabled || draft.verdict !== "good"}
             checked={draft.gold}
             onChange={(e) => setDraft((d) => ({ ...d, gold: e.target.checked }))}
-            className="h-3.5 w-3.5 rounded border-slate-300"
+            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300"
           />
-          ⭐ Save as a gold example{draft.verdict === "good" ? "" : " · Good only"}
+          <span>
+            <span className="font-medium">⭐ Teach the bot to reply like this</span>
+            {draft.verdict !== "good" && " · Good messages only"}
+            <span className="block text-slate-500 dark:text-slate-400">
+              Saves this as an example the bot can learn from. Nothing changes until it&apos;s approved.
+            </span>
+          </span>
         </label>
         {error?.field === "gold" && <FieldError>{error.message}</FieldError>}
       </div>
 
-      <div className="mt-4 flex items-center justify-end gap-2">
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+        {/* Two different "not now"s, and the difference matters:
+            Skip is this session only and records nothing, so the message is
+            still waiting for the next reviewer. Nothing to review here is a
+            decision, stored for the whole team and undoable from Completed. */}
         <Button variant="ghost" size="sm" onClick={onSkip} disabled={submitting}>
           Skip for now
         </Button>
+        <DismissMenu
+          disabled={submitting}
+          canDismissConversation={canDismissConversation}
+          onDismiss={onDismiss}
+        />
         <Button variant="primary" size="sm" onClick={attemptSubmit} disabled={disabled}>
           {submitting ? "Saving…" : "Submit and next →"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Nothing to review here" with its scope picker.
+ *
+ * The scope is chosen BEFORE the confirm rather than inside it, because the two
+ * choices have very different blast radii — one message versus every message to
+ * this lead — and burying that in a modal makes the wider one too easy to pick
+ * by accident.
+ */
+function DismissMenu({
+  disabled,
+  canDismissConversation,
+  onDismiss,
+}: {
+  disabled: boolean;
+  canDismissConversation: boolean;
+  onDismiss: (scope: "message" | "conversation") => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    function onClick() {
+      setOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("click", onClick);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)} disabled={disabled}>
+        Nothing to review here ▾
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute bottom-full right-0 z-20 mb-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onDismiss("message");
+            }}
+            className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            This message
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!canDismissConversation}
+            title={canDismissConversation ? undefined : "This message has no lead record to group by."}
+            onClick={() => {
+              setOpen(false);
+              onDismiss("conversation");
+            }}
+            className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800 dark:disabled:text-slate-600"
+          >
+            This whole conversation
+          </button>
+        </div>
+      )}
     </div>
   );
 }

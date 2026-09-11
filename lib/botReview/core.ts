@@ -32,6 +32,7 @@ export type Access = {
 
 export const TABS = [
   { key: "review", label: "Review" },
+  { key: "completed", label: "Completed" },
   { key: "compare", label: "Compare" },
   { key: "fixes", label: "Fixes" },
   { key: "learned", label: "What the bot has learned" },
@@ -41,10 +42,15 @@ export const TABS = [
 export type TabKey = (typeof TABS)[number]["key"];
 
 /**
- * Which tabs this person may open (handoff §7).
- *   operator → all five
- *   team     → Review + Compare only; anything else redirects to Review
+ * Which tabs this person may open (handoff §7 + increment 2 §6E).
+ *   operator → all six
+ *   team     → Review + Completed + Compare; anything else redirects to Review
  *   exec-only→ none (the page redirects them out entirely)
+ *
+ * Completed is visible to everyone who may review, including uncalibrated team
+ * members: it is the record of their OWN work, and the query layer will not show
+ * them anyone else's. Hiding it would mean a team member could not see, or fix,
+ * a review they had just submitted.
  *
  * Hiding a tab is the courtesy. LP MCP is the gate for every write, and the
  * page itself redirects — this only decides what to render.
@@ -52,7 +58,7 @@ export type TabKey = (typeof TABS)[number]["key"];
 export function visibleTabs(ctx: Pick<Access, "role" | "isAdmin" | "isExecOnly">): TabKey[] {
   if (ctx.isExecOnly) return [];
   if (ctx.role === "operator" || ctx.isAdmin) return TABS.map((t) => t.key);
-  return ["review", "compare"];
+  return ["review", "completed", "compare"];
 }
 
 /** Resolve a `?tab=` value to a tab this person may actually see. */
@@ -73,6 +79,42 @@ export function canStopBot(ctx: Pick<Access, "role" | "isAdmin">): boolean {
 }
 
 /**
+ * Undoing a dismissal: operators and admins (increment 2 §6C).
+ *
+ * Making a dismissal is open to every reviewer, because it only hides one
+ * message. Undoing one puts it back in front of EVERYONE, so it sits with the
+ * wider role — the same asymmetry LP MCP's canDismiss / canUndoDismiss holds.
+ */
+export function canUndoDismiss(ctx: Pick<Access, "role" | "isAdmin">): boolean {
+  return ctx.role === "operator" || ctx.isAdmin === true;
+}
+
+/**
+ * Removing a review: its author, or an admin.
+ *
+ * Mirrors LP MCP's canRetract. Emails compare case-insensitively — a reviewer
+ * signed in as Kim@ must not be locked out of the review kim@ wrote.
+ */
+export function canRetract(
+  ctx: Pick<Access, "email" | "isAdmin">,
+  review: { reviewer_email?: string | null } | null | undefined,
+): boolean {
+  if (!review) return false;
+  if (ctx.isAdmin === true) return true;
+  return (review.reviewer_email ?? "").trim().toLowerCase() === ctx.email.trim().toLowerCase();
+}
+
+/** Who a reviewer may read Completed rows for. Team members see only their own. */
+export function canSeeOtherReviewers(ctx: Pick<Access, "role" | "isAdmin">): boolean {
+  return ctx.role === "operator" || ctx.isAdmin === true;
+}
+
+/** The Retracted sub-filter is an audit view, so it is admin-only (§6E). */
+export function canSeeRetracted(ctx: Pick<Access, "isAdmin">): boolean {
+  return ctx.isAdmin === true;
+}
+
+/**
  * Reviewing: everyone with dashboard access except exec-only.
  *
  * Team members may review BEFORE they are calibrated — their verdicts are
@@ -85,13 +127,23 @@ export function canReview(ctx: Pick<Access, "role" | "isExecOnly">): boolean {
 
 // ─── Verdict validation (mirrors sql/103 CHECKs) ────────────────────
 
+/**
+ * `gold` is the COLUMN name and stays. Everywhere a person reads it, it is
+ * "teaching example" (increment 2 §6B) — "gold example" was internal jargon
+ * that told a reviewer nothing about what the checkbox does.
+ *
+ * There is deliberately no `seenBefore`. The toggle asked a reviewer to
+ * remember whether they had met this failure before; the nightly Phase 2
+ * grouping counts recurrence itself, across every review, without the memory.
+ * The DB column is kept so the Phase 1 rows stay readable — the UI, the draft
+ * and the request body no longer carry it.
+ */
 export type FeedbackDraft = {
   verdict: Verdict | null;
   reasonCodes: string[];
   note: string;
   betterText: string;
   gold: boolean;
-  seenBefore: boolean;
 };
 
 export type ValidationError = { field: "verdict" | "reason_codes" | "note" | "gold"; message: string };
@@ -102,7 +154,6 @@ export const emptyDraft: FeedbackDraft = {
   note: "",
   betterText: "",
   gold: false,
-  seenBefore: false,
 };
 
 /**
@@ -122,7 +173,7 @@ export function validateDraft(draft: FeedbackDraft): ValidationError | null {
     return { field: "note", message: "A note is required on Unsafe. Tell us what could go wrong." };
   }
   if (draft.gold && draft.verdict !== "good") {
-    return { field: "gold", message: "Only a Good message can be saved as a gold example." };
+    return { field: "gold", message: "Only a Good message can be used as a teaching example." };
   }
   return null;
 }
@@ -160,6 +211,7 @@ export function effectiveRewrite(betterText: string, originalText: string | null
 // ─── Queue query builder ────────────────────────────────────────────
 
 export type QueueFilters = {
+  lane?: string | null;
   view?: string | null;
   channel?: string | null;
   type?: string | null;
@@ -171,8 +223,74 @@ export type QueueFilters = {
   page?: number;
 };
 
+// ─── Review lanes (increment 2 §6A) ─────────────────────────────────
+
+/**
+ * Three lanes instead of one queue.
+ *
+ * Reviewing every message was never going to be sustained — roughly ninety
+ * messages a week, each needing the thread read around it. So the system decides
+ * what a human MUST look at (a message that already went wrong, or that the AI
+ * judge scored badly), takes a stable random sample of the rest for an honest
+ * quality number, and leaves everything else browsable but not demanded.
+ *
+ * `none` is not a lane anyone works. It exists so "Everything" has a name for
+ * the messages that are neither.
+ */
+export const LANES = [
+  {
+    key: "must_review",
+    label: "Must review",
+    blurb:
+      "Messages that already went wrong or scored badly: the lead opted out after it, the bot stayed silent, the AI judge scored it low, or someone stopped the bot right after. These are the ones worth your time.",
+  },
+  {
+    key: "spot_check",
+    label: "Spot check",
+    blurb:
+      "A small random sample of everything else. It is what the Good rate is measured on — random so the number is honest, and fixed per message so it never moves when new data lands.",
+  },
+  {
+    key: "everything",
+    label: "Everything",
+    blurb:
+      "Every message the bot has sent, with the old saved views as ordinary filters. Nothing here is asking to be reviewed — it is for looking something up.",
+  },
+] as const;
+
+export type LaneKey = (typeof LANES)[number]["key"];
+
+/**
+ * The count badge beside each lane. Lives here rather than in the query layer
+ * so the client-side switcher can take the type without pulling a module that
+ * imports a server-only Supabase client.
+ */
+export type LaneCounts = Record<LaneKey, number>;
+
+export const DEFAULT_LANE: LaneKey = "must_review";
+
+/** A lane from the URL, or the default. Unknown values fall back rather than 404. */
+export function resolveLane(raw: string | null | undefined): LaneKey {
+  const wanted = (raw ?? "").trim();
+  return (LANES.find((l) => l.key === wanted)?.key ?? DEFAULT_LANE) as LaneKey;
+}
+
+/** The rose chip on a Must-review row, straight from the view. */
+export type MustReviewCause =
+  | "Opted out after"
+  | "Bot stayed silent"
+  | "Low AI score"
+  | "Bot stopped after";
+
+/**
+ * The saved views from Phase 1. They are no longer a top-level control — the
+ * lane switcher took that position — but they survive as ordinary filters
+ * inside Everything, because "show me the price objections" is still a question
+ * someone asks. "Riskiest first" is dropped: it was never a filter, it is the
+ * default sort, and it is applied to every lane.
+ */
 export const SAVED_VIEWS = [
-  { key: "riskiest", label: "Riskiest first" },
+  { key: "riskiest", label: "All" },
   { key: "unreviewed", label: "Unreviewed" },
   { key: "silent", label: "Bot stayed silent" },
   { key: "optedout", label: "Opted out after" },
@@ -194,13 +312,14 @@ export type QueuePlan = {
   isNull: string[];
   lt: Array<[string, number]>;
   gte: Array<[string, string]>;
+  is: Array<[string, boolean]>;
   order: Array<{ column: string; ascending: boolean; nullsFirst?: boolean }>;
   range: [number, number];
 };
 
 export function buildQueuePlan(f: QueueFilters, now: Date = new Date()): QueuePlan {
   const plan: QueuePlan = {
-    eq: [], in: [], notNull: [], isNull: [], lt: [], gte: [],
+    eq: [], in: [], notNull: [], isNull: [], lt: [], gte: [], is: [],
     // Riskiest first is the default sort everywhere: priority ascending (1 is
     // worst), then newest. Every saved view keeps it unless it says otherwise.
     order: [
@@ -212,6 +331,21 @@ export function buildQueuePlan(f: QueueFilters, now: Date = new Date()): QueuePl
 
   const page = Math.max(1, f.page ?? 1);
   plan.range = [(page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1];
+
+  /*
+   * The lane comes first, because it decides what the other filters narrow.
+   *
+   * Must review and Spot check are WORK QUEUES: they hold only what is still
+   * open, so a dismissed message and one that already carries a review both
+   * leave. Everything is a LOOKUP, so it hides nothing — a dismissed row is
+   * still shown there, with its chip and its undo.
+   */
+  const lane = resolveLane(f.lane);
+  if (lane !== "everything") {
+    plan.eq.push(["review_lane", lane]);
+    plan.is.push(["dismissed", false]);
+    plan.eq.push(["review_count", "0"]);
+  }
 
   if (f.channel && f.channel !== "all") plan.eq.push(["channel", f.channel]);
   if (f.office && f.office !== "all") plan.eq.push(["office", f.office]);
