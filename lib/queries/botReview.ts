@@ -308,20 +308,24 @@ export async function getHeaderCounts(): Promise<{ toReview: number; reviewedPct
   const svc = lpService();
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
 
-  const unreviewed = await svc
-    .from("v_bot_review_queue")
-    .select("context_id", { count: "exact", head: true })
-    .eq("review_count", 0);
-
-  if (unreviewed.error && isMissingRelation(unreviewed.error)) {
-    return { toReview: 0, reviewedPct: null, needsMigration: true };
-  }
-
-  const [weekTotal, weekReviewed] = await Promise.all([
+  // All three are independent count-only reads of the same view. The
+  // unreviewed count used to be awaited on its own before the other two were
+  // even issued, which made the page header three serial round trips instead
+  // of one. The missing-relation check below is unchanged — it just happens
+  // after all three have settled rather than gating the other two.
+  const [unreviewed, weekTotal, weekReviewed] = await Promise.all([
+    svc
+      .from("v_bot_review_queue")
+      .select("context_id", { count: "exact", head: true })
+      .eq("review_count", 0),
     svc.from("v_bot_review_queue").select("context_id", { count: "exact", head: true }).gte("generated_at", since),
     svc.from("v_bot_review_queue").select("context_id", { count: "exact", head: true })
       .gte("generated_at", since).gt("review_count", 0),
   ]);
+
+  if (unreviewed.error && isMissingRelation(unreviewed.error)) {
+    return { toReview: 0, reviewedPct: null, needsMigration: true };
+  }
 
   const total = weekTotal.count ?? 0;
   return {
@@ -494,6 +498,38 @@ export async function getCompleted(
   const days = f.date === "today" ? 1 : f.date === "7d" ? 7 : f.date === "30d" ? 30 : 0;
   if (days > 0) q = q.gte("created_at", new Date(now.getTime() - days * 86_400_000).toISOString());
 
+  /*
+   * The reviewer dropdown lists people who have ACTUALLY reviewed, so it can
+   * never offer a name that returns nothing. Skipped entirely for a team
+   * member, who has no one to choose between.
+   *
+   * Started here rather than awaited after the page query: the two are
+   * independent, and running them in sequence put a second full round trip on
+   * the critical path of every Completed render.
+   */
+  const reviewersPromise: Promise<string[]> = forceReviewer
+    ? Promise.resolve<string[]>([])
+    : // Promise.resolve() so this is a real Promise, not PostgREST's thenable
+      // builder — the builder has no .catch().
+      Promise.resolve(
+        lpService()
+          .from("v_bot_reviews_completed")
+          .select("reviewer_email")
+          .order("reviewer_email", { ascending: true })
+          .limit(1000),
+      )
+        .then(({ data }) =>
+          [
+            ...new Set(
+              ((data ?? []) as Array<{ reviewer_email: string }>).map((r) => r.reviewer_email),
+            ),
+          ].sort(),
+        )
+        // The error paths below return before this is awaited. Without a catch
+        // a network-level failure here would surface as an unhandled rejection
+        // instead of simply an empty dropdown.
+        .catch(() => [] as string[]);
+
   const { data, error, count } = await q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
   if (error) {
@@ -501,14 +537,7 @@ export async function getCompleted(
     return { ...empty, error: error.message };
   }
 
-  // The reviewer dropdown lists people who have ACTUALLY reviewed, so it can
-  // never offer a name that returns nothing. Skipped entirely for a team member,
-  // who has no one to choose between.
-  let reviewers: string[] = [];
-  if (!forceReviewer) {
-    const all = await lpService().from("v_bot_reviews_completed").select("reviewer_email").limit(1000);
-    reviewers = [...new Set(((all.data ?? []) as Array<{ reviewer_email: string }>).map((r) => r.reviewer_email))].sort();
-  }
+  const reviewers = await reviewersPromise;
 
   return { rows: (data ?? []) as unknown as CompletedRow[], total: count ?? 0, reviewers, needsMigration: false, error: null };
 }

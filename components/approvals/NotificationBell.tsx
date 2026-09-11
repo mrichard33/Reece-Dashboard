@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { markNotificationRead } from "@/lib/actions/approvals";
+import { usePolledJson } from "@/lib/usePolledJson";
 import { relTime } from "@/lib/utils";
 import type { AppNotification } from "@/lib/supabase/types";
 
@@ -12,32 +13,32 @@ const POLL_MS = 25_000;
 export function NotificationBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [unread, setUnread] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      try {
-        const res = await fetch("/api/notifications", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { items: AppNotification[]; unread: number };
-        if (alive) {
-          setItems(data.items);
-          setUnread(data.unread);
-        }
-      } catch {
-        /* transient */
-      }
-    }
-    load();
-    const t = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
+  const polled = usePolledJson<{ items: AppNotification[]; unread: number }>(
+    "/api/notifications",
+    POLL_MS,
+  );
+
+  /*
+   * The server list is the source of truth; this set is only the rows the user
+   * has clicked since the last poll. Previously the list AND the unread count
+   * were both held in state and patched by hand on click, so a poll landing
+   * mid-interaction could resurrect a notification the user had just read. An
+   * overlay avoids that: the poll always wins on content, the overlay only ever
+   * turns `read` on, and once the server agrees the entry is redundant.
+   */
+  const [readLocally, setReadLocally] = useState<Set<string>>(new Set());
+
+  const items = useMemo(() => {
+    const rows = polled?.items ?? [];
+    return readLocally.size === 0
+      ? rows
+      : rows.map((n) => (readLocally.has(String(n.id)) ? { ...n, read: true } : n));
+  }, [polled, readLocally]);
+
+  // Derived, not tracked — one less thing that can disagree with the list.
+  const unread = useMemo(() => items.filter((n) => !n.read).length, [items]);
 
   useEffect(() => {
     if (!open) return;
@@ -50,9 +51,8 @@ export function NotificationBell() {
 
   async function openNotification(n: AppNotification) {
     if (!n.read) {
+      setReadLocally((cur) => new Set(cur).add(String(n.id)));
       await markNotificationRead(n.id);
-      setItems((cur) => cur.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
-      setUnread((u) => Math.max(0, u - 1));
     }
     setOpen(false);
     if (n.asset_id) router.push(`/approvals/${n.asset_id}`);

@@ -1,35 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ClipboardCheck } from "lucide-react";
+import { usePolledJson } from "@/lib/usePolledJson";
 
 const POLL_MS = 25_000;
 
 /** Header chip showing the count of drafts awaiting approval. Polls like the
- *  Executive Review NotificationBell (no realtime config needed). */
+ *  Executive Review NotificationBell (no realtime config needed), and pauses
+ *  while the tab is hidden. */
 export function NeedsApprovalBadge() {
-  const [count, setCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      try {
-        const res = await fetch("/api/content/needs-approval", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { count: number };
-        if (alive) setCount(data.count);
-      } catch {
-        /* transient */
-      }
-    }
-    load();
-    const t = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
+  const data = usePolledJson<{ count: number }>("/api/content/needs-approval", POLL_MS);
+  const count = data?.count ?? null;
 
   const n = count ?? 0;
   return (

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
@@ -10,6 +11,11 @@ import { ReviewWorkspace } from "@/components/bot-review/ReviewWorkspace";
 import { Scoreboard } from "@/components/bot-review/Scoreboard";
 import { CompletedTable } from "@/components/bot-review/CompletedTable";
 import { CalibrationBanner } from "@/components/bot-review/Overlays";
+import {
+  ReviewTabSkeleton,
+  TableTabSkeleton,
+  ScoreboardTabSkeleton,
+} from "@/components/bot-review/Skeletons";
 import {
   getQueue,
   getContext,
@@ -141,9 +147,28 @@ export default async function BotReviewPage({ searchParams }: { searchParams: Pr
           ))}
         </nav>
 
-        {tab === "review" && <ReviewTab ctx={ctx} sp={sp} page={page} />}
-        {tab === "completed" && <CompletedTab ctx={ctx} sp={sp} page={page} />}
-        {tab === "scoreboard" && <ScoreboardTab />}
+        {/*
+          * Keyed on the tab, not on the full query string. A key that changed
+          * with ?ctx= would drop back to the skeleton on every message click;
+          * with a stable key React keeps the previous message on screen while
+          * the next one streams, which is what makes clicking through the queue
+          * feel immediate. Switching tabs IS a new view, so that one re-keys.
+          */}
+        {tab === "review" && (
+          <Suspense key="review" fallback={<ReviewTabSkeleton />}>
+            <ReviewTab ctx={ctx} sp={sp} page={page} />
+          </Suspense>
+        )}
+        {tab === "completed" && (
+          <Suspense key="completed" fallback={<TableTabSkeleton />}>
+            <CompletedTab ctx={ctx} sp={sp} page={page} />
+          </Suspense>
+        )}
+        {tab === "scoreboard" && (
+          <Suspense key="scoreboard" fallback={<ScoreboardTabSkeleton />}>
+            <ScoreboardTab />
+          </Suspense>
+        )}
         {(tab === "compare" || tab === "fixes" || tab === "learned") && <ComingIn tab={tab} />}
       </div>
     </>
@@ -159,6 +184,17 @@ async function ReviewTab({
   sp: Search;
   page: number;
 }) {
+  /*
+   * Kick off everything that does not depend on the lane BEFORE awaiting the
+   * lane counts. Reasons and calibration were previously awaited in a
+   * Promise.all that could not start until getLaneCounts() had resolved, which
+   * put two independent round trips on the critical path for no reason. Started
+   * here they overlap with the lane counts and the queue, and are almost always
+   * already settled by the time they are awaited below.
+   */
+  const reasonsPromise = getReasons();
+  const calibrationPromise = getCalibration(ctx.email);
+
   const laneCounts = await getLaneCounts();
 
   /*
@@ -194,8 +230,8 @@ async function ReviewTab({
 
   const [queue, reasons, calibration] = await Promise.all([
     getQueue(filters),
-    getReasons(),
-    getCalibration(ctx.email),
+    reasonsPromise,
+    calibrationPromise,
   ]);
 
   if (queue.error) {
@@ -216,7 +252,20 @@ async function ReviewTab({
     ? wanted
     : (queue.rows[0]?.context_id ?? 0);
 
-  const selected = selectedId ? await getContext(selectedId) : null;
+  /*
+   * The selected row is already in hand. `selectedId` is derived from
+   * queue.rows immediately above — it is either `wanted` (checked present) or
+   * rows[0] — and getContext() selects the SAME columns from the SAME view
+   * that getQueue() just read. Fetching it again was a guaranteed-redundant
+   * round trip on every render and, worse, on every message click.
+   *
+   * The getContext() fallback is unreachable today; it stays so that a future
+   * change to how selectedId is chosen degrades to a fetch rather than to a
+   * blank panel.
+   */
+  const selected =
+    queue.rows.find((r) => r.context_id === selectedId) ??
+    (selectedId ? await getContext(selectedId) : null);
 
   // The whole conversation, not just the clicked message. A contact with no
   // GHL id cannot be shown to have other messages, so it stands alone.
