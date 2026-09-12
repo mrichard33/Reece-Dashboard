@@ -30,11 +30,19 @@
  *    indicator (rule 4).
  *  - "TODAY" plain, not the export's "TODAY — CAPACITY ALREADY SPENT"
  *    (removed at Mark's request, 2026-07-22).
- *  - stale = upstream stale flag OR 3 CONSECUTIVE proxy fetch failures
- *    (~3 min at POLL_MS). A single dropped poll used to black out the whole
- *    board; the streak tolerance keeps the last good numbers on screen through
- *    a blip and still surfaces a genuinely dead feed. Either way the poll keeps
- *    retrying — the kiosk never dies to a white screen.
+ *  - Freshness has TWO levels, derived in ./staleness.ts:
+ *      hardStale    — no data, a dead poll (3 CONSECUTIVE proxy fetch failures,
+ *                     ~3 min at POLL_MS), both halves old, or LP-MCP reporting
+ *                     sweep_state "broken". Dims the numbers, shows the overlay.
+ *      partialStale — only rep availability (the DENOMINATOR) is behind while
+ *                     the appointment counts are live. Red banner naming which
+ *                     half, numbers left legible.
+ *    The split exists because on 2026-09-12 a slow LP GetSalesSchedule froze
+ *    rep availability and the board blanked itself behind DATA STALE over
+ *    counts that were correct. A single dropped poll used to black out the
+ *    whole board too; the streak tolerance keeps the last good numbers on
+ *    screen through a blip and still surfaces a genuinely dead feed. Either way
+ *    the poll keeps retrying — the kiosk never dies to a white screen.
  *  - Each market tile carries a small numbered circle in its bottom-right corner:
  *    the LIVE Five9 dial priority (1 dials first), served as `dial_rank` on each
  *    office by LP-MCP. No badge renders when Five9 is unreadable.
@@ -43,6 +51,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SCORECARD_MARKETS } from "@/lib/scorecard/markets";
 import { mergeBoardOffices } from "@/lib/scorecard/boardOffices";
+import { deriveStaleness, type SweepState } from "./staleness";
 
 // ─── Proxy response shape (verbatim from LP-MCP /board/capacity) ─────────────
 
@@ -60,6 +69,8 @@ type BoardOffice = BoardBucket & {
   dial_rank?: number | null;
 };
 
+export type { SweepState };
+
 export type CapacityBoardResponse = {
   date: string;
   generated_at: string;
@@ -68,6 +79,17 @@ export type CapacityBoardResponse = {
   forward_days: number;
   stale: boolean;
   stale_after_ms?: number;
+  // Split freshness (LP-MCP, 2026-09-12). The board has two halves that fail
+  // independently: the DENOMINATOR (rep availability, one slow LP call away
+  // from freezing) and the NUMERATOR (appointment counts, kept current by a
+  // separate lead pass). All optional — an older LP-MCP omits them and the
+  // banner falls back to the single `stale` flag.
+  capacity_swept_at?: string | null;
+  appointments_updated_at?: string | null;
+  capacity_stale?: boolean;
+  appointments_stale?: boolean;
+  sweep_fail_streak?: number;
+  sweep_state?: SweepState;
   offices: BoardOffice[];
   unresolved: BoardBucket;
   totals: BoardBucket & { fill_pct: number | null };
@@ -280,11 +302,12 @@ export default function CapacityBoard({
   const maxOffset = data?.forward_days ?? 14;
 
   // ─── Derive view state (mirrors the export's renderVals) ──────────────────
-  // Tolerate transient poll failures: one dropped fetch is not stale data.
-  // 3 consecutive misses ≈ 3 min at POLL_MS, still well inside the server's
-  // own freshness window.
-  const POLL_FAIL_TOLERANCE = 3;
-  const stale = failStreak >= POLL_FAIL_TOLERANCE || !data || data.stale;
+  // Two-level freshness — see ./staleness.ts for why one boolean was not
+  // enough, and for the poll-failure tolerance that keeps a single dropped
+  // fetch from reading as stale data. `stale` means "show red"; `hardStale`
+  // means "the numbers cannot be trusted", the only case that dims them.
+  const freshness = deriveStaleness(data, failStreak, now);
+  const { hardStale, stale, staleLine, staleHeadline, staleDetail } = freshness;
   const relax = Math.max(0, offset - 1) * 8;
   const thOk = Math.max(45, onTrackAt - relax);
   const thCrit = Math.max(25, criticalBelow - relax);
@@ -346,12 +369,7 @@ export default function CapacityBoard({
   const dateMain = longDate(viewDate);
   const dateRel = offset === 0 ? "TODAY" : offset === 1 ? "TOMORROW" : `IN ${offset} DAYS`;
 
-  const lastSweepMs = data?.last_sweep_at ? new Date(data.last_sweep_at).getTime() : null;
-  const ageMin = lastSweepMs ? Math.max(0, Math.round((now - lastSweepMs) / 60_000)) : null;
-  const updatedTime = lastSweepMs
-    ? new Date(lastSweepMs).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: ET })
-    : "—";
-  const updatedAgo = ageMin === null ? "no sweep yet" : `${ageMin} min ago`;
+  const { updatedTime, updatedAgo } = freshness;
   const freshColor = stale ? "#fb7185" : "#34d399";
 
   // Small screens get a native responsive layout instead of a shrunken
@@ -395,11 +413,13 @@ export default function CapacityBoard({
 
         {stale && (
           <div style={{ background: "#e11d48", color: "#fff", padding: "8px 14px", fontFamily: DISPLAY, fontSize: 13, fontWeight: 700, letterSpacing: ".05em", textAlign: "center" }}>
-            DATA STALE — last update {updatedTime} ({updatedAgo})
+            {staleLine}
           </div>
         )}
 
-        <div style={{ flex: 1, padding: 14, display: "flex", flexDirection: "column", gap: 12, opacity: stale ? 0.5 : 1, filter: stale ? "grayscale(.7)" : "none" }}>
+        {/* Dimming is gated on hardStale, not stale: the partial case exists
+            precisely because the counts on display are still correct. */}
+        <div style={{ flex: 1, padding: 14, display: "flex", flexDirection: "column", gap: 12, opacity: hardStale ? 0.5 : 1, filter: hardStale ? "grayscale(.7)" : "none" }}>
           {/* Hero: gauge + hopper */}
           <div style={{ background: "#0f172a", border: `1px solid ${totalPct >= 100 ? OVERBOOK : "#1e293b"}`, borderRadius: 8, padding: 16, display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ position: "relative", width: 132, height: 132, flex: "none" }}>
@@ -571,13 +591,13 @@ export default function CapacityBoard({
         {/* ── Stale banner ── */}
         {stale && (
           <div style={{ flex: "none", background: "#e11d48", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", gap: u(16), height: u(64), fontFamily: DISPLAY, fontSize: u(24), fontWeight: 700, letterSpacing: ".06em" }}>
-            DATA STALE<span style={{ fontWeight: 500, fontSize: u(20), letterSpacing: 0, opacity: 0.85 }}>These numbers may be wrong. Check the sync.</span>
+            {staleHeadline}<span style={{ fontWeight: 500, fontSize: u(20), letterSpacing: 0, opacity: 0.85 }}>{staleDetail}</span>
           </div>
         )}
 
         {/* ── Main ── */}
         <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
-          <div style={{ position: "absolute", inset: 0, display: "flex", gap: u(26), padding: `${u(30)} ${u(44)} ${u(38)}`, opacity: stale ? 0.4 : 1, filter: stale ? "grayscale(.8)" : "none" }}>
+          <div style={{ position: "absolute", inset: 0, display: "flex", gap: u(26), padding: `${u(30)} ${u(44)} ${u(38)}`, opacity: hardStale ? 0.4 : 1, filter: hardStale ? "grayscale(.8)" : "none" }}>
             {/* Left column: total gauge + hopper */}
             <div style={{ width: u(480), flex: "none", display: "flex", flexDirection: "column", gap: u(26) }}>
               <div style={{ flex: 1, background: "#0f172a", border: `1px solid ${totalPct >= 100 ? OVERBOOK : "#1e293b"}`, borderRadius: u(8), display: "flex", flexDirection: "column", padding: `${u(26)} ${u(30)}`, minHeight: 0 }}>
@@ -734,8 +754,12 @@ export default function CapacityBoard({
             </div>
           </div>
 
-          {/* ── Stale overlay ── */}
-          {stale && (
+          {/* ── Stale overlay ──
+              hardStale ONLY. This covers the whole wall display, so firing it
+              for a stale denominator would hide live appointment counts behind
+              a warning about numbers that are right — the partial case gets
+              the red banner above and nothing more. */}
+          {hardStale && (
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: u(18), background: "rgba(2,6,23,.55)" }}>
               <div style={{ fontFamily: DISPLAY, fontSize: u(96), fontWeight: 700, letterSpacing: ".08em", color: "#fb7185", lineHeight: 1 }}>DATA STALE</div>
               <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(44), fontWeight: 600, color: "#f8fafc" }}>
