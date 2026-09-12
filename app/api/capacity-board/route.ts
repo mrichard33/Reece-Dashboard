@@ -1,4 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+// Freshness recomputation lives in lib/ so it is unit-tested directly rather
+// than through Next's request plumbing. See its header for the numerator rule.
+import { withHonestStale, type BoardPayload } from "@/lib/capacity/boardFreshness";
 
 /**
  * Same-origin proxy for the LP-MCP capacity board aggregate.
@@ -27,28 +30,6 @@ export const dynamic = "force-dynamic";
 const CACHE_TTL_MS = 30_000; // ≤30s per the handoff
 const UPSTREAM_TIMEOUT_MS = 25_000; // was 15s; LP-MCP itself answers in ~300ms
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-// Mirrors LP-MCP's own default when the payload omits stale_after_ms.
-const DEFAULT_STALE_AFTER_MS = 2_700_000; // 45 min
-
-type SweepState = "ok" | "failing" | "broken";
-
-type BoardPayload = {
-  last_sweep_at?: string | null;
-  stale?: boolean;
-  stale_after_ms?: number;
-  // Split freshness (LP-MCP, 2026-09-12). The denominator (rep availability)
-  // and the numerator (appointment counts) fail independently: a slow LP
-  // GetSalesSchedule freezes the former while the lead pass keeps the latter
-  // current. One blanket `stale` flag could not express that, so the board
-  // condemned correct numbers.
-  capacity_swept_at?: string | null;
-  appointments_updated_at?: string | null;
-  capacity_stale?: boolean;
-  appointments_stale?: boolean;
-  sweep_fail_streak?: number;
-  sweep_state?: SweepState;
-  [key: string]: unknown;
-};
 
 type CacheEntry = { at: number; status: number; body: unknown };
 const cache = new Map<string, CacheEntry>();
@@ -62,65 +43,6 @@ function baseUrl(): string {
   // origin) is the sensible default so one env var doesn't block the board.
   const base = process.env.CAPACITY_API_BASE ?? process.env.LP_MCP_URL ?? "";
   return base.trim().replace(/\/+$/, "");
-}
-
-/**
- * Re-derive freshness for a replayed payload.
- *
- * `stale` is computed by LP-MCP at response time and frozen into the body, so
- * replaying it verbatim would keep asserting stale:false forever while the
- * data quietly rotted. Recompute from last_sweep_at instead, and never clear
- * a stale flag the server already set. A missing or unparseable sweep time is
- * treated as stale — unknown freshness is not fresh.
- *
- * The split freshness fields need exactly the same treatment, for exactly the
- * same reason: a replayed `sweep_state: "ok"` would keep claiming the sweep is
- * healthy hours after it stopped. Recompute both halves; only ever escalate.
- */
-function withHonestStale(body: BoardPayload): BoardPayload {
-  const staleAfterMs =
-    typeof body.stale_after_ms === "number" ? body.stale_after_ms : DEFAULT_STALE_AFTER_MS;
-
-  const agedBeyond = (ts: string | null | undefined, limitMs: number): boolean => {
-    if (!ts) return true; // unknown freshness is not fresh
-    const parsed = Date.parse(ts);
-    return Number.isNaN(parsed) ? true : Date.now() - parsed > limitMs;
-  };
-
-  const aged = agedBeyond(body.last_sweep_at, staleAfterMs);
-
-  // Fall back to last_sweep_at when the upstream predates the split fields, so
-  // an older LP-MCP still produces a coherent banner rather than "unknown".
-  const capacityStale =
-    body.capacity_stale === true ||
-    agedBeyond(body.capacity_swept_at ?? body.last_sweep_at, staleAfterMs);
-
-  // The numerator only moves when a disposition actually changes, so a quiet
-  // hour is not a fault — it gets double the leash. Absent entirely (no
-  // appointments on this date at all) is not staleness either.
-  const appointmentsStale =
-    body.appointments_stale === true ||
-    (body.appointments_updated_at
-      ? agedBeyond(body.appointments_updated_at, staleAfterMs * 2)
-      : false);
-
-  const failStreak = typeof body.sweep_fail_streak === "number" ? body.sweep_fail_streak : 0;
-  const sweepState: SweepState =
-    body.sweep_state === "broken" || (capacityStale && appointmentsStale)
-      ? "broken"
-      : capacityStale || failStreak > 0 || body.sweep_state === "failing"
-        ? "failing"
-        : "ok";
-
-  return {
-    ...body,
-    stale: body.stale === true || aged,
-    capacity_stale: capacityStale,
-    appointments_stale: appointmentsStale,
-    sweep_state: sweepState,
-    // Diagnostic only — the board ignores unknown fields.
-    served_from: "last-known-good",
-  };
 }
 
 export async function GET(request: NextRequest) {
