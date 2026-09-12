@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { rule, recheck } from "@/lib/actions/commandCenter";
 import {
-  buttonsFor, needsReason, stripOmiPrefix, isOmi, errorMessageFor,
+  buttonsFor, suggestedButton, needsReason, verdictFor, prefillDecisionText,
+  stripOmiPrefix, isOmi, errorMessageFor,
   CARD_TYPE_LABEL, RISK_LABEL, CONFIDENCE_LABEL,
   type QueueCard, type CardButton, type RuleAction, type RuleErrorCode,
 } from "@/lib/commandCenter/rules";
@@ -70,6 +71,7 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
   const [pending, startTransition] = useTransition();
 
   const buttons = buttonsFor(card);
+  const suggested = suggestedButton(card);
   const omi = isOmi(card);
   const body = stripOmiPrefix(card.description);
 
@@ -114,11 +116,40 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
     if (b.opens === "snooze") { setStage({ kind: "snooze" }); return; }
     if (b.opens === "option") { setStage({ kind: "option" }); return; }
     if (b.opens === "approve") { setStage({ kind: "approve", action: b.action, optionKey }); return; }
+
+    // Approve files the recommendation as it stands, so everything the dialog
+    // would have collected has to travel with it. Without the text the server
+    // falls back to the card's description — the question, not the answer — and
+    // without the category every decision lands under "operations".
+    const filled: Partial<Payload> = b.fillsFromRecommendation
+      ? {
+          text: prefillDecisionText(card),
+          category: card.rec_category ?? undefined,
+          build: card.rec_build_text ? { description: card.rec_build_text } : undefined,
+        }
+      : {};
+
     if (needsReason(b.action, card.rec_verdict, optionKey)) {
-      setStage({ kind: "reason", action: b.action, payload: { option_key: optionKey } });
+      setStage({ kind: "reason", action: b.action, payload: { ...filled, option_key: optionKey } });
       return;
     }
-    send({ action: b.action, option_key: optionKey });
+    send({ action: b.action, ...filled, option_key: optionKey });
+  }
+
+  /**
+   * What the reason box should say. A rejection always needs a line even when
+   * the recommendation agreed with it, so saying "this goes a different way"
+   * there would simply be wrong.
+   */
+  function reasonPrompt(action: RuleAction, optionKey?: string | null): string {
+    const v = verdictFor(action, optionKey);
+    if (card.rec_verdict && v !== null && v !== card.rec_verdict) {
+      return `The recommendation was "${card.rec_verdict}". This goes a different way.`;
+    }
+    if (action === "reject" || action === "no") {
+      return "A rejection always needs one line on the record — even when the AI suggested it too.";
+    }
+    return "This one needs a reason on the record.";
   }
 
   /** After the Approve dialog: a reason may still be owed on top of the wording. */
@@ -197,17 +228,35 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
 
         {/* ── the buttons ────────────────────────────────────────────── */}
         {canRule ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             {buttons.map((b) => (
-              <Button
-                key={b.action + b.label}
-                variant={b.tone}
-                size="sm"
-                disabled={pending}
-                onClick={() => click(b)}
-              >
-                {b.label}
-              </Button>
+              <span key={b.id} className="inline-flex flex-col items-center gap-0.5">
+                <Button
+                  variant={b.tone}
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => click(b)}
+                  className={
+                    b.id === suggested
+                      ? "ring-2 ring-navy-600 ring-offset-1 dark:ring-slate-300 dark:ring-offset-slate-900"
+                      : undefined
+                  }
+                >
+                  {b.label}
+                </Button>
+                {/* Named as well as ringed: a ring alone is invisible to anyone
+                    who cannot pick it out against the button's own colour. */}
+                <span
+                  className={
+                    b.id === suggested
+                      ? "text-[10px] font-medium uppercase tracking-wide text-navy-700 dark:text-slate-300"
+                      : "invisible text-[10px] uppercase tracking-wide"
+                  }
+                  aria-hidden={b.id !== suggested}
+                >
+                  AI suggests
+                </span>
+              </span>
             ))}
             <button
               type="button"
@@ -278,9 +327,9 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
         pending={pending}
         title="Say why"
         prompt={
-          stage.kind === "reason" && card.rec_verdict
-            ? `The recommendation was "${card.rec_verdict}". This goes a different way.`
-            : "This one needs a reason on the record."
+          stage.kind === "reason"
+            ? reasonPrompt(stage.action, stage.payload.option_key)
+            : ""
         }
         onCancel={() => setStage({ kind: "idle" })}
         onConfirm={(reason) => {

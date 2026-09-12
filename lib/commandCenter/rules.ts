@@ -75,59 +75,145 @@ export type RecEvidence = {
   note: string;
 };
 
+/**
+ * Which button this is, independent of the action it sends. Two buttons on one
+ * card can share an action — Approve and Edit both send own_answer on a question
+ * card — so the id, not the action, is what identifies a button.
+ */
+export type ButtonId =
+  | "approve" | "edit" | "reject" | "pick"
+  | "keep_left" | "keep_right" | "not_a_conflict"
+  | "snooze" | "not_relevant";
+
 /** One button on a card: what it says, what it sends, and how it looks. */
 export type CardButton = {
+  id: ButtonId;
   action: RuleAction;
   label: string;
   /** primary = the affirmative answer; danger = the negative one; the rest are quiet. */
   tone: "primary" | "secondary" | "ghost" | "danger";
   /** The button opens a dialog before anything is sent. */
   opens?: "approve" | "snooze" | "option";
+  /**
+   * Send the recommendation's own wording, category and build straight through,
+   * with no dialog. Set on Approve only.
+   *
+   * This is not a convenience. Left off, claude_rule_apply falls back to the
+   * card's DESCRIPTION — which on a question card is the QUESTION — and files a
+   * question where the answer belongs.
+   */
+  fillsFromRecommendation?: boolean;
 };
 
-const NOT_NOW: CardButton = { action: "snooze", label: "Not now", tone: "ghost", opens: "snooze" };
-const NOT_RELEVANT: CardButton = { action: "not_relevant", label: "No longer relevant", tone: "ghost" };
+const NOT_NOW: CardButton = { id: "snooze", action: "snooze", label: "Not now", tone: "ghost", opens: "snooze" };
+const NOT_RELEVANT: CardButton = { id: "not_relevant", action: "not_relevant", label: "No longer relevant", tone: "ghost" };
+
+/** Does this card carry a recommended answer there is something to approve? */
+function hasRecText(card: Pick<QueueCard, "rec_decision_text">): boolean {
+  return String(card.rec_decision_text ?? "").trim().length > 0;
+}
 
 /**
- * The buttons a card offers. Mirrors the decisions in the Command Center
- * design: a decision or question is answered, an unconfirmed or Omi proposal is
- * approved or rejected, a conflict picks a side, an approval is yes or no.
+ * The buttons a card offers.
+ *
+ * Every card asks the same three questions — take it, change it, or turn it
+ * down — so every card leads with Approve / Edit / Reject, and the extras that
+ * only make sense for that type sit behind them.
+ *
+ * Buttons mean what they say about the ITEM, never "do what the AI said". The
+ * recommendation is a marker on whichever button matches it (suggestedButton),
+ * so agreeing is one click and disagreeing costs one sentence — but a button
+ * labelled Approve never performs a rejection.
+ *
+ * A card the nightly has not reached is still fully rulable: Approve drops off
+ * (there is no proposed answer to accept) and Edit becomes the way in.
  */
-export function buttonsFor(card: Pick<QueueCard, "card_type" | "options">): CardButton[] {
+export function buttonsFor(
+  card: Pick<QueueCard, "card_type" | "options" | "rec_decision_text">,
+): CardButton[] {
+  const rec = hasRecText(card);
+
   switch (card.card_type) {
     case "decision_needed":
     case "open_question": {
       const out: CardButton[] = [];
-      if (card.options && card.options.length > 0) {
-        out.push({ action: "pick_option", label: "Pick option", tone: "primary", opens: "option" });
+      if (rec) {
+        out.push({ id: "approve", action: "own_answer", label: "Approve", tone: "primary", fillsFromRecommendation: true });
       }
-      out.push({ action: "own_answer", label: "Write my own answer", tone: card.options?.length ? "secondary" : "primary", opens: "approve" });
+      out.push({
+        id: "edit",
+        action: "own_answer",
+        label: rec ? "Edit" : "Write my own answer",
+        tone: rec ? "secondary" : "primary",
+        opens: "approve",
+      });
+      out.push({ id: "reject", action: "reject", label: "Reject", tone: "danger" });
+      if (card.options && card.options.length > 0) {
+        out.push({ id: "pick", action: "pick_option", label: "Pick option", tone: "secondary", opens: "option" });
+      }
       out.push(NOT_NOW, NOT_RELEVANT);
       return out;
     }
+
     case "unconfirmed_decision":
       return [
-        { action: "approve", label: "Approve", tone: "primary" },
-        { action: "edit_approve", label: "Edit, then approve", tone: "secondary", opens: "approve" },
-        { action: "reject", label: "Reject", tone: "danger" },
+        // Carries the recommended wording when there is one, so Approve and an
+        // untouched Edit file the same sentence instead of two different ones.
+        { id: "approve", action: "approve", label: "Approve", tone: "primary", fillsFromRecommendation: rec },
+        { id: "edit", action: "edit_approve", label: "Edit", tone: "secondary", opens: "approve" },
+        { id: "reject", action: "reject", label: "Reject", tone: "danger" },
         NOT_NOW,
       ];
-    case "conflict":
-      return [
-        { action: "keep_left", label: "Keep left", tone: "primary" },
-        { action: "keep_right", label: "Keep right", tone: "primary" },
-        { action: "not_a_conflict", label: "Not a conflict", tone: "secondary" },
-        { action: "new_answer", label: "Write a new answer", tone: "secondary", opens: "approve" },
-      ];
+
     case "approval_needed":
       return [
-        { action: "yes", label: "Yes", tone: "primary" },
-        { action: "no", label: "No", tone: "danger" },
+        { id: "approve", action: "yes", label: "Approve", tone: "primary", fillsFromRecommendation: rec },
+        { id: "reject", action: "no", label: "Reject", tone: "danger" },
         NOT_NOW,
       ];
+
+    case "conflict":
+      // A conflict is a two-sided pick, so the affirmative is "which side", not
+      // "approve". Edit writes a third answer that replaces both.
+      return [
+        { id: "keep_left", action: "keep_left", label: "Keep left", tone: "primary" },
+        { id: "keep_right", action: "keep_right", label: "Keep right", tone: "primary" },
+        { id: "edit", action: "new_answer", label: "Edit", tone: "secondary", opens: "approve" },
+        { id: "not_a_conflict", action: "not_a_conflict", label: "Not a conflict", tone: "secondary" },
+      ];
+
     default:
       return [];
   }
+}
+
+/**
+ * Which button the recommendation points at, so the card can mark it.
+ *
+ * Matched on the VERDICT the button would produce, not on a hand-written table.
+ * That is what makes the marker safe: the marked button is by construction the
+ * one needsReason() will let through without an explanation, so "agreeing is one
+ * click" holds even if the model answers a card type in an unexpected vocabulary.
+ *
+ * Returns a button id, and null when the verdict has no button on this card type
+ * (a "not_now" on a conflict, say) or the nightly has not reached the card.
+ */
+export function suggestedButton(
+  card: Pick<QueueCard, "card_type" | "options" | "rec_decision_text" | "rec_verdict" | "rec_at">,
+): ButtonId | null {
+  if (!card.rec_at || !card.rec_verdict) return null;
+  const want = card.rec_verdict;
+
+  for (const b of buttonsFor(card)) {
+    // The option verdict carries the chosen index ("pick:2"); which option was
+    // picked is settled in the dialog, so the button matches on the prefix.
+    if (b.id === "pick") {
+      if (want.startsWith("pick:")) return "pick";
+      continue;
+    }
+    if (verdictFor(b.action) === want) return b.id;
+  }
+  return null;
 }
 
 /**
@@ -246,12 +332,20 @@ export const CATEGORIES = [
 ] as const;
 
 /**
- * What the Approve dialog should start with: the card's own words with the
- * provenance stripped, else the recommended wording.
+ * The sentence that gets filed: what Approve sends, and what the Edit dialog
+ * starts from. One function for both, so an untouched Edit saves exactly what
+ * Approve would have.
+ *
+ * The RECOMMENDATION leads, then the card's own words with the provenance
+ * stripped. That order is the whole point on a question card, where the
+ * description is the QUESTION — filing it would save a question where the answer
+ * belongs. claude_rule_apply's own fallback (decisionTextFor in memory-rule.js)
+ * prefers the description instead, which is exactly why this page always sends
+ * the text explicitly rather than letting the server default fire.
  */
 export function prefillDecisionText(card: Pick<QueueCard, "description" | "rec_decision_text">): string {
-  const stripped = stripOmiPrefix(card.description);
-  return stripped || String(card.rec_decision_text ?? "");
+  const rec = String(card.rec_decision_text ?? "").trim();
+  return rec || stripOmiPrefix(card.description);
 }
 
 /** Error codes memory_rule returns that the page has a specific answer for. */

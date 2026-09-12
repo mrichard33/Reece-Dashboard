@@ -518,6 +518,12 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "Rows in `claude_rulings_log` by `at` (LP Supabase, sql/102).",
     fix: "Zero while you have been ruling means the audit rows are not landing: check the LP MCP deploy is ACTIVE and that sql/102 section B applied.",
   },
+  "commandCenter.agreement": {
+    title: "AI agreement",
+    what: "How often the ruling matched what the AI suggested, over the last 500 rulings — with the high-confidence figure underneath, which is the one that matters. A high-confidence recommendation being wrong often is the signal that the AI is not earning its one-click Approve. A dash means there are not yet ten rulings to measure.",
+    where: "`action` against `rec_verdict` on `claude_rulings_log`, with the confidence read back off the source card. Rulings with no verdict equivalent (stage, flip, re-check, no-longer-relevant) and option picks are left out.",
+    fix: "A falling score is not a bug to fix here — it is the reason box doing its job. Read the reasons on the Decided tab: if the AI keeps missing the same way, that belongs in the prompt in `src/jobs/memory-recommend.js`.",
+  },
   "commandCenter.release2": {
     title: "Coming in Release 2",
     what: "The two lanes that are counted but not yet built: stale issues (open issues nobody has verified in a long time) and to-dos (open work items that are not rulings). Release 1 is the Rulings lane only.",
@@ -540,7 +546,7 @@ export const helpContent: Record<string, HelpEntry> = {
     title: "Suggested",
     what: "What the record supports, written by the nightly recommendation step: a verdict, two sentences of reason, and the evidence behind it. It is NEVER a ruling — nothing here closes a card or writes a decision. Confidence is capped at medium whenever money, live leads or customer messaging are at stake.",
     where: "The `rec_*` columns on the card, written by `src/jobs/memory-recommend.js` when MEMORY_RECOMMEND_MODE is live.",
-    fix: "Missing means the nightly has not reached this card, or the mode is off — hit Re-check, or set MEMORY_RECOMMEND_MODE. Disagreeing with it is normal: choose the other answer and say why in one line.",
+    fix: "Missing means the nightly has not reached this card, or the mode is off — hit Re-check, or set MEMORY_RECOMMEND_MODE. The button it points at is marked “AI suggests”, so agreeing is one click. Disagreeing is normal: choose the other answer and say why in one line.",
   },
   "commandCenter.riskBadge": {
     title: "Risk badge",

@@ -10,7 +10,7 @@ import { HeaderStats } from "@/components/command-center/HeaderStats";
 import { Filters } from "@/components/command-center/Filters";
 import { RulingCard } from "@/components/command-center/RulingCard";
 import { DecidedList } from "@/components/command-center/DecidedList";
-import { getQueue, getHeader, getDecided } from "@/lib/queries/commandCenter";
+import { getQueue, getHeader, getDecided, getAgreement } from "@/lib/queries/commandCenter";
 
 export const dynamic = "force-dynamic";
 
@@ -52,8 +52,9 @@ export default async function CommandCenterPage({
   const page = Math.max(1, Number(one(sp.page) ?? 1) || 1);
   const canRule = ctx.isAdmin;
 
-  const [header, queue, decided] = await Promise.all([
+  const [header, agreement, queue, decided] = await Promise.all([
     getHeader(),
+    getAgreement(),
     tab === "rulings"
       ? getQueue({
           area: one(sp.area),
@@ -68,7 +69,8 @@ export default async function CommandCenterPage({
 
   // PR B can merge before sql/102 is applied. Say which step is missing rather
   // than rendering an empty page that looks like there is nothing to rule.
-  const needsMigration = header.needsMigration || queue?.needsMigration || decided?.needsMigration;
+  const needsMigration =
+    header.needsMigration || agreement.needsMigration || queue?.needsMigration || decided?.needsMigration;
 
   return (
     <>
@@ -95,7 +97,7 @@ export default async function CommandCenterPage({
           </Card>
         ) : (
           <>
-            <HeaderStats stats={header} />
+            <HeaderStats stats={header} agreement={agreement} />
 
             <nav className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800">
               {TABS.map((t) => (

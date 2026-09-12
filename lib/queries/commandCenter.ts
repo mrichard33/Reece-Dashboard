@@ -1,5 +1,6 @@
 import { lpService } from "@/lib/supabase/lp";
-import type { QueueCard } from "@/lib/commandCenter/rules";
+import { verdictFor } from "@/lib/commandCenter/rules";
+import type { QueueCard, Confidence, RuleAction } from "@/lib/commandCenter/rules";
 
 /**
  * Command Center reads. Straight from LP Supabase through the service client —
@@ -271,4 +272,118 @@ export async function getDecided({ page = 1 }: { page?: number } = {}): Promise<
   });
 
   return { rows, total: count ?? 0, page: p, pageSize: PAGE_SIZE, needsMigration: false, error: null };
+}
+
+
+/** How many recent rulings the agreement score is measured over. */
+export const AGREEMENT_WINDOW = 500;
+/** Below this the percentage is noise, so the tile shows a dash instead. */
+export const AGREEMENT_MIN_SAMPLE = 10;
+
+export type AgreementBucket = { agreed: number; total: number };
+
+export type Agreement = {
+  agreed: number;
+  overridden: number;
+  total: number;
+  byConfidence: Record<Confidence, AgreementBucket>;
+  needsMigration: boolean;
+  error: string | null;
+};
+
+const EMPTY_BUCKETS = (): Record<Confidence, AgreementBucket> => ({
+  high: { agreed: 0, total: 0 },
+  medium: { agreed: 0, total: 0 },
+  low: { agreed: 0, total: 0 },
+  no_evidence: { agreed: 0, total: 0 },
+});
+
+/**
+ * How often the ruling matched the recommendation — the answer to "is the AI
+ * any good?", measured rather than asserted.
+ *
+ * claude_rulings_log stamps rec_verdict on every ruling, so agreement is that
+ * column against the verdict the chosen action produces. verdictFor() is reused
+ * rather than reimplemented in SQL: the whole comparison is only meaningful if
+ * this page, memory_rule and the recommender all mean the same thing by
+ * "approve", and there is exactly one function that decides that.
+ *
+ * Confidence is read back off the source card. A ruled card is closed, not
+ * deleted, and recommendations only ever run on OPEN cards, so the value still
+ * on the row is the one that was on screen when the ruling was made.
+ *
+ * Two kinds of row are excluded rather than guessed at:
+ *   - stage / flip / recheck / not_relevant, which verdictFor() has no verdict
+ *     for, because they are not answers to the card's question.
+ *   - pick_option, whose verdict carries the chosen index ("pick:2") and the log
+ *     has no option_key column to rebuild it from. A small slice, dropped
+ *     honestly rather than counted as a disagreement.
+ */
+export async function getAgreement(): Promise<Agreement> {
+  const empty: Agreement = {
+    agreed: 0, overridden: 0, total: 0,
+    byConfidence: EMPTY_BUCKETS(), needsMigration: false, error: null,
+  };
+
+  let sb;
+  try { sb = lpService(); } catch (err) {
+    return { ...empty, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  const { data, error } = await sb
+    .from("claude_rulings_log")
+    .select("action, target_table, target_id, rec_verdict")
+    .not("rec_verdict", "is", null)
+    .neq("action", "pick_option")
+    .order("at", { ascending: false })
+    .limit(AGREEMENT_WINDOW);
+
+  if (error) {
+    if (isMissingRelation(error)) return { ...empty, needsMigration: true };
+    return { ...empty, error: error.message };
+  }
+
+  const rows = (data ?? []).filter((r) => verdictFor(r.action as RuleAction) !== null);
+  if (rows.length === 0) return empty;
+
+  // One round-trip per source table, not one per ruling.
+  const confidenceOf = new Map<string, Confidence>();
+  for (const table of ["claude_pending_items", "claude_memory_conflicts"] as const) {
+    const ids = [...new Set(rows.filter((r) => r.target_table === table).map((r) => r.target_id))];
+    if (ids.length === 0) continue;
+    const res = await sb.from(table).select("id, rec_confidence").in("id", ids);
+    for (const c of res.data ?? []) {
+      if (c.rec_confidence) confidenceOf.set(`${table}:${c.id}`, c.rec_confidence as Confidence);
+    }
+  }
+
+  const byConfidence = EMPTY_BUCKETS();
+  let agreed = 0;
+
+  for (const r of rows) {
+    const match = verdictFor(r.action as RuleAction) === r.rec_verdict;
+    if (match) agreed += 1;
+    const conf = confidenceOf.get(`${r.target_table}:${r.target_id}`);
+    // A ruling whose card no longer carries a confidence still counts in the
+    // headline; it just cannot be filed under a band.
+    if (conf && conf in byConfidence) {
+      byConfidence[conf].total += 1;
+      if (match) byConfidence[conf].agreed += 1;
+    }
+  }
+
+  return {
+    agreed,
+    overridden: rows.length - agreed,
+    total: rows.length,
+    byConfidence,
+    needsMigration: false,
+    error: null,
+  };
+}
+
+/** A whole-number percentage, or null when there is not enough to say. */
+export function agreementPct(b: AgreementBucket | { agreed: number; total: number }): number | null {
+  if (b.total < AGREEMENT_MIN_SAMPLE) return null;
+  return Math.round((b.agreed / b.total) * 100);
 }
