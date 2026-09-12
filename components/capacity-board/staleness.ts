@@ -15,6 +15,14 @@
  *   hardStale    The board genuinely cannot be trusted — no data at all, the
  *                poll is dead, both halves are old, or LP-MCP says the sweep is
  *                broken. Dim the numbers and show the full-screen overlay.
+ *
+ * A NOTE ON THE NUMERATOR, learned the hard way. Its staleness must come from
+ * whether the pipeline RAN (appointments_checked_at), never from when the data
+ * last CHANGED (appointments_updated_at). The first cut used the latter and
+ * reported "broken" on a quiet Saturday while the sync engine was demonstrably
+ * alive — blanking the wall over correct numbers, which is the failure this
+ * whole module exists to prevent. This component only reads the server's
+ * booleans, but the distinction is why they are shaped the way they are.
  *   partialStale Only rep availability is behind. Still red, still loud, but
  *                say WHICH half and leave the live counts legible. Greying out
  *                numbers that are right is what taught everyone to ignore this.
@@ -33,7 +41,12 @@ export type StalenessInput = {
   stale?: boolean;
   capacity_swept_at?: string | null;
   last_sweep_at?: string | null;
+  /** Last CHANGE to this date's appointments. Informational only — it moves
+   *  when data changes, not when the pipeline runs, so a quiet stretch looks
+   *  identical to a dead feed. Never use it as a liveness signal. */
   appointments_updated_at?: string | null;
+  /** Last healthy numerator PASS — the actual liveness signal. */
+  appointments_checked_at?: string | null;
   capacity_stale?: boolean;
   appointments_stale?: boolean;
   sweep_fail_streak?: number;
