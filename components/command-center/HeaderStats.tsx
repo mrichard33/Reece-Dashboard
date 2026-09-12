@@ -1,21 +1,30 @@
 import { Card, CardContent } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
-import type { HeaderStats as Stats } from "@/lib/queries/commandCenter";
+import {
+  agreementPct, AGREEMENT_MIN_SAMPLE,
+  type HeaderStats as Stats, type Agreement,
+} from "@/lib/queries/commandCenter";
 
 /**
- * The four numbers across the top: what is waiting, how long the oldest one has
- * waited, and whether the pile is moving. The week-on-week line is the point —
- * a backlog of 385 only means something next to "you ruled 40 this week".
+ * The numbers across the top: what is waiting, how long the oldest one has
+ * waited, whether the pile is moving, and whether the AI is worth agreeing with.
+ * The week-on-week line is the point — a backlog of 385 only means something
+ * next to "you ruled 40 this week".
  */
-export function HeaderStats({ stats }: { stats: Stats }) {
+export function HeaderStats({ stats, agreement }: { stats: Stats; agreement: Agreement }) {
   const delta = stats.ruledThisWeek - stats.ruledLastWeek;
   const trend =
     stats.ruledLastWeek === 0 && stats.ruledThisWeek === 0
       ? "none yet"
       : `${delta >= 0 ? "+" : ""}${delta} vs last week`;
 
+  // Two rulings do not make a hit rate. Until there are enough, the tile says
+  // how far off it is rather than showing a number nobody should act on.
+  const overall = agreementPct(agreement);
+  const high = agreementPct(agreement.byConfidence.high);
+
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <Tile
         helpKey="commandCenter.rulingsOpen"
         label="Waiting on you"
@@ -33,6 +42,19 @@ export function HeaderStats({ stats }: { stats: Stats }) {
         label="Ruled this week"
         value={stats.ruledThisWeek.toLocaleString()}
         sub={trend}
+      />
+      <Tile
+        helpKey="commandCenter.agreement"
+        label="AI agreement"
+        value={overall == null ? "\u2014" : `${overall}%`}
+        sub={
+          overall == null
+            ? `${agreement.total} of ${AGREEMENT_MIN_SAMPLE} rulings needed`
+            : high == null
+              ? `over the last ${agreement.total} rulings`
+              : `high confidence: ${high}%`
+        }
+        muted={overall == null}
       />
       <Tile
         helpKey="commandCenter.release2"

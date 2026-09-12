@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buttonsFor, needsReason, verdictFor, stripOmiPrefix, isOmi,
+  buttonsFor, suggestedButton, needsReason, verdictFor, stripOmiPrefix, isOmi,
   prefillDecisionText, errorMessageFor,
   type CardType, type QueueCard, type RuleAction,
 } from "./rules";
@@ -29,38 +29,67 @@ const card = (over: Partial<QueueCard> = {}): QueueCard =>
     ...over,
   }) as QueueCard;
 
-const actions = (t: CardType, options: string[] | null = null) =>
-  buttonsFor({ card_type: t, options }).map((b) => b.action);
+/** Button ids, in order, for a card of this type. `rec` = the nightly has written an answer. */
+const ids = (t: CardType, { options = null, rec = true }: { options?: string[] | null; rec?: boolean } = {}) =>
+  buttonsFor({ card_type: t, options, rec_decision_text: rec ? "Keep 48 hours" : null }).map((b) => b.id);
+
+/** The actions those buttons send, for pinning the vocabulary the server accepts. */
+const actions = (t: CardType, { options = null, rec = true }: { options?: string[] | null; rec?: boolean } = {}) =>
+  buttonsFor({ card_type: t, options, rec_decision_text: rec ? "Keep 48 hours" : null }).map((b) => b.action);
 
 describe("card type → buttons", () => {
-  it("a decision needed with options offers Pick option first", () => {
-    expect(actions("decision_needed", ["a", "b"])).toEqual([
-      "pick_option", "own_answer", "snooze", "not_relevant",
+  it("every card type leads with approve, edit, reject — in that order", () => {
+    for (const t of ["decision_needed", "open_question", "unconfirmed_decision"] as CardType[]) {
+      expect(ids(t).slice(0, 3)).toEqual(["approve", "edit", "reject"]);
+    }
+    // An approval is a yes/no; there is no wording to edit.
+    expect(ids("approval_needed")).toEqual(["approve", "reject", "snooze"]);
+  });
+
+  it("a question card approves the recommended answer and can edit it", () => {
+    expect(actions("decision_needed")).toEqual([
+      "own_answer", "own_answer", "reject", "snooze", "not_relevant",
     ]);
   });
 
-  it("a decision needed with NO options does not offer Pick option", () => {
-    expect(actions("decision_needed")).toEqual(["own_answer", "snooze", "not_relevant"]);
+  it("with options, Pick option sits behind the three", () => {
+    expect(ids("decision_needed", { options: ["a", "b"] })).toEqual([
+      "approve", "edit", "reject", "pick", "snooze", "not_relevant",
+    ]);
+  });
+
+  it("without options there is no Pick option", () => {
+    expect(ids("decision_needed")).not.toContain("pick");
   });
 
   it("an open question gets the same set as a decision needed", () => {
-    expect(actions("open_question")).toEqual(actions("decision_needed"));
+    expect(ids("open_question")).toEqual(ids("decision_needed"));
   });
 
-  it("an unconfirmed / Omi card is approve, edit, reject, not now", () => {
+  it("no recommendation yet: Approve drops off and Edit leads", () => {
+    // There is nothing to approve until the nightly has written an answer, and
+    // a card in that state must still be rulable rather than dead.
+    const bs = buttonsFor({ card_type: "decision_needed", options: null, rec_decision_text: null });
+    expect(bs.map((b) => b.id)).toEqual(["edit", "reject", "snooze", "not_relevant"]);
+    expect(bs[0]?.label).toBe("Write my own answer");
+    expect(bs[0]?.tone).toBe("primary");
+  });
+
+  it("an unconfirmed card is approve, edit, reject, not now", () => {
     expect(actions("unconfirmed_decision")).toEqual([
       "approve", "edit_approve", "reject", "snooze",
     ]);
   });
 
-  it("a conflict picks a side, dismisses, or replaces both", () => {
-    expect(actions("conflict")).toEqual([
-      "keep_left", "keep_right", "not_a_conflict", "new_answer",
-    ]);
+  it("an approval maps approve/reject onto yes/no", () => {
+    expect(actions("approval_needed")).toEqual(["yes", "no", "snooze"]);
   });
 
-  it("an approval is yes, no, not now", () => {
-    expect(actions("approval_needed")).toEqual(["yes", "no", "snooze"]);
+  it("a conflict keeps its two sides rather than pretending to be an approval", () => {
+    expect(ids("conflict")).toEqual(["keep_left", "keep_right", "edit", "not_a_conflict"]);
+    expect(actions("conflict")).toEqual([
+      "keep_left", "keep_right", "new_answer", "not_a_conflict",
+    ]);
   });
 
   it("a conflict never offers snooze-as-not-relevant confusion", () => {
@@ -70,12 +99,101 @@ describe("card type → buttons", () => {
   });
 
   it("every button that edits wording opens a dialog first", () => {
-    const edit = buttonsFor({ card_type: "unconfirmed_decision", options: null })
-      .find((b) => b.action === "edit_approve");
-    expect(edit?.opens).toBe("approve");
-    const own = buttonsFor({ card_type: "open_question", options: null })
-      .find((b) => b.action === "own_answer");
-    expect(own?.opens).toBe("approve");
+    for (const t of ["decision_needed", "open_question", "unconfirmed_decision", "conflict"] as CardType[]) {
+      const edit = buttonsFor({ card_type: t, options: null, rec_decision_text: "x" })
+        .find((b) => b.id === "edit");
+      expect(edit?.opens).toBe("approve");
+    }
+  });
+
+  it("only Approve carries the recommendation straight through", () => {
+    for (const t of ["decision_needed", "unconfirmed_decision", "approval_needed"] as CardType[]) {
+      const filled = buttonsFor({ card_type: t, options: null, rec_decision_text: "x" })
+        .filter((b) => b.fillsFromRecommendation);
+      expect(filled.map((b) => b.id)).toEqual(["approve"]);
+    }
+  });
+
+  it("with nothing recommended, Approve never claims to fill from one", () => {
+    const bs = buttonsFor({ card_type: "unconfirmed_decision", options: null, rec_decision_text: null });
+    expect(bs.find((b) => b.id === "approve")?.fillsFromRecommendation).toBeFalsy();
+  });
+});
+
+describe("which button the recommendation points at", () => {
+  const marked = (over: Partial<QueueCard>) =>
+    suggestedButton(card({ rec_at: "2026-09-11T00:00:00Z", rec_decision_text: "Keep 48 hours", ...over }));
+
+  it("nothing is marked until the nightly has reached the card", () => {
+    expect(suggestedButton(card())).toBeNull();
+    expect(suggestedButton(card({ rec_verdict: "approve", rec_at: null }))).toBeNull();
+    expect(suggestedButton(card({ rec_verdict: null, rec_at: "2026-09-11T00:00:00Z" }))).toBeNull();
+  });
+
+  it("an answered question marks Approve", () => {
+    expect(marked({ card_type: "decision_needed", rec_verdict: "answer" })).toBe("approve");
+    expect(marked({ card_type: "open_question", rec_verdict: "answer" })).toBe("approve");
+  });
+
+  it("with no recommended wording the mark falls to Edit, which is the only way in", () => {
+    expect(marked({ card_type: "decision_needed", rec_verdict: "answer", rec_decision_text: null }))
+      .toBe("edit");
+  });
+
+  it("approve / yes mark Approve, reject / no mark Reject", () => {
+    expect(marked({ card_type: "unconfirmed_decision", rec_verdict: "approve" })).toBe("approve");
+    expect(marked({ card_type: "approval_needed", rec_verdict: "yes" })).toBe("approve");
+    expect(marked({ card_type: "unconfirmed_decision", rec_verdict: "reject" })).toBe("reject");
+    expect(marked({ card_type: "approval_needed", rec_verdict: "no" })).toBe("reject");
+  });
+
+  it("a conflict marks the side the record supports", () => {
+    expect(marked({ card_type: "conflict", rec_verdict: "keep_right" })).toBe("keep_right");
+    expect(marked({ card_type: "conflict", rec_verdict: "not_a_conflict" })).toBe("not_a_conflict");
+    expect(marked({ card_type: "conflict", rec_verdict: "new_answer" })).toBe("edit");
+  });
+
+  it("an option verdict marks Pick option, whichever option it named", () => {
+    expect(marked({ card_type: "decision_needed", options: ["a", "b"], rec_verdict: "pick:1" })).toBe("pick");
+    expect(marked({ card_type: "decision_needed", options: null, rec_verdict: "pick:1" })).toBeNull();
+  });
+
+  it("'not now' marks Not now where there is one", () => {
+    expect(marked({ card_type: "decision_needed", rec_verdict: "not_now" })).toBe("snooze");
+    // A conflict has no Not now, so nothing is marked rather than something wrong.
+    expect(marked({ card_type: "conflict", rec_verdict: "not_now" })).toBeNull();
+  });
+
+  it("a verdict this card type has no button for marks nothing", () => {
+    expect(marked({ card_type: "approval_needed", rec_verdict: "keep_left" })).toBeNull();
+  });
+
+  it("THE INVARIANT: the marked button never asks for a reason — unless it is a rejection", () => {
+    // This is what makes "agreeing is one click" true. If it ever breaks, every
+    // agreement costs a sentence and the queue stops being clearable.
+    const verdicts = [
+      "approve", "answer", "yes", "reject", "no",
+      "keep_left", "keep_right", "not_a_conflict", "new_answer", "not_now", "pick:1",
+    ];
+    const types: CardType[] = [
+      "decision_needed", "open_question", "unconfirmed_decision", "approval_needed", "conflict",
+    ];
+    for (const t of types) {
+      for (const v of verdicts) {
+        const c = card({
+          card_type: t, options: ["a", "b"], rec_verdict: v,
+          rec_at: "2026-09-11T00:00:00Z", rec_decision_text: "Keep 48 hours",
+        });
+        const id = suggestedButton(c);
+        if (!id) continue;
+        const b = buttonsFor(c).find((x) => x.id === id)!;
+        const optionKey = b.id === "pick" ? v.slice("pick:".length) : undefined;
+        const needs = needsReason(b.action, c.rec_verdict, optionKey);
+        // reject / no are the deliberate exception: a rejection is always
+        // explained, even when the AI asked for it too.
+        expect(needs).toBe(b.action === "reject" || b.action === "no");
+      }
+    }
   });
 });
 
@@ -176,14 +294,33 @@ describe("Omi provenance", () => {
     expect(isOmi(card())).toBe(false);
   });
 
-  it("the approve dialog prefills with the STRIPPED text, since that is what gets saved", () => {
+  it("prefills with the STRIPPED text, since that is what gets saved", () => {
     expect(prefillDecisionText(card({ description: "[Omi 2026-09-10] Cut the retainer" })))
       .toBe("Cut the retainer");
   });
 
-  it("falls back to the recommended wording when the card has no description", () => {
+  it("falls back to the card's own words when nothing was recommended", () => {
+    expect(prefillDecisionText(card({ description: "Cut the retainer", rec_decision_text: null })))
+      .toBe("Cut the retainer");
     expect(prefillDecisionText(card({ description: "", rec_decision_text: "Keep 48 hours" })))
       .toBe("Keep 48 hours");
+  });
+
+  it("THE RECOMMENDED ANSWER WINS over the description", () => {
+    // On a question card the description is the QUESTION. Filing it would save
+    // "what should the confirmation window be?" as the decision. This ordering
+    // deliberately differs from decisionTextFor() in memory-rule.js, which is
+    // why the page always sends text explicitly instead of letting the server
+    // fall back.
+    expect(prefillDecisionText(card({
+      description: "What should the confirmation window be?",
+      rec_decision_text: "Keep 48 hours",
+    }))).toBe("Keep 48 hours");
+  });
+
+  it("whitespace is not an answer", () => {
+    expect(prefillDecisionText(card({ description: "Cut the retainer", rec_decision_text: "   " })))
+      .toBe("Cut the retainer");
   });
 });
 
