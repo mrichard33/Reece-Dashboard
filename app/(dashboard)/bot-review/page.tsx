@@ -65,9 +65,9 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
  *   operator  → every tab. Admin adds the approval actions (Phase 2+).
  * LP MCP re-checks all of it on every write. Hiding a tab is the courtesy.
  *
- * Phase 1 ships Review and the basic Scoreboard. "What the bot has learned" is
- * now the prompt editor — the live nurture prompts, editable as drafts and
- * promoted deliberately. Compare and Fixes remain Phase 2–3 and render a short
+ * Phase 1 ships Review and the basic Scoreboard. "Bot prompts" is the live
+ * prompt editor — the nurture prompts, editable as drafts and promoted
+ * deliberately. Compare and Fixes remain Phase 2–3 and render a short
  * note saying which phase builds them, rather than an empty tab that reads as
  * broken — the same choice the Command Center made for its Stale-issue lane.
  */
@@ -446,7 +446,7 @@ async function ScoreboardTab() {
 }
 
 /**
- * What the bot has learned — the live prompt editor.
+ * Bot prompts — the live prompt editor.
  *
  * These are the instructions the nurture generator actually runs. LP MCP reads
  * them fresh on every message, so an activation here is in front of a customer

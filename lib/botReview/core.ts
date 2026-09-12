@@ -35,7 +35,12 @@ export const TABS = [
   { key: "completed", label: "Completed" },
   { key: "compare", label: "Compare" },
   { key: "fixes", label: "Fixes" },
-  { key: "learned", label: "What the bot has learned" },
+  // The key stays "learned" so existing ?tab=learned links keep working;
+  // only the label changed. "What the bot has learned" came from the Phase 2
+  // plan, when this tab was going to be a read-only record of approved
+  // lessons. It is now the live prompt editor, and the old name sent people
+  // looking under Settings for it.
+  { key: "learned", label: "Bot prompts" },
   { key: "scoreboard", label: "Scoreboard" },
 ] as const;
 
