@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { lpService } from "@/lib/supabase/lp";
 import { verdictFor } from "@/lib/commandCenter/rules";
 import type { QueueCard, Confidence, RuleAction } from "@/lib/commandCenter/rules";
@@ -319,7 +320,16 @@ const EMPTY_BUCKETS = (): Record<Confidence, AgreementBucket> => ({
  *     has no option_key column to rebuild it from. A small slice, dropped
  *     honestly rather than counted as a disagreement.
  */
-export async function getAgreement(): Promise<Agreement> {
+export const getAgreement = unstable_cache(
+  getAgreementUncached,
+  ["command-center-agreement"],
+  // On the critical path of every page render, including the one right after a
+  // ruling. The answer cannot move between two clicks by enough to matter, and
+  // a stale-by-30s hit rate is worth more than a fresh one nobody waited for.
+  { revalidate: 30, tags: ["command-center-agreement"] },
+);
+
+async function getAgreementUncached(): Promise<Agreement> {
   const empty: Agreement = {
     agreed: 0, overridden: 0, total: 0,
     byConfidence: EMPTY_BUCKETS(), needsMigration: false, error: null,
