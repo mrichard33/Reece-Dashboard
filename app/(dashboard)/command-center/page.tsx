@@ -10,7 +10,10 @@ import { HeaderStats } from "@/components/command-center/HeaderStats";
 import { Filters } from "@/components/command-center/Filters";
 import { RulingCard } from "@/components/command-center/RulingCard";
 import { DecidedList } from "@/components/command-center/DecidedList";
+import { ChangeCard } from "@/components/command-center/ChangeCard";
+import { CHANGE_FILTERS } from "@/components/command-center/changeMeta";
 import { getQueue, getHeader, getDecided, getAgreement } from "@/lib/queries/commandCenter";
+import { getChanges } from "@/lib/queries/changes";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +24,7 @@ const TABS = [
   { key: "rulings", label: "Rulings" },
   { key: "decided", label: "Decided" },
   { key: "stale", label: "Stale issues" },
-  { key: "todos", label: "To-dos" },
+  { key: "changes", label: "Changes" },
 ] as const;
 
 /**
@@ -52,7 +55,7 @@ export default async function CommandCenterPage({
   const page = Math.max(1, Number(one(sp.page) ?? 1) || 1);
   const canRule = ctx.isAdmin;
 
-  const [header, agreement, queue, decided] = await Promise.all([
+  const [header, agreement, queue, decided, changes] = await Promise.all([
     getHeader(),
     getAgreement(),
     tab === "rulings"
@@ -65,12 +68,18 @@ export default async function CommandCenterPage({
         })
       : Promise.resolve(null),
     tab === "decided" ? getDecided({ page }) : Promise.resolve(null),
+    tab === "changes"
+      ? getChanges({ status: one(sp.status) ?? "open", lane: one(sp.lane), page })
+      : Promise.resolve(null),
   ]);
 
   // PR B can merge before sql/102 is applied. Say which step is missing rather
   // than rendering an empty page that looks like there is nothing to rule.
   const needsMigration =
     header.needsMigration || agreement.needsMigration || queue?.needsMigration || decided?.needsMigration;
+  // The Changes lane has its own migration (0020) and its own answer, so a
+  // missing table there must not blank the lanes that ARE applied.
+  const changesNeedMigration = changes?.needsMigration ?? false;
 
   return (
     <>
@@ -142,13 +151,8 @@ export default async function CommandCenterPage({
               />
             ) : null}
 
-            {tab === "todos" ? (
-              <ComingSoon
-                helpKey="commandCenter.todoLane"
-                title="To-dos"
-                count={header.todosOpen}
-                blurb="Open work items that are not rulings — builds, actions, verifications. Counting them now; working them comes in Release 2."
-              />
+            {tab === "changes" && changes ? (
+              <ChangesTab result={changes} canEdit={canRule} needsMigration={changesNeedMigration} />
             ) : null}
           </>
         )}
@@ -181,6 +185,76 @@ function RulingsTab({
       )}
 
       <Pager page={queue.page} total={queue.total} pageSize={queue.pageSize} tab="rulings" />
+    </section>
+  );
+}
+
+/**
+ * The Changes lane — what was approved, and how far it has got.
+ *
+ * This is the To-dos tab finally built. It was counted but never rendered, which
+ * is the same shape as the bug underneath it: build_needed items have been
+ * written since March and read by nothing.
+ */
+function ChangesTab({
+  result, canEdit, needsMigration,
+}: {
+  result: NonNullable<Awaited<ReturnType<typeof getChanges>>>;
+  canEdit: boolean;
+  needsMigration: boolean;
+}) {
+  if (needsMigration) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <h2 className="text-sm font-semibold text-navy-900 dark:text-slate-100">
+            The Changes lane needs migration 0020
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            Apply
+            <code className="mx-1 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">db/migrations/0020_command_center_changes.sql</code>
+            in the LP Supabase SQL editor and reload. It creates the table and backfills
+            the build items that have been filed but never shown.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <section className="space-y-4">
+      <nav className="flex flex-wrap gap-1.5">
+        {CHANGE_FILTERS.map((f) => {
+          const n = result.counts[f.key || "all"] ?? (f.key ? result.counts[f.key] : undefined);
+          const href = (f.key ? `/command-center?tab=changes&status=${f.key}` : "/command-center?tab=changes&status=") as Route;
+          return (
+            <Link
+              key={f.key || "all"}
+              href={href}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {f.label}
+              {typeof n === "number" ? <span className="ml-1 text-slate-400">{n}</span> : null}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {result.error ? <ErrBanner msg={result.error} /> : null}
+
+      {result.rows.length === 0 ? (
+        <p className="rounded-md bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+          Nothing here. Either this filter is empty, or every change has been dealt with.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {result.rows.map((c) => (
+            <ChangeCard key={c.id} change={c} canEdit={canEdit} />
+          ))}
+        </div>
+      )}
+
+      <Pager page={result.page} total={result.total} pageSize={result.pageSize} tab="changes" />
     </section>
   );
 }
