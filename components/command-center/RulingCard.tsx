@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, Mic, Lock } from "lucide-react";
+import { RefreshCw, Mic, Lock, Check, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Working } from "@/components/ui/Working";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { rule, recheck } from "@/lib/actions/commandCenter";
 import {
@@ -67,11 +68,26 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
   const router = useRouter();
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  /**
+   * Which button is in flight. One transition drives the whole card, so without
+   * this every button spins at once and the card looks like it is doing four
+   * things. Mirrors the busy-key pattern in components/content/PostReview.tsx.
+   */
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  /**
+   * The ruling landed. The card collapses to one line THE MOMENT the server says
+   * ok, rather than waiting for router.refresh() to re-render the whole page and
+   * drop it from the queue. The refresh still runs — it just runs behind this,
+   * where nobody is watching it. That wait is the entire reason ruling a card
+   * used to feel frozen.
+   */
+  const [settled, setSettled] = useState<string | null>(null);
 
   const buttons = buttonsFor(card);
   const suggested = suggestedButton(card);
+  /** Is THIS button the one in flight? */
+  const busy = (key: string) => pending && activeKey === key;
   const omi = isOmi(card);
   const body = stripOmiPrefix(card.description);
 
@@ -95,10 +111,12 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
 
       if (res.ok) {
         setStage({ kind: "idle" });
-        setDone("Saved.");
+        setActiveKey(null);
+        setSettled(labelFor(payload.action));
         router.refresh();
         return;
       }
+      setActiveKey(null);
       // The guard is a question — ask it rather than reporting a failure.
       if (res.code === "guard_conflict" && res.match) {
         setStage({ kind: "guard", match: res.match, payload });
@@ -107,6 +125,8 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
       const { text, reload } = errorMessageFor(res.code as RuleErrorCode, res.message ?? res.error);
       setError(text);
       setStage({ kind: "idle" });
+      // A failed ruling leaves the card exactly as it was, open and re-rulable —
+      // losing the context you just read would be worse than the failure.
       if (reload) setTimeout(() => router.refresh(), 1200);
     });
   }
@@ -133,6 +153,7 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
       setStage({ kind: "reason", action: b.action, payload: { ...filled, option_key: optionKey } });
       return;
     }
+    setActiveKey(b.id);
     send({ action: b.action, ...filled, option_key: optionKey });
   }
 
@@ -162,6 +183,18 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
       return;
     }
     send({ action, ...payload });
+  }
+
+  // Ruled. One quiet line where the card was, until the refresh removes it.
+  if (settled) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-2 px-5 py-3">
+          <Check className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+          <span className="text-sm text-slate-600 dark:text-slate-300">{settled}</span>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -242,6 +275,9 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
                       : undefined
                   }
                 >
+                  {busy(b.id) ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  ) : null}
                   {b.label}
                 </Button>
                 {/* Named as well as ringed: a ring alone is invisible to anyone
@@ -261,16 +297,19 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
             <button
               type="button"
               disabled={pending}
-              onClick={() =>
+              onClick={() => {
+                setActiveKey("recheck");
                 startTransition(async () => {
                   const res = await recheck(card.source_table, card.source_id);
+                  setActiveKey(null);
                   if (!res.ok) setError(errorMessageFor(res.code as RuleErrorCode, res.message).text);
                   else router.refresh();
-                })
-              }
+                });
+              }}
               className="ml-auto inline-flex items-center gap-1 text-xs text-slate-500 underline hover:text-slate-800 disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-200"
             >
-              <RefreshCw className="h-3 w-3" aria-hidden /> Re-check
+              <RefreshCw className={busy("recheck") ? "h-3 w-3 animate-spin" : "h-3 w-3"} aria-hidden />
+              {busy("recheck") ? "Re-checking…" : "Re-check"}
             </button>
           </div>
         ) : (
@@ -279,13 +318,15 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
           </p>
         )}
 
+        {/* A ruling sent from a dialog has no button left on screen to spin, and
+            the duplicate-decision guard makes an approve take a second or two —
+            so the card itself reports the wait. */}
+        {pending && activeKey === null ? <Working label="Saving this ruling" /> : null}
+
         {error ? (
           <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
             {error}
           </p>
-        ) : null}
-        {done ? (
-          <p className="text-sm text-emerald-700 dark:text-emerald-400">{done}</p>
         ) : null}
       </CardContent>
 
@@ -354,6 +395,25 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
       />
     </Card>
   );
+}
+
+/**
+ * What the settled line says once a ruling lands. Past tense and plain, because
+ * it is the only confirmation you get before the card disappears.
+ */
+function labelFor(action: RuleAction): string {
+  switch (action) {
+    case "approve": case "edit_approve": return "Approved.";
+    case "own_answer": case "new_answer": case "pick_option": return "Answer saved.";
+    case "yes": return "Approved.";
+    case "reject": case "no": return "Rejected.";
+    case "keep_left": return "Kept the left one.";
+    case "keep_right": return "Kept the right one.";
+    case "not_a_conflict": return "Marked not a conflict.";
+    case "snooze": return "Snoozed.";
+    case "not_relevant": return "Marked no longer relevant.";
+    default: return "Saved.";
+  }
 }
 
 /** One side of a conflict, with the provenance that decides which one wins. */
