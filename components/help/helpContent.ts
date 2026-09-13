@@ -525,10 +525,16 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "A falling score is not a bug to fix here — it is the reason box doing its job. Read the reasons on the Decided tab: if the AI keeps missing the same way, that belongs in the prompt in `src/jobs/memory-recommend.js`.",
   },
   "commandCenter.release2": {
-    title: "Coming in Release 2",
-    what: "The two lanes that are counted but not yet built: stale issues (open issues nobody has verified in a long time) and to-dos (open work items that are not rulings). Release 1 is the Rulings lane only.",
-    where: "`claude_known_issues` where stale, and `claude_pending_items` open/blocked outside the four ruling types.",
-    fix: "Nothing to do here yet. These become workable lanes in Release 2.",
+    title: "Stale issues",
+    what: "Open issues nobody has verified in a long time. Counted, but there is no lane for working them yet — the to-do half of this tile became the Changes lane.",
+    where: "`claude_known_issues` where stale is true and status is open or in_progress.",
+    fix: "Nothing to do here yet. A rising number means issues are being filed and then never confirmed either way.",
+  },
+  "commandCenter.changesLane": {
+    title: "Changes",
+    what: "What was approved and how far it has got: proposed, approved, testing, ready to merge, deployed, failed, rolled back. Status is computed from facts (a PR number, a CI result, a merge) by a database trigger — nothing sets it by hand, so the badge cannot drift from reality.",
+    where: "`claude_changes` (migration 0020), backfilled from `claude_pending_items` where item_type is build_needed.",
+    fix: "Most rows have no decision behind them: they were captured during working sessions, not filed by a ruling, and the card says so. Set the lane before generating a prompt — code, agent rules and GHL workflows are different jobs and produce different instructions.",
   },
   "commandCenter.staleLane": {
     title: "Stale issues",

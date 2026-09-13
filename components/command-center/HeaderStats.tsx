@@ -56,11 +56,13 @@ export function HeaderStats({ stats, agreement }: { stats: Stats; agreement: Agr
         }
         muted={overall == null}
       />
+      {/* The to-do half of this tile is now the Changes lane, so it no longer
+          belongs in "coming soon". Stale issues are the one lane still unbuilt. */}
       <Tile
         helpKey="commandCenter.release2"
-        label="Coming in Release 2"
-        value={`${stats.staleIssuesOpen} / ${stats.todosOpen}`}
-        sub="stale issues / to-dos"
+        label="Stale issues"
+        value={stats.staleIssuesOpen.toLocaleString()}
+        sub="open, unverified for a long time — lane not built yet"
         muted
       />
     </div>

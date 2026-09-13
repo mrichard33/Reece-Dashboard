@@ -1,0 +1,45 @@
+name: CI
+# Every check a contributor runs before pushing, run again on the PR.
+#
+# Until this file the repo had no CI at all — one daily-backup cron and
+# nothing on pull requests. 880 tests, a typecheck and a production build
+# existed and ran nowhere but on a laptop, so a PR could be merged green
+# having proved nothing.
+#
+# No secrets and no network beyond the npm registry: every page is
+# force-dynamic, so `next build` compiles without Supabase or MCP config.
+#
+# Mark these checks "required" in branch protection ONLY after they have
+# gone green on at least one PR. If one ever goes red, fix the code or the
+# test — never skip, quarantine, or add continue-on-error. A suppressed
+# failure is worse than no check, because it reads as green.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Ordered cheapest-first so an obvious break reports in seconds rather
+      # than after a full build. None short-circuit the others.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
