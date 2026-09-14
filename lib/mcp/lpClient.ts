@@ -67,6 +67,17 @@ export const lpMcp = {
       args: { ...args, via: "dashboard", confirm: true },
       timeoutMs: 30_000,
     }),
+  /**
+   * A batch pass (sql/112). Same tool, same door — the only difference is the
+   * clock: 50 cards is 50 row updates and 51 log inserts inside one
+   * transaction. Timing out mid-transaction rolls the whole pass back safely,
+   * but leaves the person not knowing that, so the budget is doubled.
+   */
+  ruleBatch: (args: Record<string, unknown>) =>
+    client.call<RuleResult>("memory_rule", {
+      args: { ...args, via: "dashboard", confirm: true },
+      timeoutMs: 60_000,
+    }),
 };
 
 /**
@@ -83,6 +94,11 @@ export type RuleResult =
       build_item_id?: number;
       rollback_item_id?: number;
       rec?: Record<string, unknown>;
+      /** Batch passes and single lane rulings (sql/112). */
+      batch_id?: string;
+      applied?: number;
+      reversed?: number;
+      summary?: string;
     }
   | {
       ok: false;

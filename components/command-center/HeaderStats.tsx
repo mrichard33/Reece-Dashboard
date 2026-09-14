@@ -24,7 +24,7 @@ export function HeaderStats({ stats, agreement }: { stats: Stats; agreement: Agr
   const high = agreementPct(agreement.byConfidence.high);
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <Tile
         helpKey="commandCenter.rulingsOpen"
         label="Waiting on you"
@@ -56,14 +56,21 @@ export function HeaderStats({ stats, agreement }: { stats: Stats; agreement: Agr
         }
         muted={overall == null}
       />
-      {/* The to-do half of this tile is now the Changes lane, so it no longer
-          belongs in "coming soon". Stale issues are the one lane still unbuilt. */}
+      {/* Both lanes are live as of sql/112, so neither is muted any more. The
+          numbers are read from the queue view itself rather than from the
+          tables underneath, so a tile can never disagree with the lane it
+          points at. */}
       <Tile
-        helpKey="commandCenter.release2"
+        helpKey="commandCenter.staleLane"
         label="Stale issues"
         value={stats.staleIssuesOpen.toLocaleString()}
-        sub="open, unverified for a long time — lane not built yet"
-        muted
+        sub="open, unverified for a long time"
+      />
+      <Tile
+        helpKey="commandCenter.todoLane"
+        label="To-dos"
+        value={stats.todosOpen.toLocaleString()}
+        sub="open work that isn't a decision"
       />
     </div>
   );

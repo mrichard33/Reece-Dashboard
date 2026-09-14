@@ -499,7 +499,7 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "Use the status tally to decide whether any 'other pending' status belongs in `SCORECARD_WORKING_STATUSES`, then re-run the scorecard. When figures match the Reece export, add the market to `SCORECARD_RECONCILED_MARKETS` to clear the PROVISIONAL banner.",
   },
 
-  // ── /command-center · Release 1 (Rulings lane) ──────────────────────
+  // ── /command-center · Rulings, Stale issues and To-dos ─────────────────
   "commandCenter.rulingsOpen": {
     title: "Waiting on you",
     what: "Everything in memory that needs a ruling: open or blocked pending items of the four ruling types (decision needed, unconfirmed, open question, approval needed), plus open conflicts where two memory rows disagree. Snoozed cards are not counted until their date comes round.",
@@ -524,12 +524,6 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "`action` against `rec_verdict` on `claude_rulings_log`, with the confidence read back off the source card. Rulings with no verdict equivalent (stage, flip, re-check, no-longer-relevant) and option picks are left out.",
     fix: "A falling score is not a bug to fix here — it is the reason box doing its job. Read the reasons on the Decided tab: if the AI keeps missing the same way, that belongs in the prompt in `src/jobs/memory-recommend.js`.",
   },
-  "commandCenter.release2": {
-    title: "Stale issues",
-    what: "Open issues nobody has verified in a long time. Counted, but there is no lane for working them yet — the to-do half of this tile became the Changes lane.",
-    where: "`claude_known_issues` where stale is true and status is open or in_progress.",
-    fix: "Nothing to do here yet. A rising number means issues are being filed and then never confirmed either way.",
-  },
   "commandCenter.changesLane": {
     title: "Changes",
     what: "What was approved and how far it has got: proposed, approved, testing, ready to merge, deployed, failed, rolled back. Status is computed from facts (a PR number, a CI result, a merge) by a database trigger — nothing sets it by hand, so the badge cannot drift from reality.",
@@ -538,15 +532,39 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "commandCenter.staleLane": {
     title: "Stale issues",
-    what: "Open issues with no verification in 60+ days and no activity in 60+ days — the nightly job flags them. Counted here so the number is visible; ruling on them comes in Release 2.",
-    where: "`claude_known_issues` where `status` is open/in_progress and `stale` is true.",
-    fix: "For now, verify one in chat with memory_checkpoint's `verified_issues` — that clears the stale flag.",
+    what: "Open issues with no verification in 60+ days and no activity in 60+ days — the nightly job flags them. The lane asks one question about each: is this still broken? \"Still broken\" re-starts the clock and closes nothing, which is why it is the safe answer when you do not know. \"Fixed\" is the only one that needs a link.",
+    where: "`v_command_center_queue` where lane is 'stale' — `claude_known_issues` open or in_progress, `stale` true, and not snoozed.",
+    fix: "Rule them here, one at a time or in a pass. If the number never falls, check MEMORY_RECOMMEND_MODE: a lane with no recommendations has no passes, so everything has to be clicked one by one.",
   },
   "commandCenter.todoLane": {
     title: "To-dos",
-    what: "Open work items that are not rulings: builds, actions, verifications. Includes anything a ruling filed as 'needs building', and any ROLL BACK item a flip created.",
-    where: "`claude_pending_items` open/blocked, excluding the four ruling item types.",
-    fix: "Work them in chat for now. A ROLL BACK item means a built decision was flipped and the build still needs undoing — those are worth doing first.",
+    what: "Every open work item that is not a decision: builds, actions, verifications, next steps — including anything a ruling filed as 'needs building', any ROLL BACK item a flip created, and the 654 rows whose item_type was a one-off or missing altogether. Those were invisible until this lane existed.",
+    where: "`v_command_center_queue` where lane is 'todos' — `claude_pending_items` open or blocked, minus the four ruling types, and not snoozed. The type badge is `claude_item_type_norm`, which is display only: the stored value is left exactly as the session that filed it wrote it.",
+    fix: "Done / Drop / Keep / Assign. Keep snoozes for 30 days and closes nothing, so it is the honest answer for anything still real. A ROLL BACK item means a built decision was flipped and the build still needs undoing — do those first.",
+  },
+  "commandCenter.batchPass": {
+    title: "Ready to clear together",
+    what: "Cards the nightly is confident about AND gave the same reason for, so they can be ruled in one click. Everything in a group is listed with its own evidence and its own checkbox — the group is a shortcut, not a shortcut past reading.",
+    where: "`v_command_center_queue` rows with `rec_confidence` = high, grouped by `rec_group_key`. One pass is one transaction with one batch_id in `claude_rulings_log`.",
+    fix: "No groups showing means no high-confidence recommendations on this lane — run /admin/memory/recommend, or check MEMORY_RECOMMEND_MODE. Medium-confidence cards are never grouped on purpose: unsure work gets looked at one card at a time.",
+  },
+  "commandCenter.batchGroup": {
+    title: "One group",
+    what: "Every card here shares the reason in the heading. Boxes start checked because that is what the group means; unchecking one leaves it for the one-at-a-time list below. A pass rules at most 50 at once — about as many lines as anyone actually reads before clicking.",
+    where: "Applied through memory_rule's batch_apply → `claude_rule_batch`, which writes one log row per card plus a summary row, all sharing a batch_id.",
+    fix: "Refused? The reason is on the button. A pass drops the WHOLE group if any card changed since the screen loaded — reload and check it again. Anything it will not take can still be ruled on its own.",
+  },
+  "commandCenter.batchUndo": {
+    title: "Undo a pass",
+    what: "Puts every card in that pass back exactly as it was, and writes a reversing row for each, so the history shows both what happened and that it was taken back.",
+    where: "`claude_rule_batch_undo`, which validates the whole batch before it touches a row — a half-undone pass cannot exist.",
+    fix: "Refused with \"changed since\"? Somebody has ruled on one of those cards in the meantime, and their ruling is not ours to overwrite. The message names the card — fix that one by hand and leave the rest as they are.",
+  },
+  "commandCenter.inOmiBadge": {
+    title: "In Omi",
+    what: "This to-do is also a task on Mark's Omi Tasks page, so ticking it off here is not the only place it lives. Write-back put it there — the Reece row and the Omi task are the same thing.",
+    where: "`claude_pending_items.omi_action_item_id`, set the moment Omi accepted the task.",
+    fix: "Nothing. That id is also the loop guard: it is what stops the puller reading our own task back in as a brand-new to-do every fifteen minutes.",
   },
   "commandCenter.recommendation": {
     title: "Suggested",
