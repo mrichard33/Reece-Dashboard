@@ -243,17 +243,29 @@ export function ReviewWorkspace({
     router.refresh();
   }
 
-  async function onConfirmDismiss(reason: string) {
-    if (!selected || !dismissScope) return;
+  /**
+   * Setting something aside — the one code path for both ways in.
+   *
+   * Skip (the button under the verdicts, and the S key) comes here directly
+   * with a default reason and no modal: a reviewer pressing S to move on is
+   * not going to stop and fill in a dialog, and a prompt is what would push
+   * them back to scoring things they have nothing to say about. The
+   * conversation-scope dismissal still goes through its confirm, because its
+   * blast radius is every message to this lead.
+   *
+   * Either way this writes bot_review_dismissals and NOTHING else — no
+   * bot_feedback row, so the Good rate and the reviewer counts do not move.
+   */
+  async function runDismiss(scope: "message" | "conversation", reason: string) {
+    if (!selected || dismissBusy) return;
     setDismissBusy(true);
     const res = await dismissFromReview({
-      scope: dismissScope,
+      scope,
       contextId: selected.context_id,
       contactId: selected.ghl_contact_id,
       reason,
     });
     setDismissBusy(false);
-    const scope = dismissScope;
     setDismissScope(null);
     if (!res.ok) {
       setErrorMsg(res.error ?? "Could not set this aside.");
@@ -270,12 +282,21 @@ export function ReviewWorkspace({
     setDismissedIds((s) => new Set([...s, ...gone]));
 
     setToast({
-      message: scope === "message" ? "Message set aside" : "Conversation set aside",
+      message: scope === "message" ? "Message skipped" : "Conversation set aside",
       detail: "It has left the queue for everyone. Undo it from the Completed tab.",
       id: null,
     });
     advance(selected.context_id);
     router.refresh();
+  }
+
+  function onConfirmDismiss(reason: string) {
+    if (!dismissScope) return;
+    void runDismiss(dismissScope, reason);
+  }
+
+  function onSkipMessage() {
+    void runDismiss("message", "Skipped by reviewer");
   }
 
   const leadLabel = selected ? contactLabel(selected) : "Lead";
@@ -377,10 +398,12 @@ export function ReviewWorkspace({
             canDismissConversation={Boolean(selected.ghl_contact_id)}
             canRemoveReview={canRemoveReview && myFeedback != null}
             onSubmit={onSubmit}
-            onSkip={() => advance(selected.context_id)}
+            onSkipMessage={onSkipMessage}
             onDismiss={(scope) => setDismissScope(scope)}
             onRetract={() => setRetractOpen(true)}
-            submitting={submitting}
+            // The panel locks while a skip is in flight, which is also what
+            // stops a held-down S from firing a second dismissal.
+            submitting={submitting || dismissBusy}
           />
         </div>
       )}
