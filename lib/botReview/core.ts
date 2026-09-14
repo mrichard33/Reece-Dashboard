@@ -609,6 +609,21 @@ function normText(s: string | null | undefined): string {
 }
 
 /**
+ * An instant, in epoch milliseconds — or null when there isn't one.
+ *
+ * 2026-09-14: the timeline used to sort with localeCompare on the raw strings,
+ * which is only correct when every value is the same ISO shape with the same
+ * offset. Snapshot turns and queue rows are written by different sources, so
+ * "2026-09-11T19:36:00Z" and "2026-09-11 15:36:00-04:00" — the same instant —
+ * sorted hours apart and the conversation read as nonsense.
+ */
+function epoch(at: string | null | undefined): number | null {
+  if (!at) return null;
+  const ms = Date.parse(at);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
  * One timeline for a whole conversation.
  *
  * Each message carries its own snapshot of the thread AS THE BOT SAW IT, so
@@ -626,30 +641,74 @@ export function buildTimeline(
   rows: Array<{ context_id: number; reply_text?: string | null; sent_at?: string | null; generated_at: string }>,
   snapshots: Map<number, SnapshotTurn[]>,
 ): TimelineItem[] {
-  const messages: TimelineMessage[] = rows.map((r) => ({
-    kind: "message",
-    key: `m:${r.context_id}`,
-    at: r.sent_at ?? r.generated_at,
-    contextId: r.context_id,
-  }));
+  /*
+   * Ordering runs on four numeric keys, never on the item itself, so the
+   * exported TimelineTurn / TimelineMessage shapes stay what the renderer
+   * needs and nothing more:
+   *
+   *   at     — the instant, in epoch ms. The real sort.
+   *   anchor — the instant of the message this item belongs to.
+   *   slot   — turns (0) before messages (1) on an equal instant, because
+   *            every turn in a snapshot happened BEFORE the message that
+   *            captured it.
+   *   order  — position within the snapshot, or within `rows` for a message.
+   *
+   * Every tier is a number, so the comparison is total: a turn and its message
+   * cannot swap between renders.
+   */
+  type Entry = { item: TimelineItem; at: number; anchor: number; slot: 0 | 1; order: number };
+  const entries: Entry[] = [];
+
+  /*
+   * An unparseable message time falls back to the previous message's instant
+   * rather than to zero: `rows` arrive oldest-first, so that keeps a bad value
+   * next to its neighbours instead of throwing it to the top of the thread.
+   */
+  const anchors = new Map<number, number>();
+  let lastKnown = 0;
+  rows.forEach((r, i) => {
+    const raw = r.sent_at ?? r.generated_at;
+    const at = epoch(raw) ?? lastKnown;
+    lastKnown = at;
+    anchors.set(r.context_id, at);
+    entries.push({
+      item: { kind: "message", key: `m:${r.context_id}`, at: raw, contextId: r.context_id },
+      at,
+      anchor: at,
+      slot: 1,
+      order: i,
+    });
+  });
 
   const reviewable = new Set(rows.map((r) => normText(r.reply_text)).filter(Boolean));
 
-  const turns: TimelineTurn[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
-    for (const t of snapshots.get(row.context_id) ?? []) {
+    const anchor = anchors.get(row.context_id) ?? lastKnown;
+    (snapshots.get(row.context_id) ?? []).forEach((t, idx) => {
       const inbound = t.direction === "inbound";
       const body = normText(t.body);
-      if (!inbound && body && reviewable.has(body)) continue;
+      if (!inbound && body && reviewable.has(body)) return;
       const key = `${inbound ? "in" : "out"}|${t.at ?? ""}|${body}`;
-      if (seen.has(key)) continue;
+      if (seen.has(key)) return;
       seen.add(key);
-      turns.push({ kind: "turn", key: `t:${seen.size}`, at: t.at ?? null, inbound, body: t.body ?? null });
-    }
+      entries.push({
+        item: { kind: "turn", key: `t:${seen.size}`, at: t.at ?? null, inbound, body: t.body ?? null },
+        /*
+         * An undated turn is anchored to its message rather than floated to
+         * the top. Every snapshot belongs to a message that HAS a timestamp,
+         * and every turn in it happened before that message — so the lead's
+         * untimestamped turns interleave with the bot's replies instead of
+         * piling up in one block above the whole conversation.
+         */
+        at: epoch(t.at) ?? anchor,
+        anchor,
+        slot: 0,
+        order: idx,
+      });
+    });
   }
 
-  // Oldest first. A turn with no timestamp keeps its snapshot order at the top
-  // rather than being dropped — it is still part of what the bot read.
-  return [...turns, ...messages].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""));
+  entries.sort((a, b) => a.at - b.at || a.anchor - b.anchor || a.slot - b.slot || a.order - b.order);
+  return entries.map((e) => e.item);
 }

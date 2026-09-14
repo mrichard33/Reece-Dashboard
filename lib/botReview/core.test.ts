@@ -532,6 +532,60 @@ describe("buildTimeline", () => {
     expect(items).toHaveLength(2);
     expect(items[0]!.kind).toBe("turn");
   });
+
+  /*
+   * The defect this pins: an undated turn used to become "" and sort before
+   * every real timestamp, so the lead's whole side of the conversation landed
+   * in one block above the bot's. It belongs with the message that captured
+   * it, immediately before that message.
+   */
+  it("puts an undated turn beside the message whose snapshot captured it, not at the top", () => {
+    const items = buildTimeline(
+      [
+        { context_id: 1, reply_text: "We can do Tuesday.", generated_at: "2026-09-10T12:05:00Z" },
+        { context_id: 2, reply_text: "Still free Tuesday?", generated_at: "2026-09-11T12:00:00Z" },
+      ],
+      new Map([
+        [1, [{ direction: "inbound", body: "Are you open?", at: "2026-09-10T12:00:00Z" }]],
+        [
+          2,
+          [
+            { direction: "inbound", body: "Are you open?", at: "2026-09-10T12:00:00Z" },
+            { direction: "inbound", body: "sorry, missed this", at: null },
+          ],
+        ],
+      ]),
+    );
+    expect(items.map((i) => i.kind)).toEqual(["turn", "message", "turn", "message"]);
+    expect((items[0] as { body: string }).body).toBe("Are you open?");
+    expect((items[2] as { body: string }).body).toBe("sorry, missed this");
+  });
+
+  /*
+   * Snapshot turns and queue rows come from different writers, so the same
+   * instant arrives in two shapes. localeCompare put these hours apart.
+   */
+  it("orders by the true instant when offsets differ, not by how the timestamp is spelled", () => {
+    const items = buildTimeline(
+      [{ context_id: 1, reply_text: "on our way", sent_at: "2026-09-11T19:36:00Z", generated_at: "2026-09-11T19:30:00Z" }],
+      new Map([
+        [
+          1,
+          [
+            // 18:36Z — an hour before the reply, written in local time.
+            { direction: "inbound", body: "before the reply", at: "2026-09-11 14:36:00-04:00" },
+            // 20:36Z — an hour AFTER the reply, also written in local time.
+            // Compared as strings a space sorts before "T", so this one used
+            // to jump ahead of a reply it actually followed.
+            { direction: "inbound", body: "after the reply", at: "2026-09-11 16:36:00-04:00" },
+          ],
+        ],
+      ]),
+    );
+    expect(items.map((i) => i.kind)).toEqual(["turn", "message", "turn"]);
+    expect((items[0] as { body: string }).body).toBe("before the reply");
+    expect((items[2] as { body: string }).body).toBe("after the reply");
+  });
 });
 
 // ─── review lanes (increment 2 §6A) ─────────────────────────────────

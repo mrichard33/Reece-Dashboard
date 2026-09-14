@@ -34,9 +34,9 @@ import type { Reason } from "@/lib/queries/botReview";
  *     reviewer to do that from memory, with worse information.
  *   · "Save as a gold example" is now "Teach the bot to reply like this". Same
  *     column, words someone can act on.
- *   · Two ways past a message without scoring it: Skip for now (this session
- *     only, records nothing) and Nothing to review here (persistent, team-wide,
- *     undoable from Completed).
+ *   · Two ways past a message without scoring it, both persistent and both
+ *     undoable from Completed: Skip (this message, one click, sits under the
+ *     verdicts) and Nothing to review here (the whole conversation).
  *   · A message already carrying your review offers Edit review and Remove
  *     review side by side.
  */
@@ -50,7 +50,7 @@ export function FeedbackPanel({
   canDismissConversation,
   canRemoveReview,
   onSubmit,
-  onSkip,
+  onSkipMessage,
   onDismiss,
   onRetract,
   submitting,
@@ -63,7 +63,7 @@ export function FeedbackPanel({
   canDismissConversation: boolean;
   canRemoveReview: boolean;
   onSubmit: (draft: FeedbackDraft) => void | Promise<void>;
-  onSkip: () => void;
+  onSkipMessage: () => void;
   onDismiss: (scope: "message" | "conversation") => void;
   onRetract: () => void;
   submitting: boolean;
@@ -135,6 +135,9 @@ export function FeedbackPanel({
       if (k === "g") { e.preventDefault(); setVerdict("good"); }
       else if (k === "n") { e.preventDefault(); setVerdict("needs_work"); }
       else if (k === "u") { e.preventDefault(); setVerdict("unsafe"); }
+      // S sets the message aside. No verdict, no reason, no note — nothing is
+      // being scored, so validateDraft has nothing to say about it.
+      else if (k === "s") { e.preventDefault(); onSkipMessage(); }
       else if (k === "e") { e.preventDefault(); rewriteRef.current?.focus(); }
       else if (e.key === "Enter") { e.preventDefault(); attemptSubmit(); }
     }
@@ -194,6 +197,17 @@ export function FeedbackPanel({
       <p className="mb-2 text-sm font-semibold text-navy-900 dark:text-white">How was this message?</p>
       <VerdictButtons value={draft.verdict} onChange={setVerdict} disabled={disabled} />
       {error?.field === "verdict" && <FieldError>{error.message}</FieldError>}
+
+      {/* Skip sits with the verdicts because that is where the decision is
+          made — but lighter than them, because it is not a fourth verdict.
+          A skip is the ABSENCE of a score: it writes no bot_feedback row and
+          moves neither the Good rate nor anyone's reviewer count. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+        <Button variant="ghost" size="sm" onClick={onSkipMessage} disabled={disabled}>
+          Skip (S)
+        </Button>
+        <span className="text-xs text-slate-500 dark:text-slate-400">Don&apos;t score this one.</span>
+      </div>
 
       {showsReasons(draft.verdict) && (
         <div className="mt-4">
@@ -323,13 +337,11 @@ export function FeedbackPanel({
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-        {/* Two different "not now"s, and the difference matters:
-            Skip is this session only and records nothing, so the message is
-            still waiting for the next reviewer. Nothing to review here is a
-            decision, stored for the whole team and undoable from Completed. */}
-        <Button variant="ghost" size="sm" onClick={onSkip} disabled={submitting}>
-          Skip for now
-        </Button>
+        {/* The wider "not now". Skip above handles this one message; this is
+            the whole thread, which is why it keeps its confirm step. The old
+            session-only "Skip for now" is gone — it recorded nothing, and two
+            buttons named Skip meaning different things is how a reviewer ends
+            up using the wrong one. */}
         <DismissMenu
           disabled={submitting}
           canDismissConversation={canDismissConversation}
