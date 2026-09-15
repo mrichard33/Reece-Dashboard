@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buttonsFor, suggestedButton, needsReason, verdictFor, stripOmiPrefix, isOmi,
-  prefillDecisionText, errorMessageFor,
+  prefillDecisionText, errorMessageFor, laneOf, groupLabel,
   type CardType, type QueueCard, type RuleAction,
 } from "./rules";
 
@@ -26,6 +26,7 @@ const card = (over: Partial<QueueCard> = {}): QueueCard =>
     right_id: null, right_text: null, right_origin: null, right_confidence: null,
     right_date: null, right_status: null, right_rollout_stage: null,
     conflict_kind: null, similarity: null, blocks_count: 0, card_version: "v1",
+    rec_group_key: null, omi_action_item_id: null, item_type_norm: null,
     ...over,
   }) as QueueCard;
 
@@ -343,5 +344,133 @@ describe("error handling", () => {
 
   it("an unknown failure promises nothing was changed", () => {
     expect(errorMessageFor("error").text).toMatch(/Nothing was changed/);
+  });
+});
+
+/**
+ * ── The Release 2 lanes (sql/112) ─────────────────────────────────────────
+ *
+ * Same risk as everything above: these rules exist twice, here and in
+ * memory-rule.js, and a disagreement means a ruling bounces after the click.
+ */
+describe("the stale-issue lane", () => {
+  it("offers exactly three answers to one question", () => {
+    expect(ids("stale_issue")).toEqual(["still_broken", "fixed", "no_longer_matters"]);
+  });
+
+  it("makes the safe answer the primary one", () => {
+    // "Still broken" re-starts the clock and closes nothing. Closing an issue is
+    // the answer that should cost something, so it is the secondary.
+    const [first] = buttonsFor({ card_type: "stale_issue", options: null, rec_decision_text: null });
+    expect(first?.id).toBe("still_broken");
+    expect(first?.tone).toBe("primary");
+  });
+
+  it("makes Fixed collect proof before it sends anything", () => {
+    const fixed = buttonsFor({ card_type: "stale_issue", options: null, rec_decision_text: null })
+      .find((b) => b.id === "fixed")!;
+    expect(fixed.opens).toBe("proof");
+  });
+
+  it("does not offer proof or a dialog on the two that close nothing on a claim", () => {
+    const bs = buttonsFor({ card_type: "stale_issue", options: null, rec_decision_text: null });
+    expect(bs.find((b) => b.id === "still_broken")!.opens).toBeUndefined();
+    expect(bs.find((b) => b.id === "no_longer_matters")!.opens).toBeUndefined();
+  });
+
+  it("sends the verdict names the recommender writes, so the marker matches", () => {
+    expect(actions("stale_issue")).toEqual(["still_broken", "fixed", "no_longer_matters"]);
+    for (const a of ["still_broken", "fixed", "no_longer_matters"] as RuleAction[]) {
+      expect(verdictFor(a)).toBe(a);
+    }
+  });
+
+  it("marks the button the recommendation points at", () => {
+    const c = card({ lane: "stale", card_type: "stale_issue", rec_verdict: "fixed", rec_at: "2026-09-14T00:00:00Z" });
+    expect(suggestedButton(c)).toBe("fixed");
+  });
+});
+
+describe("the to-do lane", () => {
+  it("offers four answers and defaults to the one that closes nothing", () => {
+    expect(ids("todo")).toEqual(["done", "drop", "keep", "assign"]);
+    expect(verdictFor("keep")).toBe("keep");
+  });
+
+  it("makes Assign ask who", () => {
+    const assign = buttonsFor({ card_type: "todo", options: null, rec_decision_text: null })
+      .find((b) => b.id === "assign")!;
+    expect(assign.opens).toBe("assign");
+  });
+
+  it("marks Drop as the destructive one and Done as the affirmative", () => {
+    const bs = buttonsFor({ card_type: "todo", options: null, rec_decision_text: null });
+    expect(bs.find((b) => b.id === "done")!.tone).toBe("primary");
+    expect(bs.find((b) => b.id === "drop")!.tone).toBe("danger");
+  });
+
+  it("does not need a decision text to be rulable — a to-do has no wording to argue about", () => {
+    expect(ids("todo", { rec: false })).toEqual(["done", "drop", "keep", "assign"]);
+  });
+});
+
+describe("agreeing is free, disagreeing costs a sentence — on the new lanes too", () => {
+  it("asks for nothing when the click matches the recommendation", () => {
+    expect(needsReason("fixed", "fixed")).toBe(false);
+    expect(needsReason("keep", "keep")).toBe(false);
+  });
+
+  it("asks why when it does not", () => {
+    expect(needsReason("no_longer_matters", "still_broken")).toBe(true);
+    expect(needsReason("done", "keep")).toBe(true);
+  });
+
+  it("asks for nothing on a card the nightly has not reached", () => {
+    // 624 stale issues and 2,400 to-dos carry no recommendation today. Demanding
+    // an explanation from every one of them would make the lane unusable on the
+    // day it ships.
+    expect(needsReason("fixed", null)).toBe(false);
+    expect(needsReason("drop", null)).toBe(false);
+  });
+});
+
+describe("what the page tells you when a pass is refused", () => {
+  it("names the limit rather than just greying out", () => {
+    expect(errorMessageFor("batch_too_large").text).toMatch(/50/);
+  });
+
+  it("says a medium-confidence card is still rulable on its own", () => {
+    const { text, reload } = errorMessageFor("confidence_too_low");
+    expect(text).toMatch(/on its own/i);
+    expect(reload).toBe(false);
+  });
+
+  it("asks for a link when something is being closed as fixed", () => {
+    expect(errorMessageFor("proof_required").text).toMatch(/link to what fixed it/i);
+  });
+});
+
+describe("the lane a card belongs to", () => {
+  it("reads the view's own column", () => {
+    expect(laneOf({ lane: "stale", card_type: "stale_issue" })).toBe("stale");
+    expect(laneOf({ lane: "todos", card_type: "todo" })).toBe("todos");
+  });
+
+  it("falls back to the card type, and then to rulings", () => {
+    expect(laneOf({ lane: undefined as never, card_type: "stale_issue" })).toBe("stale");
+    expect(laneOf({ lane: undefined as never, card_type: "todo" })).toBe("todos");
+    expect(laneOf({ lane: undefined as never, card_type: "decision_needed" })).toBe("rulings");
+  });
+});
+
+describe("group headings", () => {
+  it("reads as a sentence someone can agree with, not a slug", () => {
+    expect(groupLabel("fixed:pr-merged")).toBe("The PR that fixes these is merged");
+    expect(groupLabel("keep:no-evidence")).toMatch(/30 days/);
+  });
+
+  it("falls back to the raw key rather than hiding an unknown group", () => {
+    expect(groupLabel("fixed:something-new")).toBe("fixed:something-new");
+    expect(groupLabel(null)).toBe("Ungrouped");
   });
 });

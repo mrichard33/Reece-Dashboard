@@ -10,19 +10,48 @@
  * Kept in lib/ (not components/) so it is unit-tested directly.
  */
 
-/** The four pending-item types plus conflicts, as v_command_center_queue emits them. */
+/** Every card type v_command_center_queue emits, across all three lanes. */
 export type CardType =
+  // Rulings lane (sql/102).
   | "decision_needed"
   | "unconfirmed_decision"
   | "open_question"
   | "approval_needed"
-  | "conflict";
+  | "conflict"
+  // Release 2 lanes (sql/112). One type each, because every card in a lane asks
+  // the same question: "is this still broken?" and "is this still yours?".
+  | "stale_issue"
+  | "todo";
 
-/** Every ruling action Release 1 sends to memory_rule. */
+/** The three lanes. The view says which one a row belongs to. */
+export type Lane = "rulings" | "stale" | "todos";
+
+/** Every action memory_rule accepts. */
 export type RuleAction =
+  // Rulings lane (sql/102).
   | "approve" | "edit_approve" | "reject" | "pick_option" | "own_answer"
   | "yes" | "no" | "keep_left" | "keep_right" | "not_a_conflict" | "new_answer"
-  | "snooze" | "not_relevant" | "stage" | "flip" | "recheck";
+  | "snooze" | "not_relevant" | "stage" | "flip" | "recheck"
+  // Stale-issue lane (sql/112).
+  | "still_broken" | "fixed" | "no_longer_matters"
+  // To-do lane (sql/112).
+  | "done" | "drop" | "keep" | "assign"
+  // Batch passes (sql/112). These address a group, never one card.
+  | "batch_apply" | "batch_undo";
+
+/** The lane verdicts, and which table each one may touch. */
+export const LANE_ACTION_TABLE: Partial<Record<RuleAction, QueueCard["source_table"]>> = {
+  still_broken: "claude_known_issues",
+  fixed: "claude_known_issues",
+  no_longer_matters: "claude_known_issues",
+  done: "claude_pending_items",
+  drop: "claude_pending_items",
+  keep: "claude_pending_items",
+  assign: "claude_pending_items",
+};
+
+/** A batch never exceeds this. Mirrors BATCH_MAX in LP-MCP's memory-rule.js. */
+export const BATCH_MAX = 50;
 
 export type Confidence = "high" | "medium" | "low" | "no_evidence";
 export type Risk = "money" | "live_leads" | "customer_messaging" | "none";
@@ -30,9 +59,9 @@ export type RolloutStage = "decided" | "built" | "verified" | "no_build";
 
 /** One row of v_command_center_queue. */
 export type QueueCard = {
-  lane: "rulings";
+  lane: Lane;
   card_type: CardType;
-  source_table: "claude_pending_items" | "claude_memory_conflicts";
+  source_table: "claude_pending_items" | "claude_memory_conflicts" | "claude_known_issues";
   source_id: number;
   description: string | null;
   options: string[] | null;
@@ -67,6 +96,12 @@ export type QueueCard = {
   similarity: number | null;
   blocks_count: number;
   card_version: string | null;
+  /** The reason slug a batch pass groups by. Null until the nightly writes one. */
+  rec_group_key: string | null;
+  /** Set when this to-do is already a task in Mark's Omi. */
+  omi_action_item_id: string | null;
+  /** The to-do lane's display label — ~150 raw item_type values mapped onto four. */
+  item_type_norm: string | null;
 };
 
 export type RecEvidence = {
@@ -83,7 +118,11 @@ export type RecEvidence = {
 export type ButtonId =
   | "approve" | "edit" | "reject" | "pick"
   | "keep_left" | "keep_right" | "not_a_conflict"
-  | "snooze" | "not_relevant";
+  | "snooze" | "not_relevant"
+  // Stale-issue lane.
+  | "still_broken" | "fixed" | "no_longer_matters"
+  // To-do lane.
+  | "done" | "drop" | "keep" | "assign";
 
 /** One button on a card: what it says, what it sends, and how it looks. */
 export type CardButton = {
@@ -93,7 +132,7 @@ export type CardButton = {
   /** primary = the affirmative answer; danger = the negative one; the rest are quiet. */
   tone: "primary" | "secondary" | "ghost" | "danger";
   /** The button opens a dialog before anything is sent. */
-  opens?: "approve" | "snooze" | "option";
+  opens?: "approve" | "snooze" | "option" | "proof" | "assign";
   /**
    * Send the recommendation's own wording, category and build straight through,
    * with no dialog. Set on Approve only.
@@ -172,6 +211,29 @@ export function buttonsFor(
         NOT_NOW,
       ];
 
+    // A stale issue asks ONE question: is this still broken? So the affirmative
+    // is "yes, still broken" — which changes nothing but the clock — and it is
+    // deliberately the primary. Closing an issue is the answer that needs
+    // evidence, not the answer that needs to be easy.
+    case "stale_issue":
+      return [
+        { id: "still_broken", action: "still_broken", label: "Still broken", tone: "primary" },
+        // opens the proof dialog: claude_rule_batch refuses a fixed with no
+        // proof, so the button collects one rather than sending a doomed call.
+        { id: "fixed", action: "fixed", label: "Fixed", tone: "secondary", opens: "proof" },
+        { id: "no_longer_matters", action: "no_longer_matters", label: "No longer matters", tone: "ghost" },
+      ];
+
+    // A to-do asks: is this still yours? "Keep" snoozes for 30 days and closes
+    // nothing, which is why it is safe to be the quiet default.
+    case "todo":
+      return [
+        { id: "done", action: "done", label: "Done", tone: "primary" },
+        { id: "drop", action: "drop", label: "Drop", tone: "danger" },
+        { id: "keep", action: "keep", label: "Keep", tone: "secondary" },
+        { id: "assign", action: "assign", label: "Assign", tone: "ghost", opens: "assign" },
+      ];
+
     case "conflict":
       // A conflict is a two-sided pick, so the affirmative is "which side", not
       // "approve". Edit writes a third answer that replaces both.
@@ -230,6 +292,11 @@ export function verdictFor(action: RuleAction, optionKey?: string | null): strin
     case "snooze": return "not_now";
     case "reject": case "no": case "yes":
     case "keep_left": case "keep_right": case "not_a_conflict": case "new_answer":
+      return action;
+    // The lane verdicts ARE their own verdict names — memory-recommend writes
+    // exactly these strings into rec_verdict, so the marker matches by identity.
+    case "still_broken": case "fixed": case "no_longer_matters":
+    case "done": case "drop": case "keep": case "assign":
       return action;
     default: return null;
   }
@@ -302,7 +369,52 @@ export const CARD_TYPE_LABEL: Record<CardType, string> = {
   open_question: "Open question",
   approval_needed: "Approval needed",
   conflict: "Conflict",
+  stale_issue: "Stale issue",
+  todo: "To-do",
 };
+
+/** The lane a card belongs to, from the view's column or its card type. */
+export function laneOf(card: Pick<QueueCard, "lane" | "card_type">): Lane {
+  if (card.lane === "stale" || card.lane === "todos" || card.lane === "rulings") return card.lane;
+  if (card.card_type === "stale_issue") return "stale";
+  if (card.card_type === "todo") return "todos";
+  return "rulings";
+}
+
+/** Plain words for the to-do lane's normalised item type. */
+export const ITEM_TYPE_LABEL: Record<string, string> = {
+  action_needed: "Action needed",
+  build_needed: "Build needed",
+  verification_needed: "Needs checking",
+  next_step: "Next step",
+};
+
+/**
+ * Group keys as a heading someone can read and agree with in one line. This is
+ * the ONLY thing most people will read before approving fifty cards, so it says
+ * what is true of every card in the group, not what the verdict is called.
+ */
+export const GROUP_KEY_LABEL: Record<string, string> = {
+  "fixed:pr-merged": "The PR that fixes these is merged",
+  "fixed:verified-elsewhere": "These were verified fixed somewhere else",
+  "still_broken:no-evidence-of-fix": "Nothing shows these were ever fixed",
+  "no_longer_matters:superseded": "What these were about has been replaced",
+  "no_longer_matters:system-retired": "The system these were about is gone",
+  "done:pr-merged": "The PR that ships these is merged",
+  "done:confirmed-elsewhere": "These were confirmed finished elsewhere",
+  "drop:duplicate-of-newer": "A newer item says the same thing",
+  "drop:superseded": "These have been superseded",
+  "keep:no-evidence": "Nothing new either way — ask again in 30 days",
+  "keep:still-open": "Still open and still someone's",
+  "assign:owner-named": "The record names who owns these",
+};
+
+/** A readable heading for a group, falling back to the raw slug. */
+export function groupLabel(key: string | null | undefined): string {
+  const k = String(key ?? "").trim();
+  if (!k) return "Ungrouped";
+  return GROUP_KEY_LABEL[k] ?? k;
+}
 
 export const RISK_LABEL: Record<Risk, string> = {
   money: "Money",
@@ -352,7 +464,9 @@ export function prefillDecisionText(card: Pick<QueueCard, "description" | "rec_d
 export type RuleErrorCode =
   | "stale_card" | "already_reversed" | "changed_since" | "guard_conflict"
   | "reason_required" | "proof_required" | "not_in_release" | "bad_input"
-  | "not_admin" | "recommend_off" | "error";
+  | "not_admin" | "recommend_off" | "error"
+  // Batch refusals (sql/112).
+  | "batch_too_large" | "not_batchable" | "confidence_too_low";
 
 /**
  * What to tell the person, and whether the page should reload underneath them.
@@ -374,7 +488,14 @@ export function errorMessageFor(code: RuleErrorCode, message?: string): { text: 
     case "reason_required":
       return { text: message || "Say why before saving this one.", reload: false };
     case "proof_required":
-      return { text: message || "Verified needs a line saying what proved it.", reload: false };
+      return { text: message || "Closing this as fixed needs a link to what fixed it.", reload: false };
+    case "batch_too_large":
+      return { text: message || `A pass rules at most ${BATCH_MAX} cards at once.`, reload: false };
+    case "confidence_too_low":
+      // Not a bug and not a wall: the card is still rulable, one at a time.
+      return { text: message || "A batch only applies high-confidence recommendations. Rule this one on its own.", reload: false };
+    case "not_batchable":
+      return { text: message || "That card can't go in a batch — rule it on its own.", reload: false };
     default:
       return { text: message || "That didn't save. Nothing was changed.", reload: false };
   }

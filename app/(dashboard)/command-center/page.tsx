@@ -9,10 +9,14 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import { HeaderStats } from "@/components/command-center/HeaderStats";
 import { Filters } from "@/components/command-center/Filters";
 import { RulingCard } from "@/components/command-center/RulingCard";
+import { LaneCard } from "@/components/command-center/LaneCard";
+import { BatchGroup } from "@/components/command-center/BatchGroup";
 import { DecidedList } from "@/components/command-center/DecidedList";
 import { ChangeCard } from "@/components/command-center/ChangeCard";
 import { CHANGE_FILTERS } from "@/components/command-center/changeMeta";
-import { getQueue, getHeader, getDecided, getAgreement } from "@/lib/queries/commandCenter";
+import { getQueue, getHeader, getDecided, getAgreement, getBatchGroups } from "@/lib/queries/commandCenter";
+import type { Lane } from "@/lib/commandCenter/rules";
+import type { BatchGroup as Group } from "@/lib/commandCenter/batch";
 import { getChanges } from "@/lib/queries/changes";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +28,16 @@ const TABS = [
   { key: "rulings", label: "Rulings" },
   { key: "decided", label: "Decided" },
   { key: "stale", label: "Stale issues" },
+  { key: "todos", label: "To-dos" },
   { key: "changes", label: "Changes" },
 ] as const;
+
+/** Which queue lane a tab reads. Decided and Changes read neither. */
+const TAB_LANE: Partial<Record<(typeof TABS)[number]["key"], Lane>> = {
+  rulings: "rulings",
+  stale: "stale",
+  todos: "todos",
+};
 
 /**
  * The Command Center — Release 1, Rulings lane.
@@ -37,9 +49,9 @@ const TABS = [
  * The server action re-checks all of this. Hiding buttons is the courtesy; the
  * action is the gate.
  *
- * Release 1 ships the header and the Rulings lane. The Stale-issue and To-do
- * lanes are counted, not built — shown as tiles that say so, rather than as
- * empty tabs that look broken.
+ * Release 2 (sql/112) builds the two lanes Release 1 could only count. All
+ * three are live now: rule a decision, say whether a stale issue is still
+ * broken, or clear a to-do — one at a time, or fifty in a reversible pass.
  */
 export default async function CommandCenterPage({
   searchParams,
@@ -55,11 +67,12 @@ export default async function CommandCenterPage({
   const page = Math.max(1, Number(one(sp.page) ?? 1) || 1);
   const canRule = ctx.isAdmin;
 
-  const [header, agreement, queue, decided, changes] = await Promise.all([
+  const [header, agreement, queue, decided, changes, groups] = await Promise.all([
     getHeader(),
     getAgreement(),
-    tab === "rulings"
+    TAB_LANE[tab]
       ? getQueue({
+          lane: TAB_LANE[tab],
           area: one(sp.area),
           type: one(sp.type),
           omiOnly: one(sp.omi) === "1",
@@ -70,6 +83,11 @@ export default async function CommandCenterPage({
     tab === "decided" ? getDecided({ page }) : Promise.resolve(null),
     tab === "changes"
       ? getChanges({ status: one(sp.status) ?? "open", lane: one(sp.lane), page })
+      : Promise.resolve(null),
+    // Groups are read alongside the page rather than from it: a group is a
+    // group whether or not its members happen to land on the page you are on.
+    tab === "stale" || tab === "todos"
+      ? getBatchGroups(TAB_LANE[tab]!)
       : Promise.resolve(null),
   ]);
 
@@ -134,21 +152,16 @@ export default async function CommandCenterPage({
               <RulingsTab queue={queue} canRule={canRule} />
             ) : null}
 
+            {(tab === "stale" || tab === "todos") && queue ? (
+              <LaneTab queue={queue} groups={groups?.groups ?? []} canRule={canRule} />
+            ) : null}
+
             {tab === "decided" && decided ? (
               <section className="space-y-4">
                 {decided.error ? <ErrBanner msg={decided.error} /> : null}
                 <DecidedList rows={decided.rows} canRule={canRule} />
                 <Pager page={decided.page} total={decided.total} pageSize={decided.pageSize} tab="decided" />
               </section>
-            ) : null}
-
-            {tab === "stale" ? (
-              <ComingSoon
-                helpKey="commandCenter.staleLane"
-                title="Stale issues"
-                count={header.staleIssuesOpen}
-                blurb="Open issues nobody has verified in a long time. Counting them now; ruling on them comes in Release 2."
-              />
             ) : null}
 
             {tab === "changes" && changes ? (
@@ -184,7 +197,10 @@ function RulingsTab({
         </div>
       )}
 
-      <Pager page={queue.page} total={queue.total} pageSize={queue.pageSize} tab="rulings" />
+      <Pager
+        page={queue.page} total={queue.total} pageSize={queue.pageSize}
+        tab="rulings" keep={queue.filters}
+      />
     </section>
   );
 }
@@ -259,32 +275,91 @@ function ChangesTab({
   );
 }
 
-function ComingSoon({
-  helpKey, title, count, blurb,
-}: { helpKey: string; title: string; count: number; blurb: string }) {
+/**
+ * A Release 2 lane: Stale issues or To-dos.
+ *
+ * The passes come FIRST and the cards come after. That order is the point of
+ * the release — 624 stale issues and 2,400 to-dos cannot be cleared one click
+ * at a time, so the screen leads with the groups that can be cleared together
+ * and keeps the one-at-a-time list underneath for everything that cannot.
+ *
+ * A card can appear in both, and that is fine: the group is a shortcut, not a
+ * separate queue. Rule it either way and it is gone from both on the next load.
+ */
+function LaneTab({
+  queue, groups, canRule,
+}: {
+  queue: NonNullable<Awaited<ReturnType<typeof getQueue>>>;
+  groups: Group[];
+  canRule: boolean;
+}) {
+  const lane = queue.lane;
   return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between gap-2">
-          <h2 className="text-sm font-semibold text-navy-900 dark:text-slate-100">{title}</h2>
-          <InfoPopover helpKey={helpKey} />
+    <section className="space-y-4">
+      <Filters areas={queue.areas} />
+      {queue.error ? <ErrBanner msg={queue.error} /> : null}
+
+      {groups.length > 0 ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-navy-900 dark:text-slate-100">
+              Ready to clear together
+            </h2>
+            <InfoPopover helpKey="commandCenter.batchPass" />
+          </div>
+          {groups.map((g) => (
+            <BatchGroup key={g.key} group={g} canRule={canRule} />
+          ))}
         </div>
-        <div className="mt-2 text-3xl font-semibold text-navy-900 dark:text-slate-100">{count}</div>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{blurb}</p>
-      </CardContent>
-    </Card>
+      ) : null}
+
+      {queue.cards.length === 0 ? (
+        <p className="rounded-md bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+          {lane === "stale"
+            ? "No stale issues. Either everything open has been verified recently, or the filters are hiding it."
+            : "No open to-dos here. Either they are all done, or the filters are hiding them."}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {groups.length > 0 ? (
+            <h2 className="pt-2 text-sm font-semibold text-navy-900 dark:text-slate-100">
+              One at a time
+            </h2>
+          ) : null}
+          {queue.cards.map((c) => (
+            <LaneCard key={`${c.source_table}:${c.source_id}`} card={c} canRule={canRule} />
+          ))}
+        </div>
+      )}
+
+      <Pager
+        page={queue.page} total={queue.total} pageSize={queue.pageSize}
+        tab={lane === "stale" ? "stale" : "todos"} keep={queue.filters}
+      />
+    </section>
   );
 }
 
+
 function Pager({
-  page, total, pageSize, tab,
-}: { page: number; total: number; pageSize: number; tab: string }) {
+  page, total, pageSize, tab, keep,
+}: {
+  page: number; total: number; pageSize: number; tab: string;
+  /** The filters currently applied, so paging does not silently drop them. */
+  keep?: Record<string, string | null>;
+}) {
   const last = Math.max(1, Math.ceil(total / pageSize));
   if (last <= 1) return null;
   // typedRoutes is on, and a query string built at runtime is not a known
   // route literal — the cast is the documented escape hatch for exactly this.
-  const href = (p: number) =>
-    `/command-center?${new URLSearchParams({ tab, page: String(p) }).toString()}` as Route;
+  const href = (p: number) => {
+    // Paging used to rebuild the query string from scratch, which dropped every
+    // filter the moment someone hit Next — on a 2,400-card lane that reads as
+    // the filter having failed rather than as the pager having forgotten.
+    const q = new URLSearchParams({ tab, page: String(p) });
+    for (const [k, v] of Object.entries(keep ?? {})) if (v) q.set(k, v);
+    return `/command-center?${q.toString()}` as Route;
+  };
   return (
     <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
       <span>Page {page} of {last} · {total.toLocaleString()} total</span>

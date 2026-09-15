@@ -1,7 +1,8 @@
 import { unstable_cache } from "next/cache";
 import { lpService } from "@/lib/supabase/lp";
 import { verdictFor } from "@/lib/commandCenter/rules";
-import type { QueueCard, Confidence, RuleAction } from "@/lib/commandCenter/rules";
+import type { QueueCard, Confidence, RuleAction, Lane } from "@/lib/commandCenter/rules";
+import { buildGroups, type BatchGroup } from "@/lib/commandCenter/batch";
 
 /**
  * Command Center reads. Straight from LP Supabase through the service client —
@@ -24,6 +25,8 @@ function isMissingRelation(error: { code?: string; message?: string } | null): b
 }
 
 export type QueueFilters = {
+  /** Which lane to read. Defaults to rulings, which is what Release 1 asked for. */
+  lane?: Lane;
   area?: string | null;
   type?: string | null;
   omiOnly?: boolean;
@@ -37,6 +40,9 @@ export type QueueResult = {
   page: number;
   pageSize: number;
   areas: string[];
+  lane: Lane;
+  /** Echoed back so the pager can keep them rather than dropping them. */
+  filters: Record<string, string | null>;
   needsMigration: boolean;
   error: string | null;
 };
@@ -49,10 +55,17 @@ export type QueueResult = {
  */
 export async function getQueue(filters: QueueFilters = {}): Promise<QueueResult> {
   const page = Math.max(1, filters.page ?? 1);
+  const lane: Lane = filters.lane ?? "rulings";
   const from = (page - 1) * PAGE_SIZE;
+  const applied: Record<string, string | null> = {
+    area: filters.area ?? null,
+    type: filters.type ?? null,
+    omi: filters.omiOnly ? "1" : null,
+    high: filters.highConfidenceOnly ? "1" : null,
+  };
   const empty: QueueResult = {
-    cards: [], total: 0, page, pageSize: PAGE_SIZE, areas: [],
-    needsMigration: false, error: null,
+    cards: [], total: 0, page, pageSize: PAGE_SIZE, areas: [], lane,
+    filters: applied, needsMigration: false, error: null,
   };
 
   let sb;
@@ -63,7 +76,7 @@ export async function getQueue(filters: QueueFilters = {}): Promise<QueueResult>
   let q = sb
     .from("v_command_center_queue")
     .select("*", { count: "exact" })
-    .eq("lane", "rulings");
+    .eq("lane", lane);
 
   if (filters.area) q = q.eq("area", filters.area);
   if (filters.type) q = q.eq("card_type", filters.type);
@@ -88,16 +101,56 @@ export async function getQueue(filters: QueueFilters = {}): Promise<QueueResult>
   const areaRes = await sb
     .from("v_command_center_queue")
     .select("area")
-    .eq("lane", "rulings")
+    .eq("lane", lane)
     .not("area", "is", null);
   const areas = [...new Set((areaRes.data ?? []).map((r) => r.area as string))].sort();
 
   return {
     cards: (data ?? []) as QueueCard[],
     total: count ?? 0,
-    page, pageSize: PAGE_SIZE, areas,
+    page, pageSize: PAGE_SIZE, areas, lane, filters: applied,
     needsMigration: false, error: null,
   };
+}
+
+export type BatchGroupsResult = {
+  groups: BatchGroup[];
+  needsMigration: boolean;
+  error: string | null;
+};
+
+/**
+ * The high-confidence cards of one lane, grouped by the reason they share.
+ *
+ * Reads past the page size on purpose — a group is a group whether or not its
+ * members happen to fall on the page someone is looking at. The read is capped
+ * well above BATCH_MAX so the count on a group header is honest about how many
+ * exist, even when the pass itself can only take 50 of them.
+ */
+export async function getBatchGroups(lane: Lane): Promise<BatchGroupsResult> {
+  const empty: BatchGroupsResult = { groups: [], needsMigration: false, error: null };
+  if (lane === "rulings") return empty; // a decision is never a bulk action
+
+  let sb;
+  try { sb = lpService(); } catch (err) {
+    return { ...empty, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  const { data, error } = await sb
+    .from("v_command_center_queue")
+    .select("*")
+    .eq("lane", lane)
+    .eq("rec_confidence", "high")
+    .order("sort_risk", { ascending: true })
+    .order("created_at", { ascending: true })
+    .limit(500);
+
+  if (error) {
+    if (isMissingRelation(error)) return { ...empty, needsMigration: true };
+    return { ...empty, error: error.message };
+  }
+
+  return { groups: buildGroups((data ?? []) as QueueCard[], lane), needsMigration: false, error: null };
 }
 
 export type HeaderStats = {
@@ -122,43 +175,48 @@ export async function getHeader(): Promise<HeaderStats> {
     return { ...empty, error: err instanceof Error ? err.message : String(err) };
   }
 
-  const queue = await sb
-    .from("v_command_center_queue")
-    .select("age_days", { count: "exact" })
-    .eq("lane", "rulings")
-    .order("age_days", { ascending: false })
-    .limit(1);
-  if (queue.error) {
-    if (isMissingRelation(queue.error)) return { ...empty, needsMigration: true };
-    return { ...empty, error: queue.error.message };
-  }
-
-  // Release 2 lanes: counted, not shown.
-  const stale = await sb
-    .from("claude_known_issues")
-    .select("id", { count: "exact", head: true })
-    .in("status", ["open", "in_progress"])
-    .eq("stale", true);
-
-  const todos = await sb
-    .from("claude_pending_items")
-    .select("id", { count: "exact", head: true })
-    .in("status", ["open", "blocked"])
-    .not("item_type", "in", "(decision_needed,unconfirmed_decision,open_question,approval_needed)");
-
   // This week against last week, so the header shows movement rather than a pile.
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const twoWeeksAgo = new Date(now.getTime() - 14 * 86_400_000).toISOString();
-  const thisWeek = await sb
-    .from("claude_rulings_log")
-    .select("id", { count: "exact", head: true })
-    .gte("at", weekAgo);
-  const lastWeek = await sb
-    .from("claude_rulings_log")
-    .select("id", { count: "exact", head: true })
-    .gte("at", twoWeeksAgo)
-    .lt("at", weekAgo);
+
+  // All six in parallel. They were sequential when there was one lane to count;
+  // with three lanes that is six round trips stacked end to end in front of
+  // every page load, on the one component every tab renders.
+  const [queue, stale, todos, thisWeek, lastWeek] = await Promise.all([
+    sb.from("v_command_center_queue")
+      .select("age_days", { count: "exact" })
+      .eq("lane", "rulings")
+      .order("age_days", { ascending: false })
+      .limit(1),
+    // Counted from the VIEW now rather than from the tables, so the tile and
+    // the lane can never disagree: whatever the view shows is what gets counted,
+    // including the snooze rule and the 364 rows with no item_type at all.
+    sb.from("v_command_center_queue")
+      .select("source_id", { count: "exact", head: true })
+      .eq("lane", "stale"),
+    sb.from("v_command_center_queue")
+      .select("source_id", { count: "exact", head: true })
+      .eq("lane", "todos"),
+    sb.from("claude_rulings_log")
+      .select("id", { count: "exact", head: true })
+      .gte("at", weekAgo),
+    sb.from("claude_rulings_log")
+      .select("id", { count: "exact", head: true })
+      .gte("at", twoWeeksAgo)
+      .lt("at", weekAgo),
+  ]);
+
+  if (queue.error) {
+    if (isMissingRelation(queue.error)) return { ...empty, needsMigration: true };
+    return { ...empty, error: queue.error.message };
+  }
+  // sql/112 not applied yet: the view exists but has only the rulings lane, so
+  // the two new counts come back as 0 rather than as an error. Say so, rather
+  // than showing two confident zeros next to 487.
+  if (stale.error || todos.error) {
+    if (isMissingRelation(stale.error ?? todos.error ?? null)) return { ...empty, needsMigration: true };
+  }
 
   return {
     rulingsOpen: queue.count ?? 0,
@@ -193,6 +251,12 @@ export type DecidedRow = {
   flip_count: number;
   /** The card's own words, for the row heading. */
   card_title: string | null;
+  /** Set on every lane ruling and every batch member (sql/112). */
+  batch_id: string | null;
+  /** How many cards this batch ruled. 1 means it was a single click. */
+  batch_size: number;
+  /** True on the one row that stands for the whole batch. */
+  is_batch_summary: boolean;
 };
 
 export type DecidedResult = {
@@ -244,6 +308,31 @@ export async function getDecided({ page = 1 }: { page?: number } = {}): Promise<
     : [];
   const pendingById = new Map(pending.map((r) => [r.id as number, r.description as string]));
 
+  // Stale-lane rulings point at claude_known_issues, which Release 1 never had
+  // to read here.
+  const issueIds = [...new Set(log.filter((r) => r.target_table === "claude_known_issues").map((r) => r.target_id))];
+  const issues = issueIds.length
+    ? (await sb.from("claude_known_issues").select("id, description").in("id", issueIds)).data ?? []
+    : [];
+  const issueById = new Map(issues.map((r) => [r.id as number, r.description as string]));
+
+  // How many cards each batch on this page ruled, so one entry can stand for
+  // fifty. Counted across the whole log rather than the page, because a batch's
+  // members and its summary can straddle a page boundary.
+  const batchIds = [...new Set(log.map((r) => r.batch_id).filter(Boolean))] as string[];
+  const batchSizes = new Map<string, number>();
+  if (batchIds.length) {
+    const members = await sb
+      .from("claude_rulings_log")
+      .select("batch_id, action")
+      .in("batch_id", batchIds);
+    for (const m of members.data ?? []) {
+      if (m.action === "batch_apply" || m.action === "batch_undo") continue;
+      const k = m.batch_id as string;
+      batchSizes.set(k, (batchSizes.get(k) ?? 0) + 1);
+    }
+  }
+
   // Flip count per card: how many rulings that card has accumulated beyond the first.
   const counts = new Map<string, number>();
   const allTargets = await sb
@@ -268,7 +357,14 @@ export async function getDecided({ page = 1 }: { page?: number } = {}): Promise<
       flip_count: Math.max(0, (counts.get(`${r.target_table}:${r.target_id}`) ?? 1) - 1),
       card_title: r.target_table === "claude_pending_items"
         ? pendingById.get(r.target_id) ?? null
-        : `Conflict #${r.target_id}`,
+        : r.target_table === "claude_known_issues"
+          ? issueById.get(r.target_id) ?? `Issue #${r.target_id}`
+          : `Conflict #${r.target_id}`,
+      batch_id: (r.batch_id as string) ?? null,
+      batch_size: r.batch_id ? (batchSizes.get(r.batch_id as string) ?? 1) : 1,
+      // claude_rule_batch writes a summary only when it ruled more than one
+      // card, so this is exactly "was this a pass rather than a click".
+      is_batch_summary: r.action === "batch_apply" || r.action === "batch_undo",
     };
   });
 

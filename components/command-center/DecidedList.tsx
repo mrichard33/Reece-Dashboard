@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { InfoPopover } from "@/components/help/InfoPopover";
+import { BatchUndoButton } from "./BatchUndoButton";
 import { rule } from "@/lib/actions/commandCenter";
 import { errorMessageFor, STAGE_LABEL, type RolloutStage, type RuleErrorCode } from "@/lib/commandCenter/rules";
 import { ReasonDialog } from "./ReasonDialog";
@@ -36,9 +37,16 @@ export function DecidedList({ rows, canRule }: { rows: DecidedRow[]; canRule: bo
   }
   return (
     <div className="space-y-3">
-      {rows.map((r) => (
-        <DecidedItem key={r.id} row={r} canRule={canRule} />
-      ))}
+      {rows
+        // A pass of fifty writes fifty-one rows. Showing all of them would bury
+        // everything else that happened that day, so the summary row stands for
+        // the pass and its members are folded into it. A SINGLE lane ruling has
+        // a batch_id too (that is how its undo works) but no summary row, so
+        // batch_size 1 keeps it visible.
+        .filter((r) => !(r.batch_id && !r.is_batch_summary && r.batch_size > 1))
+        .map((r) => (
+          <DecidedItem key={r.id} row={r} canRule={canRule} />
+        ))}
     </div>
   );
 }
@@ -53,6 +61,10 @@ function DecidedItem({ row, canRule }: { row: DecidedRow; canRule: boolean }) {
 
   const reversed = row.reversed_by != null;
   const isFlip = row.action === "flip";
+  // A lane ruling or a pass (sql/112). Release 1's flip cannot undo these:
+  // claude_rule_apply does not know claude_known_issues, and a pass has to come
+  // back whole or not at all.
+  const isLaneRuling = row.batch_id != null && row.action !== "batch_undo";
   const builtOrVerified = row.rollout_stage === "built" || row.rollout_stage === "verified";
 
   function send(input: Parameters<typeof rule>[0]) {
@@ -88,7 +100,14 @@ function DecidedItem({ row, canRule }: { row: DecidedRow; canRule: boolean }) {
             </Badge>
           ) : null}
           {row.via === "chat" ? <Badge tone="slate">from chat</Badge> : null}
-          {reversed ? <Badge tone="rose">Flipped by #{row.reversed_by}</Badge> : null}
+          {row.is_batch_summary && row.batch_size > 1 ? (
+            <Badge tone="sky">{row.batch_size} in one pass</Badge>
+          ) : null}
+          {reversed ? (
+            <Badge tone="rose">
+              {row.is_batch_summary ? "Reversed" : "Flipped"} by #{row.reversed_by}
+            </Badge>
+          ) : null}
           {row.flip_count > 0 ? <span>ruled {row.flip_count + 1}×</span> : null}
           <span className="ml-auto">{row.ruled_by}</span>
         </div>
@@ -105,7 +124,16 @@ function DecidedItem({ row, canRule }: { row: DecidedRow; canRule: boolean }) {
 
         {canRule ? (
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            {!reversed && !isFlip ? (
+            {/* A pass comes back through its batch, not through flip: flip
+                restores ONE ruling, and taking back forty-nine of fifty is the
+                one outcome there is no good way to explain. */}
+            {!reversed && row.batch_id && isLaneRuling ? (
+              <>
+                <BatchUndoButton batchId={row.batch_id} count={row.batch_size} canRule={canRule} />
+                <InfoPopover helpKey="commandCenter.batchUndo" />
+              </>
+            ) : null}
+            {!reversed && !isFlip && !isLaneRuling ? (
               <Button
                 variant="secondary"
                 size="sm"
@@ -115,7 +143,7 @@ function DecidedItem({ row, canRule }: { row: DecidedRow; canRule: boolean }) {
                 <Undo2 className="h-3 w-3" aria-hidden /> Flip
               </Button>
             ) : null}
-            {!reversed && !isFlip ? <InfoPopover helpKey="commandCenter.flip" /> : null}
+            {!reversed && !isFlip && !isLaneRuling ? <InfoPopover helpKey="commandCenter.flip" /> : null}
             {row.decision_id != null ? (
               <>
                 <Button variant="ghost" size="sm" disabled={pending} onClick={() => setStage("built")}>Built</Button>
