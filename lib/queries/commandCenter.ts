@@ -18,11 +18,39 @@ import { buildGroups, type BatchGroup } from "@/lib/commandCenter/batch";
 
 export const PAGE_SIZE = 25;
 
+export type PgError = { code?: string; message?: string } | null;
+
 /** Postgres says 42P01 for "relation does not exist" — i.e. sql/102 isn't applied. */
-function isMissingRelation(error: { code?: string; message?: string } | null): boolean {
+export function isMissingRelation(error: PgError): boolean {
   if (!error) return false;
-  return error.code === "42P01" || /does not exist/i.test(error.message ?? "");
+  return error.code === "42P01" || /relation .* does not exist/i.test(error.message ?? "");
 }
+
+/**
+ * Postgres says 42703 for "column does not exist" — i.e. the table or view is
+ * there but it is an OLDER VERSION of it.
+ *
+ * This is the case a missing-relation check cannot see, and it is the one that
+ * actually happened. sql/112 does not CREATE v_command_center_queue, it
+ * REPLACES it — so with only sql/112 missing, the view still exists, a filter
+ * on the new lanes matches no rows, and PostgREST returns 0 with no error at
+ * all. The page then renders a confident "No stale issues" over 624 of them.
+ *
+ * A zero that means "nothing to do" and a zero that means "the migration is
+ * missing" must never look the same on screen.
+ */
+export function isMissingColumn(error: PgError): boolean {
+  if (!error) return false;
+  return error.code === "42703" || /column .* does not exist/i.test(error.message ?? "");
+}
+
+/** The files a caller may be told to apply, with the sections to run. */
+export const MIGRATIONS = {
+  r1: { file: "sql/102_command_center.sql", sections: "A through F" },
+  r2: { file: "sql/112_command_center_r2.sql", sections: "A through G" },
+} as const;
+
+export type MigrationRef = (typeof MIGRATIONS)[keyof typeof MIGRATIONS];
 
 export type QueueFilters = {
   /** Which lane to read. Defaults to rulings, which is what Release 1 asked for. */
@@ -161,6 +189,8 @@ export type HeaderStats = {
   ruledThisWeek: number;
   ruledLastWeek: number;
   needsMigration: boolean;
+  /** Which migration to apply, when one is missing. Null when nothing is. */
+  migration: MigrationRef | null;
   error: string | null;
 };
 
@@ -168,7 +198,7 @@ export type HeaderStats = {
 export async function getHeader(): Promise<HeaderStats> {
   const empty: HeaderStats = {
     rulingsOpen: 0, staleIssuesOpen: 0, todosOpen: 0, oldestRulingDays: null,
-    ruledThisWeek: 0, ruledLastWeek: 0, needsMigration: false, error: null,
+    ruledThisWeek: 0, ruledLastWeek: 0, needsMigration: false, migration: null, error: null,
   };
   let sb;
   try { sb = lpService(); } catch (err) {
@@ -183,7 +213,7 @@ export async function getHeader(): Promise<HeaderStats> {
   // All six in parallel. They were sequential when there was one lane to count;
   // with three lanes that is six round trips stacked end to end in front of
   // every page load, on the one component every tab renders.
-  const [queue, stale, todos, thisWeek, lastWeek] = await Promise.all([
+  const [queue, stale, todos, thisWeek, lastWeek, r2] = await Promise.all([
     sb.from("v_command_center_queue")
       .select("age_days", { count: "exact" })
       .eq("lane", "rulings")
@@ -205,17 +235,34 @@ export async function getHeader(): Promise<HeaderStats> {
       .select("id", { count: "exact", head: true })
       .gte("at", twoWeeksAgo)
       .lt("at", weekAgo),
+    // Is the VIEW the sql/112 version? omi_action_item_id exists only there, so
+    // a 42703 is a precise answer to "has R2 been applied", and it costs nothing
+    // extra — it runs alongside the counts rather than after them.
+    sb.from("v_command_center_queue").select("omi_action_item_id").limit(1),
   ]);
 
+  // sql/102 never applied: the view itself is absent.
   if (queue.error) {
-    if (isMissingRelation(queue.error)) return { ...empty, needsMigration: true };
+    if (isMissingRelation(queue.error)) {
+      return { ...empty, needsMigration: true, migration: MIGRATIONS.r1 };
+    }
     return { ...empty, error: queue.error.message };
   }
-  // sql/112 not applied yet: the view exists but has only the rulings lane, so
-  // the two new counts come back as 0 rather than as an error. Say so, rather
-  // than showing two confident zeros next to 487.
-  if (stale.error || todos.error) {
-    if (isMissingRelation(stale.error ?? todos.error ?? null)) return { ...empty, needsMigration: true };
+
+  // sql/112 not applied: the view is there but it is the R1 version. Nothing
+  // above errors in that state — the lane filters just match nothing — so this
+  // probe is the only thing standing between the person and two confident
+  // zeros where 624 issues and 2,400 to-dos should be.
+  if (isMissingColumn(r2.error) || isMissingRelation(stale.error ?? todos.error ?? null)) {
+    return {
+      ...empty,
+      rulingsOpen: queue.count ?? 0,
+      oldestRulingDays: queue.data?.[0]?.age_days ?? null,
+      ruledThisWeek: thisWeek.count ?? 0,
+      ruledLastWeek: lastWeek.count ?? 0,
+      needsMigration: true,
+      migration: MIGRATIONS.r2,
+    };
   }
 
   return {
@@ -226,6 +273,7 @@ export async function getHeader(): Promise<HeaderStats> {
     ruledThisWeek: thisWeek.count ?? 0,
     ruledLastWeek: lastWeek.count ?? 0,
     needsMigration: false,
+    migration: null,
     error: null,
   };
 }
