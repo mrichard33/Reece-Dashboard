@@ -14,7 +14,10 @@ import { BatchGroup } from "@/components/command-center/BatchGroup";
 import { DecidedList } from "@/components/command-center/DecidedList";
 import { ChangeCard } from "@/components/command-center/ChangeCard";
 import { CHANGE_FILTERS } from "@/components/command-center/changeMeta";
-import { getQueue, getHeader, getDecided, getAgreement, getBatchGroups } from "@/lib/queries/commandCenter";
+import {
+  getQueue, getHeader, getDecided, getAgreement, getBatchGroups, MIGRATIONS,
+  type MigrationRef,
+} from "@/lib/queries/commandCenter";
 import type { Lane } from "@/lib/commandCenter/rules";
 import type { BatchGroup as Group } from "@/lib/commandCenter/batch";
 import { getChanges } from "@/lib/queries/changes";
@@ -110,18 +113,7 @@ export default async function CommandCenterPage({
         />
 
         {needsMigration ? (
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="text-sm font-semibold text-navy-900 dark:text-slate-100">
-                Command Center needs sql/102
-              </h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                The rulings queue and its audit log are not in the database yet. Apply
-                <code className="mx-1 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">sql/102_command_center.sql</code>
-                in the LP Supabase SQL editor — sections A through F, in order — and reload.
-              </p>
-            </CardContent>
-          </Card>
+          <MigrationCard migration={header.migration ?? MIGRATIONS.r1} />
         ) : (
           <>
             <HeaderStats stats={header} agreement={agreement} />
@@ -368,6 +360,38 @@ function Pager({
         {page < last ? <Link className="underline" href={href(page + 1)}>Next</Link> : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Which migration is missing, and what to do about it.
+ *
+ * It names the FILE rather than saying "the Command Center needs migrating",
+ * because the two cases look identical from the outside and lead to completely
+ * different work: sql/102 missing means the queue does not exist at all, and
+ * sql/112 missing means it exists but only knows one of the three lanes.
+ *
+ * Before this was dynamic it always said sql/102 — which, on the day sql/112
+ * was the missing one, would have sent someone to re-apply a migration that
+ * was already there.
+ */
+function MigrationCard({ migration }: { migration: MigrationRef }) {
+  const isR2 = migration.file === MIGRATIONS.r2.file;
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <h2 className="text-sm font-semibold text-navy-900 dark:text-slate-100">
+          Command Center needs {migration.file.replace(/^sql\/(\d+).*$/, "sql/$1")}
+        </h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          {isR2
+            ? "The Stale-issue and To-do lanes are not in the database yet, so they would show as empty rather than as the thousands of cards they hold. Apply"
+            : "The rulings queue and its audit log are not in the database yet. Apply"}
+          <code className="mx-1 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">{migration.file}</code>
+          in the LP Supabase SQL editor — sections {migration.sections}, in order — and reload.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
