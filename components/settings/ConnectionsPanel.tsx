@@ -28,13 +28,7 @@ type PingState =
   | { status: "ok" }
   | { status: "error"; kind: string; message: string };
 
-export function ConnectionsPanel({
-  services,
-  n8nConfigured,
-}: {
-  services: ServiceConfig[];
-  n8nConfigured: boolean;
-}) {
+export function ConnectionsPanel({ services }: { services: ServiceConfig[] }) {
   return (
     <Card>
       <CardHeader>
@@ -45,27 +39,6 @@ export function ConnectionsPanel({
           {services.map((s) => (
             <ServiceRow key={s.key} service={s} />
           ))}
-
-          {/* n8n webhook (presence check only — no live ping endpoint) */}
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
-            <div>
-              <p className="text-sm font-medium text-navy-900 dark:text-slate-100">n8n webhook</p>
-              <p className="text-[11px] text-slate-400">
-                {n8nConfigured
-                  ? "N8N_BASE_URL and N8N_WEBHOOK_SECRET set."
-                  : "Set N8N_BASE_URL and N8N_WEBHOOK_SECRET on the dashboard."}
-              </p>
-            </div>
-            {n8nConfigured ? (
-              <Badge tone="emerald" dot>
-                Configured
-              </Badge>
-            ) : (
-              <Badge tone="amber" dot>
-                Not connected
-              </Badge>
-            )}
-          </div>
 
           <ReloadEngineRow />
         </div>

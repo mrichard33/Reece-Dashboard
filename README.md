@@ -19,6 +19,8 @@ Two role-gated views from one app:
 
 Every tile has a small `(i)` button → opens a popover with `{ what, where, fix }` explaining the data and how to remediate. The content lives in [`components/help/helpContent.ts`](components/help/helpContent.ts).
 
+**Settings → Integrations** (2026-09-16) is the reachability board: one row per external service (LP MCP, HL MCP, GHL, Railway, both Supabase instances, n8n, and, via LP MCP `/health/integrations`, the Lead Perfection API, Five9, Slack and GroupMe). Every row is a live probe, not a credential-presence check. Green means the probe reached the service; grey means not configured or could not tell, and is never a pass. Logic in [`lib/queries/connections.ts`](lib/queries/connections.ts); the state vocabulary in [`lib/connections/types.ts`](lib/connections/types.ts).
+
 ## Stack
 
 - Next.js 16 (App Router, RSC, route handlers) — TypeScript strict

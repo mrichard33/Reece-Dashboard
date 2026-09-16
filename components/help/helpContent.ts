@@ -117,6 +117,15 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "`v_bot_quality_weekly`, grouped by path and channel for the current ET week.",
     fix: "Paths under 30 reviewed show 'Not enough data yet' rather than a percentage — at roughly 90 messages a week that is most paths at first. Review more on a path to make its number real.",
   },
+  // ── /settings · Integrations grid ───────────────────────────────────
+  "settings.integrations": {
+    title: "Integrations",
+    what: "Whether each external service is actually reachable right now, not just whether its credentials are set. Green = the probe reached the service. Amber = reachable but stale (e.g. GHL last synced over 2 h ago). Red = a definite failure such as a rejected token. Grey = either not configured or could not tell (timed out). Grey is never a pass.",
+    where:
+      "Live probes on every render of this page: both MCPs (`get_sync_health`), both Supabase instances (one-row read), GHL (HL MCP `/health` + sync freshness), n8n (`/healthz`), Railway (`get_railway_service_status`), and LP MCP `/health/integrations` for the LP API, Five9, Slack and GroupMe. Each probe is capped at a few seconds.",
+    fix: "The detail line names the env var or the failure. 'Not configured' → set the named variable on the named service. 'Error' → the credential or the service is broken; check that service's logs. 'Unknown' → the probe could not run; re-check, and if it stays grey treat it as an outage until proven otherwise.",
+  },
+
   // ── /overview · Row 1: service health ───────────────────────────────
   "overview.lpMcp": {
     title: "LP MCP",
