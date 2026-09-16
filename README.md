@@ -19,6 +19,8 @@ Two role-gated views from one app:
 
 Every tile has a small `(i)` button → opens a popover with `{ what, where, fix }` explaining the data and how to remediate. The content lives in [`components/help/helpContent.ts`](components/help/helpContent.ts).
 
+**Decision Engine** (`/agent`) is live as of 2026-09-16: engine vitals, the heartbeat, the rule set, and a roster of every scheduled background job on LP MCP with its last run. A job that is registered but has never run reads amber as "Never run" rather than being absent — before [`job_runs`](https://github.com/mrichard33/LP-MCP) each job kept its last result in memory and lost it on every deploy. Needs LP-MCP `sql/113_job_runs.sql` applied; until then the card names the file.
+
 **Settings → Integrations** (2026-09-16) is the reachability board: one row per external service (LP MCP, HL MCP, GHL, Railway, both Supabase instances, n8n, and, via LP MCP `/health/integrations`, the Lead Perfection API, Five9, Slack and GroupMe). Every row is a live probe, not a credential-presence check. Green means the probe reached the service; grey means not configured or could not tell, and is never a pass. Logic in [`lib/queries/connections.ts`](lib/queries/connections.ts); the state vocabulary in [`lib/connections/types.ts`](lib/connections/types.ts).
 
 ## Stack
@@ -178,6 +180,6 @@ Hosting is **Railway** (same project as the LP MCP and HL MCP services). Full in
 
 ## Roadmap (out of Phase 1 scope)
 
-- **Phase 2**: `/pipelines/[id]`, `/workflows/[id]`, `/workflows/diagnostics`, `/agent/*`, `/leads`
+- **Phase 2**: `/pipelines/[id]`, `/workflows/[id]`, `/workflows/diagnostics`, `/leads` — `/agent` shipped 2026-09-16
 - **Phase 3**: `/leads/[id]` (cross-system merge), `/appointments`, `/ops/*`, realtime subscriptions
 - **Phase 4**: wire `/agent/approvals` buttons to the executor, mobile polish, email digest

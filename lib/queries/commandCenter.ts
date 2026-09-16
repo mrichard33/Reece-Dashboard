@@ -3,6 +3,7 @@ import { lpService } from "@/lib/supabase/lp";
 import { verdictFor } from "@/lib/commandCenter/rules";
 import type { QueueCard, Confidence, RuleAction, Lane } from "@/lib/commandCenter/rules";
 import { buildGroups, type BatchGroup } from "@/lib/commandCenter/batch";
+import { isMissingColumn, isMissingRelation } from "./pgErrors";
 
 /**
  * Command Center reads. Straight from LP Supabase through the service client —
@@ -18,31 +19,12 @@ import { buildGroups, type BatchGroup } from "@/lib/commandCenter/batch";
 
 export const PAGE_SIZE = 25;
 
-export type PgError = { code?: string; message?: string } | null;
-
-/** Postgres says 42P01 for "relation does not exist" — i.e. sql/102 isn't applied. */
-export function isMissingRelation(error: PgError): boolean {
-  if (!error) return false;
-  return error.code === "42P01" || /relation .* does not exist/i.test(error.message ?? "");
-}
-
 /**
- * Postgres says 42703 for "column does not exist" — i.e. the table or view is
- * there but it is an OLDER VERSION of it.
- *
- * This is the case a missing-relation check cannot see, and it is the one that
- * actually happened. sql/112 does not CREATE v_command_center_queue, it
- * REPLACES it — so with only sql/112 missing, the view still exists, a filter
- * on the new lanes matches no rows, and PostgREST returns 0 with no error at
- * all. The page then renders a confident "No stale issues" over 624 of them.
- *
- * A zero that means "nothing to do" and a zero that means "the migration is
- * missing" must never look the same on screen.
+ * The migration-degradation predicates moved to lib/queries/pgErrors.ts when
+ * /agent (sql/113) needed the same guard. Re-exported here so every existing
+ * import keeps working and there is still only one implementation.
  */
-export function isMissingColumn(error: PgError): boolean {
-  if (!error) return false;
-  return error.code === "42703" || /column .* does not exist/i.test(error.message ?? "");
-}
+export { isMissingColumn, isMissingRelation, type PgError } from "./pgErrors";
 
 /** The files a caller may be told to apply, with the sections to run. */
 export const MIGRATIONS = {

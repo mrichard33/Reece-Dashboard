@@ -150,7 +150,7 @@ export async function getHealthSnapshot(): Promise<HealthSnapshot> {
  * it continuously (hundreds of events per day), so absence of writes is a
  * meaningful "engine stalled" signal.
  */
-async function getHeartbeat() {
+export async function getHeartbeat() {
   try {
     const sb = lpService();
     const { data } = await sb

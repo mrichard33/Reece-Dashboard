@@ -129,7 +129,6 @@ export const NAV_GROUPS: NavGroup[] = [
         desc: "The decision engine, live",
         Icon: Bot,
         audience: "operator",
-        phase: 2,
       },
     ],
   },
