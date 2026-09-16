@@ -9,10 +9,21 @@ import { hlServer, hlService } from "@/lib/supabase/hl";
  * self-hosted Express app on Railway and posts its own first-party events, so
  * it never went through the WP tracking script.
  *
- * Event vocabulary (must match what the calculator emits — see the
- * window-calculator repo, Part 3 handoff):
+ * Event vocabulary, verified against the live table on 2026-09-16 rather than
+ * against the handoff doc:
  *   page_view · step1_complete · window_added · step3_complete ·
- *   estimate_completed · verify_cta_clicked
+ *   estimate_completed · verify_sent · verify_success
+ *
+ * `verify_cta_clicked` WAS counted here and has never been emitted — zero rows
+ * since the table was created. It was a funnel stage that could only ever show
+ * zero, so the screen reported that nobody asks for exact pricing while the
+ * data showed eight sessions completing verification. A stage that is
+ * structurally zero and a stage where nothing happened must not look the same,
+ * so it is gone rather than left in place.
+ *
+ * `verify_sent` and `verify_success` carry the real signal: the code went out,
+ * and the homeowner entered it. Those two answer "does email verification
+ * work", which is what the removed stage was there to ask.
  *
  * `estimate_completed` carries payload.estimate_total, used for the average.
  *
@@ -24,6 +35,12 @@ import { hlServer, hlService } from "@/lib/supabase/hl";
 export type CalcDailyPoint = {
   day: string; // YYYY-MM-DD (UTC)
   views: number;
+  /**
+   * Verification codes sent that day. The field keeps the `ctaClicks` name
+   * because `DailyPoint` is shared with the Guide and Weakest Point charts and
+   * their accent series really is a CTA click; only the calculator's source
+   * event changed. The chart labels itself, so nothing on screen says "CTA".
+   */
   ctaClicks: number;
 };
 
@@ -32,7 +49,8 @@ export type CalcSourceRow = {
   views: number;
   step1: number;
   estimates: number;
-  verifyClicks: number;
+  /** Sessions that entered the code and were verified. */
+  verified: number;
   /** estimates / views, 0..1 */
   completionRate: number;
 };
@@ -46,7 +64,10 @@ export type CalculatorMetrics = {
     windowAdded: number;
     step3: number;
     estimates: number;
-    verifyClicks: number;
+    /** Verification codes sent. */
+    verifySent: number;
+    /** Codes entered successfully — the end of the funnel. */
+    verified: number;
   };
   identifiedContacts: number;
   avgEstimateTotal: number | null;
@@ -68,14 +89,19 @@ type CalcEventRow = {
   created_at: string;
 };
 
-/** Funnel steps in order. */
-const STEPS = [
+/**
+ * Funnel steps in order. Exported so the vocabulary can be tested against what
+ * the table actually contains — this list silently carried a stage that is
+ * never emitted, and nothing caught it.
+ */
+export const STEPS = [
   "page_view",
   "step1_complete",
   "window_added",
   "step3_complete",
   "estimate_completed",
-  "verify_cta_clicked",
+  "verify_sent",
+  "verify_success",
 ] as const;
 type Step = (typeof STEPS)[number];
 
@@ -108,7 +134,8 @@ function emptyMetrics(windowDays: number, error: string | null): CalculatorMetri
       windowAdded: 0,
       step3: 0,
       estimates: 0,
-      verifyClicks: 0,
+      verifySent: 0,
+      verified: 0,
     },
     identifiedContacts: 0,
     avgEstimateTotal: null,
@@ -149,7 +176,8 @@ export async function getCalculatorMetrics(windowDays = 30): Promise<CalculatorM
     window_added: new Set(),
     step3_complete: new Set(),
     estimate_completed: new Set(),
-    verify_cta_clicked: new Set(),
+    verify_sent: new Set(),
+    verify_success: new Set(),
   };
 
   const contacts = new Set<string>();
@@ -174,7 +202,7 @@ export async function getCalculatorMetrics(windowDays = 30): Promise<CalculatorM
     if (!daily.has(day)) daily.set(day, { views: new Set(), ctaClicks: 0 });
     const bucket = daily.get(day)!;
     if (evt === "page_view") bucket.views.add(sid);
-    if (evt === "verify_cta_clicked") bucket.ctaClicks += 1;
+    if (evt === "verify_sent") bucket.ctaClicks += 1;
 
     if (evt === "estimate_completed") {
       const raw = row.payload?.estimate_total;
@@ -206,7 +234,7 @@ export async function getCalculatorMetrics(windowDays = 30): Promise<CalculatorM
       if (step === "page_view") agg.views.add(sid);
       else if (step === "step1_complete") agg.step1.add(sid);
       else if (step === "estimate_completed") agg.estimates.add(sid);
-      else if (step === "verify_cta_clicked") agg.verify.add(sid);
+      else if (step === "verify_success") agg.verify.add(sid);
     }
   }
 
@@ -216,7 +244,7 @@ export async function getCalculatorMetrics(windowDays = 30): Promise<CalculatorM
       views: a.views.size,
       step1: a.step1.size,
       estimates: a.estimates.size,
-      verifyClicks: a.verify.size,
+      verified: a.verify.size,
       completionRate: a.views.size > 0 ? a.estimates.size / a.views.size : 0,
     }))
     .sort((x, y) => y.views - x.views);
@@ -246,7 +274,8 @@ export async function getCalculatorMetrics(windowDays = 30): Promise<CalculatorM
       windowAdded: stepSessions.window_added.size,
       step3: stepSessions.step3_complete.size,
       estimates,
-      verifyClicks: stepSessions.verify_cta_clicked.size,
+      verifySent: stepSessions.verify_sent.size,
+      verified: stepSessions.verify_success.size,
     },
     identifiedContacts: contacts.size,
     avgEstimateTotal:

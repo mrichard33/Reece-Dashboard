@@ -54,7 +54,16 @@ function BarRow({
   );
 }
 
-function DailyBars({ daily, emptyText }: { daily: DailyPoint[]; emptyText: string }) {
+function DailyBars({
+  daily,
+  emptyText,
+  accentLabel = "CTA clicks",
+}: {
+  daily: DailyPoint[];
+  emptyText: string;
+  /** What the red series counts. The calculator plots verification codes sent. */
+  accentLabel?: string;
+}) {
   const total = daily.reduce((acc, d) => acc + d.views, 0);
   const maxDaily = Math.max(1, ...daily.map((d) => d.views));
   if (total === 0) {
@@ -67,7 +76,7 @@ function DailyBars({ daily, emptyText }: { daily: DailyPoint[]; emptyText: strin
           <div
             key={d.day}
             className="group relative flex-1"
-            title={`${d.day}: ${d.views} views · ${d.ctaClicks} CTA clicks`}
+            title={`${d.day}: ${d.views} views · ${d.ctaClicks} ${accentLabel}`}
           >
             <div
               className="w-full rounded-t bg-sky-600/80 dark:bg-sky-500/80"
@@ -83,7 +92,7 @@ function DailyBars({ daily, emptyText }: { daily: DailyPoint[]; emptyText: strin
         ))}
       </div>
       <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        Blue = page views · Red = CTA clicks · Hover a bar for the date.
+        Blue = page views · Red = {accentLabel} · Hover a bar for the date.
       </p>
     </>
   );
@@ -145,7 +154,7 @@ export default async function PageMetricsPage() {
             <Stat
               label="Estimates completed"
               value={num(calc.funnel.estimates)}
-              sub={`${num(calc.funnel.verifyClicks)} clicked for exact pricing`}
+              sub={`${num(calc.funnel.verified)} went on to verify their email`}
             />
             <Stat
               label="View → estimate"
@@ -172,7 +181,8 @@ export default async function PageMetricsPage() {
                 <BarRow label="Added window" value={calc.funnel.windowAdded} max={maxCalcFunnel} />
                 <BarRow label="Step 3 done" value={calc.funnel.step3} max={maxCalcFunnel} />
                 <BarRow label="Saw estimate" value={calc.funnel.estimates} max={maxCalcFunnel} />
-                <BarRow label="Wants exact" value={calc.funnel.verifyClicks} max={maxCalcFunnel} />
+                <BarRow label="Code sent" value={calc.funnel.verifySent} max={maxCalcFunnel} />
+                <BarRow label="Verified" value={calc.funnel.verified} max={maxCalcFunnel} />
               </div>
               <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                 Unique sessions reaching each step. The steepest drop is the step
@@ -184,11 +194,12 @@ export default async function PageMetricsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Calculator — daily views &amp; exact-price clicks</CardTitle>
+              <CardTitle>Calculator — daily views &amp; verifications sent</CardTitle>
             </CardHeader>
             <CardContent>
               <DailyBars
                 daily={calc.daily}
+                accentLabel="verification codes sent"
                 emptyText="No calculator traffic recorded yet. Data appears once the calculator is live on reecewindows.com/window-estimate and sending events."
               />
             </CardContent>
@@ -223,7 +234,7 @@ export default async function PageMetricsPage() {
                         Estimates
                       </th>
                       <th className="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                        Wants exact
+                        Verified
                       </th>
                       <th className="pb-2 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                         Completion
@@ -249,7 +260,7 @@ export default async function PageMetricsPage() {
                           {num(s.estimates)}
                         </td>
                         <td className="py-2 pr-4 text-right tabular text-slate-700 dark:text-slate-300">
-                          {num(s.verifyClicks)}
+                          {num(s.verified)}
                         </td>
                         <td className="py-2 text-right tabular font-medium text-slate-900 dark:text-white">
                           {pct(s.completionRate)}
