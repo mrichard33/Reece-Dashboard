@@ -28,6 +28,45 @@ export type SystemEvent = {
 };
 
 /**
+ * A row of `v_job_status` (LP-MCP sql/113_job_runs.sql): the background-job
+ * roster joined to its latest run and a 24h tally. A registered job that has
+ * never run appears with every `last_*` field null — that row is the point.
+ */
+export type JobStatusRow = {
+  job_id: string;
+  label: string;
+  job_group: string;
+  cadence: string | null;
+  enabled_env: string | null;
+  enabled_default: boolean;
+  /** The gate resolved on the LP MCP service at boot. The dashboard cannot read those env vars. */
+  enabled: boolean;
+  last_status: "running" | "ok" | "failed" | "unknown" | "skipped" | "interrupted" | string | null;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  last_elapsed_ms: number | null;
+  last_summary: string | null;
+  last_instance_id: string | null;
+  runs_24h: number;
+  ok_24h: number;
+  failed_24h: number;
+  unknown_24h: number;
+  interrupted_24h: number;
+};
+
+/** Projection of `agent_rules` read by /agent. Rules are database config, never written from here. */
+export type AgentRule = {
+  id: number;
+  rule_key: string;
+  rule_name: string;
+  category: string | null;
+  enabled: boolean;
+  priority: number | null;
+  requires_approval: boolean | null;
+  updated_at: string | null;
+};
+
+/**
  * Trimmed lp_leads projection used to enrich an activity event with its
  * contact. Joined in JS on `lp_lead_id` (system_events and lp_leads both live
  * in LP Supabase, but we query in parallel and merge rather than SQL-join).

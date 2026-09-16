@@ -126,6 +126,62 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "The detail line names the env var or the failure. 'Not configured' → set the named variable on the named service. 'Error' → the credential or the service is broken; check that service's logs. 'Unknown' → the probe could not run; re-check, and if it stays grey treat it as an outage until proven otherwise.",
   },
 
+  // ── /agent · Decision Engine ────────────────────────────────────────
+  "agent.activeRules": {
+    title: "Active rules",
+    what: "Rules the decision engine will currently evaluate. A rule is database config, not code, so this number can change without a deploy.",
+    where: "`SELECT count(*) FROM agent_rules WHERE enabled = true` (LP Supabase).",
+    fix: "Changing a rule takes effect only after an engine reload — the button for that is on Settings. If a rule you just added is not counted here, it was not saved.",
+  },
+  "agent.inactiveRules": {
+    title: "Inactive rules",
+    what: "Rules that exist but are switched off. Kept rather than deleted so the history of what was tried survives.",
+    where: "`SELECT count(*) FROM agent_rules WHERE enabled = false` (LP Supabase).",
+    fix: "Nothing to do. If a rule you expect to be firing is counted here, that is why it is not firing.",
+  },
+  "agent.pendingEvents": {
+    title: "Events queued",
+    what: "System events the decision engine has not processed yet. A handful at any moment is normal; a number that climbs and never falls means the engine has stopped consuming.",
+    where: "`SELECT count(*) FROM system_events WHERE processed = false` (LP Supabase).",
+    fix: "Check the Heartbeat card below. If the heartbeat is stalled, the engine is not running — check the LP MCP service on Railway. A dormant engine once left 998 events queued for 47 hours.",
+  },
+  "agent.pendingActions": {
+    title: "Actions queued",
+    what: "Actions the engine has decided on but not yet carried out, including those waiting on a human approval.",
+    where: "`agent_actions` where status is pending or pending_approval (LP Supabase).",
+    fix: "If this climbs past a few hundred, the executor is behind. Anything sitting in pending_approval is waiting on a person, not on the system.",
+  },
+  "agent.executed24h": {
+    title: "Executed (24h)",
+    what: "Actions the executor completed in the last 24 hours, counted by when they ran rather than when they were filed.",
+    where: "`agent_actions` where status = completed and executed_at (or updated_at) is within 24h (LP Supabase).",
+    fix: "A sudden drop to zero alongside a climbing queue means the executor stopped. A sudden spike usually follows a bulk import.",
+  },
+  "agent.failed24h": {
+    title: "Failed (24h)",
+    what: "Actions that ran and failed in the last 24 hours. A small steady number is normal; a spike is not.",
+    where: "`agent_actions` where status = failed and executed_at (or updated_at) is within 24h (LP Supabase).",
+    fix: "Look at the error_message on the recent failed rows. Repeated failures of one action_type usually mean a downstream service is rejecting the call, not that the rule is wrong.",
+  },
+  "agent.heartbeat": {
+    title: "Heartbeat",
+    what: "How recently the agent system wrote anything at all. Green under 6 minutes, amber under 15, red beyond that.",
+    where: "The newest row in `system_events` (LP Supabase). Same reading and the same thresholds as the Decision Engine tile on Overview, so the two can never disagree.",
+    fix: "If this is red, automations are not firing. Check the LP MCP service on Railway and the n8n decision-engine workflow.",
+  },
+  "agent.jobs": {
+    title: "Background jobs",
+    what: "Every scheduled job on the LP MCP service with its last run. Green ran and worked. Red ran and failed, which includes a job that reported failure without crashing. Amber either could not tell what happened, or has never run at all. Grey is switched off on purpose, or was cut short by a deploy — neither of those is a fault.",
+    where: "`v_job_status` (LP Supabase, LP-MCP sql/113_job_runs.sql): the job roster joined to its latest run and a 24-hour tally.",
+    fix: "A job showing 'Never run' is the one to chase: it is registered but nothing has happened, which is the failure this page exists to make visible. For a red job, read the summary line, then the detail on its most recent row in `job_runs`. A grey 'Disabled' job names the environment variable that switched it off.",
+  },
+  "agent.rules": {
+    title: "Rules",
+    what: "The decision engine's rule set, inactive ones first because those are the surprising ones. 'Needs approval' means the action waits for a person before it runs.",
+    where: "`agent_rules` (LP Supabase), newest 200 by priority.",
+    fix: "This page is read-only. Rules are database config: change one through the LP MCP tool, then reload the engine from Settings. Before concluding a rule never fires, check `agent_actions.rule_applied` — one thought to be dead had fired 47 times.",
+  },
+
   // ── /overview · Row 1: service health ───────────────────────────────
   "overview.lpMcp": {
     title: "LP MCP",
