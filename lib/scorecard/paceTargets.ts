@@ -194,3 +194,28 @@ export function revenueAnchorDate(periodAsOf: string, revenueAsOf: string | null
   if (!revenueAsOf) return periodAsOf;
   return revenueAsOf < periodAsOf ? revenueAsOf : periodAsOf;
 }
+
+export type PerDayRow = { key: string; label: string; target: number | null; actual: number | null };
+
+/**
+ * Per-Day Pace ACTUALS on the Report 137 appointment cohort, the same counts
+ * and the same elapsed days Funnel vs Goal uses. Replaces the live-sync
+ * actuals, which put a second, lower funnel on the same page (August 2026:
+ * 137 = 2,207 / 1,411 / 491 vs live sync 1,754 / 1,060 / 354).
+ *
+ * Targets pass through untouched. A null count means unmeasured and renders
+ * "—", never 0. Rows with an unknown key are returned unchanged.
+ */
+export function cohortPerDayActuals(
+  rows: PerDayRow[],
+  counts: { issued: number | null; demos: number | null; sales: number | null },
+  elapsedDays: number,
+): PerDayRow[] {
+  const countFor = (key: string): number | null | undefined =>
+    key === "issued" ? counts.issued : key === "demoed" ? counts.demos : key === "closed" ? counts.sales : undefined;
+  return rows.map((r) => {
+    const c = countFor(r.key);
+    if (c === undefined) return r;
+    return { ...r, actual: c == null ? null : perDayActual(c, elapsedDays) };
+  });
+}

@@ -399,6 +399,37 @@ export function rolling90WindowStart(): string {
   return addDays(todayET(), -90);
 }
 
+/**
+ * The rate window (NSLI + average sale) for a resolved period.
+ *
+ * RULING 2026-09-18 — amends §7 of 2026-08-05 ("rates are rolling-90-day
+ * everywhere") for CLOSED periods only:
+ *
+ *   • CLOSED period (ends before the current ET month, e.g. last_month or a
+ *     past select_month): FROZEN. The window is the 90 days before the
+ *     period's first day, and the period's own months are excluded. A closed
+ *     month shows the targets it had going into that month. It never
+ *     reprices, and it never grades itself on its own still-settling results.
+ *     Viewing August on 2026-09-18 used June+July+August and moved every day.
+ *
+ *   • Anything that reaches the current month (MTD, 3-Month, QTD, YTD):
+ *     LIVE. Rolling 90 days ending today, current month excluded. This is the
+ *     existing behavior, unchanged.
+ *
+ * Pure. `currentMonth` and `today` are injectable for tests.
+ */
+export function resolveRateWindow(
+  resolved?: ResolvedPeriod,
+  currentMonth: string = firstOfMonthET(),
+  today: string = todayET(),
+): { windowStart: string; excludeFrom: string; frozen: boolean } {
+  if (resolved?.periodStart && resolved.periodEnd < currentMonth) {
+    const anchor = `${resolved.periodStart.slice(0, 7)}-01`;
+    return { windowStart: addDays(anchor, -90), excludeFrom: anchor, frozen: true };
+  }
+  return { windowStart: addDays(today, -90), excludeFrom: currentMonth, frozen: false };
+}
+
 export type TrailingRates = {
   nsli: number | null;
   avgSale: number | null;
@@ -962,11 +993,13 @@ async function buildView(
   // baseline resolver ignores months at/after its own anchor, so widening the
   // fetch cannot leak a period's own performance into its dollar goal.
   const rateAnchorMonth = firstOfMonthET();
-  // The fetch still pulls the anchor month — computeBaselineFromRows needs the
-  // full list and filters for itself — but the RATE window excludes it: the
-  // live month is issued-without-net and depresses NSLI. See
-  // computeTrailingRates, and the maturation-lag follow-up noted there.
-  const rateOpts = { windowStart: rolling90WindowStart(), excludeFrom: rateAnchorMonth };
+  // ⚠️ AMENDED 2026-09-18: the "everywhere" above now holds only for periods
+  // that reach the current month. A CLOSED period's rates are FROZEN to the 90
+  // days before it began, with its own months excluded. See resolveRateWindow.
+  // The fetch still pulls everything through the current month (the baseline
+  // resolver needs it); only the RATE window changes.
+  const rateWindow = resolveRateWindow(resolved);
+  const rateOpts = { windowStart: rateWindow.windowStart, excludeFrom: rateWindow.excludeFrom };
 
   const [{ data: goalsRows }, prior] = await Promise.all([
     sb.from("scorecard_goals").select("*").in("market", goalCodes),

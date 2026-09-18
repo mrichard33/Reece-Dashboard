@@ -42,6 +42,7 @@ import { freshnessChip } from "@/lib/scorecard/freshness";
 import { shouldShowCoverageBanner, monthsInRange } from "@/lib/scorecard/coverageBanner";
 import { normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
+import { cohortPerDayActuals } from "@/lib/scorecard/paceTargets";
 import { MEETING_VIEW } from "@/lib/scorecard/meetingView";
 import { usDate } from "@/lib/utils";
 
@@ -596,7 +597,23 @@ export default async function ScorecardPage({
                   sales manager; it should not be sitting beside three dollar
                   panels competing for the same glance.
                 */}
-                <PerDayCard vm={vm} />
+                {/* Same 137 cohort counts and same elapsed days as Funnel vs
+                    Goal above, so the two sections cannot disagree. */}
+                <PerDayCard
+                  vm={{
+                    ...vm,
+                    perDay: cohortPerDayActuals(
+                      vm.perDay,
+                      {
+                        issued: periodTotals.issuedCount,
+                        demos: periodTotals.satCount,
+                        sales: periodTotals.soldCount,
+                      },
+                      vm.snapshot.daysElapsed,
+                    ),
+                  }}
+                  dataThrough={netSalesThrough}
+                />
 
                 {/* ④ Sold · Released · Open backlog — three bases, no arithmetic between them. */}
                 <RevenueCard vm={vm} />
