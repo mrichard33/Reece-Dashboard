@@ -288,6 +288,9 @@ export type ScorecardVM = {
 
 const r0 = (v: number) => Math.round(v);
 
+const usdCents = (v: number): string =>
+  v.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export function buildScorecardVM(
   view: ScorecardView,
   resolved: ResolvedPeriod,
@@ -708,6 +711,7 @@ function buildMarketing(
     { metric: "Working Revenue", monthGoal: null, mtdGoal: null, actual: usd(a.working_dollars), tone: "plain", warn: true },
     { metric: "Open Quotes", monthGoal: null, mtdGoal: null, actual: usd(open), tone: "plain", warn: true },
     { metric: "GSLI", monthGoal: null, mtdGoal: null, actual: usd(a.gsli), tone: "plain" },
-    { metric: "NSLI", monthGoal: d.planning_nsli ? usd(d.planning_nsli) : null, mtdGoal: d.planning_nsli ? usd(d.planning_nsli) : null, actual: usd(a.nsli), tone: "plain", warn: true },
+    // Planning NSLI with cents so it × the issued goal = the goal exactly.
+    { metric: "NSLI", monthGoal: d.planning_nsli ? usdCents(d.planning_nsli) : null, mtdGoal: d.planning_nsli ? usdCents(d.planning_nsli) : null, actual: usd(a.nsli), tone: "plain", warn: true },
   ];
 }

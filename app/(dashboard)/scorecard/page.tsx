@@ -616,8 +616,11 @@ export default async function ScorecardPage({
                   dataThrough={netSalesThrough}
                 />
 
-                {/* ④ Sold · Released · Open backlog — three bases, no arithmetic between them. */}
-                <RevenueCard vm={vm} />
+                {/* Sales outcome — Sold + Lost only. Released to production and
+                    Open backlog moved to the Production section on
+                    /scorecard/detail (ruling 2026-09-18): they run on the
+                    production clock, not this period's sales. */}
+                <RevenueCard vm={vm} panels="sales" />
 
                 {/* ⑤ By Market — every market for the period; rows sum to All Markets. */}
                 {MEETING_VIEW.showByMarket && byMarket.rows.length > 0 && (

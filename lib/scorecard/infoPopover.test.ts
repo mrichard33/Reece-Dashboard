@@ -159,11 +159,15 @@ describe("§Popover — the clipping ancestors that made this necessary still ex
     // Sold / Released / Lost / Open backlog — the boxes named in the report.
     // SplitCard needs overflow-hidden for its rounded accent border, so the
     // popover is what has to escape, not the card that has to stop clipping.
+    //
+    // Since 2026-09-18 they render in two groups on two routes (`panels`), and
+    // "Released this period" is "Released to production". All four still come
+    // from this one SplitCard, so the clipping contract is unchanged.
     const src = readFileSync("components/scorecard/RevenueCard.tsx", "utf8");
     expect(src).toMatch(/overflow-hidden rounded-lg/);
     for (const title of [
       "Sold this period",
-      "Released this period",
+      "Released to production",
       "Lost this period",
       "Open backlog",
     ]) {

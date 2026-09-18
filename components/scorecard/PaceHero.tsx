@@ -11,6 +11,11 @@ import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
 type Kpi = { label: string; sub: string; value: string; tone?: "pos" | "neg" | "plain"; title?: string; flag?: boolean };
 
+/** Planning rates show cents so they multiply back to the goal exactly
+ *  (3,189 × $3,715.35 = $11,848,251). Whole-dollar display dropped ~$1,116. */
+const usdCents = (v: number): string =>
+  v.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 /** Compact window label for the KPI sub-line — matches the goal editor's wording. */
 function shortWindowLabel(w: string | null): string {
   switch (w) {
@@ -277,7 +282,7 @@ export function PaceHero({
       sub:
         leadsNeeded == null
           ? "no rate history — not computable"
-          : `${num(leadsRemaining ?? 0)} still needed · ${usd(nsli ?? 0)}/lead issued${partialCoverage ? " · excludes offices with no rate history" : ""}`,
+          : `${num(leadsRemaining ?? 0)} still needed · ${usdCents(nsli ?? 0)}/lead issued${partialCoverage ? " · excludes offices with no rate history" : ""}`,
       value: leadsNeeded == null ? "—" : num(leadsNeeded),
       title:
         `Σ of each office's goal ÷ that office's own trailing ${METRIC_LABELS.netPerIssuedAppointment} — the same number as Funnel vs Goal's Issued Period Goal. × the needed rate beside it = the goal.`,
@@ -305,7 +310,7 @@ export function PaceHero({
         (periodSalesCount && periodSalesCount > 0
           ? `this period · ${periodSalesCount} sales`
           : "no sales this period yet") +
-        (p.planningAvgSale != null && p.planningAvgSale > 0 ? ` · needed ${usd(p.planningAvgSale)}` : ""),
+        (p.planningAvgSale != null && p.planningAvgSale > 0 ? ` · needed ${usdCents(p.planningAvgSale)}` : ""),
       value: usd(periodAvgSaleDollars ?? 0),
       title:
         "This period's Net Sales ÷ this period's sales count. Shown for the " +
@@ -324,7 +329,7 @@ export function PaceHero({
         p.nsli > 0
           ? `goal ÷ issued needed · actual ${usd(p.nsli)} · ${windowSub}`
           : "goal ÷ issued needed",
-      value: p.planningNsli != null && p.planningNsli > 0 ? usd(p.planningNsli) : "—",
+      value: p.planningNsli != null && p.planningNsli > 0 ? usdCents(p.planningNsli) : "—",
       title:
         (rateTitle ? `${rateTitle} · ` : "") +
         `Needed = goal ÷ the issued target built office by office. Actual = the blended company ${METRIC_LABELS.netPerIssuedAppointment} over the rate window, including markets with no goal — it will not multiply back to the goal.`,
