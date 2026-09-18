@@ -57,15 +57,32 @@ describe("tie-out — August 2026 company view", () => {
     // The tile used to show the blended trailing rate, which is a MEASUREMENT of
     // a different population. The rate shown beside a target has to be the one
     // the target was built from, or the two do not multiply.
+    //
+    // ⚠️ The multiplicand is the ROUNDED count (ruling 2026-09-18, #2). The page
+    // prints whole appointments; dividing the goal by the unrounded ~3,190.07
+    // and then multiplying the printed 3,190 back left ~$1,116 on the table.
     const totals = august();
     const planning = planningRates(totals, GOAL, GOAL);
-    expect(planning.nsli! * totals.issued!).toBeCloseTo(GOAL, 2);
+    expect(planning.nsli! * Math.round(totals.issued!)).toBeCloseTo(GOAL, 2);
   });
 
   it("the displayed average sale × the sales target = the goal", () => {
     const totals = august();
     const planning = planningRates(totals, GOAL, GOAL);
-    expect(planning.avgSale! * totals.closed!).toBeCloseTo(GOAL, 2);
+    expect(planning.avgSale! * Math.round(totals.closed!)).toBeCloseTo(GOAL, 2);
+  });
+
+  it("the live August inputs land on $3,715.35, and 3,189 × it = the goal", () => {
+    // Mark's own calculator check, on the live company figures rather than this
+    // file's tabulated offices: 3,189 issued × $3,715 = $11,847,135, $1,116 short
+    // of the goal. Cents plus the rounded denominator closes it exactly.
+    const planning = planningRates(
+      { leads: null, issued: 3189.3, demoed: 2232.5, closed: 627.4 },
+      GOAL,
+      GOAL,
+    );
+    expect(planning.nsli!).toBeCloseTo(3715.35, 2);
+    expect(planning.nsli! * 3189).toBeCloseTo(GOAL, 2);
   });
 
   it("the demos target × Demo → Sale % = the sales target", () => {
@@ -80,7 +97,10 @@ describe("tie-out — August 2026 company view", () => {
     // percentage moves with the inputs, every month and every market.
     const totals = august();
     const planning = planningRates(totals, GOAL, GOAL);
-    expect((totals.demoed! * planning.demoToSalePct!) / 100).toBeCloseTo(totals.closed!, 2);
+    expect((Math.round(totals.demoed!) * planning.demoToSalePct!) / 100).toBeCloseTo(
+      Math.round(totals.closed!),
+      2,
+    );
     expect(planning.demoToSalePct!).toBeGreaterThan(30); // never the stored flat target
     expect(planning.demoToSalePct!).toBeCloseTo(35.3, 1);
     expect(Math.round(totals.demoed!)).toBe(2233);
@@ -127,10 +147,10 @@ describe("tie-out — August 2026 company view", () => {
     expect(coveredGoal).toBe(GOAL - 2_600_000);
 
     const planning = planningRates(totals, coveredGoal, GOAL);
-    expect(planning.nsli! * totals.issued!).toBeCloseTo(coveredGoal, 2);
+    expect(planning.nsli! * Math.round(totals.issued!)).toBeCloseTo(coveredGoal, 2);
     // The closed chain is untouched by a missing NSLI, so it still ties to the
     // full goal — the two chains have independent coverage.
-    expect(planning.avgSale! * totals.closed!).toBeCloseTo(GOAL, 2);
+    expect(planning.avgSale! * Math.round(totals.closed!)).toBeCloseTo(GOAL, 2);
   });
 
   it("no computable office at all yields null, never a fabricated rate", () => {

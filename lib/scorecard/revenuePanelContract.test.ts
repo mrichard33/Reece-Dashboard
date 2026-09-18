@@ -93,3 +93,78 @@ describe("Cancellations live on exactly ONE card", () => {
     expect(code).toMatch(/lostLines|Lost this period/);
   });
 });
+
+/**
+ * ③ WHICH PANELS RENDER WHERE (ruling 2026-09-18).
+ *
+ * ══ THE DEFECT ══
+ *
+ * Sold / Released / Lost / Open Backlog sat in one row on the meeting page and
+ * each counts a DIFFERENT set of jobs:
+ *
+ *   Sold, Lost      contracts signed in this period
+ *   Released        jobs sent to production in this period, sold any time
+ *   Open Backlog    every open job right now — ignores the period filter
+ *
+ * Every panel already declared its own basis behind the ⓘ, and managers still
+ * tried to make the four add up, because four boxes in a row is an invitation
+ * to sum them. Lineage behind a popover does not survive a meeting.
+ *
+ * ══ THE RULE ══
+ *
+ * The meeting page shows the two SALES panels. The two PRODUCTION panels move
+ * to /scorecard/detail, under their own heading, on the production clock. Every
+ * panel states in one plain-English line which jobs it counts, on the card face
+ * rather than behind the ⓘ.
+ */
+describe("panels — sales on the meeting page, production on detail", () => {
+  it("each panel is gated by the group it belongs to", () => {
+    expect(code).toMatch(/panels\?: "sales" \| "production"/);
+    // Sold + Lost are the sales group; Released + Backlog the production group.
+    expect(code).toMatch(/panels === "sales" && \(\s*<SplitCard\s*\n\s*title="Sold this period"/);
+    expect(code).toMatch(/panels === "sales" && \(\s*<SplitCard\s*\n\s*title="Lost this period"/);
+    expect(code).toMatch(
+      /panels === "production" && \(\s*<SplitCard\s*\n\s*title="Released to production"/,
+    );
+    expect(code).toMatch(/panels === "production" && \(\s*<SplitCard\s*\n\s*title="Open backlog"/);
+    // Two at a time, so the grid tops out at two columns. A four-column track
+    // would leave two empty cells and read as a rendering fault.
+    expect(code).not.toMatch(/xl:grid-cols-4/);
+  });
+
+  it('"Released this period" is renamed — it is not dated by this period\'s sales', () => {
+    // The old title put it on the same clock as Sold and Lost in a reader's
+    // head. It is dated by the production milestone, whatever month the job
+    // was sold.
+    expect(src).not.toContain("Released this period");
+    expect(code).toContain('title="Released to production"');
+  });
+
+  it("every panel carries a plain-English subtitle on the card face", () => {
+    // Visible, not behind the ⓘ: the sentence has to survive a screenshot.
+    expect(code).toMatch(/subtitle\?: string/);
+    expect(code).toMatch(/\{subtitle && \(/);
+    for (const line of [
+      "Contracts signed in this period, and what survived.",
+      "Jobs sent to production in this period, whatever month they were sold.",
+      "Contracts signed in this period that ended, by cause.",
+      "Every open job right now, sold any time. Ignores the period filter.",
+    ]) {
+      expect(code, `missing subtitle: ${line}`).toContain(line);
+    }
+  });
+
+  it("the routes ask for the group each one owns", () => {
+    const meeting = readFileSync(join(process.cwd(), "app/(dashboard)/scorecard/page.tsx"), "utf8");
+    const detail = readFileSync(
+      join(process.cwd(), "app/(dashboard)/scorecard/detail/page.tsx"),
+      "utf8",
+    );
+    expect(meeting).toMatch(/<RevenueCard vm=\{vm\} panels="sales" \/>/);
+    expect(detail).toMatch(/<RevenueCard vm=\{vm\} panels="production" \/>/);
+    // The production panels are fed by the same report facts the meeting page
+    // uses — same sources, same numbers, a different page.
+    expect(detail).toMatch(/buildReportFacts\(factRows, resolved, MARKET\)/);
+    expect(detail).toMatch(/id="sc-production"/);
+  });
+});

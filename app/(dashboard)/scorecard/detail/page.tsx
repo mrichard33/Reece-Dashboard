@@ -21,6 +21,10 @@ import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
 import { marketLabel, normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
+import { RevenueCard } from "@/components/scorecard/RevenueCard";
+import { ScSection } from "@/components/scorecard/ScSection";
+import { fetchReportFactRows } from "@/lib/queries/reportFacts";
+import { buildReportFacts } from "@/lib/queries/reportFacts.core";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +105,7 @@ export default async function ScorecardDetailPage({
 
   // Same fetches, same failure posture as /scorecard: a single failing query
   // degrades to an empty panel rather than 500ing the page.
-  const [view, byMarket, allCohorts] = await Promise.all([
+  const [view, byMarket, allCohorts, factRows] = await Promise.all([
     getScorecardForPeriod(MARKET, resolved).catch((err) => {
       console.error(`[scorecard/detail] view ${MARKET} failed:`, (err as Error)?.message ?? err);
       return null;
@@ -111,6 +115,9 @@ export default async function ScorecardDetailPage({
       return { rows: [], total: null, unrouted: null };
     }),
     fetchCurrentCohorts(),
+    // Report facts for the Production section (134 released, 133 backlog).
+    // Never rejects — a failure yields [] and the panels read "not yet sourced".
+    fetchReportFactRows(),
   ]);
 
   // §7: sum the market's rows and derive from the summed numerator and
@@ -154,11 +161,19 @@ export default async function ScorecardDetailPage({
           </Card>
         ) : (
           (() => {
-            // Only `abbr` and `pace.monthlyGoal` are read from here — the two
-            // facts the panels need to name the period and its goal. The clock
-            // and report-facts arguments the meeting tab threads in shape the
+            // `abbr` and `pace.monthlyGoal` name the period and its goal for the
+            // cohort panels; `revenue.facts` feeds the Production section below.
+            // The reporting-clock argument the meeting tab threads in shapes the
             // pace tiles, which this page does not render.
-            const vm = buildScorecardVM(view, resolved, null, SELLING_CAL);
+            //
+            // Report facts now feed the Production section (released + backlog),
+            // projected exactly as the meeting page does.
+            const vm = buildScorecardVM(
+              view,
+              resolved,
+              buildReportFacts(factRows, resolved, MARKET),
+              SELLING_CAL,
+            );
             return (
               <>
                 <ExpectedOutcomePanel
@@ -172,6 +187,15 @@ export default async function ScorecardDetailPage({
                 <CohortQualityPanel cohorts={companyCohorts} asOf={cohortObservedOn} />
 
                 {byMarket.rows.length > 0 && <ByMarketTable data={byMarket} abbr={vm.abbr} />}
+
+                {/* Production — moved off the meeting scorecard (ruling
+                    2026-09-18). Production-clock figures; never compared with
+                    this period's sales. */}
+                <ScSection id="sc-production" label="Production" meta="not tied to this period's sales">
+                  <div className="border-t border-slate-100 px-4 py-4 dark:border-slate-800/70 sm:px-5">
+                    <RevenueCard vm={vm} panels="production" />
+                  </div>
+                </ScSection>
 
                 {!view.derived.reconciled && (
                   <div

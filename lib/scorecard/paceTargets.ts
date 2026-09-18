@@ -146,11 +146,16 @@ export type PlanningRates = {
  * from BOTH numerator and denominator, so the ratio stays honest.
  */
 export function planningRates(t: TargetTotals, issuedGoal: number, closedGoal: number): PlanningRates {
+  // Divide by the WHOLE counts the page displays (ruling 2026-09-18, #2).
+  // Dividing by the unrounded total (~3,189.3) while showing 3,189 left
+  // ~$1,116 unexplained on a calculator. Now 3,189 × $3,715.35 = the goal.
+  const issued = t.issued != null ? Math.round(t.issued) : null;
+  const demoed = t.demoed != null ? Math.round(t.demoed) : null;
+  const closed = t.closed != null ? Math.round(t.closed) : null;
   return {
-    nsli: t.issued != null && t.issued > 0 ? issuedGoal / t.issued : null,
-    avgSale: t.closed != null && t.closed > 0 ? closedGoal / t.closed : null,
-    demoToSalePct:
-      t.closed != null && t.demoed != null && t.demoed > 0 ? (t.closed / t.demoed) * 100 : null,
+    nsli: issued != null && issued > 0 ? issuedGoal / issued : null,
+    avgSale: closed != null && closed > 0 ? closedGoal / closed : null,
+    demoToSalePct: closed != null && demoed != null && demoed > 0 ? (closed / demoed) * 100 : null,
   };
 }
 

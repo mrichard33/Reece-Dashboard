@@ -4,14 +4,19 @@ import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /**
  * Section ③ — FOUR panels, each declaring its own basis, with NO arithmetic
- * crossing between them (§2, ruled 2026-08-06).
+ * crossing between them (§2, ruled 2026-08-06). Since 2026-09-18 they render in
+ * TWO groups on two routes — see the `panels` prop — because side by side they
+ * invited sums that cannot work. The bases are unchanged.
  *
- *   SOLD THIS PERIOD      sold date · report 137 · respects the period filter
- *   RELEASED THIS PERIOD  RTP milestone date · report 134 · respects the filter
- *   LOST THIS PERIOD      contract-date cohort · report 133 · respects the
- *                         filter; split by CAUSE, never sourced from ko_count
- *   OPEN BACKLOG          point-in-time · report 133 · IGNORES the period
- *                         filter, honors the market filter, shows its as-of
+ *   panels="sales" — /scorecard, the meeting page:
+ *     SOLD THIS PERIOD       sold date · report 137 · respects the period filter
+ *     LOST THIS PERIOD       contract-date cohort · report 133 · respects the
+ *                            filter; split by CAUSE, never sourced from ko_count
+ *
+ *   panels="production" — /scorecard/detail, the Production section:
+ *     RELEASED TO PRODUCTION RTP milestone date · report 134 · respects the filter
+ *     OPEN BACKLOG           point-in-time · report 133 · IGNORES the period
+ *                            filter, honors the market filter, shows its as-of
  *
  * WHAT THIS REPLACES. The old second panel ran one subtraction down a single
  * column: gross → −cancellations → net sold → −HOA → −permit → −other →
@@ -46,8 +51,12 @@ function SplitCard({
   accent,
   lines,
   banner,
+  subtitle,
 }: {
   title: string;
+  /** One plain-English line: WHICH jobs this panel counts. Always visible —
+   *  managers kept trying to make the panels add up (2026-09-18). */
+  subtitle?: string;
   info: { title?: string; what: string; where: string; fix: string };
   accent: string;
   lines: Line[];
@@ -69,9 +78,14 @@ function SplitCard({
       className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 ${accent}`}
     >
       <div className="flex items-start justify-between gap-2 px-5 pb-2.5 pt-4">
-        <h3 className="font-display text-[12.5px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
-          {title}
-        </h3>
+        <div className="min-w-0">
+          <h3 className="font-display text-[12.5px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+            {title}
+          </h3>
+          {subtitle && (
+            <p className="mt-0.5 text-[11.5px] leading-snug text-slate-500 dark:text-slate-400">{subtitle}</p>
+          )}
+        </div>
         <InfoPopover info={{ title, ...info }} align="right" className="-mt-0.5 shrink-0" />
       </div>
       {banner && (
@@ -109,7 +123,21 @@ function SplitCard({
 const bucketValue = (b: { count: number; dollars: number } | null): string =>
   b == null ? "not yet sourced" : `${num(b.count)} · ${usd(b.dollars)}`;
 
-export function RevenueCard({ vm }: { vm: ScorecardVM }) {
+/**
+ * `panels` (ruling 2026-09-18):
+ *   "sales"      → Sold this period + Lost this period. The meeting scorecard.
+ *   "production" → Released to production + Open backlog. /scorecard/detail
+ *                  only. They run on the production clock, not this period's
+ *                  sales, and side by side with Sold they invited sums that
+ *                  cannot work.
+ */
+export function RevenueCard({
+  vm,
+  panels = "sales",
+}: {
+  vm: ScorecardVM;
+  panels?: "sales" | "production";
+}) {
   const r = vm.revenue;
   const f = r.facts;
   // Pending period (no report has landed yet, main 2026-08-04): dollar figures
@@ -230,7 +258,7 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
       : []),
   ];
 
-  // RELEASED THIS PERIOD — RTP milestone date (report 134). One figure on its
+  // RELEASED TO PRODUCTION — RTP milestone date (report 134). One figure on its
   // own basis; it is NOT gross-sold minus anything.
   //
   // Prefer report 134 itself. This panel's subtitle claimed "report 134" while
@@ -349,9 +377,11 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+        {panels === "sales" && (
         <SplitCard
           title="Sold this period"
+          subtitle="Contracts signed in this period, and what survived."
           info={{
             what:
               "Contract value written in the selected period, on SOLD date, and what survived. " +
@@ -375,8 +405,11 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
                 "after cancels and Net are report-137-only and cannot be shown from the sync."
           }
         />
+        )}
+        {panels === "production" && (
         <SplitCard
-          title="Released this period"
+          title="Released to production"
+          subtitle="Jobs sent to production in this period, whatever month they were sold."
           info={{
             what: "Contract value RELEASED to production in the selected period, dated by the production milestone. A different cohort from Sold — it includes work contracted in earlier periods and excludes work sold this period that has not shipped.",
             where: releasedWhere,
@@ -385,8 +418,11 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           accent="border-t-2 border-t-emerald-500"
           lines={releasedLines}
         />
+        )}
+        {panels === "sales" && (
         <SplitCard
           title="Lost this period"
+          subtitle="Contracts signed in this period that ended, by cause."
           info={{
             what:
               "Jobs from this period's contract cohort that ended in a terminal status, split by cause. Four different problems: a credit decline is finance, a cancellation is sales, a dead deal is follow-up, and cancelled-by-management is a margin or capacity call." +
@@ -403,8 +439,11 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           accent="border-t-2 border-t-brick"
           lines={lostLines}
         />
+        )}
+        {panels === "production" && (
         <SplitCard
           title="Open backlog"
+          subtitle="Every open job right now, sold any time. Ignores the period filter."
           info={{
             what: "Open jobs as of the report's own date — a point-in-time STOCK, not a period flow. It ignores the period filter and includes jobs sold in earlier periods and earlier years.",
             where: `Basis: point-in-time · report 133 · as of ${f.pendingAsOf ? usDate(f.pendingAsOf) : usDate(vm.snapshot.asOfDate)}`,
@@ -413,6 +452,7 @@ export function RevenueCard({ vm }: { vm: ScorecardVM }) {
           accent="border-t-2 border-t-sky-400"
           lines={backlogLines}
         />
+        )}
       </div>
     </div>
   );
