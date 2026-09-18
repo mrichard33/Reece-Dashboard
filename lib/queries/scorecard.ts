@@ -20,8 +20,8 @@ import {
 import {
   targetTotals,
   perDayTargets,
-  sumPerDayTargets,
   sumTargetTotals,
+  planningRates,
   perDayActual,
   prorateGoal,
   revenueAnchorDate,
@@ -220,6 +220,20 @@ export type ScorecardDerived = {
   actual_issued_per_day: number | null;
   actual_demoed_per_day: number | null;
   actual_closed_per_day: number | null;
+  /** FULL-period target counts, UNROUNDED — Σ of the per-office chains. EVERY
+   *  count goal on the page derives from these (ruling 2026-09-18), never from
+   *  rounded per-day × days and never from goal ÷ blended NSLI. */
+  target_issued_total: number | null;
+  target_demoed_total: number | null;
+  target_closed_total: number | null;
+  /** Rates the targets imply — see planningRates(). These are what the page
+   *  DISPLAYS beside the targets so the numbers multiply back to the goal. */
+  planning_nsli: number | null;
+  planning_avg_sale: number | null;
+  planning_demo_to_sale_pct: number | null;
+  /** Goal $ covered by a computable issued chain. Below period_goal_dollars
+   *  only when an office has no rate history. */
+  planning_issued_goal_dollars: number | null;
   // ⚠ TIE-OUT variance bridge — dollarized + per-metric point gaps vs goal.
   variance: {
     dollars: number;
@@ -717,6 +731,8 @@ function derive(
   elapsedOverride?: number | null,
   /** Selling days elapsed through `revenue_as_of` (single-month path). */
   revenueElapsedOverride?: number | null,
+  /** Goal $ covered by computable issued / closed chains (see buildView). */
+  planningGoals?: { issued: number; closed: number } | null,
 ): ScorecardDerived {
   const avgSaleTarget = rates?.avgSale ?? null;
   // Selling-day basis (both sides): the FULL period's selling days for target
@@ -762,6 +778,11 @@ function derive(
       ? Math.round((Math.abs(targets.totals.closed - closed_via_flow) / closed_via_flow) * 1000) / 10
       : null;
 
+  // RULING 2026-09-18 — the rates the targets imply, so the page ties out.
+  const issuedGoalCovered = planningGoals?.issued ?? period_goal_dollars;
+  const closedGoalCovered = planningGoals?.closed ?? period_goal_dollars;
+  const planning = planningRates(targets.totals, issuedGoalCovered, closedGoalCovered);
+
   return {
     monthly_goal_dollars: goals.monthly_goal_dollars,
     period_goal_dollars,
@@ -773,6 +794,13 @@ function derive(
     rate_anchor_month: anchor?.anchorMonth ?? null,
     rate_period_scoped: anchor?.periodScoped ?? false,
     sales_target_divergence_pct,
+    target_issued_total: targets.totals.issued,
+    target_demoed_total: targets.totals.demoed,
+    target_closed_total: targets.totals.closed,
+    planning_nsli: planning.nsli,
+    planning_avg_sale: planning.avgSale,
+    planning_demo_to_sale_pct: planning.demoToSalePct,
+    planning_issued_goal_dollars: targets.totals.issued != null ? issuedGoalCovered : null,
     target_leads_per_day: targets.perDay.leadsPerDay,
     target_issued_per_day: targets.perDay.issuedPerDay,
     target_demoed_per_day: targets.perDay.demoedPerDay,
@@ -1151,9 +1179,21 @@ async function buildView(
       targetDemoPct: demoPct,
     });
   });
+  const totals = sumTargetTotals(unitChains);
   const targets: ResolvedTargets = {
-    totals: sumTargetTotals(unitChains),
-    perDay: sumPerDayTargets(unitChains.map((c) => perDayTargets(c, periodDays))),
+    totals,
+    // RULING 2026-09-18 (amends the "company per-day = Σ office per-day"
+    // rule): company per-day = the EXACT company total ÷ period days, so
+    // per-day × days = Period Goal on this page. Σ of office values rounded to
+    // 0.1 drifted by several appointments. Single-office views are unchanged
+    // (one unit).
+    perDay: perDayTargets(totals, periodDays),
+  };
+  // Goal dollars covered by a computable chain — the numerator of the
+  // planning rates. An office with no rate history drops out of both sides.
+  const planningGoals = {
+    issued: unitChains.reduce((a, c, i) => a + (c.issued != null ? (unitGoals[i]?.full ?? 0) : 0), 0),
+    closed: unitChains.reduce((a, c, i) => a + (c.closed != null ? (unitGoals[i]?.full ?? 0) : 0), 0),
   };
 
   const goalMeta: ScorecardDerived["goal"] = {
@@ -1180,6 +1220,7 @@ async function buildView(
       revenueGoalToDate,
       countElapsedOverride,
       revenueElapsedOverride,
+      planningGoals,
     ),
   };
 }

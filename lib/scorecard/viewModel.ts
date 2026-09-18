@@ -117,6 +117,14 @@ export type ScorecardVM = {
     monthlyGoal: number;
     avgSale: number;
     nsli: number;
+    /** goal ÷ issued needed — the NSLI the targets use. × issuedNeeded = goal. */
+    planningNsli: number | null;
+    /** goal ÷ sales needed. */
+    planningAvgSale: number | null;
+    /** Unrounded full-period issued target (Σ office chains). ONE issued target. */
+    issuedNeeded: number | null;
+    /** Goal $ covered by a computable issued chain. */
+    planningIssuedGoal: number | null;
     /** Trailing window that produced NSLI + avg sale, and its sales-count sample —
      *  for the "how was this computed" tooltip. */
     rateWindow: string | null;
@@ -393,8 +401,12 @@ export function buildScorecardVM(
       : "On / ahead of pace";
 
   // ── funnel ──
-  const goalFor = (perDay: number | null): number | null =>
-    perDay == null ? null : r0(perDay * daysElapsed);
+  // Target to date from the UNROUNDED period total (ruling 2026-09-18),
+  // never rounded per-day × days.
+  const goalFor = (total: number | null): number | null => {
+    const v = prorateGoal(total, daysElapsed, sellingDays);
+    return v == null ? null : r0(v);
+  };
   const set = a.sets ?? 0;
   const issued = a.issued ?? 0;
   const netIssue = a.net_issue ?? 0;
@@ -406,7 +418,7 @@ export function buildScorecardVM(
       key: "issued",
       label: "Issued",
       actual: issued,
-      goal: goalFor(d.target_issued_per_day),
+      goal: goalFor(d.target_issued_total),
       conv: set ? (issued / set) * 100 : 0,
       convLabel: "% Issue",
     },
@@ -414,7 +426,7 @@ export function buildScorecardVM(
       key: "demos",
       label: "Demos",
       actual: demos,
-      goal: goalFor(d.target_demoed_per_day),
+      goal: goalFor(d.target_demoed_total),
       conv: netIssue ? (demos / netIssue) * 100 : 0,
       convLabel: "% Demo",
     },
@@ -422,7 +434,7 @@ export function buildScorecardVM(
       key: "sold",
       label: "Sold",
       actual: sold,
-      goal: goalFor(d.target_closed_per_day),
+      goal: goalFor(d.target_closed_total),
       conv: demos ? (sold / demos) * 100 : 0,
       convLabel: "% Close",
     },
@@ -435,7 +447,10 @@ export function buildScorecardVM(
     // computes yet — see lib/scorecard/labels.ts. The column name stays
     // `close_pct` (the writer emits it, and renaming it is a migration); what
     // changes is that the screen stops calling it something it isn't.
-    { key: "demoToSale", label: METRIC_LABELS.demoToSale, actual: a.close_pct ?? 0, target: g.target_close_pct, higher: true, desc: METRIC_FORMULAS.demoToSale },
+    // Target = the rate the targets imply (sales needed ÷ demos needed), so
+    // demos goal × this = sales goal (ruling 2026-09-18). The stored target is
+    // the fallback only when no chain is computable.
+    { key: "demoToSale", label: METRIC_LABELS.demoToSale, actual: a.close_pct ?? 0, target: d.planning_demo_to_sale_pct ?? g.target_close_pct, higher: true, desc: METRIC_FORMULAS.demoToSale },
     { key: "demo", label: METRIC_LABELS.demo, actual: a.demo_pct ?? 0, target: g.target_demo_pct, higher: true, desc: "Demos ÷ net issued" },
     // ⚠️ Good Rate % and KO % REMOVED (Amendment B3). Neither is in the v4 or
     // Amendment A metric set, and each duplicates a contracted 137 metric with
@@ -621,6 +636,10 @@ export function buildScorecardVM(
       // volatile current partial-month actuals. Same values that drive the targets.
       avgSale: d.avg_sale_target ?? 0,
       nsli: g.trailing_nsli ?? 0,
+      planningNsli: d.planning_nsli,
+      planningAvgSale: d.planning_avg_sale,
+      issuedNeeded: d.target_issued_total,
+      planningIssuedGoal: d.planning_issued_goal_dollars,
       rateWindow: d.rate_window,
       rateWidened: d.rate_window != null && d.rate_window !== "rolling_90d" && d.rate_window !== "trailing_3",
       rateSampleN: d.rate_sample_n,
@@ -650,11 +669,12 @@ function buildMarketing(
   // Target lead funnel (one direction from the NET goal): issued = goal ÷ NSLI →
   // demos = issued × demo% → sales = goal ÷ NET average sale (NOT demos × close%,
   // so the sales target can't drift off the dollar goal).
-  const nsliRate = g.trailing_nsli ?? 0;
-  const monthlyIssued = nsliRate > 0 ? g.monthly_goal_dollars / nsliRate : null;
-  const monthlyDemos = monthlyIssued != null ? monthlyIssued * (g.target_demo_pct / 100) : null;
-  const monthlySales =
-    d.avg_sale_target && d.avg_sale_target > 0 ? g.monthly_goal_dollars / d.avg_sale_target : null;
+  // RULING 2026-09-18: the SAME Σ-office totals every other section uses —
+  // never company goal ÷ blended NSLI, which produced a third set of targets.
+  const monthlyIssued = d.target_issued_total;
+  const monthlyDemos = d.target_demoed_total;
+  const monthlySales = d.target_closed_total;
+  const closeTarget = d.planning_demo_to_sale_pct ?? g.target_close_pct;
   const prorate = (v: number | null) => prorateGoal(v, daysElapsed, sellingDays);
   // Ruled 2026-08-04: issue % is DERIVED from history, never a hand-set target.
   // The stored target_issue_pct column is unused — no read path consults it, so
@@ -680,7 +700,7 @@ function buildMarketing(
     { metric: "Demos", monthGoal: count(monthlyDemos), mtdGoal: count(prorate(monthlyDemos)), actual: num(a.demos), tone: toneCount(a.demos, prorate(monthlyDemos)) },
     { metric: "% Demo", monthGoal: pct(g.target_demo_pct), mtdGoal: pct(g.target_demo_pct), actual: pct(a.demo_pct), tone: tonePct(a.demo_pct, g.target_demo_pct) },
     { metric: "Sold", monthGoal: count(monthlySales), mtdGoal: count(prorate(monthlySales)), actual: num(a.sales), tone: toneCount(a.sales, prorate(monthlySales)) },
-    { metric: "% Gross Close", monthGoal: pct(g.target_close_pct), mtdGoal: pct(g.target_close_pct), actual: pct(a.close_pct), tone: tonePct(a.close_pct, g.target_close_pct) },
+    { metric: "% Gross Close", monthGoal: pct(closeTarget), mtdGoal: pct(closeTarget), actual: pct(a.close_pct), tone: tonePct(a.close_pct, closeTarget) },
     { metric: "# Net Close", monthGoal: count(monthlyNetClose), mtdGoal: count(prorate(monthlyNetClose)), actual: num(a.net_close), tone: "plain", warn: true },
     { metric: "% Net Close", monthGoal: netClosePct != null ? pct(netClosePct) : null, mtdGoal: netClosePct != null ? pct(netClosePct) : null, actual: pct(a.pct_net_close), tone: "plain", warn: true },
     { metric: "Gross Sale $", monthGoal: null, mtdGoal: null, actual: usd(a.gross_sales), tone: "plain" },
@@ -688,6 +708,6 @@ function buildMarketing(
     { metric: "Working Revenue", monthGoal: null, mtdGoal: null, actual: usd(a.working_dollars), tone: "plain", warn: true },
     { metric: "Open Quotes", monthGoal: null, mtdGoal: null, actual: usd(open), tone: "plain", warn: true },
     { metric: "GSLI", monthGoal: null, mtdGoal: null, actual: usd(a.gsli), tone: "plain" },
-    { metric: "NSLI", monthGoal: g.trailing_nsli ? usd(g.trailing_nsli) : null, mtdGoal: g.trailing_nsli ? usd(g.trailing_nsli) : null, actual: usd(a.nsli), tone: "plain", warn: true },
+    { metric: "NSLI", monthGoal: d.planning_nsli ? usd(d.planning_nsli) : null, mtdGoal: d.planning_nsli ? usd(d.planning_nsli) : null, actual: usd(a.nsli), tone: "plain", warn: true },
   ];
 }

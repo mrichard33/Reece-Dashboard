@@ -2,6 +2,7 @@ import { num, usd, usDate, shortDate } from "@/lib/utils";
 import { ScSection } from "./ScSection";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 import { prorateGoal } from "@/lib/scorecard/paceTargets";
+import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
 /**
  * Section ① — Goal & Pace. The 5-second read: a flat horizontal band of eight
@@ -42,6 +43,7 @@ export function PaceHero({
   netSalesRefused = null,
   periodAvgSaleDollars = 0,
   periodSalesCount = 0,
+  cohortIssued = null,
 }: {
   vm: ScorecardVM;
   /**
@@ -86,6 +88,9 @@ export function PaceHero({
   periodAvgSaleDollars?: number;
   /** Sales count behind it, so the tile can say "no sales yet" rather than $0. */
   periodSalesCount?: number;
+  /** Report 137 issued count — the SAME actual Funnel vs Goal shows, so
+   *  "still needed" counts down against it. Falls back to the funnel VM. */
+  cohortIssued?: number | null;
 }) {
   const p = vm.pace;
 
@@ -197,17 +202,16 @@ export function PaceHero({
   // top-of-funnel figure it has never been. See §13 and lib/scorecard/leadRate.ts
   // for the grain bridge that stays unproven.
   //
-  // Issued Leads Needed = period goal ÷ trailing-90 Net Sales per Lead Issued.
-  // The SAME NSLI that drives target_issued_per_day, so the headline number and
-  // the daily pace row can never disagree. Null NSLI renders "—" with the reason,
-  // never a fabricated target.
-  const nsli = p.nsli;
-  const periodGoal = p.monthlyGoal;
-  // The issued ACTUAL already on this view model — the same stage figure the
-  // funnel renders, so "still needed" counts down against the number a manager
-  // is looking at one section below.
-  const issuedActual = vm.funnel.find((f) => f.key === "issued")?.actual ?? 0;
-  const leadsNeeded = nsli && nsli > 0 ? Math.ceil(periodGoal / nsli) : null;
+  // RULING 2026-09-18: ONE issued target on the page — the Σ-of-offices total
+  // Funnel vs Goal's Period Goal uses. It used to be goal ÷ blended NSLI (3,221
+  // for Aug) beside a funnel reading 3,189. The rate shown with it is goal ÷
+  // this number, so the two multiply back to the goal. A null total renders "—"
+  // with the reason, never a fabricated target.
+  const nsli = p.planningNsli;
+  const issuedActual = cohortIssued ?? vm.funnel.find((f) => f.key === "issued")?.actual ?? 0;
+  const leadsNeeded = p.issuedNeeded != null ? Math.round(p.issuedNeeded) : null;
+  const partialCoverage =
+    p.planningIssuedGoal != null && p.planningIssuedGoal < p.monthlyGoal - 1;
   const leadsRemaining = leadsNeeded == null ? null : Math.max(0, leadsNeeded - issuedActual);
 
   const kpis: Kpi[] = [
@@ -273,9 +277,10 @@ export function PaceHero({
       sub:
         leadsNeeded == null
           ? "no rate history — not computable"
-          : `${num(leadsRemaining ?? 0)} still needed · ${usd(nsli)}/lead issued`,
+          : `${num(leadsRemaining ?? 0)} still needed · ${usd(nsli ?? 0)}/lead issued${partialCoverage ? " · excludes offices with no rate history" : ""}`,
       value: leadsNeeded == null ? "—" : num(leadsNeeded),
-      title: "Period goal ÷ trailing-90-day Net Sales per Lead Issued.",
+      title:
+        `Σ of each office's goal ÷ that office's own trailing ${METRIC_LABELS.netPerIssuedAppointment} — the same number as Funnel vs Goal's Issued Period Goal. × the needed rate beside it = the goal.`,
     },
     {
       label: "Elapsed / Working Days",
@@ -297,16 +302,34 @@ export function PaceHero({
     {
       label: "Average Sale",
       sub:
-        periodSalesCount && periodSalesCount > 0
+        (periodSalesCount && periodSalesCount > 0
           ? `this period · ${periodSalesCount} sales`
-          : "no sales this period yet",
+          : "no sales this period yet") +
+        (p.planningAvgSale != null && p.planningAvgSale > 0 ? ` · needed ${usd(p.planningAvgSale)}` : ""),
       value: usd(periodAvgSaleDollars ?? 0),
       title:
         "This period's Net Sales ÷ this period's sales count. Shown for the " +
         "meeting only — every target on this page is still derived from the " +
         `trailing-90-day average sale (${p.avgSale > 0 ? usd(p.avgSale) : "—"}).`,
     },
-    { label: "Net Sales $ / Issued Lead", sub: `net sales ÷ leads issued · ${windowSub}`, value: p.nsli > 0 ? usd(p.nsli) : "—", title: rateTitle, flag: p.rateWidened },
+    {
+      // RULING 2026-09-18: headline = the NSLI the goal NEEDS (goal ÷ issued
+      // needed), so it × Issued Leads Needed = the goal. The blended trailing
+      // actual stays visible underneath, labelled as actual.
+      // §16 keeps this metric's NAME appointment-grain — never the retired bare
+      // acronym, and never "per Issued Lead" (labels.ts). "Needed" is the only
+      // word this tile adds to the sanctioned label.
+      label: `${METRIC_LABELS.netPerIssuedAppointment} Needed`,
+      sub:
+        p.nsli > 0
+          ? `goal ÷ issued needed · actual ${usd(p.nsli)} · ${windowSub}`
+          : "goal ÷ issued needed",
+      value: p.planningNsli != null && p.planningNsli > 0 ? usd(p.planningNsli) : "—",
+      title:
+        (rateTitle ? `${rateTitle} · ` : "") +
+        `Needed = goal ÷ the issued target built office by office. Actual = the blended company ${METRIC_LABELS.netPerIssuedAppointment} over the rate window, including markets with no goal — it will not multiply back to the goal.`,
+      flag: p.rateWidened,
+    },
   ];
 
   const toneCls = (t: Kpi["tone"]) =>
