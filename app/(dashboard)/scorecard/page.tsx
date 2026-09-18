@@ -547,6 +547,7 @@ export default async function ScorecardPage({
                   netSalesRefused={netSalesGate.status === "refused" ? netSalesGate.reason : null}
                   periodAvgSaleDollars={periodAvgSaleDollars}
                   periodSalesCount={periodTotals.soldCount ?? 0}
+                  cohortIssued={periodTotals.issuedCount}
                 />
 
                 {/*

@@ -103,6 +103,18 @@ function makeView(overrides?: {
     rate_anchor_month: "2026-06-01",
     rate_period_scoped: true,
     sales_target_divergence_pct: null,
+    // Ruling 2026-09-18 — the UNROUNDED Σ-office chain totals every count goal
+    // on the page now derives from. This fixture is one unit, so the chain is
+    // the company one: goal ÷ NSLI, × demo %, goal ÷ net average sale.
+    target_issued_total: 9067081 / 3843,
+    target_demoed_total: (9067081 / 3843) * 0.7,
+    target_closed_total: 9067081 / 9358,
+    // The rates those targets imply — here they invert exactly back to the
+    // stored rates, because one unit means no blending.
+    planning_nsli: 3843,
+    planning_avg_sale: 9358,
+    planning_demo_to_sale_pct: (9067081 / 9358 / ((9067081 / 3843) * 0.7)) * 100,
+    planning_issued_goal_dollars: 9067081,
     target_leads_per_day: 215.9,
     target_issued_per_day: 90.7,
     target_demoed_per_day: 63.5,
@@ -137,10 +149,17 @@ describe("buildScorecardVM", () => {
     expect(vm.pace.verdict).toBe("Behind pace");
   });
 
-  it("derives funnel stage goals as target/day × days elapsed", () => {
+  it("derives funnel stage goals from the UNROUNDED period total, not per-day × days", () => {
+    // Ruling 2026-09-18. The old basis was the per-day target rounded to 0.1
+    // (90.7) × 24 = 2,177. Rounding the rate first and scaling it second bakes
+    // the rounding error into every day: the exact chain is 9,067,081 ÷ 3,843 =
+    // 2,359.38 issued over 26 selling days, and 24 of them is 2,178. One
+    // appointment here, several at company scale across three metrics — which
+    // is why the goal is prorated from the total instead.
     const vm = buildScorecardVM(makeView(), MONTH);
     const issued = vm.funnel.find((s) => s.key === "issued")!;
-    expect(issued.goal).toBe(Math.round(90.7 * 24)); // 2177
+    expect(issued.goal).toBe(Math.round((9067081 / 3843) * (24 / 26))); // 2178
+    expect(issued.goal).not.toBe(Math.round(90.7 * 24)); // the old 2,177 basis
     expect(issued.actual).toBe(1596);
     const set = vm.funnel.find((s) => s.key === "set")!;
     expect(set.goal).toBeNull(); // entry stage, no notch

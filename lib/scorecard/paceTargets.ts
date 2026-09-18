@@ -100,6 +100,14 @@ export function perDayTargets(t: TargetTotals, periodDays: number): PerDayTarget
  * noise). Offices with a null value are skipped — the company figure is the sum
  * of the computable offices, never NaN. Returns null only when NO office has a
  * value.
+ *
+ * ⚠️ NO LONGER ON THE SCORECARD PATH (ruling 2026-09-18). Summing values already
+ * rounded to 0.1 drifted the company per-day target by several appointments
+ * against the same period's Period Goal, so `buildView` now takes the exact
+ * company total ÷ selling days instead and the page ties out on a calculator.
+ * Kept, with its tests, because per-office additivity is still the right answer
+ * anywhere a reader adds the office rows themselves — it is simply not how the
+ * company figure is derived. Do not reintroduce it as the company rule.
  */
 export function sumPerDayTargets(offices: PerDayTargets[]): PerDayTargets {
   const sumOf = (pick: (o: PerDayTargets) => number | null): number | null => {
@@ -119,6 +127,30 @@ export function sumPerDayTargets(offices: PerDayTargets[]): PerDayTargets {
     issuedPerDay: sumOf((o) => o.issuedPerDay),
     demoedPerDay: sumOf((o) => o.demoedPerDay),
     closedPerDay: sumOf((o) => o.closedPerDay),
+  };
+}
+
+export type PlanningRates = {
+  /** goal ÷ issued needed. × issued needed = the goal. */
+  nsli: number | null;
+  /** goal ÷ sales needed. × sales needed = the goal. */
+  avgSale: number | null;
+  /** sales needed ÷ demos needed × 100. demos × this = sales. */
+  demoToSalePct: number | null;
+};
+
+/**
+ * The rates the targets ACTUALLY imply (ruling 2026-09-18: every page ties out
+ * on a calculator). Unrounded. `issuedGoal` / `closedGoal` are the goal dollars
+ * covered by a computable chain. An office with no rate history is excluded
+ * from BOTH numerator and denominator, so the ratio stays honest.
+ */
+export function planningRates(t: TargetTotals, issuedGoal: number, closedGoal: number): PlanningRates {
+  return {
+    nsli: t.issued != null && t.issued > 0 ? issuedGoal / t.issued : null,
+    avgSale: t.closed != null && t.closed > 0 ? closedGoal / t.closed : null,
+    demoToSalePct:
+      t.closed != null && t.demoed != null && t.demoed > 0 ? (t.closed / t.demoed) * 100 : null,
   };
 }
 

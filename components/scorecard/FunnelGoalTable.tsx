@@ -137,11 +137,17 @@ export function FunnelGoalTable({
   const daysElapsed = vm.snapshot.daysElapsed;
   const sellingDays = vm.snapshot.sellingDays;
 
-  // ── count rows: goal = per-day target × days (target-to-date) or × selling days (monthly).
+  // ── count rows: goal = the UNROUNDED full-period total (monthly) or that
+  //    total prorated over elapsed ÷ selling days (target-to-date).
   //    A miss on a volume row is amber (recoverable), matching the approved design.
-  const countRow = (metric: string, actual: number | null, perDay: number | null, infoKey?: string): Row => {
-    const ttd = perDay == null ? null : r0(perDay * daysElapsed);
-    const monthly = perDay == null ? null : r0(perDay * sellingDays);
+  //
+  // Ruling 2026-09-18 — NOT per-day × days. The per-day figure is rounded to 0.1
+  // for display, so scaling it up baked that rounding into every day and left
+  // Period Goal disagreeing with both the dollar goal and the hero tile.
+  const countRow = (metric: string, actual: number | null, total: number | null, infoKey?: string): Row => {
+    const ttdRaw = total == null || sellingDays <= 0 ? null : total * (daysElapsed / sellingDays);
+    const ttd = ttdRaw == null ? null : r0(ttdRaw);
+    const monthly = total == null ? null : r0(total);
     const paceVal = ttd == null || actual == null ? null : actual - ttd;
     return {
       metric,
@@ -281,14 +287,26 @@ export function FunnelGoalTable({
     actual == null ? null : Math.round((actual - target) * 10) / 10;
 
   const performanceRows: Row[] = [
-    countRow("Issued", issued, d.target_issued_per_day),
-    countRow("Demos", demos, d.target_demoed_per_day),
-    countRow("Sales", sales, d.target_closed_per_day),
+    countRow("Issued", issued, d.target_issued_total),
+    countRow("Demos", demos, d.target_demoed_total),
+    countRow("Sales", sales, d.target_closed_total),
     // `close_pct` is sales ÷ demos and always has been. The Monday a.m. report
     // means sales ÷ leads ISSUED by "Close %", so this row no longer borrows
     // that name — see lib/scorecard/labels.ts. Definition unchanged; only the
     // population it is computed over moved.
-    rateRow(METRIC_LABELS.demoToSale, demoToSalePct, g.target_close_pct, gap(demoToSalePct, g.target_close_pct), true, METRIC_FORMULAS.demoToSale),
+    // Goal = sales needed ÷ demos needed, so Demos goal × this = Sales goal
+    // (Aug company: 779 ÷ 2,232 = 34.9%, against a stored target of 30%). The
+    // stored target is the fallback only, for when no chain is computable — it
+    // is also not uniform across offices (SAR carries 45%), so it could never
+    // have tied the company's demos to the company's sales.
+    rateRow(
+      METRIC_LABELS.demoToSale,
+      demoToSalePct,
+      d.planning_demo_to_sale_pct ?? g.target_close_pct,
+      gap(demoToSalePct, d.planning_demo_to_sale_pct ?? g.target_close_pct),
+      true,
+      METRIC_FORMULAS.demoToSale,
+    ),
     rateRow(METRIC_LABELS.demo, demoPct, g.target_demo_pct, gap(demoPct, g.target_demo_pct), true, METRIC_FORMULAS.demo),
   ];
 
