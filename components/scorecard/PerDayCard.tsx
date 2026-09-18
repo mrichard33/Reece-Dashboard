@@ -4,14 +4,14 @@ import { PaceDayBar } from "./viz/PaceDayBar";
 import type { ScorecardVM } from "@/lib/scorecard/viewModel";
 
 /** Section ④ — Per-day pace. Average daily output vs the daily target line. */
-export function PerDayCard({ vm }: { vm: ScorecardVM }) {
+export function PerDayCard({ vm, dataThrough }: { vm: ScorecardVM; dataThrough?: string | null }) {
   return (
     <ScSection
       id="sc-perday"
       label="Per-Day Pace"
-      // Live-sync sourced, like the funnel counts — no report equivalent
-      // exists, so it carries its age rather than implying it has none.
-      meta={`live sync through ${usDate(vm.snapshot.asOfDate)}`}
+      // Report 137 appointment cohort, the SAME counts and elapsed days as
+      // Funnel vs Goal (2026-09-18). Dated by the cohort's own coverage.
+      meta={`Report 137 · appointment-date cohort${dataThrough ? ` · through ${usDate(dataThrough)}` : ""}`}
     >
       <div className="border-t border-slate-100 px-5 py-4 dark:border-slate-800/70">
         {vm.perDay.map((p) => (
