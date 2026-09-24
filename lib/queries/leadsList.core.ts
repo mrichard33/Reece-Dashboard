@@ -35,13 +35,15 @@ export type LeadRow = {
   entryLane: string | null;
   pipeline: string | null;
   stage: string | null;
-  workflows: { code: string; name: string }[];
+  /** `stopped`: the tag is a leftover on a contact whose automation is stopped (STOP / DNC). */
+  workflows: { code: string; name: string; stopped: boolean }[];
   stageTag: string | null;
   lpRoute: string | null;
   lpStatus: string | null;
   prospectId: string | null;
   lastActivity: string | null;
-  nextAppointment: { start: string; label: string } | null;
+  /** status: "booked" | "confirmed" | "rescheduled" | raw GHL status. */
+  nextAppointment: { start: string; label: string; status: string } | null;
   bot: BotState;
 };
 
@@ -165,3 +167,17 @@ export type LeadFilterOptions = {
   workflows: { code: string; name: string }[];
   pipelines: { id: string; label: string; stages: { id: string; name: string }[] }[];
 };
+
+/**
+ * Appointment status as the floor says it. GHL stores "new" for a booked slot
+ * and "confirmed" once confirmed; LP confirmation arrives as the tag
+ * `lp-route:appt-confirmed` before GHL catches up, so it upgrades "booked".
+ */
+export function appointmentStatusLabel(status: string | null | undefined, tags: readonly string[]): string {
+  const s = (status ?? "").toLowerCase();
+  if (s === "confirmed") return "confirmed";
+  if (s === "rescheduled") return "rescheduled";
+  if (tags.includes("lp-route:appt-confirmed") || tags.includes("lp-lead-confirmed")) return "confirmed";
+  if (s === "new" || s === "booked" || s === "") return "booked";
+  return s;
+}

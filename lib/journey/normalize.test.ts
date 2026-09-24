@@ -136,15 +136,18 @@ describe("lpEvents", () => {
   it("reads the E.0 branch as a workflow move and keeps LP's own GHL echoes quiet", () => {
     expect(byKind("branch_fired")[0]!.title).toBe("E.0 branch fired → canvassing → E.4");
     expect(byKind("lp_event").every((e) => e.quiet)).toBe(true);
-    expect(byKind("lp_disposition")[0]!.title).toBe("LP disposition CCC");
+    expect(byKind("lp_disposition")[0]!.title).toBe("LP status CCC");
     expect(byKind("note")[0]!.detail?.note).toContain("set by Y.Francis");
   });
 
-  it("shows quiet rows only when their own lane is switched on", () => {
+  it("keeps quiet and system rows behind 'Show system detail'", () => {
     const all = visibleEvents(events, []);
-    expect(all.some((e) => e.quiet)).toBe(false);
-    const bot = visibleEvents(events, ["bot"]);
-    expect(bot).toHaveLength(3);
+    expect(all.some((e) => e.quiet || e.lane === "system")).toBe(false);
+    const withSystem = visibleEvents(events, [], true);
+    expect(withSystem.length).toBe(events.length);
+    // Rules live under "Workflow & status"; the skipped one needs the toggle.
+    expect(visibleEvents(events, ["workflow"]).filter((e) => e.kind === "agent_action")).toHaveLength(2);
+    expect(visibleEvents(events, ["workflow"], true).filter((e) => e.kind === "agent_action")).toHaveLength(3);
   });
 });
 
@@ -174,5 +177,73 @@ describe("messages", () => {
   it("formats US phones", () => {
     expect(formatPhone("+14073739355")).toBe("(407) 373-9355");
     expect(formatPhone("+447700900123")).toBe("+447700900123");
+  });
+});
+
+// Blankenbicker, Scott & Emmeline (ZTYTXNV1WrV6X0wSM7Fe), live 2026-09-25:
+// four LP leads under Prospect 451087, and LP stores every call once per lead.
+describe("one person, several LP leads", () => {
+  const LEADS = ["565558", "565976", "571323", "576694"];
+  const copies = (ts: string, result: string, rep: string) =>
+    LEADS.map((lead, i) => ({
+      ts,
+      source: "lp",
+      type: "call",
+      summary: "Call",
+      detail: { id: `${ts}-${i}`, rep, lp_lead_id: lead, raw: { call_result: result, call_duration_sec: null } },
+    }));
+  const items = [
+    ...copies("2026-09-20T16:24:09+00:00", "CONF", "Massingill, Kaley"),
+    ...copies("2026-09-20T15:28:18+00:00", "HU", "[None], [None]"),
+    ...copies("2026-09-20T13:53:04+00:00", "NA", "Massingill, Kaley"),
+  ];
+
+  it("shows each real call once, not once per lead", () => {
+    const calls = lpEvents(items).filter((e) => e.lane === "call");
+    expect(calls.map((c) => c.title)).toEqual([
+      "Call — Confirmed the appointment",
+      "Call — Hung up",
+      "Call — No answer",
+    ]);
+    expect(calls[1]!.actor).toBe("Dialer"); // "[None], [None]" is nobody
+  });
+
+  it("merges the Five9 disposition into the LP call it describes", () => {
+    const five9 = {
+      ts: "2026-09-20T16:25:30+00:00",
+      source: "agentic",
+      type: "event:five9.disposition_set",
+      summary: "five9.disposition_set",
+      detail: { id: 9, payload: { disposition_name: "Confirmed", agent_name: "Kaley Massingill", duration_sec: 241 } },
+    };
+    const calls = lpEvents([...items, five9]).filter((e) => e.lane === "call");
+    expect(calls).toHaveLength(3);
+    expect(calls[0]!.title).toBe("Call 4m01s — Confirmed the appointment");
+  });
+});
+
+describe("Revin and chatbot summaries", () => {
+  const note = (rep: string, body: string, origin = "lp") => ({
+    ts: "2026-09-24T15:03:02.283+00:00",
+    source: "lp",
+    type: "note",
+    summary: body,
+    detail: { id: `${rep}-1`, full_note: body, rep, note_origin: origin, lp_lead_id: "1" },
+  });
+
+  it("shows a Revin summary as a message, not a note", () => {
+    const [e] = lpEvents([note("Agent, Revin", "User, Zeenat, requests a free windows estimate from Reece Windows.")]);
+    expect(e).toMatchObject({ lane: "message", kind: "revin_sms_summary", actor: "Revin (LP)" });
+    expect(e!.title).toContain("Revin texted with the lead");
+  });
+
+  it("keeps the chatbot's AI brief quiet — the chat itself is already in the timeline", () => {
+    const [e] = lpEvents([note("Agent, Agentic", "[GHL · AI BRIEF · 9/8/26 7:12 PM]  COLD · appt NOT set", "ghl_ai_brief")]);
+    expect(e).toMatchObject({ lane: "lp", kind: "ai_brief", quiet: true });
+  });
+
+  it("keeps a rep's note a note", () => {
+    const [e] = lpEvents([note("Pettit, Jordan", "Spoke with Joy who wants a quote for 10 windows")]);
+    expect(e).toMatchObject({ lane: "note", kind: "note" });
   });
 });

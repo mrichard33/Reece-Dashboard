@@ -4,12 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { LeadFeed } from "@/components/leads/LeadFeed";
+import { Card, CardContent } from "@/components/ui/Card";
 import { JourneyCard } from "@/components/journey/JourneyCard";
 import { getJourney } from "@/lib/journey/build";
 import { resolveLpId } from "@/lib/queries/leadsList";
-import { getLeadActivities, getLeadCalls, getLeadNotes } from "@/lib/queries/leads";
 
 export const dynamic = "force-dynamic";
 
@@ -46,12 +44,6 @@ export default async function LeadJourneyPage({ params }: { params: Promise<{ id
   }
   if (!journey) notFound();
 
-  // The raw LP feeds stay reachable under the card (keyset "Load more").
-  const leadId = journey.header.lp.leadId;
-  const [calls, notes, activities] = leadId
-    ? await Promise.all([getLeadCalls(leadId), getLeadNotes(leadId), getLeadActivities(leadId)])
-    : [null, null, null];
-
   return (
     <>
       <TopBar email={user.email} role={user.role} title={journey.header.name} subtitle="Customer journey" />
@@ -70,41 +62,6 @@ export default async function LeadJourneyPage({ params }: { params: Promise<{ id
           </CardContent>
         </Card>
 
-        {leadId && calls && notes && activities && (
-          <details className="group">
-            <summary className="cursor-pointer text-sm font-medium text-slate-600 dark:text-slate-300">
-              LP records for lead {leadId} (calls, notes, activity)
-            </summary>
-            <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Call History</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <LeadFeed leadId={leadId} type="calls" initial={calls} />
-                </CardContent>
-              </Card>
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Notes</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <LeadFeed leadId={leadId} type="notes" initial={notes} />
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Activity</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <LeadFeed leadId={leadId} type="activities" initial={activities} />
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </details>
-        )}
       </div>
     </>
   );

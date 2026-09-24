@@ -13,7 +13,7 @@
 import { unstable_cache } from "next/cache";
 import { hlService } from "@/lib/supabase/hl";
 import { lpService } from "@/lib/supabase/lp";
-import { lpMcp, lpUrlConfigured } from "@/lib/mcp/lpClient";
+import { loadLpTimeline } from "./lpSource";
 import { etDateTime } from "@/lib/utils";
 import type { Journey, JourneyEvent } from "./types";
 import { loadWorkflowGraph } from "./workflowGraph.server";
@@ -34,6 +34,7 @@ import {
   appointmentEvents,
   appointmentLabel,
   attributeBotSends,
+  collapseRepeatedRules,
   type HlAppointmentRow,
   type HlMessageRow,
   type HlOpportunityRow,
@@ -212,9 +213,7 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
       .limit(LEAD_EVENT_CAP),
     loadRegistry(),
     loadPipelines(),
-    lpUrlConfigured
-      ? lpMcp.getContactTimeline({ ghl_contact_id: ghlContactId, since_days: 0, limit_per_source: 200 })
-      : Promise.resolve(null),
+    loadLpTimeline(ghlContactId),
     loadLpLead(ghlContactId),
   ]);
 
@@ -224,7 +223,8 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
   const leadEvents = hlOrThrow<LeadEventRow[]>("lead_events", evRes);
 
   const tags = contact.tags ?? [];
-  const lpStatus: Journey["sources"]["lp"] = lpTimeline === null ? "unconfigured" : lpTimeline.ok ? "ok" : "error";
+  const lpStatus: Journey["sources"]["lp"] = lpTimeline.ok ? "ok" : "error";
+  if (!lpTimeline.ok) console.error("[journey] LP read failed", ghlContactId, lpTimeline.error);
 
   // ── Events ───────────────────────────────────────────────────────────
   const snapshots = leadEvents
@@ -249,7 +249,7 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
       ]
     : [];
 
-  const lpItems = lpTimeline?.ok ? lpTimeline.data.timeline : [];
+  const lpItems = lpTimeline.ok ? lpTimeline.items : [];
   const nowIso = now.toISOString();
 
   let events: JourneyEvent[] = [
@@ -261,9 +261,15 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
     ...lpEvents(lpItems),
   ];
   events = attributeBotSends(mergeSentTags(events));
-  events = sortEvents(events).filter((e) => e.ts <= nowIso);
+  events = collapseRepeatedRules(sortEvents(events).filter((e) => e.ts <= nowIso));
 
   // ── Header ───────────────────────────────────────────────────────────
+  // An `active-<code>` tag on a contact who is stopped (STOP / DNC / stop-bot)
+  // is a leftover, not an enrollment: the stop removes them from automation
+  // but nothing removed the tag (Kimberly, 2026-09-25: `active-s2.2` beside
+  // `dnc`). Show it as stopped, never as the current workflow.
+  const suppression = suppressionFor(tags);
+  const stopped = suppression?.kind === "stopped";
   const activeCodes = activeWorkflowCodes(tags);
   const activeWorkflows = activeCodes.map((code) => {
     const reg = resolveWorkflowCode(code, registry);
@@ -272,14 +278,16 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
       name: reg?.canonical_name ?? code,
       ghlWorkflowId: reg?.workflow_id ?? null,
       tagCode: code,
+      stopped,
     };
   });
   // "Current" = the active workflow entered most recently (one per lane is
   // normal; the newest entry is what the contact is living through now).
   const lastEntered = new Map<string, string>();
   for (const e of events) if (e.kind === "workflow_entered" && e.actor) lastEntered.set(e.actor, e.ts);
-  const current =
-    [...activeWorkflows].sort((a, b) => (lastEntered.get(b.tagCode) ?? "").localeCompare(lastEntered.get(a.tagCode) ?? ""))[0] ??
+  const current = stopped
+    ? null
+    : [...activeWorkflows].sort((a, b) => (lastEntered.get(b.tagCode) ?? "").localeCompare(lastEntered.get(a.tagCode) ?? ""))[0] ??
     null;
 
   const pipeById = new Map(pipelines.map((p) => [p.ghl_pipeline_id, p]));
@@ -311,7 +319,9 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
   const last = (pred: (e: JourneyEvent) => boolean) => [...events].reverse().find(pred) ?? null;
 
   let workflowPosition: string | null = null;
-  if (current) {
+  if (stopped && activeWorkflows.length) {
+    workflowPosition = `Stopped (${suppression?.reason}) — was in ${activeWorkflows.map((w) => w.code).join(", ")}`;
+  } else if (current) {
     const reg = resolveWorkflowCode(current.tagCode, registry);
     const pos = sentPosition(tags, reg ? codesFor(reg) : [current.tagCode]);
     const parts = [pos.email ? `Email ${pos.email}` : "", pos.sms ? `SMS ${pos.sms}` : ""].filter(Boolean);
@@ -367,14 +377,15 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
       pipeline: pipelineShort(oppPipe),
       stage: opp ? stageName(oppPipe, opp.ghl_stage_id) : null,
       currentWorkflow: current ? { code: current.code, name: current.name, ghlWorkflowId: current.ghlWorkflowId } : null,
-      activeWorkflows: activeWorkflows.map(({ code, name: n, ghlWorkflowId }) => ({ code, name: n, ghlWorkflowId })),
+      activeWorkflows: activeWorkflows.map(({ code, name: n, ghlWorkflowId, stopped: st }) => ({ code, name: n, ghlWorkflowId, stopped: st })),
       stageTag: stageTag(tags),
       lp: {
         prospectId: customField(contact.custom_fields, CF_LP_PROSPECT_ID) ?? lpLead?.lp_prospect_id ?? null,
         leadId:
           customField(contact.custom_fields, CF_LP_LEAD_ID) ??
           lpLead?.lp_lead_id ??
-          (lpTimeline?.ok ? (lpTimeline.data.resolved.lp_lead_ids[0] ?? null) : null),
+          (lpTimeline.ok ? (lpTimeline.leadIds[0] ?? null) : null),
+        leadIds: lpTimeline.ok ? lpTimeline.leadIds : [],
         disposition: lpLead?.disposition_label ?? lpLead?.disposition_code ?? null,
         route: lpRoute(tags),
         rep: lpLead?.rep_name ?? null,
@@ -389,7 +400,7 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
       openAppointment,
       lastCall: last((e) => e.lane === "call"),
       lastMessage: last((e) => e.lane === "message" && e.id.startsWith("msg:")),
-      suppression: suppressionFor(tags),
+      suppression,
     },
     next,
     stats: {

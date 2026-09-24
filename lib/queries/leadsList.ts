@@ -31,9 +31,11 @@ import {
   parseTag,
   resolveWorkflowCode,
   stageTag,
+  suppressionFor,
 } from "@/lib/journey/tags";
 import { appointmentLabel, pipelineShort, stageName, toIso } from "@/lib/journey/normalize";
 import {
+  appointmentStatusLabel,
   classifySearch,
   type LeadFilterOptions,
   type LeadRow,
@@ -138,7 +140,10 @@ function applyFilters(q: Query, f: LeadsFilters, workflowTags: string[]): Query 
   if (f.to) out = out.lt("date_added", new Date(fromZonedTime(`${f.to}T00:00:00`, "America/New_York").getTime() + 86_400_000).toISOString());
   if (f.source.length) out = out.in("source", f.source);
   if (f.lane.length) out = out.overlaps("tags", pgArray(f.lane.flatMap((l) => [`entry:${l}`, `active-entry:${l}`])));
-  if (workflowTags.length) out = out.overlaps("tags", pgArray(workflowTags));
+  // "In workflow X" means enrolled AND running: a leftover active-<code> on a
+  // stopped contact (STOP / DNC / stop-bot) does not count.
+  if (workflowTags.length)
+    out = out.overlaps("tags", pgArray(workflowTags)).not("tags", "ov", pgArray([...DNC_TAGS, "stop-bot"]));
   if (f.lpRoute.length) out = out.overlaps("tags", pgArray(f.lpRoute.map((r) => `lp-route:${r}`)));
   if (f.bot === "dnc") out = out.overlaps("tags", pgArray(DNC_TAGS));
   if (f.bot === "stopped") out = out.contains("tags", pgArray(["stop-bot"])).not("tags", "ov", pgArray(DNC_TAGS));
@@ -371,10 +376,10 @@ async function enrich(contacts: HlContactRow[]): Promise<LeadRow[]> {
       oppByContact.set(o.ghl_contact_id, o);
     }
   }
-  const nextAppt = new Map<string, { start: string; label: string }>();
-  for (const a of (apptRes.data ?? []) as { ghl_contact_id: string; title: string | null; start_time: string | null }[]) {
+  const nextAppt = new Map<string, { start: string; label: string; status: string | null }>();
+  for (const a of (apptRes.data ?? []) as { ghl_contact_id: string; title: string | null; status: string | null; start_time: string | null }[]) {
     if (!nextAppt.has(a.ghl_contact_id) && a.start_time) {
-      nextAppt.set(a.ghl_contact_id, { start: toIso(a.start_time) ?? a.start_time, label: appointmentLabel(a.title) });
+      nextAppt.set(a.ghl_contact_id, { start: toIso(a.start_time) ?? a.start_time, label: appointmentLabel(a.title), status: a.status });
     }
   }
   const lastAct = new Map(lastActs);
@@ -383,6 +388,7 @@ async function enrich(contacts: HlContactRow[]): Promise<LeadRow[]> {
     const tags = c.tags ?? [];
     const opp = oppByContact.get(c.ghl_contact_id);
     const pipe = opp ? pipeById.get(opp.ghl_pipeline_id ?? "") : undefined;
+    const stopped = suppressionFor(tags)?.kind === "stopped";
     let lpStatus: string | null = null;
     for (const t of tags) {
       const p = parseTag(t);
@@ -400,14 +406,17 @@ async function enrich(contacts: HlContactRow[]): Promise<LeadRow[]> {
       stage: opp ? stageName(pipe, opp.ghl_stage_id) : null,
       workflows: activeWorkflowCodes(tags).map((code) => {
         const reg = resolveWorkflowCode(code, registry);
-        return { code: reg?.canonical_code ?? code, name: reg?.canonical_name ?? code };
+        return { code: reg?.canonical_code ?? code, name: reg?.canonical_name ?? code, stopped };
       }),
       stageTag: stageTag(tags),
       lpRoute: lpRoute(tags),
       lpStatus,
       prospectId: customField(c.custom_fields, CF_LP_PROSPECT_ID),
       lastActivity: toIso(lastAct.get(c.ghl_contact_id) ?? null) ?? toIso(c.date_updated),
-      nextAppointment: nextAppt.get(c.ghl_contact_id) ?? null,
+      nextAppointment: (() => {
+        const a = nextAppt.get(c.ghl_contact_id);
+        return a ? { start: a.start, label: a.label, status: appointmentStatusLabel(a.status, tags) } : null;
+      })(),
       bot: botState(tags),
     };
   });

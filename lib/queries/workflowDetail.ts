@@ -10,7 +10,7 @@ import { hlService } from "@/lib/supabase/hl";
 import { loadRegistry } from "@/lib/journey/build";
 import { loadWorkflowGraph } from "@/lib/journey/workflowGraph.server";
 import { linearizeSchedule, logicTree, type LogicLine, type ScheduleRow } from "@/lib/journey/workflowGraph";
-import { codesFor, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
+import { codesFor, DNC_TAGS, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
 import { toIso } from "@/lib/journey/normalize";
 import { projectionAnchor, projectNext, tagRunStart, type TagSnapshot } from "@/lib/journey/projection";
 
@@ -51,6 +51,13 @@ export type WorkflowDetail = {
   activeCount: number | null;
   stepCount: number;
 };
+
+/**
+ * A contact carrying any of these is out of automation, whatever `active-*`
+ * tag it still wears (the stop does not remove it — Kimberly, 2026-09-25).
+ * "Active leads" never counts them.
+ */
+export const STOPPED_TAGS: readonly string[] = [...DNC_TAGS, "stop-bot"];
 
 /** `active-<code>` for every spelling of the workflow's code. */
 export function activeTagsFor(codes: readonly string[]): string[] {
@@ -113,7 +120,8 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
       .from("contacts")
       .select("id", { count: "exact", head: true })
       .is("deleted_at", null)
-      .overlaps("tags", pgArray(activeTagsFor(codes)));
+      .overlaps("tags", pgArray(activeTagsFor(codes)))
+      .not("tags", "ov", pgArray(STOPPED_TAGS));
     activeCount = error ? null : (count ?? 0);
   }
 
@@ -198,7 +206,8 @@ export async function getWorkflowContacts(
     .select("ghl_contact_id, first_name, last_name, phone, email, tags, date_updated")
     .is("deleted_at", null)
     .not("date_updated", "is", null)
-    .overlaps("tags", pgArray(activeTags));
+    .overlaps("tags", pgArray(activeTags))
+      .not("tags", "ov", pgArray(STOPPED_TAGS));
   if (cursor) q = q.or(`date_updated.lt.${cursor.d},and(date_updated.eq.${cursor.d},ghl_contact_id.lt.${cursor.id})`);
   const { data, error } = await q
     .order("date_updated", { ascending: false })
