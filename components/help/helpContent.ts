@@ -337,19 +337,30 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "`workflows` joined to `workflow_registry` (HL Supabase). Filter `deleted_at is null`.",
     fix: "If a workflow is missing, trigger a sync. If a workflow has no canonical code, it hasn't been registered yet — add a row to workflow_registry.",
   },
-  "workflows.lastExecution": {
-    title: "Last Execution",
-    what: "Most recent execution timestamp for this workflow. Currently always shows '—' because the workflow_executions table is unpopulated (known issue).",
-    where:
-      "Intended source is `workflow_executions` (HL Supabase), but the HL MCP webhook handler isn't writing to it.",
-    fix: "This is a known cache gap, tracked in `claude_known_issues`. Don't try to fix from this dashboard — observability only. Use GHL's own execution history in the meantime.",
+  "workflows.activeLeads": {
+    title: "Active leads",
+    what: "How many contacts carry this workflow's `active-<code>` tag right now — i.e. are in it today. Replaces the old 'Last execution' column, which was always blank.",
+    where: "HL `contacts.tags`, one count per registered workflow (canonical, legacy and dotless spellings of the code — E.4 stamps `active-w04`). Cached 5 minutes. A dash means unregistered or the count failed.",
+    fix: "Tags are the enrollment record; `workflow_executions` covers only ~25 workflows and is not used. A workflow with sends but 0 active leads usually does not stamp an `active-` tag — check its first steps under Logic.",
+  },
+  "workflows.schedule": {
+    title: "Messages & timing",
+    what: "Every SMS and email the workflow can send, in send order, with the time since entry. Branches are labelled with the if/else path that leads to them; each node is shown once (first path wins).",
+    where: "HL `workflow_steps` + `workflow_connections` (the step graph) and `templates` (bodies). Waits are read from each step's `startAfter` — never `delay_minutes`, which stores 1 for an hour and 43200 for 30 days.",
+    fix: "A row flagged 'unreadable wait' counted a wait as 0 because its unit was not minute/hour/day/week — its real time is later. 'AI-written' bodies are generated at send time (ChatGPT step or a custom-field merge), so the template shows only the placeholder.",
+  },
+  "workflows.activeTab": {
+    title: "Leads in this workflow",
+    what: "Contacts carrying this workflow's `active-<code>` tag, most recently changed first: when they entered (the tag's first appearance in the current run), how far they are (highest `sent:<code>-e/s<n>` tag), and their last change.",
+    where: "HL `contacts.tags`; entry time from `lead_events` tag snapshots.",
+    fix: "'Entered' blank means the tag history does not reach back to the entry — the contact has been in a long time. Click a row for the full journey.",
   },
   "workflows.healthFlags": {
     title: "Health Flags",
     what: "Diagnostic badges flagging workflows with known structural issues: dead (triggers reference missing resources), duplicate trigger, wait bottleneck, or message overlap with another workflow.",
     where:
       "Aggregated from `HL MCP detect_dead_workflows`, `find_duplicate_triggers`, `detect_wait_bottlenecks`, and `detect_message_overlap` (cached 5min).",
-    fix: "Click a flagged workflow to open its detail page (Phase 2). For systematic remediation, use `/workflows/diagnostics` (Phase 2).",
+    fix: "Click a workflow's name to open its detail page — send schedule, logic, triggers and the leads in it now.",
   },
 
   // ── /issues ─────────────────────────────────────────────────

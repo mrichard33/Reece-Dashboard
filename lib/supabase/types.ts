@@ -372,14 +372,16 @@ export type Workflow = {
   ghl_workflow_id: string;
   name: string;
   status: "published" | "draft" | null;
-  last_modified_at: string | null;
+  /** HL has no last_modified_at; updated_at is the cache's last change. */
+  updated_at: string | null;
   deleted_at: string | null;
 };
 
 export type WorkflowRegistry = {
   canonical_code: string;
   workflow_id: string;
-  workflow_name: string | null;
+  canonical_name: string | null;
+  legacy_name: string | null;
   stage_family: string | null;
   psychological_stage: string | null;
   trust_state: string | null;

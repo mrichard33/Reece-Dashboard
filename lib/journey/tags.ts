@@ -240,7 +240,13 @@ export function resolveWorkflowCode(
     const name = (r.legacy_name ?? "").replace(/^\*+/, "").trim().toUpperCase();
     return name === want || name.startsWith(`${want} `) || name.startsWith(`${want}-`);
   });
-  return legacy ?? null;
+  if (legacy) return legacy;
+  // Some workflows stamp the legacy code without its dot: E.4 adds
+  // `active-w04` while its registry row says "W0.4". Compare dotless last.
+  const bare = want.replace(/\./g, "");
+  return (
+    registry.find((r) => codesFor(r).some((c) => c.replace(/\./g, "") === bare)) ?? null
+  );
 }
 
 /** Every tag code that means this registry row (canonical + legacy). */
@@ -251,6 +257,9 @@ export function codesFor(entry: RegistryEntry): string[] {
   if (legacy?.[1]) {
     const c = legacy[1].toUpperCase();
     if (!out.includes(c)) out.push(c);
+    // The dotless spelling some workflows stamp (`active-w04` for W0.4).
+    const bare = c.replace(/\./g, "");
+    if (bare !== c && !out.includes(bare)) out.push(bare);
   }
   return out;
 }

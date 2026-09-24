@@ -107,8 +107,17 @@ describe("registry mapping", () => {
     expect(resolveWorkflowCode("Z.9", registry)).toBeNull();
   });
 
-  it("lists every code a row answers to", () => {
-    expect(codesFor(registry[0]!)).toEqual(["O.0", "W9.0"]);
-    expect(codesFor(registry[1]!)).toEqual(["S2.2", "W1.2"]);
+  it("lists every code a row answers to, including the dotless legacy spelling", () => {
+    expect(codesFor(registry[0]!)).toEqual(["O.0", "W9.0", "W90"]);
+    expect(codesFor(registry[1]!)).toEqual(["S2.2", "W1.2", "W12"]);
+  });
+
+  it("maps E.4's `active-w04` (registry says W0.4) to E.4", () => {
+    const withE4 = [
+      ...registry,
+      { canonical_code: "E.4", canonical_name: "E.4 Canvassing Bridge", legacy_name: "*W0.4 - Canvassing Pre-Frame Bridge", workflow_id: "d526" },
+    ];
+    expect(parseTag("active-w04")).toEqual({ kind: "active_workflow", code: "W04" });
+    expect(resolveWorkflowCode("W04", withE4)?.canonical_code).toBe("E.4");
   });
 });
