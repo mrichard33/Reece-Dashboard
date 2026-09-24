@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { McpClient } from "./client";
-import type { SyncHealthRaw } from "@/lib/supabase/types";
+import type { LpSearchLeadsRaw, LpTimelineRaw, SyncHealthRaw } from "@/lib/supabase/types";
 
 const rawToken = process.env.LP_MCP_AUTH_TOKEN;
 const authToken =
@@ -42,6 +42,45 @@ export const lpMcp = {
     ["lp-mcp", "get_drift_candidates"],
     { revalidate: 300, tags: ["lp-mcp"] },
   ),
+
+  /**
+   * Per-contact LP timeline (lead, calls, notes, activities, system_events,
+   * agent_actions). Never cached here — the journey builder caches the merged
+   * result for 60s. Returns ok:false instead of throwing so the page degrades
+   * to HL-only with a banner rather than failing.
+   */
+  getContactTimeline: async (args: {
+    ghl_contact_id: string;
+    since_days?: number;
+    limit_per_source?: number;
+  }) => {
+    try {
+      const r = await client.call<LpTimelineRaw>("get_contact_timeline", {
+        args: { since_days: 0, limit_per_source: 200, ...args },
+        timeoutMs: 15_000,
+      });
+      return { ok: true as const, data: r };
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+
+  /**
+   * Name / phone fallback for the Leads search box. LP's search_leads is an
+   * ilike over name, phone, email and address — it does NOT match ids, so
+   * numeric id search resolves through `lp_leads` instead (lib/queries/leadsList).
+   */
+  searchLeads: async (query: string) => {
+    try {
+      const r = await client.call<LpSearchLeadsRaw>("search_leads", {
+        args: { query, limit: 10 },
+        timeoutMs: 10_000,
+      });
+      return { ok: true as const, data: r };
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
 
   /** Manual sync trigger — wired to the "Sync now" button. */
   triggerSync: () =>

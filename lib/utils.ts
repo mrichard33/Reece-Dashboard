@@ -23,6 +23,46 @@ export function absTime(input: Date | string | number | null | undefined): strin
   return formatInTimeZone(date, TZ, "yyyy-MM-dd HH:mm:ss zzz");
 }
 
+function toDate(input: Date | string | number | null | undefined): Date | null {
+  if (input === null || input === undefined) return null;
+  const date = typeof input === "string" || typeof input === "number" ? new Date(input) : input;
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * ET renderers for the Customer Journey. Timestamps arrive UTC from LP and
+ * `-04:00` from `lead_events`; they are normalized to an instant on ingest and
+ * formatted ONCE here, so a row never mixes zones. "3:26 PM".
+ */
+export function etTime(input: Date | string | number | null | undefined): string {
+  const d = toDate(input);
+  return d ? formatInTimeZone(d, TZ, "h:mm a") : "—";
+}
+
+/** "Thu Sep 24, 5:00 PM ET" — for titles that name a time. */
+export function etDateTime(input: Date | string | number | null | undefined): string {
+  const d = toDate(input);
+  return d ? `${formatInTimeZone(d, TZ, "EEE MMM d, h:mm a")} ET` : "—";
+}
+
+/** ET calendar day "2026-09-24" — the timeline's day-group key. */
+export function etDayKey(input: Date | string | number | null | undefined): string {
+  const d = toDate(input);
+  return d ? formatInTimeZone(d, TZ, "yyyy-MM-dd") : "";
+}
+
+/** "Thu, Sep 24" — the day-group heading. */
+export function etDayLabel(input: Date | string | number | null | undefined): string {
+  const d = toDate(input);
+  return d ? formatInTimeZone(d, TZ, "EEE, MMM d") : "—";
+}
+
+/** "Sep 22, 12:40 PM" — compact table cell. */
+export function etShort(input: Date | string | number | null | undefined): string {
+  const d = toDate(input);
+  return d ? formatInTimeZone(d, TZ, "MMM d, h:mm a") : "—";
+}
+
 const MONTHS_ABBR = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",

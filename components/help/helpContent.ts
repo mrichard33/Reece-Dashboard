@@ -286,6 +286,50 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "If a row shows `—` for LP prospect ID, the GHL contact is missing the custom field. Set it in GHL and trigger a sync. If a whole pipeline shows `(name unavailable)`, the HL contacts cache failed to load — check Railway logs for the dashboard and the HL Supabase schema for the `contacts` table.",
   },
 
+  // ── /leads · Customer Journey ─────────────────────────────────
+  "leads.list": {
+    title: "Leads",
+    what: "Every GHL contact, newest entry first, 50 at a time. Click a row to open its journey — what happened, what is happening now, and what is projected to happen next.",
+    where: "HL Supabase `contacts` (keyset on date_added, ghl_contact_id), with `opportunities`, `appointments` and the newest `lead_events` row read for the page's ids. No LP call until a row is opened.",
+    fix: "A lead that should be here and is not: check it exists in GHL, then use Sync now on Overview — the HL cache may be behind. Filters that use tags (lane, workflow, bot) read the contact's CURRENT tags only.",
+  },
+  "leads.search": {
+    title: "Search",
+    what: "One box for name, phone (any format), email, GHL contact id, LP Prospect id or LP lead id. Phone and id searches are exact; name and email match partially.",
+    where: "`contacts` first. A short number is matched against the LP Prospect ID (`ZRQAVrzhtzApzLlHmT87`) and LP Lead ID (`GmAVmW6V9sekD7pVONKr`) custom fields, then LP `lp_leads`. A name or phone with no GHL hit falls back to LP MCP `search_leads`.",
+    fix: "No hit on a known LP id usually means the GHL contact was never linked (no custom field, no `lp_leads.ghl_contact_id`). Search by phone instead.",
+  },
+  "leads.now": {
+    title: "Now",
+    what: "The contact's current position: the workflow(s) they are in (`active-<code>` tags), how far through it they are (highest `sent:<code>-e/s<n>` tag), their funnel stage tag, the appointment that matters (next upcoming, else the latest and its status), and the last call and message.",
+    where: "Tags on HL `contacts`; `appointments`; last call from LP MCP `get_contact_timeline`; last message from HL `messages`.",
+    fix: "Tags are the enrollment record — not `workflow_executions`, which covers only ~25 workflows. If Now disagrees with GHL, re-sync the contact; if a workflow shows by a legacy code (e.g. W9.0), its registry row is missing a canonical code.",
+  },
+  "leads.next": {
+    title: "Next",
+    what: "The next few sends the contact's current workflow is expected to make, and when — PROJECTED from the workflow's step graph, not read from GHL. Also flags when automation is stopped (stop-bot / DNC) or nurture is paused.",
+    where: "Current workflow from the `active-<code>` tag → `workflow_registry` → `workflow_steps`. Position from the highest `sent:*` tag; the clock starts when that tag first appeared in `lead_events`. Waits come from each step's `startAfter`, never `delay_minutes`.",
+    fix: "GHL has no scheduled-send API, so this is best effort. A projection that says 'depends on' took the first branch of an if/else it could not evaluate. Pause tags (suppress-outbound, cooling-active, hard-disqualified, quarantined) never block a direct reply to the contact.",
+  },
+  "leads.projected": {
+    title: "Projected",
+    what: "A dashed row below NOW is a send we expect, not one that happened. It is computed by walking the workflow from the contact's last send and adding each wait.",
+    where: "`workflow_steps` + `workflow_connections` + `templates` for the contact's active workflow; anchor time from the `lead_events` tag snapshot.",
+    fix: "If projections are consistently early or late for a workflow, open it under Workflows → Messages & timing and check the waits parse (a wait with an unrecognised unit shows as +0m and is flagged).",
+  },
+  "leads.bot": {
+    title: "Bot state",
+    what: "Green: the agentic bot is on (`agentic-active`). Grey: stopped (`stop-bot`) or no bot tag. Red: a consent tag — dnc, dnc-sms, do-not-contact, stage:dnc or unsubscribed. Consent outranks everything.",
+    where: "Tags on HL `contacts`. Display only — the dashboard never writes tags.",
+    fix: "To change it, change the tag in GHL (or through the Decision Engine). A red dot on someone who is actively texting in means a consent tag is stale — check it before replying.",
+  },
+  "leads.glance": {
+    title: "At a glance",
+    what: "Counts across the whole journey: messages out and in, calls (LP + Five9), appointments, every workflow the contact has entered, and LP notes.",
+    where: "The merged timeline below — HL `messages` and tag history, LP MCP `get_contact_timeline`.",
+    fix: "Zero calls on a lead you know was dialed: LP activity may be unavailable (amber banner) or the LP lead is not linked to this GHL contact.",
+  },
+
   // ── /workflows ─────────────────────────────────────────────
   "workflows.total": {
     title: "Total Workflows",
@@ -293,19 +337,30 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "`workflows` joined to `workflow_registry` (HL Supabase). Filter `deleted_at is null`.",
     fix: "If a workflow is missing, trigger a sync. If a workflow has no canonical code, it hasn't been registered yet — add a row to workflow_registry.",
   },
-  "workflows.lastExecution": {
-    title: "Last Execution",
-    what: "Most recent execution timestamp for this workflow. Currently always shows '—' because the workflow_executions table is unpopulated (known issue).",
-    where:
-      "Intended source is `workflow_executions` (HL Supabase), but the HL MCP webhook handler isn't writing to it.",
-    fix: "This is a known cache gap, tracked in `claude_known_issues`. Don't try to fix from this dashboard — observability only. Use GHL's own execution history in the meantime.",
+  "workflows.activeLeads": {
+    title: "Active leads",
+    what: "How many contacts carry this workflow's `active-<code>` tag right now — i.e. are in it today. Replaces the old 'Last execution' column, which was always blank.",
+    where: "HL `contacts.tags`, one count per registered workflow (canonical, legacy and dotless spellings of the code — E.4 stamps `active-w04`). Cached 5 minutes. A dash means unregistered or the count failed.",
+    fix: "Tags are the enrollment record; `workflow_executions` covers only ~25 workflows and is not used. A workflow with sends but 0 active leads usually does not stamp an `active-` tag — check its first steps under Logic.",
+  },
+  "workflows.schedule": {
+    title: "Messages & timing",
+    what: "Every SMS and email the workflow can send, in send order, with the time since entry. Branches are labelled with the if/else path that leads to them; each node is shown once (first path wins).",
+    where: "HL `workflow_steps` + `workflow_connections` (the step graph) and `templates` (bodies). Waits are read from each step's `startAfter` — never `delay_minutes`, which stores 1 for an hour and 43200 for 30 days.",
+    fix: "A row flagged 'unreadable wait' counted a wait as 0 because its unit was not minute/hour/day/week — its real time is later. 'AI-written' bodies are generated at send time (ChatGPT step or a custom-field merge), so the template shows only the placeholder.",
+  },
+  "workflows.activeTab": {
+    title: "Leads in this workflow",
+    what: "Contacts carrying this workflow's `active-<code>` tag, most recently changed first: when they entered (the tag's first appearance in the current run), how far they are (highest `sent:<code>-e/s<n>` tag), their next PROJECTED send, and their last change.",
+    where: "HL `contacts.tags`; entry time from `lead_events` tag snapshots.",
+    fix: "'Entered' blank means the tag history does not reach back to the entry — the contact has been in a long time. Click a row for the full journey.",
   },
   "workflows.healthFlags": {
     title: "Health Flags",
     what: "Diagnostic badges flagging workflows with known structural issues: dead (triggers reference missing resources), duplicate trigger, wait bottleneck, or message overlap with another workflow.",
     where:
       "Aggregated from `HL MCP detect_dead_workflows`, `find_duplicate_triggers`, `detect_wait_bottlenecks`, and `detect_message_overlap` (cached 5min).",
-    fix: "Click a flagged workflow to open its detail page (Phase 2). For systematic remediation, use `/workflows/diagnostics` (Phase 2).",
+    fix: "Click a workflow's name to open its detail page — send schedule, logic, triggers and the leads in it now.",
   },
 
   // ── /issues ─────────────────────────────────────────────────

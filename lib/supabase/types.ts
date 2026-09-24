@@ -372,14 +372,16 @@ export type Workflow = {
   ghl_workflow_id: string;
   name: string;
   status: "published" | "draft" | null;
-  last_modified_at: string | null;
+  /** HL has no last_modified_at; updated_at is the cache's last change. */
+  updated_at: string | null;
   deleted_at: string | null;
 };
 
 export type WorkflowRegistry = {
   canonical_code: string;
   workflow_id: string;
-  workflow_name: string | null;
+  canonical_name: string | null;
+  legacy_name: string | null;
   stage_family: string | null;
   psychological_stage: string | null;
   trust_state: string | null;
@@ -403,6 +405,41 @@ export type SyncEntityStatus = {
   error_message: string | null;
   started_at: string | null;
   completed_at: string | null;
+};
+
+/**
+ * LP MCP `get_contact_timeline` (verified live 2026-09-24 on
+ * gkJmc5DPc3nHXoevNH5K). `detail` on call rows carries a `raw` copy of the LP
+ * row — the journey normalizer strips it before anything reaches the browser.
+ */
+export type LpTimelineRaw = {
+  resolved: { ghl_contact_id: string | null; lp_lead_ids: string[] };
+  window?: { since_days: number; earliest: string | null; latest: string | null };
+  timeline: Array<{
+    ts: string;
+    source: "lp" | "agentic" | string;
+    type: string;
+    summary: string;
+    detail?: Record<string, unknown>;
+  }>;
+  counts: Record<string, number>;
+  event_count: number;
+};
+
+/** LP MCP `search_leads` — a name/phone/email/address `ilike`. No id match. */
+export type LpSearchLeadsRaw = {
+  search_term: string;
+  total: number;
+  results: Array<{
+    lp_lead_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+    email: string | null;
+    city: string | null;
+    disposition_label: string | null;
+    rep_name: string | null;
+  }>;
 };
 
 export type SyncHealthRaw = {

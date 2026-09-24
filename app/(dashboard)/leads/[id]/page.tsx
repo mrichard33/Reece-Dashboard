@@ -1,110 +1,110 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import type { Route } from "next";
+import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { LeadFeed } from "@/components/leads/LeadFeed";
-import {
-  getLeadActivities,
-  getLeadCalls,
-  getLeadHeader,
-  getLeadNotes,
-} from "@/lib/queries/leads";
-import { usd } from "@/lib/utils";
+import { JourneyCard } from "@/components/journey/JourneyCard";
+import { getJourney } from "@/lib/journey/build";
+import { resolveLpId } from "@/lib/queries/leadsList";
+import { getLeadActivities, getLeadCalls, getLeadNotes } from "@/lib/queries/leads";
 
 export const dynamic = "force-dynamic";
 
-export default async function LeadDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+/**
+ * One lead's full journey, keyed by `ghl_contact_id`.
+ *
+ * Older links (Activity feed, bookmarks) carry the numeric LP lead id. Those
+ * resolve through `lp_leads` (then the GHL custom fields) and redirect, so a
+ * link written before the journey existed still lands on the right person.
+ */
+export default async function LeadJourneyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
 
-  // First page of every feed in parallel — each is a keyset page (no count, no
-  // OFFSET), so this is three cheap index range-scans.
-  const [lead, calls, notes, activities] = await Promise.all([
-    getLeadHeader(id),
-    getLeadCalls(id),
-    getLeadNotes(id),
-    getLeadActivities(id),
-  ]);
+  if (/^\d+$/.test(id)) {
+    const ghl = await resolveLpId(id);
+    if (!ghl) notFound();
+    redirect(`/leads/${ghl}` as Route);
+  }
 
-  if (!lead) notFound();
+  let journey;
+  try {
+    journey = await getJourney(id);
+  } catch (e) {
+    console.error("[leads/[id]]", id, e);
+    return (
+      <>
+        <TopBar email={user.email} role={user.role} title="Lead" />
+        <p className="p-6 text-sm text-rose-600 dark:text-rose-400">
+          Could not read this contact from the GHL cache. Try again in a minute.
+        </p>
+      </>
+    );
+  }
+  if (!journey) notFound();
 
-  const name =
-    [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() ||
-    "Unknown contact";
+  // The raw LP feeds stay reachable under the card (keyset "Load more").
+  const leadId = journey.header.lp.leadId;
+  const [calls, notes, activities] = leadId
+    ? await Promise.all([getLeadCalls(leadId), getLeadNotes(leadId), getLeadActivities(leadId)])
+    : [null, null, null];
 
   return (
     <>
-      <TopBar
-        email={user.email}
-        role={user.role}
-        title={name}
-        subtitle="Call history, notes & activity"
-      />
+      <TopBar email={user.email} role={user.role} title={journey.header.name} subtitle="Customer journey" />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <Link
-          href="/overview"
+          href="/leads"
           className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to Overview
+          <ArrowLeft className="h-4 w-4" /> Back to Leads
         </Link>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {lead.disposition_label && (
-            <Badge tone="navy" dot>
-              {lead.disposition_label}
-            </Badge>
-          )}
-          {lead.lead_source && (
-            <span className="text-xs text-slate-500">Source: {lead.lead_source}</span>
-          )}
-          {lead.rep_name && (
-            <span className="text-xs text-slate-500">· Rep: {lead.rep_name}</span>
-          )}
-          {lead.job_value ? (
-            <span className="text-xs text-slate-500">· {usd(lead.job_value)}</span>
-          ) : null}
-        </div>
+        <Card>
+          <CardContent className="pt-4">
+            <JourneyCard initial={journey} variant="full" />
+          </CardContent>
+        </Card>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Call History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <LeadFeed leadId={id} type="calls" initial={calls} />
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="space-y-6 lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <LeadFeed leadId={id} type="notes" initial={notes} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <LeadFeed leadId={id} type="activities" initial={activities} />
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+        {leadId && calls && notes && activities && (
+          <details className="group">
+            <summary className="cursor-pointer text-sm font-medium text-slate-600 dark:text-slate-300">
+              LP records for lead {leadId} (calls, notes, activity)
+            </summary>
+            <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>Call History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <LeadFeed leadId={leadId} type="calls" initial={calls} />
+                </CardContent>
+              </Card>
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Notes</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <LeadFeed leadId={leadId} type="notes" initial={notes} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Activity</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <LeadFeed leadId={leadId} type="activities" initial={activities} />
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </details>
+        )}
       </div>
     </>
   );

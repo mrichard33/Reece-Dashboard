@@ -1,3 +1,5 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { requireRole } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatTile } from "@/components/tiles/StatTile";
@@ -5,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { getWorkflowSummary } from "@/lib/queries/workflows";
-import { relTime } from "@/lib/utils";
+import { num, relTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -62,8 +64,8 @@ export default async function WorkflowsPage() {
                       <th className="py-2 pr-3">Last modified</th>
                       <th className="py-2 pr-3">
                         <span className="inline-flex items-center gap-1">
-                          Last execution
-                          <InfoPopover helpKey="workflows.lastExecution" align="left" />
+                          Active leads
+                          <InfoPopover helpKey="workflows.activeLeads" align="left" />
                         </span>
                       </th>
                     </tr>
@@ -76,7 +78,14 @@ export default async function WorkflowsPage() {
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="py-2 pr-3">{r.name}</td>
+                        <td className="py-2 pr-3">
+                          <Link
+                            href={`/workflows/${r.ghlWorkflowId}` as Route}
+                            className="text-navy-800 hover:underline dark:text-slate-100"
+                          >
+                            {r.name}
+                          </Link>
+                        </td>
                         <td className="py-2 pr-3">
                           {r.stageFamily ? (
                             <Badge tone="navy">{r.stageFamily}</Badge>
@@ -95,7 +104,9 @@ export default async function WorkflowsPage() {
                         <td className="py-2 pr-3 text-xs text-slate-500">
                           {relTime(r.lastModified)}
                         </td>
-                        <td className="py-2 pr-3 text-xs text-slate-400">—</td>
+                        <td className="py-2 pr-3 text-xs tabular-nums">
+                          {r.activeLeads === null ? <span className="text-slate-400">—</span> : num(r.activeLeads)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

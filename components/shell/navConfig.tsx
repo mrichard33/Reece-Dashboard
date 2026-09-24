@@ -138,10 +138,9 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         href: "/leads",
         label: "Leads",
-        desc: "New people coming in",
+        desc: "Every lead's full journey",
         Icon: Users,
         audience: "all",
-        phase: 2,
       },
       {
         href: "/appointments",
