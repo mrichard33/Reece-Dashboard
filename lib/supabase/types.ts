@@ -405,6 +405,41 @@ export type SyncEntityStatus = {
   completed_at: string | null;
 };
 
+/**
+ * LP MCP `get_contact_timeline` (verified live 2026-09-24 on
+ * gkJmc5DPc3nHXoevNH5K). `detail` on call rows carries a `raw` copy of the LP
+ * row — the journey normalizer strips it before anything reaches the browser.
+ */
+export type LpTimelineRaw = {
+  resolved: { ghl_contact_id: string | null; lp_lead_ids: string[] };
+  window?: { since_days: number; earliest: string | null; latest: string | null };
+  timeline: Array<{
+    ts: string;
+    source: "lp" | "agentic" | string;
+    type: string;
+    summary: string;
+    detail?: Record<string, unknown>;
+  }>;
+  counts: Record<string, number>;
+  event_count: number;
+};
+
+/** LP MCP `search_leads` — a name/phone/email/address `ilike`. No id match. */
+export type LpSearchLeadsRaw = {
+  search_term: string;
+  total: number;
+  results: Array<{
+    lp_lead_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+    email: string | null;
+    city: string | null;
+    disposition_label: string | null;
+    rep_name: string | null;
+  }>;
+};
+
 export type SyncHealthRaw = {
   last_sync_by_entity?: Record<string, SyncEntityStatus | null>;
   currently_running?: Array<{

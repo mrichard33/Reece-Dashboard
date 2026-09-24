@@ -286,6 +286,50 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "If a row shows `—` for LP prospect ID, the GHL contact is missing the custom field. Set it in GHL and trigger a sync. If a whole pipeline shows `(name unavailable)`, the HL contacts cache failed to load — check Railway logs for the dashboard and the HL Supabase schema for the `contacts` table.",
   },
 
+  // ── /leads · Customer Journey ─────────────────────────────────
+  "leads.list": {
+    title: "Leads",
+    what: "Every GHL contact, newest entry first, 50 at a time. Click a row to open its journey — what happened, what is happening now, and what is projected to happen next.",
+    where: "HL Supabase `contacts` (keyset on date_added, ghl_contact_id), with `opportunities`, `appointments` and the newest `lead_events` row read for the page's ids. No LP call until a row is opened.",
+    fix: "A lead that should be here and is not: check it exists in GHL, then use Sync now on Overview — the HL cache may be behind. Filters that use tags (lane, workflow, bot) read the contact's CURRENT tags only.",
+  },
+  "leads.search": {
+    title: "Search",
+    what: "One box for name, phone (any format), email, GHL contact id, LP Prospect id or LP lead id. Phone and id searches are exact; name and email match partially.",
+    where: "`contacts` first. A short number is matched against the LP Prospect ID (`ZRQAVrzhtzApzLlHmT87`) and LP Lead ID (`GmAVmW6V9sekD7pVONKr`) custom fields, then LP `lp_leads`. A name or phone with no GHL hit falls back to LP MCP `search_leads`.",
+    fix: "No hit on a known LP id usually means the GHL contact was never linked (no custom field, no `lp_leads.ghl_contact_id`). Search by phone instead.",
+  },
+  "leads.now": {
+    title: "Now",
+    what: "The contact's current position: the workflow(s) they are in (`active-<code>` tags), how far through it they are (highest `sent:<code>-e/s<n>` tag), their funnel stage tag, the appointment that matters (next upcoming, else the latest and its status), and the last call and message.",
+    where: "Tags on HL `contacts`; `appointments`; last call from LP MCP `get_contact_timeline`; last message from HL `messages`.",
+    fix: "Tags are the enrollment record — not `workflow_executions`, which covers only ~25 workflows. If Now disagrees with GHL, re-sync the contact; if a workflow shows by a legacy code (e.g. W9.0), its registry row is missing a canonical code.",
+  },
+  "leads.next": {
+    title: "Next",
+    what: "The next few sends the contact's current workflow is expected to make, and when — PROJECTED from the workflow's step graph, not read from GHL. Also flags when automation is stopped (stop-bot / DNC) or nurture is paused.",
+    where: "Current workflow from the `active-<code>` tag → `workflow_registry` → `workflow_steps`. Position from the highest `sent:*` tag; the clock starts when that tag first appeared in `lead_events`. Waits come from each step's `startAfter`, never `delay_minutes`.",
+    fix: "GHL has no scheduled-send API, so this is best effort. A projection that says 'depends on' took the first branch of an if/else it could not evaluate. Pause tags (suppress-outbound, cooling-active, hard-disqualified, quarantined) never block a direct reply to the contact.",
+  },
+  "leads.projected": {
+    title: "Projected",
+    what: "A dashed row below NOW is a send we expect, not one that happened. It is computed by walking the workflow from the contact's last send and adding each wait.",
+    where: "`workflow_steps` + `workflow_connections` + `templates` for the contact's active workflow; anchor time from the `lead_events` tag snapshot.",
+    fix: "If projections are consistently early or late for a workflow, open it under Workflows → Messages & timing and check the waits parse (a wait with an unrecognised unit shows as +0m and is flagged).",
+  },
+  "leads.bot": {
+    title: "Bot state",
+    what: "Green: the agentic bot is on (`agentic-active`). Grey: stopped (`stop-bot`) or no bot tag. Red: a consent tag — dnc, dnc-sms, do-not-contact, stage:dnc or unsubscribed. Consent outranks everything.",
+    where: "Tags on HL `contacts`. Display only — the dashboard never writes tags.",
+    fix: "To change it, change the tag in GHL (or through the Decision Engine). A red dot on someone who is actively texting in means a consent tag is stale — check it before replying.",
+  },
+  "leads.glance": {
+    title: "At a glance",
+    what: "Counts across the whole journey: messages out and in, calls (LP + Five9), appointments, every workflow the contact has entered, and LP notes.",
+    where: "The merged timeline below — HL `messages` and tag history, LP MCP `get_contact_timeline`.",
+    fix: "Zero calls on a lead you know was dialed: LP activity may be unavailable (amber banner) or the LP lead is not linked to this GHL contact.",
+  },
+
   // ── /workflows ─────────────────────────────────────────────
   "workflows.total": {
     title: "Total Workflows",
