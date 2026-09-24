@@ -10,6 +10,7 @@ import { hlService } from "@/lib/supabase/hl";
 import { loadRegistry } from "@/lib/journey/build";
 import { loadWorkflowGraph } from "@/lib/journey/workflowGraph.server";
 import { linearizeSchedule, logicTree, type LogicLine, type ScheduleRow } from "@/lib/journey/workflowGraph";
+import { buildFlow, type Flow } from "@/lib/journey/flowLayout";
 import { codesFor, DNC_TAGS, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
 import { toIso } from "@/lib/journey/normalize";
 import { projectionAnchor, projectNext, tagRunStart, type TagSnapshot } from "@/lib/journey/projection";
@@ -50,6 +51,14 @@ export type WorkflowDetail = {
   triggers: WorkflowTrigger[];
   activeCount: number | null;
   stepCount: number;
+  /** The drawable flowchart (every step, every branch). */
+  flow: Flow;
+  /** Other workflows whose "Add to workflow" step targets this one. */
+  addedBy: WorkflowLink[];
+  /** The paired "-E" exit workflow, when the registry has one (S3.1 → S3.1-E). */
+  exitWorkflow: WorkflowLink | null;
+  /** How many "Remove from workflow" steps this workflow runs. */
+  removeSteps: number;
 };
 
 /**
@@ -109,6 +118,19 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
   // Names for workflows the registry doesn't know (routes, remove_from_workflow).
   const { data: allWf } = await sb.from("workflows").select("ghl_workflow_id, name").is("deleted_at", null);
   const names = new Map(((allWf ?? []) as { ghl_workflow_id: string; name: string }[]).map((w) => [w.ghl_workflow_id, w.name]));
+  // Who else puts contacts into this workflow: any "Add to workflow" step
+  // pointing here. (Triggers are listed separately.)
+  const { data: adders } = await sb
+    .from("workflow_steps")
+    .select("workflow_id")
+    .eq("step_type", "add_to_workflow")
+    .eq("raw_json->raw->data->>workflow_id", ghlWorkflowId);
+  const addedBy = [...new Set(((adders ?? []) as { workflow_id: string }[]).map((a) => a.workflow_id))]
+    .filter((id) => id !== ghlWorkflowId && names.has(id))
+    .map((id) => link(id, registry, names));
+  const exitReg = reg?.canonical_code ? registry.find((r) => (r.canonical_code ?? "").toUpperCase() === `${reg.canonical_code!.toUpperCase()}-E`) : undefined;
+  const exitWorkflow = exitReg?.workflow_id ? link(exitReg.workflow_id, registry, names) : null;
+
   const nameFor = (id: string) => {
     const r = registry.find((x) => x.workflow_id === id);
     return r?.canonical_code ?? names.get(id) ?? id.slice(0, 8);
@@ -145,6 +167,10 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
     routesTo: (reg?.routes_to ?? []).map((id) => link(id, registry, names)),
     receivesFrom: (reg?.receives_from ?? []).map((id) => link(id, registry, names)),
     schedule: linearizeSchedule(graph),
+    flow: buildFlow(graph, nameFor),
+    addedBy,
+    exitWorkflow,
+    removeSteps: graph.steps.filter((st) => st.type === "remove_from_workflow").length,
     logic: logicTree(graph, nameFor),
     triggers,
     activeCount,

@@ -11,7 +11,8 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import { ScheduleList } from "@/components/workflows/ScheduleList";
 import { LogicTree } from "@/components/workflows/LogicTree";
 import { ActiveLeadsTable } from "@/components/workflows/ActiveLeadsTable";
-import { getWorkflowDetail, type WorkflowLink } from "@/lib/queries/workflowDetail";
+import { Flowchart } from "@/components/workflows/Flowchart";
+import { getWorkflowDetail, type WorkflowDetail, type WorkflowLink } from "@/lib/queries/workflowDetail";
 import { cn, num, relTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -19,17 +20,19 @@ export const dynamic = "force-dynamic";
 type Search = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? null;
 
+// Flowchart first (2026-09-25): the team asked to see every path without
+// reading a step list. Triggers moved into the "in and out" header.
 const TABS = [
-  { key: "schedule", label: "Messages & timing" },
-  { key: "logic", label: "Logic" },
-  { key: "leads", label: "Leads in this workflow" },
-  { key: "triggers", label: "Triggers" },
+  { key: "flow", label: "Flowchart" },
+  { key: "schedule", label: "Every message" },
+  { key: "logic", label: "Step list" },
+  { key: "leads", label: "Leads in it now" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
 /**
- * One workflow: what it sends and when, how it decides, who is in it now,
- * and what starts it. Read-only — GHL workflow edits stay in GHL.
+ * One workflow: how contacts get in and out, every path as a flowchart, every
+ * message it can send, and who is in it now. Read-only — edits stay in GHL.
  */
 export default async function WorkflowDetailPage({
   params,
@@ -42,7 +45,7 @@ export default async function WorkflowDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const tabRaw = one(sp.tab);
-  const tab: TabKey = TABS.some((t) => t.key === tabRaw) ? (tabRaw as TabKey) : "schedule";
+  const tab: TabKey = TABS.some((t) => t.key === tabRaw) ? (tabRaw as TabKey) : "flow";
 
   let detail;
   try {
@@ -81,9 +84,13 @@ export default async function WorkflowDetailPage({
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-xl font-semibold text-navy-900 dark:text-white">{title}</h1>
             {reg?.stage_family && <Badge tone="navy">{reg.stage_family}</Badge>}
-            <Badge tone={detail.status === "published" ? "emerald" : "slate"} dot>
-              {detail.status ?? "unknown"}
-            </Badge>
+            {detail.status === "published" ? (
+              <Badge tone="emerald" dot>
+                Published
+              </Badge>
+            ) : (
+              <Badge tone="amber">Draft</Badge>
+            )}
             {detail.version !== null && <span className="text-xs text-slate-500">v{detail.version}</span>}
           </div>
           {reg?.canonical_name && reg.canonical_name !== detail.name && <p className="text-xs text-slate-500">GHL name: {detail.name}</p>}
@@ -99,8 +106,6 @@ export default async function WorkflowDetailPage({
               <span className="text-slate-400">Tag codes:</span> {detail.codes.length ? detail.codes.map((c) => `active-${c.toLowerCase()}`).join(", ") : "not registered"}
             </span>
           </div>
-          <LinkChips label="Receives from" links={detail.receivesFrom} />
-          <LinkChips label="Routes to" links={detail.routesTo} />
           {reg?.notes && <p className="text-xs italic text-slate-500">{reg.notes}</p>}
         </div>
 
@@ -111,11 +116,13 @@ export default async function WorkflowDetailPage({
           <StatTile label="Last changed" value={relTime(detail.updatedAt)} helpKey="workflows.total" />
         </section>
 
+        <InOut detail={detail} />
+
         <nav className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800">
           {TABS.map((t) => (
             <Link
               key={t.key}
-              href={(t.key === "schedule" ? `/workflows/${id}` : `/workflows/${id}?tab=${t.key}`) as Route}
+              href={(t.key === "flow" ? `/workflows/${id}` : `/workflows/${id}?tab=${t.key}`) as Route}
               className={cn(
                 "-mb-px border-b-2 px-3 py-2 text-sm",
                 tab === t.key
@@ -131,13 +138,15 @@ export default async function WorkflowDetailPage({
         <Card>
           <CardHeader>
             <CardTitle>{TABS.find((t) => t.key === tab)?.label}</CardTitle>
-            <InfoPopover helpKey={tab === "leads" ? "workflows.activeTab" : tab === "schedule" ? "workflows.schedule" : "workflows.total"} />
+            <InfoPopover
+              helpKey={tab === "flow" ? "workflows.flowchart" : tab === "leads" ? "workflows.activeTab" : tab === "schedule" ? "workflows.schedule" : "workflows.total"}
+            />
           </CardHeader>
           <CardContent>
             {tab === "schedule" && <ScheduleList rows={detail.schedule} />}
             {tab === "logic" && <LogicTree lines={detail.logic} />}
             {tab === "leads" && <ActiveLeadsTable ghlWorkflowId={id} />}
-            {tab === "triggers" && <Triggers triggers={detail.triggers} />}
+            {tab === "flow" && <Flowchart flow={detail.flow} draft={detail.status !== "published"} />}
           </CardContent>
         </Card>
       </div>
@@ -148,7 +157,7 @@ export default async function WorkflowDetailPage({
 function LinkChips({ label, links }: { label: string; links: WorkflowLink[] }) {
   if (links.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1 text-xs">
+    <div className="mt-2 flex flex-wrap items-center gap-1 text-xs">
       <span className="text-slate-400">{label}:</span>
       {links.map((l) => (
         <Link key={l.ghlWorkflowId} href={`/workflows/${l.ghlWorkflowId}` as Route}>
@@ -159,24 +168,56 @@ function LinkChips({ label, links }: { label: string; links: WorkflowLink[] }) {
   );
 }
 
-function Triggers({ triggers }: { triggers: { name: string | null; event: string | null; value: string | null; active: boolean | null }[] }) {
-  if (triggers.length === 0) return <p className="py-6 text-center text-sm text-slate-500">No triggers cached — contacts are added by other workflows or the API.</p>;
+type Trigger = WorkflowDetail["triggers"][number];
+
+/** Entry and exit in one box, so nobody has to open GHL to learn how a lead lands here. */
+function InOut({ detail }: { detail: WorkflowDetail }) {
+  const ends = detail.flow.nodes.filter((n) => n.kind === "end").length;
   return (
-    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-      {triggers.map((t, i) => (
-        <li key={i} className="py-2 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-navy-900 dark:text-slate-100">{t.name ?? "Unnamed trigger"}</span>
-            {t.event && <Badge tone="navy">{t.event.replace(/_/g, " ")}</Badge>}
-            {t.active !== null && (
-              <Badge tone={t.active ? "emerald" : "slate"} dot>
-                {t.active ? "on" : "off"}
-              </Badge>
-            )}
-          </div>
-          {t.value && <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{t.value.length > 300 ? `${t.value.slice(0, 299)}…` : t.value}</p>}
-        </li>
-      ))}
-    </ul>
+    <section className="grid gap-3 md:grid-cols-2">
+      <div className="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800">
+        <h2 className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          How contacts get in
+          <InfoPopover helpKey="workflows.flowchart" align="left" />
+        </h2>
+        {detail.triggers.length === 0 && detail.addedBy.length === 0 && detail.receivesFrom.length === 0 && (
+          <p className="text-slate-500">No trigger cached — contacts are added by the API or an LP rule.</p>
+        )}
+        <ul className="space-y-1">
+          {detail.triggers.map((t, i) => (
+            <TriggerLine key={i} t={t} />
+          ))}
+        </ul>
+        <LinkChips label="Added by" links={detail.addedBy} />
+        <LinkChips label="Receives from" links={detail.receivesFrom.filter((l) => !detail.addedBy.some((a) => a.ghlWorkflowId === l.ghlWorkflowId))} />
+      </div>
+      <div className="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800">
+        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">How contacts leave</h2>
+        <ul className="space-y-1 text-navy-900 dark:text-slate-100">
+          <li>
+            Reaching the end of a path{ends > 1 ? ` (${ends} end points)` : ""}.
+          </li>
+          {detail.removeSteps > 0 && (
+            <li>
+              {detail.removeSteps} &quot;Remove from workflow&quot; step{detail.removeSteps === 1 ? "" : "s"} inside the flow.
+            </li>
+          )}
+          <li className="text-slate-500">Any &quot;stop&quot; / do-not-contact reply stops it for that lead.</li>
+        </ul>
+        {detail.exitWorkflow && <LinkChips label="Exit workflow" links={[detail.exitWorkflow]} />}
+        <LinkChips label="Sends on to" links={detail.routesTo} />
+      </div>
+    </section>
+  );
+}
+
+function TriggerLine({ t }: { t: Trigger }) {
+  const off = t.active === false;
+  return (
+    <li className={cn("text-navy-900 dark:text-slate-100", off && "text-slate-400 line-through dark:text-slate-500")}>
+      {t.name ?? "Unnamed trigger"}
+      {t.event && <span className="text-slate-500"> — {t.event.replace(/_/g, " ")}</span>}
+      {off && <span className="ml-1 text-[11px] no-underline"> (turned off)</span>}
+    </li>
   );
 }

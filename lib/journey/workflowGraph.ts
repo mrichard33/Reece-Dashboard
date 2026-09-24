@@ -186,7 +186,7 @@ export function evaluateBranch(branch: Record<string, unknown>, facts: ContactFa
 
 const MAX_EXPANSIONS = 600;
 
-function indexGraph(graph: WorkflowGraph) {
+export function indexGraph(graph: WorkflowGraph) {
   const byId = new Map(graph.steps.map((s) => [s.id, s]));
   const connFrom = new Map<string, string[]>();
   for (const c of graph.connections) {
@@ -210,13 +210,13 @@ export function rootStep(graph: WorkflowGraph): GraphStep | null {
   return roots[0] ?? [...graph.steps].sort((a, b) => a.order - b.order)[0] ?? null;
 }
 
-const EVENT_WAITS = new Set(["condition", "reply", "link_clicked", "appointment", "email_event"]);
+export const EVENT_WAITS = new Set(["condition", "reply", "link_clicked", "appointment", "email_event"]);
 
 function textOf(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v : null;
 }
 
-function messageContent(step: GraphStep, graph: WorkflowGraph) {
+export function messageContent(step: GraphStep, graph: WorkflowGraph) {
   const d = step.data;
   const tplId = step.templateId ?? textOf(d.templateId) ?? textOf(d.template_id);
   const tpl = tplId ? graph.templates[tplId] : undefined;
