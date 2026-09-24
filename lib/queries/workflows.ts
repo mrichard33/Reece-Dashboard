@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { hlService } from "@/lib/supabase/hl";
 import type { Workflow, WorkflowRegistry } from "@/lib/supabase/types";
 import { codesFor } from "@/lib/journey/tags";
-import { activeTagsFor, pgArray } from "@/lib/queries/workflowDetail";
+import { activeTagsFor, pgArray, STOPPED_TAGS } from "@/lib/queries/workflowDetail";
 
 export type WorkflowRow = {
   id: string;
@@ -49,7 +49,8 @@ const getActiveLeadCounts = unstable_cache(
           .from("contacts")
           .select("id", { count: "exact", head: true })
           .is("deleted_at", null)
-          .overlaps("tags", pgArray(tags));
+          .overlaps("tags", pgArray(tags))
+      .not("tags", "ov", pgArray(STOPPED_TAGS));
         out[r.workflow_id] = error ? null : (count ?? 0);
       }
     };

@@ -122,8 +122,8 @@ export function LeadsTable({ initial, query }: { initial: LeadsPage; query: stri
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-1">
                         {r.workflows.map((w) => (
-                          <Badge key={w.code} tone="navy">
-                            {w.name}
+                          <Badge key={w.code} tone={w.stopped ? "slate" : "navy"}>
+                            {w.stopped ? `${w.code} — stopped` : w.name}
                           </Badge>
                         ))}
                         {r.stageTag && <Badge tone="sky">{humanizeTagValue(r.stageTag)}</Badge>}
@@ -141,7 +141,12 @@ export function LeadsTable({ initial, query }: { initial: LeadsPage; query: stri
                       {r.nextAppointment ? (
                         <>
                           <div className="tabular-nums">{etShort(r.nextAppointment.start)}</div>
-                          <div className="text-slate-500">{r.nextAppointment.label}</div>
+                          <div className="flex flex-wrap items-center gap-1 text-slate-500">
+                            {r.nextAppointment.label}
+                            <Badge tone={r.nextAppointment.status === "confirmed" ? "emerald" : r.nextAppointment.status === "rescheduled" ? "amber" : "sky"}>
+                              {r.nextAppointment.status === "confirmed" ? "Confirmed" : r.nextAppointment.status === "rescheduled" ? "Rescheduled" : r.nextAppointment.status === "booked" ? "Set" : r.nextAppointment.status}
+                            </Badge>
+                          </div>
                         </>
                       ) : (
                         <span className="text-slate-400">—</span>

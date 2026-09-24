@@ -255,6 +255,7 @@ export function tagDiffEvents(
 
     const otherAdded: string[] = [];
     const otherRemoved: string[] = [];
+    const consentAdded: string[] = [];
     const push = (e: Omit<JourneyEvent, "ts">) => out.push({ ...e, ts: snap.ts });
 
     for (const tag of added) {
@@ -316,18 +317,15 @@ export function tagDiffEvents(
           });
           break;
         case "bot":
-          push({
-            id: `tag:${snap.ts}:+${tag}`,
-            lane: "bot",
-            kind: "bot_state",
-            title:
-              p.value === "agentic-active"
-                ? "Bot switched on (agentic-active)"
-                : p.value === "stop-bot"
-                  ? "Bot stopped (stop-bot)"
-                  : `Consent: ${tag} added`,
-            detail: { tag },
-          });
+          if (p.value === "agentic-active" || p.value === "stop-bot") {
+            push({
+              id: `tag:${snap.ts}:+${tag}`,
+              lane: "bot",
+              kind: "bot_state",
+              title: p.value === "agentic-active" ? "Bot switched on (agentic-active)" : "Bot stopped (stop-bot)",
+              detail: { tag },
+            });
+          } else consentAdded.push(tag);
           break;
         default:
           otherAdded.push(tag);
@@ -361,6 +359,16 @@ export function tagDiffEvents(
       } else {
         otherRemoved.push(tag);
       }
+    }
+
+    if (consentAdded.length) {
+      push({
+        id: `tag:${snap.ts}:consent`,
+        lane: "bot",
+        kind: "consent",
+        title: `Marked do-not-contact (${consentAdded.join(", ")})`,
+        detail: { added: consentAdded },
+      });
     }
 
     if (otherAdded.length || otherRemoved.length) {
@@ -597,13 +605,16 @@ export function opportunityEvents(
 const CALL_RESULTS: Record<string, string> = {
   LVM: "Left voicemail",
   NA: "No answer",
+  AM: "Answering machine",
+  HU: "Hung up",
   BZ: "Busy",
   BUSY: "Busy",
   WN: "Wrong number",
   DNC: "Do not call",
   NI: "Not interested",
-  HU: "Hung up",
   DC: "Disconnected",
+  CONF: "Confirmed the appointment",
+  SET: "Set an appointment",
 };
 
 function fmtSeconds(v: unknown): string | null {
@@ -623,6 +634,40 @@ function pick(obj: Record<string, unknown> | undefined, keys: string[]): string 
   return null;
 }
 
+/** "Benoff, Ethan" and "Ethan Benoff" are the same rep. Placeholders are nobody. */
+export function repKey(name: string | null | undefined): string {
+  const n = (name ?? "").replace(/\[none\]/gi, "").trim();
+  if (!n) return "";
+  return n
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
+function minuteKey(ts: string): string {
+  return ts.slice(0, 16);
+}
+
+/** Revin is Lead Perfection's own texting bot; it writes one summary note per conversation. */
+export function isRevinNote(rep: string | null | undefined): boolean {
+  return /agent,\s*revin/i.test(rep ?? "");
+}
+
+/** The note pipeline's AI summary of a GHL chat — the messages themselves are already in the timeline. */
+export function isAiBriefNote(body: string, origin: string | null | undefined): boolean {
+  return origin === "ghl_ai_brief" || body.trimStart().startsWith("[GHL · AI BRIEF");
+}
+
+/**
+ * LP timeline items → timeline rows.
+ *
+ * One prospect can hold several LP leads, and LP stores each call, note and
+ * activity once PER LEAD (Blankenbicker, 2026-09-25: four copies of every
+ * call). Rows are keyed by what happened — minute, result, rep, body — not by
+ * the lead that carried them, so each real call shows once.
+ */
 export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
   // LP writes a call twice: an lp_call_logs row and an lp_activities "call"
   // row at the same instant. The activity carries the readable result
@@ -631,9 +676,27 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
   for (const it of items) {
     if (it.type === "activity" && str(it.detail?.activity_type)?.toLowerCase() === "call") {
       const detail = str(it.detail?.activity_detail);
-      if (detail) callActivity.set(toIso(it.ts) ?? it.ts, detail);
+      if (detail) callActivity.set(minuteKey(toIso(it.ts) ?? it.ts), detail);
     }
   }
+
+  // LP also mirrors some notes as a "standard" activity (Siro call summaries,
+  // 2026-09-25): same minute, same text. The note is the one to keep.
+  const flat = (x: string) => x.replace(/\s+/g, " ").trim().slice(0, 60).toLowerCase();
+  const noteKeys = new Set<string>();
+  for (const it of items) {
+    if (it.type !== "note") continue;
+    const ts = toIso(it.ts);
+    const body = str(it.detail?.full_note) ?? it.summary;
+    if (ts) noteKeys.add(`${minuteKey(ts)}|${flat(body)}`);
+  }
+
+  const seen = new Set<string>();
+  const once = (key: string) => {
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
 
   const out: JourneyEvent[] = [];
   items.forEach((it, i) => {
@@ -643,13 +706,16 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
     const id = `lp:${it.type}:${str(d.id) ?? `${ts}:${i}`}`;
 
     if (it.type === "lead_created") {
+      if (!once(`lead:${pick(d, ["lp_lead_id"]) ?? id}`)) return;
       out.push({ id, ts, lane: "lp", kind: "lp_lead_created", title: it.summary, actor: pick(d, ["rep"]) ?? undefined, detail: cleanDetail(d) });
       return;
     }
     if (it.type === "call") {
       const raw = (d.raw ?? {}) as Record<string, unknown>;
       const code = pick(raw, ["call_result"]);
-      const result = (code && CALL_RESULTS[code.toUpperCase()]) ?? callActivity.get(ts) ?? code ?? "no outcome";
+      const rep = pick(d, ["rep"]) ?? pick(raw, ["agent_name", "rep_name"]);
+      if (!once(`call:${minuteKey(ts)}:${code ?? ""}:${repKey(rep)}`)) return;
+      const result = (code && CALL_RESULTS[code.toUpperCase()]) ?? callActivity.get(minuteKey(ts)) ?? code ?? "no outcome";
       const dur = fmtSeconds(raw.call_duration_sec);
       out.push({
         id,
@@ -657,38 +723,54 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
         lane: "call",
         kind: "call",
         title: `Call${dur ? ` ${dur}` : ""} — ${result}`,
-        actor: pick(d, ["rep"]) ?? pick(raw, ["agent_name", "rep_name"]) ?? undefined,
+        actor: rep && repKey(rep) ? rep : "Dialer",
         detail: {
           result,
           code,
           notes: pick(raw, ["call_notes"]),
           recording: pick(raw, ["recording_url"]),
-          lp_lead_id: pick(d, ["lp_lead_id"]),
         },
       });
       return;
     }
     if (it.type === "note") {
-      out.push({ id, ts, lane: "note", kind: "note", title: it.summary, actor: pick(d, ["rep", "created_by_rep_name"]) ?? undefined, detail: { note: pick(d, ["full_note"]) ?? it.summary } });
+      const body = pick(d, ["full_note"]) ?? it.summary;
+      const rep = pick(d, ["rep"]);
+      if (!once(`note:${minuteKey(ts)}:${body.slice(0, 200)}`)) return;
+      if (isRevinNote(rep)) {
+        out.push({
+          id,
+          ts,
+          lane: "message",
+          kind: "revin_sms_summary",
+          title: `Revin texted with the lead — "${preview(body)}"`,
+          actor: "Revin (LP)",
+          detail: {
+            body,
+            channel: "SMS",
+            note: "Revin is Lead Perfection's texting bot. LP keeps only this summary of the conversation, not the individual texts.",
+          },
+        });
+        return;
+      }
+      if (isAiBriefNote(body, pick(d, ["note_origin"]))) {
+        out.push({ id, ts, lane: "lp", kind: "ai_brief", title: "AI summary of the chat saved to LP", actor: rep ?? undefined, detail: { note: body }, quiet: true });
+        return;
+      }
+      out.push({ id, ts, lane: "note", kind: "note", title: `Note: ${preview(body, 110)}`, actor: rep ?? undefined, detail: { note: body, category: pick(d, ["note_category"]) } });
       return;
     }
     if (it.type === "activity") {
       if (str(d.activity_type)?.toLowerCase() === "call") return; // folded into the call
-      out.push({
-        id,
-        ts,
-        lane: "lp",
-        kind: "activity",
-        title: [str(d.activity_type), str(d.activity_detail)].filter(Boolean).join(" — ") || it.summary,
-        actor: pick(d, ["rep_name"]) ?? undefined,
-        detail: cleanDetail(d),
-      });
+      if (noteKeys.has(`${minuteKey(ts)}|${flat(str(d.activity_detail) ?? "")}`)) return; // mirror of a note
+      const title = [str(d.activity_type), str(d.activity_detail)].filter(Boolean).join(" — ") || it.summary;
+      if (!once(`act:${minuteKey(ts)}:${title}`)) return;
+      out.push({ id, ts, lane: "lp", kind: "activity", title, actor: pick(d, ["rep_name"]) ?? undefined, detail: cleanDetail(d) });
       return;
     }
     if (it.type === "appointment_set") {
-      // lp_leads.appointment_date is an untrusted cache (principles file):
-      // appointment truth is GHL `appointments` + LP disposition history. Keep
-      // the row for the LP lane, quiet, and never let it sit in the future.
+      // lp_leads.appointment_date is an untrusted cache; appointment truth is
+      // GHL `appointments` + LP disposition history. Quiet, never future.
       out.push({ id, ts, lane: "lp", kind: "lp_appointment", title: "LP shows an appointment on file", actor: pick(d, ["rep"]) ?? undefined, detail: cleanDetail(d), quiet: true });
       return;
     }
@@ -698,15 +780,16 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
       const evType = it.type.slice("event:".length);
       if (evType === "five9.disposition_set") {
         const dur = fmtSeconds(payload.duration_sec ?? payload.call_duration ?? payload.duration);
-        const dispo = pick(payload, ["disposition_name", "dispositionName", "disposition"]) ?? "No disposition";
+        const rawDispo = pick(payload, ["disposition_name", "dispositionName", "disposition"]) ?? "No disposition";
+        const dispo = CALL_RESULTS[rawDispo.toUpperCase()] ?? rawDispo;
         out.push({
           id,
           ts,
           lane: "call",
           kind: "five9_call",
-          title: `Five9 call${dur ? ` ${dur}` : ""} — ${dispo}`,
+          title: `Call${dur ? ` ${dur}` : ""} — ${dispo}`,
           actor: pick(payload, ["agent_name", "agentName", "agent"]) ?? undefined,
-          detail: { disposition: dispo, campaign: pick(payload, ["campaign"]) },
+          detail: { disposition: dispo, campaign: pick(payload, ["campaign"]), durationSec: payload.duration_sec ?? null, via: "Five9" },
         });
         return;
       }
@@ -718,7 +801,7 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
           ts,
           lane: "lp",
           kind: "lp_disposition",
-          title: from && to && from !== to ? `LP disposition ${from} → ${to}` : `LP disposition ${to ?? "changed"}`,
+          title: from && to && from !== to ? `LP status ${from} → ${to}` : `LP status ${to ?? "changed"}`,
           detail: { from, to, reason: pick(payload, ["reason"]) },
         });
         return;
@@ -747,7 +830,7 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
     if (it.type.startsWith("action:")) {
       const rule = pick(d, ["rule"]);
       const reasoning = (pick(d, ["reasoning"]) ?? "").replace(/^Rule\s+\S+:\s*/, "");
-      const status = /—\s*(\w+)/.exec(it.summary)?.[1]?.toLowerCase() ?? null;
+      const status = (pick(d, ["status"]) ?? /—\s*(\w+)/.exec(it.summary)?.[1] ?? "").toLowerCase() || null;
       out.push({
         id,
         ts,
@@ -764,7 +847,42 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
 
     out.push({ id, ts, lane: "system", kind: "lp_other", title: it.summary, detail: cleanDetail(d), quiet: true });
   });
-  return out;
+  return mergeFive9Calls(out);
+}
+
+/**
+ * A Five9 disposition and the LP call log are the same call seen twice. Keep
+ * the LP row (it has the rep and LP result), borrow Five9's duration, drop the
+ * Five9 row. Same rep (or one side unnamed) within 3 minutes.
+ */
+export function mergeFive9Calls(events: readonly JourneyEvent[]): JourneyEvent[] {
+  const lpCalls = events.filter((e) => e.kind === "call");
+  const drop = new Set<string>();
+  const patched = new Map<string, JourneyEvent>();
+  const used = new Set<string>();
+  for (const f of events) {
+    if (f.kind !== "five9_call") continue;
+    const t = Date.parse(f.ts);
+    const fRep = repKey(f.actor);
+    const match = lpCalls.find(
+      (c) =>
+        !used.has(c.id) &&
+        Math.abs(Date.parse(c.ts) - t) <= 3 * 60_000 &&
+        (!fRep || !repKey(c.actor) || repKey(c.actor) === fRep || c.actor === "Dialer"),
+    );
+    if (!match) continue;
+    used.add(match.id);
+    drop.add(f.id);
+    const dur = fmtSeconds(f.detail?.durationSec);
+    const base = patched.get(match.id) ?? match;
+    patched.set(match.id, {
+      ...base,
+      title: dur && !/\d+m\d+s|\d+s/.test(base.title) ? base.title.replace(/^Call/, `Call ${dur}`) : base.title,
+      actor: base.actor === "Dialer" && f.actor ? f.actor : base.actor,
+      detail: { ...base.detail, five9Disposition: f.detail?.disposition },
+    });
+  }
+  return events.filter((e) => !drop.has(e.id)).map((e) => patched.get(e.id) ?? e);
 }
 
 // ── Merge rules ───────────────────────────────────────────────────────────
@@ -832,29 +950,62 @@ export function sortEvents(events: readonly JourneyEvent[]): JourneyEvent[] {
   return [...events].sort((a, b) => a.ts.localeCompare(b.ts) || a.id.localeCompare(b.id));
 }
 
-/** Lanes a filter chip can toggle, in display order. */
-export const LANE_CHIPS: { key: JourneyLane | "all"; label: string; lanes: JourneyLane[] }[] = [
+/**
+ * The same rule firing again and again within 15 minutes is one moment to a
+ * reader (Kimberly: BEHAVIORAL_DNC_REPLY six times in two minutes). Keep the
+ * first row, count the rest. Input must be sorted.
+ */
+export function collapseRepeatedRules(events: readonly JourneyEvent[]): JourneyEvent[] {
+  const out: JourneyEvent[] = [];
+  const open = new Map<string, JourneyEvent>();
+  for (const e of events) {
+    if (e.kind !== "agent_action") {
+      out.push(e);
+      continue;
+    }
+    // One rule can run several actions (suppress SMS, suppress calls, tell LP)
+    // — that is still one decision.
+    const key = `${e.refs?.ruleId ?? e.title}|${e.quiet ? 1 : 0}`;
+    const prev = open.get(key);
+    if (prev && Date.parse(e.ts) - Date.parse(prev.ts) <= 15 * 60_000) {
+      prev.collapsedCount = (prev.collapsedCount ?? 1) + 1;
+      prev.title = `${prev.title.replace(/ \(×\d+\)$/, "")} (×${prev.collapsedCount})`;
+      continue;
+    }
+    const copy = { ...e, collapsedCount: 1 };
+    open.set(key, copy);
+    out.push(copy);
+  }
+  return out;
+}
+
+/** Lanes a filter chip can toggle, in display order. Five, on purpose. */
+export const LANE_CHIPS: { key: string; label: string; lanes: JourneyLane[] }[] = [
   { key: "all", label: "All", lanes: [] },
   { key: "message", label: "Messages", lanes: ["message"] },
-  { key: "call", label: "Calls", lanes: ["call"] },
-  { key: "appointment", label: "Appts", lanes: ["appointment"] },
-  { key: "workflow", label: "Workflows", lanes: ["workflow", "stage"] },
-  { key: "pipeline", label: "Pipeline", lanes: ["pipeline"] },
-  { key: "lp", label: "LP", lanes: ["lp", "note"] },
-  { key: "bot", label: "Bot", lanes: ["bot"] },
-  { key: "tag", label: "Tags", lanes: ["tag"] },
-  { key: "system", label: "System", lanes: ["system"] },
+  { key: "call", label: "Calls & notes", lanes: ["call", "note"] },
+  { key: "appointment", label: "Appointments", lanes: ["appointment"] },
+  { key: "workflow", label: "Workflow & status", lanes: ["workflow", "stage", "pipeline", "lp", "bot"] },
 ];
 
+/** Lanes that are plumbing, not story: shown only with "Show system detail". */
+const SYSTEM_LANES = new Set<JourneyLane>(["tag", "system"]);
+
 /**
- * Which events a lane selection shows. Empty selection = "All": everything
- * except `quiet` rows. A quiet row shows only when its own lane chip is on.
+ * Which events a selection shows. Empty selection = "All". Tag churn, raw
+ * system events and `quiet` rows (skipped rules, AI summaries, LP caches)
+ * appear only when `showSystem` is on — the default view is the story.
  */
-export function visibleEvents(events: readonly JourneyEvent[], selected: readonly string[]): JourneyEvent[] {
-  if (selected.length === 0) return events.filter((e) => !e.quiet);
+export function visibleEvents(
+  events: readonly JourneyEvent[],
+  selected: readonly string[],
+  showSystem = false,
+): JourneyEvent[] {
+  const base = showSystem ? events : events.filter((e) => !e.quiet && !SYSTEM_LANES.has(e.lane));
+  if (selected.length === 0) return [...base];
   const lanes = new Set<JourneyLane>();
   for (const key of selected) for (const l of LANE_CHIPS.find((c) => c.key === key)?.lanes ?? []) lanes.add(l);
-  return events.filter((e) => lanes.has(e.lane));
+  return base.filter((e) => lanes.has(e.lane));
 }
 
 /** "+14073739355" → "(407) 373-9355". Anything else passes through. */

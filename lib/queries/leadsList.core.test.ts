@@ -4,7 +4,7 @@
  * sends an exact-match lookup down the fuzzy name path and finds nobody.
  */
 import { describe, expect, it } from "vitest";
-import { classifySearch, parseLeadsQuery, toE164 } from "./leadsList.core";
+import { appointmentStatusLabel, classifySearch, parseLeadsQuery, toE164 } from "./leadsList.core";
 
 describe("classifySearch", () => {
   it("reads phones in any format as E.164 (spec verification #2)", () => {
@@ -60,5 +60,15 @@ describe("parseLeadsQuery", () => {
     expect(r.filters.appt).toBe("missed");
     expect(r.view).toBe("cancelled-week");
     expect(parseLeadsQuery({ view: "new-today" }).filters.entered).toBe("today");
+  });
+});
+
+describe("appointmentStatusLabel", () => {
+  it("says Set or Confirmed the way the floor does", () => {
+    expect(appointmentStatusLabel("new", [])).toBe("booked");
+    expect(appointmentStatusLabel("confirmed", [])).toBe("confirmed");
+    // LP confirms before GHL catches up.
+    expect(appointmentStatusLabel("new", ["lp-route:appt-confirmed"])).toBe("confirmed");
+    expect(appointmentStatusLabel("rescheduled", [])).toBe("rescheduled");
   });
 });

@@ -68,12 +68,17 @@ export type JourneyHeader = {
   pipeline: string | null;
   stage: string | null;
   currentWorkflow: { code: string; name: string; ghlWorkflowId: string | null } | null;
-  /** Every `active-<code>` the contact carries now (one per lane is normal). */
-  activeWorkflows: { code: string; name: string; ghlWorkflowId: string | null }[];
+  /**
+   * Every `active-<code>` the contact carries now (one per lane is normal).
+   * `stopped` = the tag is a leftover on a contact whose automation is stopped.
+   */
+  activeWorkflows: { code: string; name: string; ghlWorkflowId: string | null; stopped: boolean }[];
   stageTag: string | null;
   lp: {
     prospectId: string | null;
     leadId: string | null;
+    /** Every LP lead id under this contact — one person can hold several. */
+    leadIds: string[];
     disposition: string | null;
     route: string | null;
     rep: string | null;
@@ -108,6 +113,6 @@ export type Journey = {
   /** Ascending, past only. */
   events: JourneyEvent[];
   /** Shown as a small banner when degraded. */
-  sources: { hl: "ok" | "error"; lp: "ok" | "error" | "unconfigured" };
+  sources: { hl: "ok" | "error"; lp: "ok" | "error" };
   builtAt: string;
 };

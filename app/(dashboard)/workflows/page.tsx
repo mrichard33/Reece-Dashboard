@@ -1,13 +1,10 @@
-import Link from "next/link";
-import type { Route } from "next";
 import { requireRole } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatTile } from "@/components/tiles/StatTile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { getWorkflowSummary } from "@/lib/queries/workflows";
-import { num, relTime } from "@/lib/utils";
+import { WorkflowsIndex } from "@/components/workflows/WorkflowsIndex";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +18,7 @@ export default async function WorkflowsPage() {
         email={user.email}
         role={user.role}
         title="Workflows"
-        subtitle="GHL workflow inventory with canonical registry metadata"
+        subtitle="Every GHL workflow, grouped by where it sits in the funnel"
         syncNow
       />
 
@@ -44,74 +41,14 @@ export default async function WorkflowsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>All workflows</CardTitle>
-            <InfoPopover helpKey="workflows.healthFlags" />
+            <CardTitle>Workflows by funnel route</CardTitle>
+            <InfoPopover helpKey="workflows.routeMap" />
           </CardHeader>
           <CardContent>
             {summary.rows.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-500">
-                No workflows in the HL cache. Trigger a sync from the topbar.
-              </p>
+              <p className="py-8 text-center text-sm text-slate-500">No workflows in the HL cache. Trigger a sync from the topbar.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    <tr className="border-b border-slate-200 dark:border-slate-800">
-                      <th className="py-2 pr-3">Code</th>
-                      <th className="py-2 pr-3">Workflow</th>
-                      <th className="py-2 pr-3">Family</th>
-                      <th className="py-2 pr-3">Status</th>
-                      <th className="py-2 pr-3">Last modified</th>
-                      <th className="py-2 pr-3">
-                        <span className="inline-flex items-center gap-1">
-                          Active leads
-                          <InfoPopover helpKey="workflows.activeLeads" align="left" />
-                        </span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700 dark:divide-slate-800 dark:text-slate-200">
-                    {summary.rows.map((r) => (
-                      <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <td className="py-2 pr-3 font-mono text-xs">
-                          {r.canonicalCode ?? (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3">
-                          <Link
-                            href={`/workflows/${r.ghlWorkflowId}` as Route}
-                            className="text-navy-800 hover:underline dark:text-slate-100"
-                          >
-                            {r.name}
-                          </Link>
-                        </td>
-                        <td className="py-2 pr-3">
-                          {r.stageFamily ? (
-                            <Badge tone="navy">{r.stageFamily}</Badge>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3">
-                          <Badge
-                            tone={r.status === "published" ? "emerald" : "slate"}
-                            dot
-                          >
-                            {r.status}
-                          </Badge>
-                        </td>
-                        <td className="py-2 pr-3 text-xs text-slate-500">
-                          {relTime(r.lastModified)}
-                        </td>
-                        <td className="py-2 pr-3 text-xs tabular-nums">
-                          {r.activeLeads === null ? <span className="text-slate-400">—</span> : num(r.activeLeads)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <WorkflowsIndex rows={summary.rows} />
             )}
           </CardContent>
         </Card>

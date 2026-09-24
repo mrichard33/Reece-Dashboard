@@ -301,13 +301,13 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "leads.now": {
     title: "Now",
-    what: "The contact's current position: the workflow(s) they are in (`active-<code>` tags), how far through it they are (highest `sent:<code>-e/s<n>` tag), their funnel stage tag, the appointment that matters (next upcoming, else the latest and its status), and the last call and message.",
-    where: "Tags on HL `contacts`; `appointments`; last call from LP MCP `get_contact_timeline`; last message from HL `messages`.",
+    what: "Where the contact is right now: the workflow(s) they are in (`active-<code>` tags), how far through it they are, their funnel stage, and their appointment. A workflow marked '— stopped' still carries its tag in GHL, but the contact said STOP or is do-not-contact, so nothing more will send.",
+    where: "Tags on HL `contacts`; `appointments`; calls and notes from LP Supabase (`lp_call_logs`, `lp_notes`) across every LP lead the contact has; messages from HL `messages`.",
     fix: "Tags are the enrollment record — not `workflow_executions`, which covers only ~25 workflows. If Now disagrees with GHL, re-sync the contact; if a workflow shows by a legacy code (e.g. W9.0), its registry row is missing a canonical code.",
   },
   "leads.next": {
     title: "Next",
-    what: "The next few sends the contact's current workflow is expected to make, and when — PROJECTED from the workflow's step graph, not read from GHL. Also flags when automation is stopped (stop-bot / DNC) or nurture is paused.",
+    what: "The next thing that will happen: the upcoming appointment, or the next send the contact's workflow is expected to make — whichever is sooner. Sends are PROJECTED from the workflow's step graph, not read from GHL. Says so when automation is stopped (stop-bot / DNC) or nurture is paused.",
     where: "Current workflow from the `active-<code>` tag → `workflow_registry` → `workflow_steps`. Position from the highest `sent:*` tag; the clock starts when that tag first appeared in `lead_events`. Waits come from each step's `startAfter`, never `delay_minutes`.",
     fix: "GHL has no scheduled-send API, so this is best effort. A projection that says 'depends on' took the first branch of an if/else it could not evaluate. Pause tags (suppress-outbound, cooling-active, hard-disqualified, quarantined) never block a direct reply to the contact.",
   },
@@ -336,6 +336,18 @@ export const helpContent: Record<string, HelpEntry> = {
     what: "Every non-deleted workflow in GHL, including drafts. The canonical_code column comes from the workflow_registry table.",
     where: "`workflows` joined to `workflow_registry` (HL Supabase). Filter `deleted_at is null`.",
     fix: "If a workflow is missing, trigger a sync. If a workflow has no canonical code, it hasn't been registered yet — add a row to workflow_registry.",
+  },
+  "workflows.routeMap": {
+    title: "Workflows by funnel route",
+    what: "Every GHL workflow grouped by where it sits in a lead's life: Intake → Entry & routing → Re-engagement → Indoctrination → Positioning → Booking → Appointments → Customer, plus Objections, Lifecycle and Behind-the-scenes. Click a box to show only that route. Drafts are hidden unless you untick the box.",
+    where: "HL `workflows` for name and status; `workflow_registry.stage_family` (or the code prefix) for the route; active-lead counts from `contacts.tags`.",
+    fix: "A workflow under 'Other / unregistered' has no registry row — add one to `workflow_registry` with its canonical code and family.",
+  },
+  "workflows.flowchart": {
+    title: "Flowchart",
+    what: "The whole workflow drawn from GHL's step graph: every step, every if/else branch side by side with its condition in plain words, every SMS and email, every wait with its real time. ↪ chips are 'go to' jumps. Steps not connected to the start are listed under the chart; a 'not running' badge marks steps set to skip. Click any box for its full text.",
+    where: "HL `workflow_steps` + `workflow_connections` (synced from GHL) and `templates`. Waits read `startAfter`, never `delay_minutes`.",
+    fix: "If the chart disagrees with GHL, the step cache is behind — re-sync workflows (HL MCP `sync_workflows`). GHL does not export a per-step on/off switch; only 'skip action' steps and unconnected steps can be shown.",
   },
   "workflows.activeLeads": {
     title: "Active leads",
