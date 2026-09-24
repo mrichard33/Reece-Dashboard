@@ -12,6 +12,7 @@ import { loadWorkflowGraph } from "@/lib/journey/workflowGraph.server";
 import { linearizeSchedule, logicTree, type LogicLine, type ScheduleRow } from "@/lib/journey/workflowGraph";
 import { codesFor, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
 import { toIso } from "@/lib/journey/normalize";
+import { projectionAnchor, projectNext, tagRunStart, type TagSnapshot } from "@/lib/journey/projection";
 
 export type RegistryMeta = {
   canonical_code: string | null;
@@ -155,7 +156,7 @@ export type WorkflowContactRow = {
   enteredAt: string | null;
   position: string;
   lastActivity: string | null;
-  /** Next projected send (filled once projection lands). */
+  /** Next projected send, if the workflow will send one in 30 days. */
   next: { ts: string; title: string } | null;
 };
 
@@ -165,28 +166,21 @@ export type WorkflowContactsPage = {
 };
 
 /**
- * When did this contact's CURRENT run of `tag` start? The newest snapshot
- * without the tag, then the oldest snapshot with it after that. Two indexed
- * single-contact reads; null when the history does not reach back that far.
+ * A contact's recent tag snapshots (newest 150 contact_updated/created rows,
+ * tags only). Enough to find when the current workflow run and its last send
+ * began; one indexed single-contact read.
  */
-export async function tagFirstSeen(contactId: string, tag: string): Promise<string | null> {
-  const sb = hlService();
-  const json = JSON.stringify([tag]);
-  const base = () =>
-    sb
-      .from("lead_events")
-      .select("event_time")
-      .eq("contact_id", contactId)
-      .in("event_type", ["contact_updated", "contact_created"]);
-  const { data: before } = await base()
-    .not("raw_json->tags", "cs", json)
+async function recentSnapshots(contactId: string): Promise<TagSnapshot[]> {
+  const { data } = await hlService()
+    .from("lead_events")
+    .select("event_time, tags:raw_json->tags")
+    .eq("contact_id", contactId)
+    .in("event_type", ["contact_updated", "contact_created"])
     .order("event_time", { ascending: false })
-    .limit(1);
-  const since = (before ?? [])[0]?.event_time as string | undefined;
-  let q = base().contains("raw_json->tags", json);
-  if (since) q = q.gt("event_time", new Date(since).toISOString());
-  const { data } = await q.order("event_time", { ascending: true }).limit(1);
-  return toIso(((data ?? [])[0]?.event_time as string | undefined) ?? null);
+    .limit(150);
+  return ((data ?? []) as { event_time: string; tags: unknown }[])
+    .filter((r) => Array.isArray(r.tags))
+    .map((r) => ({ ts: toIso(r.event_time) ?? r.event_time, tags: r.tags as string[] }));
 }
 
 export async function getWorkflowContacts(
@@ -201,7 +195,7 @@ export async function getWorkflowContacts(
 
   let q = hlService()
     .from("contacts")
-    .select("ghl_contact_id, first_name, last_name, phone, tags, date_updated")
+    .select("ghl_contact_id, first_name, last_name, phone, email, tags, date_updated")
     .is("deleted_at", null)
     .not("date_updated", "is", null)
     .overlaps("tags", pgArray(activeTags));
@@ -212,17 +206,24 @@ export async function getWorkflowContacts(
     .limit(WORKFLOW_CONTACTS_PAGE + 1);
   if (error) throw new Error(`HL contacts: ${error.message}`);
 
-  type Row = { ghl_contact_id: string; first_name: string | null; last_name: string | null; phone: string | null; tags: string[] | null; date_updated: string | null };
+  type Row = {
+    ghl_contact_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+    email: string | null;
+    tags: string[] | null;
+    date_updated: string | null;
+  };
   const all = (data ?? []) as Row[];
   const page = all.slice(0, WORKFLOW_CONTACTS_PAGE);
   const last = page[page.length - 1];
 
-  const entered = await Promise.all(
-    page.map((c) => {
-      const tag = activeTags.find((t) => (c.tags ?? []).includes(t));
-      return tag ? tagFirstSeen(c.ghl_contact_id, tag) : Promise.resolve(null);
-    }),
-  );
+  const [graph, snaps] = await Promise.all([
+    loadWorkflowGraph(ghlWorkflowId).catch(() => null),
+    Promise.all(page.map((c) => recentSnapshots(c.ghl_contact_id))),
+  ]);
+  const now = new Date();
 
   return {
     codes,
@@ -231,16 +232,31 @@ export async function getWorkflowContacts(
         ? { d: new Date(last.date_updated).toISOString(), id: last.ghl_contact_id }
         : null,
     rows: page.map((c, i) => {
-      const pos = sentPosition(c.tags ?? [], codes);
+      const tags = c.tags ?? [];
+      const history = snaps[i] ?? [];
+      const activeTag = activeTags.find((t) => tags.includes(t));
+      const pos = sentPosition(tags, codes);
+      const next = graph
+        ? projectNext({
+            tags,
+            hasEmail: Boolean(c.email),
+            hasPhone: Boolean(c.phone),
+            code: reg.canonical_code ?? codes[0] ?? "",
+            codes,
+            graph,
+            anchor: projectionAnchor(tags, history, codes),
+            now,
+          })[0]
+        : undefined;
       const parts = [pos.email ? `Email ${pos.email}` : "", pos.sms ? `SMS ${pos.sms}` : ""].filter(Boolean);
       return {
         ghlContactId: c.ghl_contact_id,
         name: [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || "Unknown contact",
         phone: c.phone,
-        enteredAt: entered[i] ?? null,
+        enteredAt: activeTag ? tagRunStart(history, activeTag) : null,
         position: parts.length ? `${parts.join(" · ")} sent` : "No sends yet",
         lastActivity: toIso(c.date_updated),
-        next: null,
+        next: next ? { ts: next.ts, title: next.title } : null,
       };
     }),
   };

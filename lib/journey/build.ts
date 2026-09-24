@@ -16,6 +16,8 @@ import { lpService } from "@/lib/supabase/lp";
 import { lpMcp, lpUrlConfigured } from "@/lib/mcp/lpClient";
 import { etDateTime } from "@/lib/utils";
 import type { Journey, JourneyEvent } from "./types";
+import { loadWorkflowGraph } from "./workflowGraph.server";
+import { projectionAnchor, projectNext } from "./projection";
 import {
   activeWorkflowCodes,
   botState,
@@ -169,14 +171,16 @@ const OPEN_APPT_EXCLUDE = new Set(["cancelled", "canceled", "noshow", "no_show",
 export async function buildJourney(ghlContactId: string, now: Date = new Date()): Promise<Journey | null> {
   const sb = hlService();
 
+  // Deleted contacts are NOT filtered here: a direct link (a bookmark, an
+  // agent_actions row, a test contact) should still show what happened, with
+  // a notice. The Leads list is where deleted contacts stay hidden.
   const contactRes = await sb
     .from("contacts")
-    .select(CONTACT_COLUMNS)
+    .select(`${CONTACT_COLUMNS}, deleted_at`)
     .eq("ghl_contact_id", ghlContactId)
-    .is("deleted_at", null)
     .maybeSingle();
   if (contactRes.error) throw new Error(`HL contacts: ${contactRes.error.message}`);
-  const contact = contactRes.data as HlContactRow | null;
+  const contact = contactRes.data as (HlContactRow & { deleted_at: string | null }) | null;
   if (!contact) return null;
 
   const [oppRes, apptRes, msgRes, evRes, registry, pipelines, lpTimeline, lpLead] = await Promise.all([
@@ -314,6 +318,38 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
     workflowPosition = parts.length ? `${parts.join(" · ")} sent` : "Entered — no sends yet";
   }
 
+  // ── Next (projected) ─────────────────────────────────────────────────
+  // One projection per active workflow (one per lane is normal), merged. A
+  // graph that fails to load costs that workflow's projection, never the page.
+  let next: JourneyEvent[] = [];
+  if (!suppressionFor(tags)) {
+    const perWorkflow = await Promise.all(
+      activeWorkflows
+        .filter((w) => w.ghlWorkflowId)
+        .map(async (w) => {
+          try {
+            const reg = resolveWorkflowCode(w.tagCode, registry);
+            const codes = reg ? codesFor(reg) : [w.tagCode];
+            const graph = await loadWorkflowGraph(w.ghlWorkflowId as string);
+            return projectNext({
+              tags,
+              hasEmail: Boolean(contact.email),
+              hasPhone: Boolean(contact.phone),
+              code: w.code,
+              codes,
+              graph,
+              anchor: projectionAnchor(tags, snapshots, codes),
+              now,
+            });
+          } catch (e) {
+            console.error("[journey] projection", w.code, e);
+            return [];
+          }
+        }),
+    );
+    next = perWorkflow.flat().sort((a, b) => a.ts.localeCompare(b.ts)).slice(0, 5);
+  }
+
   // ── Stats ────────────────────────────────────────────────────────────
   const workflowsSeen = new Set<string>();
   for (const e of events) if (e.kind === "workflow_entered" && e.refs?.workflowCode) workflowsSeen.add(e.refs.workflowCode);
@@ -346,6 +382,7 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
       bot: botState(tags),
       tags,
       enteredAt: toIso(contact.date_added),
+      deletedAt: toIso(contact.deleted_at),
     },
     now: {
       workflowPosition,
@@ -354,7 +391,7 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
       lastMessage: last((e) => e.lane === "message" && e.id.startsWith("msg:")),
       suppression: suppressionFor(tags),
     },
-    next: [],
+    next,
     stats: {
       messagesOut: events.filter((e) => e.lane === "message" && e.kind.endsWith("_out")).length,
       messagesIn: events.filter((e) => e.lane === "message" && e.kind.endsWith("_in")).length,

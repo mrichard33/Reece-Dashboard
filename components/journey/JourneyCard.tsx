@@ -61,6 +61,12 @@ export function JourneyCard({ initial, variant = "full" }: { initial: Journey; v
         </div>
       )}
 
+      {j.header.deletedAt && (
+        <div className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+          This contact was deleted in GHL on {etDateTime(j.header.deletedAt)}. Showing the history the cache kept.
+        </div>
+      )}
+
       {/* ── Header strip ─────────────────────────────────────────────── */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
@@ -173,6 +179,9 @@ export function JourneyCard({ initial, variant = "full" }: { initial: Journey; v
             </p>
           ) : (
             <ul className="space-y-1.5">
+              {dependsOn(j.next) && (
+                <li className="text-[11px] text-amber-700 dark:text-amber-400">Depends on: {dependsOn(j.next)}</li>
+              )}
               {j.next.slice(0, 4).map((e) => (
                 <li key={e.id} className="text-xs">
                   <span className="font-medium text-navy-900 dark:text-slate-100">{etShort(e.ts)} ET</span>
@@ -209,6 +218,13 @@ export function JourneyCard({ initial, variant = "full" }: { initial: Journey; v
       <p className="text-right text-[10px] text-slate-400">Built {relTime(j.builtAt)} · times in ET</p>
     </div>
   );
+}
+
+/** Branches the projection could not evaluate, if any — shown, not hidden. */
+function dependsOn(next: JourneyEvent[]): string | null {
+  const names = new Set<string>();
+  for (const e of next) for (const d of (e.detail?.dependsOn as string[] | undefined) ?? []) names.add(d);
+  return names.size ? [...names].join(", ") : null;
 }
 
 function summary(e: JourneyEvent | null) {

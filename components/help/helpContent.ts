@@ -351,7 +351,7 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "workflows.activeTab": {
     title: "Leads in this workflow",
-    what: "Contacts carrying this workflow's `active-<code>` tag, most recently changed first: when they entered (the tag's first appearance in the current run), how far they are (highest `sent:<code>-e/s<n>` tag), and their last change.",
+    what: "Contacts carrying this workflow's `active-<code>` tag, most recently changed first: when they entered (the tag's first appearance in the current run), how far they are (highest `sent:<code>-e/s<n>` tag), their next PROJECTED send, and their last change.",
     where: "HL `contacts.tags`; entry time from `lead_events` tag snapshots.",
     fix: "'Entered' blank means the tag history does not reach back to the entry — the contact has been in a long time. Click a row for the full journey.",
   },

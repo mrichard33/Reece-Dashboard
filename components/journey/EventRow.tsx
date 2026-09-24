@@ -41,7 +41,7 @@ export function LaneIcon({ event, className }: { event: Pick<JourneyEvent, "lane
 }
 
 /** Detail keys that are plumbing, not something an operator reads. */
-const HIDDEN_DETAIL = new Set(["tag", "channel", "direction", "n", "ghlWorkflowId", "sentTag", "approximateTime"]);
+const HIDDEN_DETAIL = new Set(["tag", "channel", "direction", "n", "ghlWorkflowId", "sentTag", "approximateTime", "offsetMinutes"]);
 
 export function EventRow({ event, showDate = false }: { event: JourneyEvent; showDate?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -63,7 +63,12 @@ export function EventRow({ event, showDate = false }: { event: JourneyEvent; sho
         )}
         aria-expanded={hasDetail ? open : undefined}
       >
-        <span className="w-[4.5rem] shrink-0 pt-0.5 text-right font-mono text-[11px] tabular-nums text-slate-500">
+        <span
+          className={cn(
+            "shrink-0 whitespace-nowrap pt-0.5 text-right font-mono text-[11px] tabular-nums text-slate-500",
+            showDate ? "w-[8.5rem]" : "w-[4.5rem]",
+          )}
+        >
           {showDate ? etDateTime(event.ts).replace(/ ET$/, "").replace(/^\w+ /, "") : etTime(event.ts)}
         </span>
         <LaneIcon event={event} className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", event.projected ? "text-slate-400" : "text-slate-500")} />

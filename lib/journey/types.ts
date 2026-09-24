@@ -81,6 +81,8 @@ export type JourneyHeader = {
   bot: BotState;
   tags: string[];
   enteredAt: string | null;
+  /** Set when the contact is deleted in GHL — the page still renders. */
+  deletedAt: string | null;
 };
 
 export type Journey = {

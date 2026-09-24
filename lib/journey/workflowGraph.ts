@@ -273,6 +273,11 @@ export type WalkOptions = {
   maxMessages?: number;
   /** Stop past this offset (projection: 30 days). */
   maxMinutes?: number;
+  /**
+   * Sends already made, so an unstamped send after the start is numbered
+   * from here rather than from 1 (projection starts mid-workflow).
+   */
+  counterSeed?: { email: number; sms: number };
 };
 
 export type WalkResult = { rows: ScheduleRow[]; dependsOn: string[] };
@@ -288,7 +293,7 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
   const rows: ScheduleRow[] = [];
   const dependsOn: string[] = [];
   const expanded = new Set<string>();
-  const counters = { email: 0, sms: 0 };
+  const counters = { email: opts.counterSeed?.email ?? 0, sms: opts.counterSeed?.sms ?? 0 };
   let expansions = 0;
 
   const visit = (id: string, offset: number, path: string[], notes: string[], unparsed: boolean, skip = false): void => {
@@ -408,6 +413,21 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
     .sort((a, b) => a.r.offsetMinutes - b.r.offsetMinutes || a.i - b.i)
     .map((x) => x.r);
   return { rows: ordered, dependsOn: [...new Set(dependsOn)] };
+}
+
+/**
+ * Every tag the workflow's own "Add Tag" steps stamp. A contact did not carry
+ * these when they ENTERED, so replaying the workflow from entry must not see
+ * them: S2.2 opens with "already indoctrinating? exit", and a contact halfway
+ * through carries exactly the tags that guard checks for.
+ */
+export function tagsAddedBy(graph: WorkflowGraph): Set<string> {
+  const out = new Set<string>();
+  for (const s of graph.steps) {
+    if (s.type !== "add_contact_tag") continue;
+    for (const t of Array.isArray(s.data.tags) ? s.data.tags : []) out.add(String(t).toLowerCase());
+  }
+  return out;
 }
 
 /** The workflow's full send schedule (every branch), in send order. */
