@@ -118,17 +118,16 @@ export function LeadFilters({
       if (sp.get(key) === value) sp.delete(key);
       else sp.set(key, value);
     });
+  // Repeated params, not comma-joined — sources contain commas.
   const addToList = (key: string, value: string) =>
     nav((sp) => {
-      const cur = (sp.get(key) ?? "").split(",").filter(Boolean);
-      if (!cur.includes(value)) cur.push(value);
-      sp.set(key, cur.join(","));
+      if (!sp.getAll(key).includes(value)) sp.append(key, value);
     });
   const removeFromList = (key: string, value: string) =>
     nav((sp) => {
-      const cur = (sp.get(key) ?? "").split(",").filter((v) => v && v !== value);
-      if (cur.length) sp.set(key, cur.join(","));
-      else sp.delete(key);
+      const keep = sp.getAll(key).filter((v) => v !== value);
+      sp.delete(key);
+      for (const v of keep) sp.append(key, v);
     });
 
   const pipeline = options.pipelines.find((p) => p.id === filters.pipeline);

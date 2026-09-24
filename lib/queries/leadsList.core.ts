@@ -58,12 +58,13 @@ export type LeadsPage = {
 
 type Search = Record<string, string | string[] | undefined>;
 
+/**
+ * Multi-value filters travel as REPEATED params (`?source=a&source=b`), never
+ * comma-joined: real sources contain commas ("Landing Page, Reece ChatBot").
+ */
 function list(v: string | string[] | undefined): string[] {
   const raw = Array.isArray(v) ? v : v ? [v] : [];
-  return raw
-    .flatMap((s) => s.split(","))
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return [...new Set(raw.map((s) => s.trim()).filter(Boolean))];
 }
 function one(v: string | string[] | undefined): string | null {
   const s = (Array.isArray(v) ? v[0] : v)?.trim();

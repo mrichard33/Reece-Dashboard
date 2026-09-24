@@ -34,7 +34,7 @@ describe("parseLeadsQuery", () => {
   it("reads lists, enums and the cursor", () => {
     const r = parseLeadsQuery({
       source: ["Canvass", "Internet"],
-      workflow: "s2.2,e.4",
+      workflow: ["s2.2", "e.4"],
       bot: "dnc",
       stuck: "7",
       cursorDate: "2026-09-24T15:01:34.152Z",
@@ -45,6 +45,12 @@ describe("parseLeadsQuery", () => {
     expect(r.filters.bot).toBe("dnc");
     expect(r.filters.stuck).toBe(7);
     expect(r.cursor).toEqual({ d: "2026-09-24T15:01:34.152Z", id: "obj6" });
+  });
+
+  it("keeps a source that contains a comma whole", () => {
+    const r = parseLeadsQuery({ source: ["Landing Page, Reece ChatBot", "Canvass"] });
+    expect(r.filters.source).toEqual(["Landing Page, Reece ChatBot", "Canvass"]);
+    expect(parseLeadsQuery({ source: "Landing Page, Reece ChatBot" }).filters.source).toEqual(["Landing Page, Reece ChatBot"]);
   });
 
   it("ignores junk and applies view presets", () => {
