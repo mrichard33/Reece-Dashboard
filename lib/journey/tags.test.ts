@@ -74,6 +74,10 @@ describe("botState / suppressionFor", () => {
   it("separates stopped automation from paused nurture", () => {
     expect(suppressionFor(["unsubscribed"])).toEqual({ kind: "stopped", reason: "unsubscribed" });
     expect(suppressionFor(["stop-bot"])).toEqual({ kind: "stopped", reason: "stop-bot" });
+    // SMS STOP alone: texts stop, email continues (BEHAVIORAL_DNC_REPLY, FCC 24-24).
+    expect(suppressionFor(["dnc-sms"])).toEqual({ kind: "texts", reason: "dnc-sms" });
+    expect(suppressionFor(["dnc-sms", "dnc"])).toEqual({ kind: "stopped", reason: "dnc" });
+    expect(suppressionFor(["dnc-sms", "stop-bot"])).toEqual({ kind: "stopped", reason: "stop-bot" });
     expect(suppressionFor(["cooling-active"])).toEqual({ kind: "paused", reason: "cooling-active" });
     expect(suppressionFor(["agentic-active"])).toBeNull();
   });

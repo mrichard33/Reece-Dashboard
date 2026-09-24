@@ -112,7 +112,9 @@ export function JourneyCard({ initial, variant = "full" }: { initial: Journey; v
           ) : (
             <span className="text-slate-500">
               {j.now.suppression
-                ? `${j.now.suppression.kind === "stopped" ? "Automation stopped" : "Nurture paused"} (${j.now.suppression.reason}) — nothing scheduled`
+                ? j.now.suppression.kind === "texts"
+                  ? "Texts stopped (STOP) — no emails scheduled"
+                  : `${j.now.suppression.kind === "stopped" ? "Automation stopped" : "Nurture paused"} (${j.now.suppression.reason}) — nothing scheduled`
                 : "Nothing scheduled"}
             </span>
           )}

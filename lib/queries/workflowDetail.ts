@@ -11,7 +11,7 @@ import { loadRegistry } from "@/lib/journey/build";
 import { loadWorkflowGraph } from "@/lib/journey/workflowGraph.server";
 import { linearizeSchedule, logicTree, type LogicLine, type ScheduleRow } from "@/lib/journey/workflowGraph";
 import { buildFlow, type Flow } from "@/lib/journey/flowLayout";
-import { codesFor, DNC_TAGS, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
+import { codesFor, FULL_STOP_TAGS, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
 import { toIso } from "@/lib/journey/normalize";
 import { projectionAnchor, projectNext, tagRunStart, type TagSnapshot } from "@/lib/journey/projection";
 
@@ -64,9 +64,10 @@ export type WorkflowDetail = {
 /**
  * A contact carrying any of these is out of automation, whatever `active-*`
  * tag it still wears (the stop does not remove it — Kimberly, 2026-09-25).
- * "Active leads" never counts them.
+ * "Active leads" never counts them. An SMS-only STOP (`dnc-sms`) is not here:
+ * the workflow's emails keep sending, so that contact is still in it.
  */
-export const STOPPED_TAGS: readonly string[] = [...DNC_TAGS, "stop-bot"];
+export const STOPPED_TAGS: readonly string[] = FULL_STOP_TAGS;
 
 /** `active-<code>` for every spelling of the workflow's code. */
 export function activeTagsFor(codes: readonly string[]): string[] {

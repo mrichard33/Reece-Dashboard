@@ -91,6 +91,11 @@ describe("projectNext", () => {
     for (const e of out) expect(Date.parse(e.ts)).toBeGreaterThan(Date.parse("2026-09-25T20:00:00Z"));
   });
 
+  it("after an SMS-only STOP (dnc-sms) projects the emails, never the texts", () => {
+    const out = projectNext({ ...base, tags: ["active-e.4", "dnc-sms"], anchor: { tag: null, ts: "2026-09-24T12:00:00.000Z" }, now: new Date("2026-09-24T12:10:00Z") });
+    expect(out.map((e) => e.title)).toEqual(['Email 1 of E.4 — "The part of hurricane protection nobody talks about"']);
+  });
+
   it("projects nothing when automation is stopped or paused", () => {
     for (const t of ["stop-bot", "dnc", "cooling-active"]) {
       const out = projectNext({ ...base, tags: ["active-e.4", t], anchor: { tag: null, ts: "2026-09-24T12:00:00.000Z" }, now: new Date("2026-09-24T12:10:00Z") });

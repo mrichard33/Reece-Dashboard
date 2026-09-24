@@ -98,7 +98,7 @@ export type Journey = {
     lastCall: JourneyEvent | null;
     lastMessage: JourneyEvent | null;
     /** Automation stopped / nurture paused — shown instead of projections. */
-    suppression: { kind: "stopped" | "paused"; reason: string } | null;
+    suppression: { kind: "stopped" | "texts" | "paused"; reason: string } | null;
   };
   /** Projected, ascending. */
   next: JourneyEvent[];
