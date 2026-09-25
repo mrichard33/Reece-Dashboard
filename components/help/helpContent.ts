@@ -369,15 +369,21 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "workflows.sending": {
     title: "Sending (last 30 days)",
-    what: "Whether this workflow really sent anything: how many messages went out and how many leads entered in the last 30 days. Exact where the workflow stamps a `sent:` tag after each message; elsewhere counted by matching the text of sent messages to each step (shown with ≈). 'Sends unknown' means the message is written by AI at send time, so there is no fixed text to count.",
+    what: "Whether this workflow really sent anything: how many messages went out and how many leads entered in the last 30 days, as of the time shown. Exact where the workflow stamps a `sent:` tag after each message; elsewhere counted by matching the text of sent messages to each step (shown with ≈). 'Sends unknown' means the message is written by AI at send time, so there is no fixed text to count — that is never treated as zero.",
     where: "HL `dash_workflow_send_activity` (hourly snapshot of `lead_events` tag additions and outbound `messages`, db/migrations/0023) joined to `workflow_steps` in lib/workflows/sendActivity.ts.",
     fix: "If every row says 'not computed', the hourly job has not run — call `select dash_refresh_send_activity(30)` on HL. Counts refresh hourly; the page caches for 10 minutes.",
   },
-  "workflows.silent": {
-    title: "Published but silent",
-    what: "A workflow that is published, has SMS or email steps, took in leads in the last 30 days, and sent nothing we could find. It is the 'accepting leads but not sending' case. A workflow we could not measure (AI-written text, no snapshot) is never called silent.",
-    where: "lib/workflows/sendActivity.ts `summarizeWorkflow`: silent only when the measurement ran and every message step counted zero.",
-    fix: "Open the workflow: its flowchart shows per-message counts and any step GHL has set to skip. Usual causes: a check right after entry that exits everyone, a wait-until that never fires, or triggers switched off.",
+  "workflows.noSends": {
+    title: "No sends seen",
+    what: "A published workflow with SMS or email steps where at least 20 leads entered in the last 30 days and none of its messages went out. It is the 'accepting leads but not sending' case, and it has to be earned: fewer than 20 leads in reads 'too few to judge'; a workflow nobody entered is 'quiet'; AI-written messages count as unknown, never zero; and when HL's copy of GHL was behind (or the hourly snapshot is old) the verdict is withheld, because a sync that is behind looks exactly like silence.",
+    where: "lib/workflows/sendActivity.ts `summarizeWorkflow` and `freshness`. Inside a workflow, each step shows 'no one reached this step' (an earlier step sent nothing) or 'reached, no sends seen' (leads got here and nothing went out).",
+    fix: "Open the workflow: the flowchart shows per-step counts, reach, and any step GHL has set to skip. Usual causes: a check right after entry that exits everyone, a wait that never fires, or triggers switched off.",
+  },
+  "workflows.outcomes": {
+    title: "What happened after entering",
+    what: "Of the leads that entered this workflow in the last 30 days: how many replied (any inbound message), booked (an appointment was booked), or opted out (a do-not-contact or stop-bot tag landed) within 14 days of entering. A lead in several workflows at once is counted for each, so these are leading indicators, not attribution — use them to say 'suspected', not 'proven'.",
+    where: "HL `dash_workflow_outcomes(days, follow_days)` (db/migrations/0024), stored in the hourly snapshot's `outcomes` column; summed per workflow in lib/workflows/sendActivity.ts `outcomesFor`.",
+    fix: "If the tiles are missing, migration 0024 has not been applied on HL yet, or nobody entered the workflow in the window.",
   },
   "workflows.favorites": {
     title: "Favorites",

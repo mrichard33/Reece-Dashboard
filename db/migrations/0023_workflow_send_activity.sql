@@ -3,7 +3,14 @@
 --
 -- RUN THE TWO CREATE INDEX CONCURRENTLY STATEMENTS AS THEIR OWN EXECUTIONS in
 -- the dashboard SQL editor (they cannot run inside a transaction). Everything
--- is IF NOT EXISTS / OR REPLACE — safe to re-run. Applied 2026-09-25.
+-- is IF NOT EXISTS / OR REPLACE — safe to re-run.
+--
+-- STATUS: this file, `create extension pg_cron`, and one snapshot
+-- (`select dash_refresh_send_activity(30)`, 2026-09-24 23:24 ET) were already
+-- applied to HL on 2026-09-25 through the Supabase MCP, before the rule
+-- "schema changes go through the dashboard only" was set. Nothing else here
+-- is pending. To undo all of it, run 0023_workflow_send_activity.rollback.sql
+-- in the dashboard SQL editor. 0024 (outcomes) has NOT been applied.
 --
 -- WHY
 -- A "published" workflow can accept leads and never send a message (F.0 had

@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import type { RouteKey } from "./routes";
+import type { SendVerdict } from "./sendActivity";
 
 export const ROUTE_KEYS = [
   "intake",
@@ -21,7 +22,7 @@ export const ROUTE_KEYS = [
   "other",
 ] as const satisfies readonly RouteKey[];
 
-export const STATUS_FILTERS = ["all", "published", "draft", "silent"] as const;
+export const STATUS_FILTERS = ["all", "published", "draft", "no_sends"] as const;
 export type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 export const SORT_KEYS = ["chain", "favorites", "name", "code", "active", "sends", "changed"] as const;
@@ -68,7 +69,7 @@ export type FilterableRow = {
   activeLeads: number | null;
   lastModified: string | null;
   messageSteps: number;
-  sending: { sends30d: number | null; silent: boolean | null } | null;
+  sending: { sends30d: number | null; verdict: SendVerdict } | null;
 };
 
 export function applyFilters<R extends FilterableRow>(rows: readonly R[], f: WorkflowFilterState, favorites: ReadonlySet<string>): R[] {
@@ -77,9 +78,10 @@ export function applyFilters<R extends FilterableRow>(rows: readonly R[], f: Wor
     if (f.routes.length && !f.routes.includes(r.route)) return false;
     if (f.status === "published" && r.status !== "published") return false;
     if (f.status === "draft" && r.status === "published") return false;
-    // "Silent" = published, sends messages on paper, and nothing went out in
-    // the window. A workflow we could not measure (null) is NOT silent.
-    if (f.status === "silent" && !(r.status === "published" && r.sending?.silent === true)) return false;
+    // "No sends seen" is an earned verdict (lib/workflows/sendActivity.ts):
+    // published, enough leads in, fresh data, nothing went out. A workflow we
+    // could not measure, or with too few leads to judge, is never listed here.
+    if (f.status === "no_sends" && !(r.status === "published" && r.sending?.verdict === "no_sends_seen")) return false;
     if (f.hasMessages === true && r.messageSteps === 0) return false;
     if (f.hasMessages === false && r.messageSteps > 0) return false;
     if (f.favoritesOnly && !favorites.has(r.ghlWorkflowId)) return false;

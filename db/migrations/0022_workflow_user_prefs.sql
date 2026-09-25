@@ -1,6 +1,11 @@
 -- Workflows page — per-user favorites and saved filter presets.
 -- Apply in the LP Supabase project (rcjcgjlqzepicbwhnnjl), where dashboard_users lives.
--- Idempotent and additive. Applied 2026-09-25.
+-- Idempotent and additive.
+--
+-- STATUS: this file was already applied to LP on 2026-09-25, through the
+-- Supabase MCP, before the rule "schema changes go through the dashboard
+-- only" was set. Nothing else here is pending. To undo it, run
+-- 0022_workflow_user_prefs.rollback.sql in the dashboard SQL editor.
 --
 -- WHY
 -- The team asked to star workflows and save filter combinations that follow

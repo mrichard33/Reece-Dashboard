@@ -15,6 +15,8 @@ import { Flowchart } from "@/components/workflows/Flowchart";
 import { getWorkflowDetail, type WorkflowDetail, type WorkflowLink } from "@/lib/queries/workflowDetail";
 import { cn, num, relTime } from "@/lib/utils";
 
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
 export const dynamic = "force-dynamic";
 
 type Search = Record<string, string | string[] | undefined>;
@@ -121,11 +123,26 @@ export default async function WorkflowDetailPage({
           <StatTile label="Last changed" value={relTime(detail.updatedAt)} helpKey="workflows.total" />
         </section>
 
-        {detail.sending?.silent === true && (
+        {detail.sending?.verdict === "no_sends_seen" && (
           <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-inset ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-900">
-            <strong>Published but silent:</strong> {num(detail.sending.entries30d)} leads entered in the last 30 days and none of this workflow&apos;s messages went out.
-            Check the flowchart for an early exit, a wait that never fires, or a step turned off in GHL.
+            <strong>No sends seen:</strong> {num(detail.sending.entries30d)} leads entered in the last {detail.sending.days} days and none of this workflow&apos;s messages went out.
+            The flowchart marks each step as &ldquo;no one reached this step&rdquo; or &ldquo;reached, no sends seen&rdquo; — the second is the place to look.
           </p>
+        )}
+        {detail.sending?.verdict === "too_few_to_judge" && (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+            <strong>Nothing sent, but too few leads to judge:</strong> {detail.sending.note}.
+          </p>
+        )}
+        {detail.sending?.verdict === "unknown" && detail.sending.note && detail.sending.entries30d > 0 && (
+          <p className="text-xs text-slate-500">Sends could not be judged: {detail.sending.note}.</p>
+        )}
+        {detail.sending?.outcomes && (
+          <section className="grid grid-cols-3 gap-4">
+            <StatTile label="Replied" value={pct(detail.sending.outcomes.replyRate)} suffix={` · ${num(detail.sending.outcomes.replied)} of ${num(detail.sending.outcomes.entries)}`} helpKey="workflows.outcomes" />
+            <StatTile label="Booked" value={pct(detail.sending.outcomes.bookingRate)} suffix={` · ${num(detail.sending.outcomes.booked)}`} helpKey="workflows.outcomes" />
+            <StatTile label="Opted out" value={pct(detail.sending.outcomes.optOutRate)} suffix={` · ${num(detail.sending.outcomes.optedOut)}`} helpKey="workflows.outcomes" />
+          </section>
         )}
         {detail.sendActivityError && <p className="text-xs text-slate-400">Send counts unavailable: {detail.sendActivityError}</p>}
 

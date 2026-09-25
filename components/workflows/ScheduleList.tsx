@@ -1,7 +1,7 @@
 import type { ScheduleRow } from "@/lib/journey/workflowGraph";
 import { formatMinutes } from "@/lib/journey/workflowGraph";
 import { Badge } from "@/components/ui/Badge";
-import type { StepSends } from "@/lib/workflows/sendActivity";
+import { stepSendsWords, type StepSends } from "@/lib/workflows/sendActivity";
 import { Mail, MessageSquare } from "lucide-react";
 
 /**
@@ -47,8 +47,8 @@ export function ScheduleList({ rows, sends = {} }: { rows: ScheduleRow[]; sends?
                 </span>
                 <span className="flex shrink-0 gap-1">
                   {sends[r.stepId] && sends[r.stepId]!.sends !== null && (
-                    <Badge tone={sends[r.stepId]!.sends === 0 ? "rose" : "emerald"}>
-                      {sends[r.stepId]!.sends === 0 ? "no sends · 30 d" : `${sends[r.stepId]!.sends!.toLocaleString()} sent · 30 d${sends[r.stepId]!.basis === "stamp" ? "" : " ≈"}`}
+                    <Badge tone={stepSendsWords(sends[r.stepId])!.tone === "none" ? "rose" : stepSendsWords(sends[r.stepId])!.tone === "ok" ? "emerald" : "slate"}>
+                      {stepSendsWords(sends[r.stepId])!.text}
                     </Badge>
                   )}
                   {r.aiWritten && <Badge tone="sky">AI-written</Badge>}

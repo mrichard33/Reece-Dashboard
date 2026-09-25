@@ -14,7 +14,7 @@ import { buildFlow, type Flow } from "@/lib/journey/flowLayout";
 import { codesFor, FULL_STOP_TAGS, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
 import { toIso } from "@/lib/journey/normalize";
 import { projectionAnchor, projectNext, tagRunStart, type TagSnapshot } from "@/lib/journey/projection";
-import { matchStepSends, mergeStepSends, stampSends, summarizeWorkflow, type StepSends, type WorkflowSending } from "@/lib/workflows/sendActivity";
+import { annotateReach, matchStepSends, mergeStepSends, stampSends, summarizeWorkflow, entries as entriesFor, type StepSends, type WorkflowSending } from "@/lib/workflows/sendActivity";
 import { loadSendActivityRaw } from "@/lib/workflows/sendActivity.server";
 
 export type RegistryMeta = {
@@ -174,7 +174,8 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
     const mine = sendRaw.stepHeads.filter((h) => h.workflow_id === ghlWorkflowId);
     const content = matchStepSends(mine, sendRaw.heads);
     const stamp = stampSends(sendRaw.tags, codes, schedule);
-    stepSends = Object.fromEntries(mergeStepSends(stamp, content, messageStepIds));
+    const merged = mergeStepSends(stamp, content, messageStepIds);
+    stepSends = Object.fromEntries(annotateReach(schedule, merged, codes.length ? entriesFor(sendRaw.tags, codes) : null, sendRaw.days));
     sending = summarizeWorkflow({ status, messageSteps: messageStepIds.length, codes, stepIds: messageStepIds, raw: sendRaw, contentByStep: content });
   }
 

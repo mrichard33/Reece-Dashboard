@@ -22,7 +22,7 @@ type Props = {
 
 const STATUS_LABEL: Record<StatusFilter, string> = {
   published: "Published",
-  silent: "Published but silent",
+  no_sends: "Published, no sends seen",
   draft: "Drafts",
   all: "Everything",
 };
@@ -56,7 +56,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
       published: all.filter((r) => r.status === "published").length,
       drafts: all.filter((r) => r.status !== "published").length,
       active: all.reduce((n, r) => n + (r.activeLeads ?? 0), 0),
-      silent: all.filter((r) => r.status === "published" && r.sending?.silent === true).length,
+      noSends: all.filter((r) => r.status === "published" && r.sending?.verdict === "no_sends_seen").length,
     };
   };
 
@@ -235,7 +235,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
               </option>
             ))}
           </select>
-          <InfoPopover helpKey="workflows.silent" align="left" />
+          <InfoPopover helpKey="workflows.noSends" align="left" />
         </label>
         <label className="inline-flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
           <select
@@ -361,26 +361,36 @@ function SendingCell({ row }: { row: WorkflowRow }) {
   const s = row.sending;
   if (row.messageSteps === 0) return <span className="text-slate-400">no messages</span>;
   if (!s) return <span className="text-slate-400">not computed</span>;
-  if (s.silent === true)
-    return (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        <Badge tone="rose">Silent</Badge>
-        <span className="text-slate-500">{num(s.entries30d)} leads in, 0 sent</span>
-      </span>
-    );
-  if (s.sends30d === 0 && s.entries30d === 0) return <span className="text-slate-400">quiet — no leads in, nothing sent</span>;
-  if (s.sends30d === null)
-    return (
-      <span className="text-slate-400" title="Messages are written at send time, so their text cannot be counted">
-        {num(s.entries30d)} leads in · sends unknown
-      </span>
-    );
-  return (
-    <span className="tabular-nums text-slate-700 dark:text-slate-200" title={s.basis === "stamp" ? "Exact: counted from the workflow's own send stamps" : s.basis === "content" ? "Counted by matching sent text to each message" : "Exact where stamped, matched by text elsewhere"}>
-      {num(s.sends30d)} sent · {num(s.entries30d)} in
-      {s.basis !== "stamp" && <span className="text-slate-400"> ≈</span>}
-    </span>
-  );
+  switch (s.verdict) {
+    case "no_sends_seen":
+      return (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <Badge tone="rose">No sends seen</Badge>
+          <span className="text-slate-500">{num(s.entries30d)} leads in</span>
+        </span>
+      );
+    case "too_few_to_judge":
+      return (
+        <span className="text-amber-700 dark:text-amber-400" title={s.note}>
+          0 sent · {num(s.entries30d)} in — too few to judge
+        </span>
+      );
+    case "quiet":
+      return <span className="text-slate-400">quiet — no leads in, nothing sent</span>;
+    case "unknown":
+      return (
+        <span className="text-slate-400" title={s.note ?? "Could not measure"}>
+          {num(s.entries30d)} leads in · sends unknown
+        </span>
+      );
+    case "sending":
+      return (
+        <span className="tabular-nums text-slate-700 dark:text-slate-200" title={s.basis === "stamp" ? "Exact: counted from the workflow's own send stamps" : s.basis === "content" ? "Counted by matching sent text to each message" : "Exact where stamped, matched by text elsewhere"}>
+          {num(s.sends30d)} sent · {num(s.entries30d)} in
+          {s.basis !== "stamp" && <span className="text-slate-400"> ≈</span>}
+        </span>
+      );
+  }
 }
 
 function RouteBox({
@@ -391,7 +401,7 @@ function RouteBox({
   compact = false,
 }: {
   def: (typeof ROUTES)[number];
-  stats: { published: number; drafts: number; active: number; silent: number };
+  stats: { published: number; drafts: number; active: number; noSends: number };
   active: boolean;
   onClick: () => void;
   compact?: boolean;
@@ -413,7 +423,7 @@ function RouteBox({
       <div className="text-xs font-semibold text-navy-900 dark:text-white">{def.label}</div>
       <div className="text-[11px] text-slate-500">
         {stats.published} live{stats.drafts ? ` · ${stats.drafts} draft` : ""}
-        {stats.silent > 0 && <span className="text-rose-600"> · {stats.silent} silent</span>}
+        {stats.noSends > 0 && <span className="text-rose-600"> · {stats.noSends} no sends seen</span>}
         {!compact && (
           <>
             <br />

@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { Maximize2, Minus, Plus, X } from "lucide-react";
 import type { Flow, FlowKind, FlowNode } from "@/lib/journey/flowLayout";
-import type { StepSends } from "@/lib/workflows/sendActivity";
+import { stepSendsWords, type StepSends } from "@/lib/workflows/sendActivity";
 import { cn } from "@/lib/utils";
 
 const KIND_STYLE: Record<FlowKind, string> = {
@@ -36,13 +36,8 @@ const LEGEND: [FlowKind, string][] = [
  */
 export type FlowAnnotation = { sends?: StepSends; badge?: { label: string; tone: "rose" | "emerald" | "amber" | "slate" } };
 
-/** "12 sent · 30 d" / "no sends · 30 d" / "sends unknown" for a message box. */
-export function sendsLine(s: StepSends | undefined): { text: string; tone: "ok" | "none" | "unknown" } | null {
-  if (!s) return null;
-  if (s.sends === null) return { text: "sends unknown", tone: "unknown" };
-  if (s.sends === 0) return { text: "no sends · 30 d", tone: "none" };
-  return { text: `${s.sends.toLocaleString()} sent · 30 d${s.basis === "stamp" ? "" : " ≈"}`, tone: "ok" };
-}
+/** "12 sent · 30 d" / "reached, no sends seen" / "no one reached this step" for a message box. */
+export const sendsLine = stepSendsWords;
 
 const BADGE_TONE: Record<"rose" | "emerald" | "amber" | "slate", string> = {
   rose: "bg-rose-100 text-rose-700",

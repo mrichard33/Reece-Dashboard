@@ -14,9 +14,9 @@ const r = (over: Partial<FilterableRow> & { ghlWorkflowId: string }): Filterable
 });
 
 const rows = [
-  r({ ghlWorkflowId: "f0", name: "F.0 Post-Appointment", canonicalCode: "F.0", route: "objections", sending: { sends30d: 0, silent: true } }),
-  r({ ghlWorkflowId: "s22", name: "S2.2 Chatbot", canonicalCode: "S2.2", route: "indoctrination", sending: { sends30d: 900, silent: false }, activeLeads: 335 }),
-  r({ ghlWorkflowId: "s45", name: "S4.5 Seinfeld", canonicalCode: "S4.5", route: "booking", sending: { sends30d: null, silent: null } }),
+  r({ ghlWorkflowId: "f0", name: "F.0 Post-Appointment", canonicalCode: "F.0", route: "objections", sending: { sends30d: 0, verdict: "no_sends_seen" } }),
+  r({ ghlWorkflowId: "s22", name: "S2.2 Chatbot", canonicalCode: "S2.2", route: "indoctrination", sending: { sends30d: 900, verdict: "sending" }, activeLeads: 335 }),
+  r({ ghlWorkflowId: "s45", name: "S4.5 Seinfeld", canonicalCode: "S4.5", route: "booking", sending: { sends30d: null, verdict: "unknown" } }),
   r({ ghlWorkflowId: "d1", name: "Draft thing", status: "draft", route: "other", messageSteps: 0 }),
 ];
 const none = new Set<string>();
@@ -25,8 +25,8 @@ describe("applyFilters", () => {
   it("defaults to published only", () => {
     expect(applyFilters(rows, DEFAULT_FILTERS, none).map((x) => x.ghlWorkflowId)).toEqual(["f0", "s22", "s45"]);
   });
-  it("'silent' means measured-and-nothing, never 'could not tell'", () => {
-    expect(applyFilters(rows, { ...DEFAULT_FILTERS, status: "silent" }, none).map((x) => x.ghlWorkflowId)).toEqual(["f0"]);
+  it("'no_sends' means an earned no-sends-seen verdict, never 'could not tell'", () => {
+    expect(applyFilters(rows, { ...DEFAULT_FILTERS, status: "no_sends" }, none).map((x) => x.ghlWorkflowId)).toEqual(["f0"]);
   });
   it("filters by route, favorites, messages and search", () => {
     expect(applyFilters(rows, { ...DEFAULT_FILTERS, routes: ["booking"] }, none).map((x) => x.ghlWorkflowId)).toEqual(["s45"]);

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function WorkflowsPage() {
   const user = await requireRole("operator");
   const [summary, prefs] = await Promise.all([getWorkflowSummary(), loadWorkflowPrefs()]);
-  const silent = summary.rows.filter((r) => r.status === "published" && r.sending?.silent === true).length;
+  const noSends = summary.rows.filter((r) => r.status === "published" && r.sending?.verdict === "no_sends_seen").length;
 
   return (
     <>
@@ -33,7 +33,7 @@ export default async function WorkflowsPage() {
           />
           <StatTile label="Published" value={summary.published} helpKey="workflows.total" />
           <StatTile label="Draft" value={summary.draft} helpKey="workflows.total" />
-          <StatTile label="Published but silent" value={"error" in summary.sendActivity ? "—" : silent} helpKey="workflows.silent" />
+          <StatTile label="No sends seen" value={"error" in summary.sendActivity ? "—" : noSends} helpKey="workflows.noSends" />
         </section>
 
         <Card>
