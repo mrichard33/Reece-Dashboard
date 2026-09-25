@@ -27,6 +27,7 @@ import {
   codesFor,
   DNC_TAGS,
   entryLane,
+  FULL_STOP_TAGS,
   lpRoute,
   parseTag,
   resolveWorkflowCode,
@@ -141,9 +142,9 @@ function applyFilters(q: Query, f: LeadsFilters, workflowTags: string[]): Query 
   if (f.source.length) out = out.in("source", f.source);
   if (f.lane.length) out = out.overlaps("tags", pgArray(f.lane.flatMap((l) => [`entry:${l}`, `active-entry:${l}`])));
   // "In workflow X" means enrolled AND running: a leftover active-<code> on a
-  // stopped contact (STOP / DNC / stop-bot) does not count.
-  if (workflowTags.length)
-    out = out.overlaps("tags", pgArray(workflowTags)).not("tags", "ov", pgArray([...DNC_TAGS, "stop-bot"]));
+  // stopped contact (DNC / stop-bot) does not count. An SMS-only STOP
+  // (dnc-sms) still does — that workflow's emails keep sending.
+  if (workflowTags.length) out = out.overlaps("tags", pgArray(workflowTags)).not("tags", "ov", pgArray(FULL_STOP_TAGS));
   if (f.lpRoute.length) out = out.overlaps("tags", pgArray(f.lpRoute.map((r) => `lp-route:${r}`)));
   if (f.bot === "dnc") out = out.overlaps("tags", pgArray(DNC_TAGS));
   if (f.bot === "stopped") out = out.contains("tags", pgArray(["stop-bot"])).not("tags", "ov", pgArray(DNC_TAGS));

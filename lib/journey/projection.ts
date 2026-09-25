@@ -83,7 +83,10 @@ export type ProjectionInput = {
  * be located in the graph.
  */
 export function projectNext(input: ProjectionInput): JourneyEvent[] {
-  if (suppressionFor(input.tags)) return [];
+  // An SMS STOP ("texts") keeps the workflow's emails; anything else stops all.
+  const sup = suppressionFor(input.tags);
+  if (sup && sup.kind !== "texts") return [];
+  const emailOnly = sup?.kind === "texts";
   if (!input.anchor) return [];
 
   const facts = { tags: input.tags, hasEmail: input.hasEmail, hasPhone: input.hasPhone };
@@ -125,6 +128,7 @@ export function projectNext(input: ProjectionInput): JourneyEvent[] {
     // A projection already in the past means the contact is held somewhere
     // we cannot see (an event wait, a paused step) — do not invent a date.
     if (at < nowMs) continue;
+    if (emailOnly && r.type !== "email") continue;
     const label = `${r.type === "email" ? "Email" : "SMS"} ${r.n} of ${input.code}`;
     const text = r.type === "email" ? (r.subject ?? "") : r.aiWritten ? "" : previewText(r.body, 60);
     out.push({

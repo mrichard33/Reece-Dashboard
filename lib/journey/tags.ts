@@ -130,14 +130,26 @@ export function botState(tags: readonly string[]): BotState {
   return "none";
 }
 
-/** Why automation is not sending — null when nothing suppresses it. */
-export function suppressionFor(
-  tags: readonly string[],
-): { kind: "stopped" | "paused"; reason: string } | null {
+/**
+ * `dnc-sms` alone is an SMS STOP: texts and robocalls stop, EMAIL CONTINUES
+ * (BEHAVIORAL_DNC_REPLY, FCC 24-24). Every other DNC tag stops everything.
+ */
+export const SMS_STOP_TAG = "dnc-sms";
+
+/** Tags that stop every workflow send — the DNC family minus the SMS-only STOP, plus stop-bot. */
+export const FULL_STOP_TAGS: readonly string[] = [...DNC_TAGS.filter((t) => t !== SMS_STOP_TAG), "stop-bot"];
+
+export type Suppression = { kind: "stopped" | "texts" | "paused"; reason: string };
+
+/**
+ * Why automation is not sending — null when nothing suppresses it.
+ * "texts" = SMS STOP only: the workflow keeps going, its emails still send.
+ */
+export function suppressionFor(tags: readonly string[]): Suppression | null {
   const set = new Set(tags.map((t) => t.toLowerCase()));
-  const dnc = DNC_TAGS.find((t) => set.has(t));
-  if (dnc) return { kind: "stopped", reason: dnc };
-  if (set.has("stop-bot")) return { kind: "stopped", reason: "stop-bot" };
+  const stop = FULL_STOP_TAGS.find((t) => set.has(t));
+  if (stop) return { kind: "stopped", reason: stop };
+  if (set.has(SMS_STOP_TAG)) return { kind: "texts", reason: SMS_STOP_TAG };
   const pause = PAUSE_TAGS.find((t) => set.has(t));
   if (pause) return { kind: "paused", reason: pause };
   return null;

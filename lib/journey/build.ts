@@ -267,7 +267,8 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
   // An `active-<code>` tag on a contact who is stopped (STOP / DNC / stop-bot)
   // is a leftover, not an enrollment: the stop removes them from automation
   // but nothing removed the tag (Kimberly, 2026-09-25: `active-s2.2` beside
-  // `dnc`). Show it as stopped, never as the current workflow.
+  // `dnc`). Show it as stopped, never as the current workflow. An SMS-only
+  // STOP (`dnc-sms`) is different: the workflow's emails keep sending.
   const suppression = suppressionFor(tags);
   const stopped = suppression?.kind === "stopped";
   const activeCodes = activeWorkflowCodes(tags);
@@ -326,13 +327,14 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
     const pos = sentPosition(tags, reg ? codesFor(reg) : [current.tagCode]);
     const parts = [pos.email ? `Email ${pos.email}` : "", pos.sms ? `SMS ${pos.sms}` : ""].filter(Boolean);
     workflowPosition = parts.length ? `${parts.join(" · ")} sent` : "Entered — no sends yet";
+    if (suppression?.kind === "texts") workflowPosition += " · texts stopped (STOP), emails continue";
   }
 
   // ── Next (projected) ─────────────────────────────────────────────────
   // One projection per active workflow (one per lane is normal), merged. A
   // graph that fails to load costs that workflow's projection, never the page.
   let next: JourneyEvent[] = [];
-  if (!suppressionFor(tags)) {
+  if (!suppression || suppression.kind === "texts") {
     const perWorkflow = await Promise.all(
       activeWorkflows
         .filter((w) => w.ghlWorkflowId)

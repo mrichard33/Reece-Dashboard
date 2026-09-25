@@ -301,7 +301,7 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "leads.now": {
     title: "Now",
-    what: "Where the contact is right now: the workflow(s) they are in (`active-<code>` tags), how far through it they are, their funnel stage, and their appointment. A workflow marked '— stopped' still carries its tag in GHL, but the contact said STOP or is do-not-contact, so nothing more will send.",
+    what: "Where the contact is right now: the workflow(s) they are in (`active-<code>` tags), how far through it they are, their funnel stage, and their appointment. A workflow marked '— stopped' still carries its tag in GHL, but the contact is do-not-contact or the bot is stopped, so nothing more will send. A text-only STOP (`dnc-sms`) is different: texts stop, but the workflow's emails still send, so the workflow stays listed with 'texts stopped'.",
     where: "Tags on HL `contacts`; `appointments`; calls and notes from LP Supabase (`lp_call_logs`, `lp_notes`) across every LP lead the contact has; messages from HL `messages`.",
     fix: "Tags are the enrollment record — not `workflow_executions`, which covers only ~25 workflows. If Now disagrees with GHL, re-sync the contact; if a workflow shows by a legacy code (e.g. W9.0), its registry row is missing a canonical code.",
   },
