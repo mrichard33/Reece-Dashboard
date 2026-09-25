@@ -165,7 +165,7 @@ export async function loadLpTimeline(ghlContactId: string): Promise<LpSourceResu
         source: "agentic",
         type: `event:${String(e.event_type)}`,
         summary: `${String(e.event_type)}${e.event_subtype ? ` (${String(e.event_subtype)})` : ""}`,
-        detail: { id: e.id, source_system: e.source, payload: e.payload, action_taken: e.action_taken },
+        detail: { id: e.id, source_system: e.source, event_subtype: e.event_subtype, payload: e.payload, action_taken: e.action_taken },
       });
     }
     for (const a of actions) {

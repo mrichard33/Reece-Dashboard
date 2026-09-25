@@ -23,6 +23,7 @@ import { APPT_EVENTS, LP_TIMELINE, SNAPSHOT_AFTER, SNAPSHOT_BEFORE } from "./fix
 
 const REGISTRY = [
   { canonical_code: "E.0", canonical_name: "E.0 Master Router", legacy_name: "*W0.0 - Master Router", workflow_id: "407e" },
+  { canonical_code: "E.4", canonical_name: "E.4 Canvassing & In-Person Bridge", legacy_name: "W0.4", workflow_id: "e4" },
 ];
 
 describe("tagDiffEvents", () => {
@@ -36,7 +37,7 @@ describe("tagDiffEvents", () => {
     );
     const titles = events.map((e) => e.title);
     expect(titles).toContain("Entered E.0 Master Router");
-    expect(titles).toContain("Stage → appointment rescue");
+    expect(titles).toContain("Stage: appointment rescue");
     // Everything else collapses into one "Tags changed" row with the diff kept.
     const other = events.filter((e) => e.kind === "tags_changed");
     expect(other).toHaveLength(1);
@@ -112,7 +113,7 @@ describe("opportunityEvents", () => {
 });
 
 describe("lpEvents", () => {
-  const events = lpEvents(LP_TIMELINE);
+  const events = lpEvents(LP_TIMELINE, REGISTRY);
   const byKind = (k: string) => events.filter((e) => e.kind === k);
 
   it("folds LP's duplicate call activity into the call and names the result", () => {
@@ -130,13 +131,15 @@ describe("lpEvents", () => {
     expect(rules.map((e) => e.refs?.ruleId)).toEqual(["LP_APPT_GHL_SYNC_CNF", "LP_APPT_GHL_SYNC_CNF", "LP_DISP_CNF"]);
     expect(rules[0]!.quiet).toBe(true);
     expect(rules[0]!.title).toContain("(skipped)");
-    expect(rules[2]!.title).toBe("Rule LP_DISP_CNF: LP Cnf → Appointment Confirmed");
+    expect(rules[2]!.title).toBe("Appointment confirmed in Lead Perfection");
+    expect(rules[2]!.detail?.technical).toContain("Rule LP_DISP_CNF");
   });
 
   it("reads the E.0 branch as a workflow move and keeps LP's own GHL echoes quiet", () => {
-    expect(byKind("branch_fired")[0]!.title).toBe("E.0 branch fired → canvassing → E.4");
+    expect(byKind("branch_fired")[0]!.title).toBe("E.0 Master Router sent this lead to E.4 Canvassing & In-Person Bridge (canvassing path)");
     expect(byKind("lp_event").every((e) => e.quiet)).toBe(true);
-    expect(byKind("lp_disposition")[0]!.title).toBe("LP status CCC");
+    expect(byKind("lp_disposition")[0]!.title).toBe("Lead Perfection: Cancelled — could not confirm");
+    expect(byKind("lp_disposition")[0]!.detail?.technical).toBe("LP status CCC");
     expect(byKind("note")[0]!.detail?.note).toContain("set by Y.Francis");
   });
 

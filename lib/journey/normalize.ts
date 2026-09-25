@@ -8,6 +8,7 @@
  */
 import type { JourneyEvent, JourneyLane } from "./types";
 import { diffTagSnapshots, humanizeTagValue, parseTag, type RegistryEntry, resolveWorkflowCode } from "./tags";
+import { branchFiredWords, dispositionWords, eventTypeWords, ruleWords, workflowLabel } from "./plain";
 import { etDateTime } from "@/lib/utils";
 
 // ── Row shapes (projected columns only — never select('*')) ───────────────
@@ -271,7 +272,7 @@ export function tagDiffEvents(
             title: `Entered ${name.startsWith(p.code) ? name : `${p.code} ${name}`}`,
             actor: p.code,
             refs: { workflowCode: reg?.canonical_code ?? p.code },
-            detail: { tag, ghlWorkflowId: reg?.workflow_id ?? null },
+            detail: { tag, ghlWorkflowId: reg?.workflow_id ?? null, technical: `tag ${tag}` },
           });
           break;
         }
@@ -291,8 +292,8 @@ export function tagDiffEvents(
             id: `tag:${snap.ts}:+${tag}`,
             lane: "stage",
             kind: "stage_changed",
-            title: `Stage → ${humanizeTagValue(p.value)}`,
-            detail: { tag, removed: removed.filter((t) => parseTag(t).kind === "stage") },
+            title: `Stage: ${humanizeTagValue(p.value)}`,
+            detail: { tag, removed: removed.filter((t) => parseTag(t).kind === "stage"), technical: `tag ${tag}` },
           });
           break;
         case "entry":
@@ -301,8 +302,8 @@ export function tagDiffEvents(
               id: `tag:${snap.ts}:+${tag}`,
               lane: "workflow",
               kind: "entry_set",
-              title: `Lane → ${humanizeTagValue(p.value)}`,
-              detail: { tag },
+              title: `Lead type: ${humanizeTagValue(p.value)}`,
+              detail: { tag, technical: `tag ${tag}` },
             });
           } else otherAdded.push(tag);
           break;
@@ -312,8 +313,8 @@ export function tagDiffEvents(
             id: `tag:${snap.ts}:+${tag}`,
             lane: "lp",
             kind: "lp_route",
-            title: `LP: ${humanizeTagValue(p.kind === "lp_status" ? `lead ${p.value}` : p.value)}`,
-            detail: { tag },
+            title: `Lead Perfection: ${humanizeTagValue(p.kind === "lp_status" ? `lead ${p.value}` : p.value)}`,
+            detail: { tag, technical: `tag ${tag}` },
           });
           break;
         case "bot":
@@ -322,8 +323,8 @@ export function tagDiffEvents(
               id: `tag:${snap.ts}:+${tag}`,
               lane: "bot",
               kind: "bot_state",
-              title: p.value === "agentic-active" ? "Bot switched on (agentic-active)" : "Bot stopped (stop-bot)",
-              detail: { tag },
+              title: p.value === "agentic-active" ? "Chatbot switched on" : "Chatbot stopped",
+              detail: { tag, technical: `tag ${tag}` },
             });
           } else consentAdded.push(tag);
           break;
@@ -339,18 +340,18 @@ export function tagDiffEvents(
           id: `tag:${snap.ts}:-${tag}`,
           lane: "workflow",
           kind: "workflow_exited",
-          title: `Left ${p.code}`,
+          title: `Left ${workflowLabel(p.code, registry)}`,
           actor: p.code,
           refs: { workflowCode: resolveWorkflowCode(p.code, registry)?.canonical_code ?? p.code },
-          detail: { tag },
+          detail: { tag, technical: `tag ${tag} removed` },
         });
       } else if (p.kind === "bot" && (p.value === "stop-bot" || p.value === "agentic-active")) {
         push({
           id: `tag:${snap.ts}:-${tag}`,
           lane: "bot",
           kind: "bot_state",
-          title: p.value === "stop-bot" ? "Bot resumed (stop-bot removed)" : "Bot switched off (agentic-active removed)",
-          detail: { tag },
+          title: p.value === "stop-bot" ? "Chatbot allowed again" : "Chatbot switched off",
+          detail: { tag, technical: `tag ${tag} removed` },
         });
       } else if (p.kind === "stage" || p.kind === "sent") {
         // A stage swap is already told by the added stage; a removed sent:*
@@ -366,8 +367,8 @@ export function tagDiffEvents(
         id: `tag:${snap.ts}:consent`,
         lane: "bot",
         kind: "consent",
-        title: `Marked do-not-contact (${consentAdded.join(", ")})`,
-        detail: { added: consentAdded },
+        title: consentAdded.length === 1 && consentAdded[0] === "dnc-sms" ? "Texts stopped (lead asked us to stop)" : "Marked do-not-contact",
+        detail: { added: consentAdded, technical: `tags ${consentAdded.join(", ")}` },
       });
     }
 
@@ -668,7 +669,7 @@ export function isAiBriefNote(body: string, origin: string | null | undefined): 
  * call). Rows are keyed by what happened — minute, result, rep, body — not by
  * the lead that carried them, so each real call shows once.
  */
-export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
+export function lpEvents(items: readonly LpTimelineItem[], registry: readonly RegistryEntry[] = []): JourneyEvent[] {
   // LP writes a call twice: an lp_call_logs row and an lp_activities "call"
   // row at the same instant. The activity carries the readable result
   // ("Left VoiceMail"); fold it into the call and drop the duplicate.
@@ -801,8 +802,8 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
           ts,
           lane: "lp",
           kind: "lp_disposition",
-          title: from && to && from !== to ? `LP status ${from} → ${to}` : `LP status ${to ?? "changed"}`,
-          detail: { from, to, reason: pick(payload, ["reason"]) },
+          title: `Lead Perfection: ${dispositionWords(to)}${from && to && from !== to ? ` (was ${dispositionWords(from).replace(/^LP status /, "")})` : ""}`,
+          detail: { reason: pick(payload, ["reason"]), technical: `LP status ${from && to && from !== to ? `${from} → ${to}` : (to ?? from ?? "changed")}` },
         });
         return;
       }
@@ -816,14 +817,14 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
           ts,
           lane: "workflow",
           kind: "branch_fired",
-          title: [`${wf} branch fired`, b, dest].filter(Boolean).join(" → "),
+          title: branchFiredWords(wf, b, dest, registry),
           actor: wf,
           refs: dest ? { workflowCode: dest } : undefined,
-          detail: { branch: b, destination: dest },
+          detail: { technical: [`${wf} branch fired`, b, dest].filter(Boolean).join(" → ") },
         });
         return;
       }
-      out.push({ id, ts, lane: "system", kind: "lp_event", title: it.summary, detail: { type: evType, payload }, quiet: true });
+      out.push({ id, ts, lane: "system", kind: "lp_event", title: eventTypeWords(evType, str(d.event_subtype)), detail: { payload, technical: it.summary }, quiet: true });
       return;
     }
 
@@ -831,21 +832,22 @@ export function lpEvents(items: readonly LpTimelineItem[]): JourneyEvent[] {
       const rule = pick(d, ["rule"]);
       const reasoning = (pick(d, ["reasoning"]) ?? "").replace(/^Rule\s+\S+:\s*/, "");
       const status = (pick(d, ["status"]) ?? /—\s*(\w+)/.exec(it.summary)?.[1] ?? "").toLowerCase() || null;
+      const words = ruleWords(rule, reasoning);
       out.push({
         id,
         ts,
         lane: "bot",
         kind: "agent_action",
-        title: `${rule ? `Rule ${rule}` : "Decision Engine"}: ${reasoning || it.type.slice("action:".length)}${status && status !== "completed" ? ` (${status})` : ""}`,
-        actor: "Bot",
+        title: `${words.title}${status && status !== "completed" ? ` (${status})` : ""}`,
+        actor: "Automation",
         refs: rule ? { ruleId: rule } : undefined,
-        detail: { action: it.type.slice("action:".length), status, summary: it.summary, rule, reasoning },
+        detail: { action: it.type.slice("action:".length).replace(/_/g, " "), status, technical: `${words.technical}${reasoning ? ` — ${reasoning}` : ""}` },
         quiet: status === "skipped",
       });
       return;
     }
 
-    out.push({ id, ts, lane: "system", kind: "lp_other", title: it.summary, detail: cleanDetail(d), quiet: true });
+    out.push({ id, ts, lane: "system", kind: "lp_other", title: eventTypeWords(it.type.replace(/^(event|action):/, ""), null), detail: { ...cleanDetail(d), technical: it.summary }, quiet: true });
   });
   return mergeFive9Calls(out);
 }
