@@ -20,10 +20,12 @@ describe("dispositionWords", () => {
     expect(dispositionWords("BO")).toBe("Be-back — rep to follow up");
     expect(dispositionWords("Issue")).toBe("Appointment issued to a rep");
     expect(dispositionWords("OPPFDN")).toBe("Demo done, no sale");
+    expect(dispositionWords("CCC")).toBe("Cannot contact"); // Mark, 2026-09-25
     expect(dispositionWords("Sale")).toBe("Sold (contract signed)");
   });
   it("never invents a meaning for an unknown code", () => {
-    expect(dispositionWords("CCC")).toBe("LP status CCC");
+    expect(dispositionWords("NIS2")).toBe("LP status NIS2");
+    expect(dispositionWords("OPPPRD")).toBe("LP status OPPPRD");
     expect(dispositionWords(null)).toBe("LP status changed");
   });
 });
