@@ -19,9 +19,12 @@ import { humanizeTagValue, parseTag, type RegistryEntry, resolveWorkflowCode } f
 // reads as "LP status <code>".
 // Wording follows Mark's rulings on what each LP code means (LP-MCP memory,
 // 2026-07-21 Issue, 2026-09-08 NOC/NIS, 2026-09-22 ND) and the lp_dispositions
-// labels where no ruling exists. CCC is Mark's ruling of 2026-09-25 ("CCC =
-// Cannot Contact"). Codes with no traced ruling (NIS2, OPPPRD) fall through
+// labels where no ruling exists. Codes with no traced ruling fall through
 // to "LP status <code>" on purpose — a guessed sentence would read as fact.
+// Mark, 2026-09-25: CCC is "Customer Called to Cancel" a prior appointment.
+// LP's own label, "Cannot Contact", is wrong for Reece; rules 229 and 271
+// already route CCC as a cancellation. NIS2 and OPPPRD are not used by Reece
+// (9 and 1 leads still carry them), so they read as legacy, not as the code.
 const LP_DISPOSITIONS: Record<string, string> = {
   DATA: "Raw lead — not contacted yet",
   SET: "Appointment set",
@@ -34,7 +37,9 @@ const LP_DISPOSITIONS: Record<string, string> = {
   ISSUE: "Appointment issued to a rep",
   CXL: "Appointment cancelled",
   NS: "No-show",
-  CCC: "Cannot contact",
+  CCC: "Customer called to cancel",
+  NIS2: "Unused code (legacy)",
+  OPPPRD: "Unused code (legacy)",
   NOHOME: "No such home / wrong address",
   "NO HOME": "No such home / wrong address",
   NOC: "Issued, but no rep could cover it",
@@ -125,7 +130,7 @@ const TOKEN_WORDS: [RegExp, string][] = [
   [/\bLP\b/g, "Lead Perfection"],
   [/\bCnf\b/g, "confirmed"],
   [/\bCXL\b/g, "cancelled"],
-  [/\bCCC\b/g, "cannot-contact"],
+  [/\bCCC\b/g, "customer-called-to-cancel"],
   [/\bNS\b/g, "no-show"],
   [/\bBO\b/g, "blown-out"],
   [/\bOPPFDN\b/g, "demo-no-sale"],

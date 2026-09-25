@@ -203,7 +203,7 @@ The same switch is on for every message in A.WE-1, E.1, E.4, E.6, E.7, S1.1 (bot
 2. **C.5 Referral Overlay owns the referral ask.** Remove it from C.2 Email 2 and from C.6 SMS 2 and SMS 3. Do this before the Test Contact gate opens on those workflows.
 3. **S1.1-legacy (2094441c) is retired.** Mark will unpublish it in GHL himself. The registry changes to `unpublished` once he confirms. Its copy is not to be rewritten, because the workflow is dead, not pending.
 4. **E.5 is an engineering finding, not a copy one.** See "Where the problem is structural" above: step 28 is unchanged, and the messages were switched off on May 21. The GHL fix is Mark's. The registry now shows E.5 as published (version 48). Fix its two outcome-prediction lines before it is switched back on.
-5. **LP status CCC means "Cannot contact".** NIS2 and OPPPRD are still unruled, so the dashboard shows them as "LP status <code>".
+5. **LP status CCC means "Customer called to cancel"** (a prior appointment). LP's own label, "Cannot Contact", is wrong for Reece, so the dashboard overrides it. **NIS2 and OPPPRD are not used by Reece** and show as "Unused code (legacy)". They are not routed or reported on.
 
 The before-and-after wording for every edit above is in `docs/copy-changes-2026-09.md`.
 
