@@ -20,12 +20,13 @@ describe("dispositionWords", () => {
     expect(dispositionWords("BO")).toBe("Be-back — rep to follow up");
     expect(dispositionWords("Issue")).toBe("Appointment issued to a rep");
     expect(dispositionWords("OPPFDN")).toBe("Demo done, no sale");
-    expect(dispositionWords("CCC")).toBe("Cannot contact"); // Mark, 2026-09-25
+    expect(dispositionWords("CCC")).toBe("Customer called to cancel"); // Mark, 2026-09-25 — not LP's "Cannot Contact"
     expect(dispositionWords("Sale")).toBe("Sold (contract signed)");
   });
   it("never invents a meaning for an unknown code", () => {
-    expect(dispositionWords("NIS2")).toBe("LP status NIS2");
-    expect(dispositionWords("OPPPRD")).toBe("LP status OPPPRD");
+    expect(dispositionWords("NIS2")).toBe("Unused code (legacy)"); // Mark, 2026-09-25
+    expect(dispositionWords("OPPPRD")).toBe("Unused code (legacy)");
+    expect(dispositionWords("ZZZ")).toBe("LP status ZZZ");
     expect(dispositionWords(null)).toBe("LP status changed");
   });
 });
