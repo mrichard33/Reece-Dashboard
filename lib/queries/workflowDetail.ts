@@ -167,6 +167,7 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
 
   const schedule = linearizeSchedule(graph);
   const messageStepIds = graph.steps.filter((st) => st.type === "sms" || st.type === "email").map((st) => st.id);
+  const disabledStepIds = new Set(graph.steps.filter((st) => (st.type === "sms" || st.type === "email") && st.disabled).map((st) => st.id));
   const status = (wf.status ?? "unknown") as "published" | "draft" | "unknown";
   let stepSends: Record<string, StepSends> = {};
   let sending: WorkflowSending | null = null;
@@ -174,9 +175,9 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
     const mine = sendRaw.stepHeads.filter((h) => h.workflow_id === ghlWorkflowId);
     const content = matchStepSends(mine, sendRaw.heads);
     const stamp = stampSends(sendRaw.tags, codes, schedule);
-    const merged = mergeStepSends(stamp, content, messageStepIds);
+    const merged = mergeStepSends(stamp, content, messageStepIds, disabledStepIds);
     stepSends = Object.fromEntries(annotateReach(schedule, merged, codes.length ? entriesFor(sendRaw.tags, codes) : null, sendRaw.days));
-    sending = summarizeWorkflow({ status, messageSteps: messageStepIds.length, codes, stepIds: messageStepIds, raw: sendRaw, contentByStep: content });
+    sending = summarizeWorkflow({ status, messageSteps: messageStepIds.length, codes, stepIds: messageStepIds, raw: sendRaw, contentByStep: content, disabledStepIds });
   }
 
   return {

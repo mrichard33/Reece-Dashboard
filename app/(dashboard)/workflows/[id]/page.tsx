@@ -123,6 +123,17 @@ export default async function WorkflowDetailPage({
           <StatTile label="Last changed" value={relTime(detail.updatedAt)} helpKey="workflows.total" />
         </section>
 
+        {detail.sending?.verdict === "turned_off" && (
+          <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-inset ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-900">
+            <strong>Messages turned off in GHL:</strong> every SMS and email step in this workflow is switched off, so leads move through it without receiving anything
+            ({num(detail.sending.entries30d)} entered in the last {detail.sending.days} days). Any &ldquo;sent:&rdquo; tags it adds are not real sends.
+          </p>
+        )}
+        {detail.sending && detail.sending.verdict !== "turned_off" && detail.sending.offSteps > 0 && (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+            <strong>{detail.sending.offSteps} message{detail.sending.offSteps === 1 ? " is" : "s are"} turned off in GHL.</strong> Those steps are marked on the flowchart; send counts come from matching the text of messages that actually went out.
+          </p>
+        )}
         {detail.sending?.verdict === "no_sends_seen" && (
           <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-inset ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-900">
             <strong>No sends seen:</strong> {num(detail.sending.entries30d)} leads entered in the last {detail.sending.days} days and none of this workflow&apos;s messages went out.

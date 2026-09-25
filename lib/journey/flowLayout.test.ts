@@ -9,7 +9,7 @@ import { buildFlow, describeBranch } from "./flowLayout";
 import type { GraphStep, WorkflowGraph } from "./workflowGraph";
 
 function step(id: string, order: number, type: string, extra: Partial<GraphStep> = {}): GraphStep {
-  return { id, order, type, name: extra.name ?? id, parent: null, nodeType: null, next: [], data: {}, templateId: null, branchCondition: null, ...extra };
+  return { id, order, type, name: extra.name ?? id, parent: null, nodeType: null, next: [], data: {}, templateId: null, branchCondition: null, disabled: false, ...extra };
 }
 
 const S = (tag: string, op: "index-of-true" | "index-of-false") => ({
@@ -47,7 +47,7 @@ const graph: WorkflowGraph = {
     step("handoff", 12, "add_to_workflow", { parent: "yes", data: { workflow_id: "wf-s3" } }),
     step("loop", 13, "goto", { parent: "yes", data: { targetNodeId: "email1" } }),
     step("sms1", 14, "sms", { parent: "no", next: ["off"], data: { body: "Your window estimate is ready — want it?" } }),
-    step("off", 15, "webhook", { parent: "no", data: { url: "https://example.com/hook", skipAction: true } }),
+    step("off", 15, "webhook", { parent: "no", data: { url: "https://example.com/hook", skipAction: true }, disabled: true }),
     step("orphan", 16, "sms", { data: { body: "Never sent" } }),
   ],
 };

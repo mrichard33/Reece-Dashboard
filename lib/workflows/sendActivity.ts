@@ -57,7 +57,8 @@ export const SNAPSHOT_MAX_AGE_HOURS = 6;
 /** The HL copy of GHL must have synced within this long before the snapshot. */
 export const SYNC_MAX_AGE_MINUTES = 120;
 
-export type SendBasis = "stamp" | "content" | "ambiguous" | "unknown";
+/** `off` = the step is turned off in GHL: it never sends, whatever a stamp says. */
+export type SendBasis = "stamp" | "content" | "ambiguous" | "unknown" | "off";
 /** Did anyone get as far as this step in the window? */
 export type Reach = "reached" | "not_reached" | "beyond_window" | "unknown";
 export type StepSends = { sends: number | null; contacts: number | null; basis: SendBasis; note?: string; reach?: Reach };
@@ -66,6 +67,7 @@ export type SendVerdict =
   | "sending" // at least one send counted
   | "no_sends_seen" // published, enough leads in, fresh data, nothing went out
   | "too_few_to_judge" // nothing went out, but fewer than MIN_ENTRIES_TO_JUDGE came in
+  | "turned_off" // every message step is switched off in GHL — nothing can send
   | "quiet" // nobody entered (or a draft): nothing to judge
   | "unknown"; // could not measure, or the data was not fresh enough to trust a zero
 
@@ -91,6 +93,8 @@ export type WorkflowSending = {
   days: number;
   /** What happened after leads entered (0024). Null when the migration is not applied or nobody entered. */
   outcomes: WorkflowOutcomes | null;
+  /** Message steps switched off in GHL, out of `messageSteps`. */
+  offSteps: number;
 };
 
 const MERGE_FIELD = /\{\{[^}]*\}\}/g;
@@ -156,7 +160,7 @@ export function matchStepSends(stepHeads: readonly StepHead[], outbound: readonl
 export function stampSends(
   tags: readonly TagAddition[],
   codes: readonly string[],
-  rows: readonly { stepId: string; type: "sms" | "email"; n: number; stamped: boolean }[],
+  rows: readonly { stepId: string; type: "sms" | "email"; n: number; stamped: boolean; disabled?: boolean }[],
 ): Map<string, StepSends> {
   const byTag = new Map(tags.map((t) => [t.tag.toLowerCase(), t]));
   const out = new Map<string, StepSends>();
@@ -165,7 +169,9 @@ export function stampSends(
   const dup = new Map<string, number>();
   for (const r of rows) if (r.stamped) dup.set(`${r.type}${r.n}`, (dup.get(`${r.type}${r.n}`) ?? 0) + 1);
   for (const r of rows) {
-    if (!r.stamped) continue;
+    // A turned-off message is skipped but its stamp is still added (E.5,
+    // 2026-05-21 → 06-17): the stamp is not evidence of a send.
+    if (!r.stamped || r.disabled) continue;
     let sends = 0;
     let contacts = 0;
     for (const c of codes) {
@@ -245,6 +251,12 @@ export function freshness(snapshotAt: string, lastSyncAt: string | null, now: Da
  * Workflow-level verdict. Stamp evidence wins; else content matches over the
  * workflow's own steps. Unknown when nothing could be measured, or when a
  * zero cannot be trusted (stale sync or snapshot).
+ *
+ * Turned-off steps (GHL's disable switch) come first: when every message is
+ * off the verdict is `turned_off`, and once ANY message is off the workflow's
+ * `sent:*` stamps stop counting — at index level they can't be tied to a step,
+ * and a stamp after a turned-off message is added anyway (S2.2 showed 7,405
+ * "exact" sends on 2026-09-25 with every message switched off).
  */
 export function summarizeWorkflow(input: {
   status: "published" | "draft" | "unknown";
@@ -253,14 +265,19 @@ export function summarizeWorkflow(input: {
   stepIds: readonly string[];
   raw: SendActivityRaw;
   contentByStep: ReadonlyMap<string, StepSends>;
+  /** Message steps switched off in GHL. */
+  disabledStepIds?: ReadonlySet<string>;
 }): WorkflowSending | null {
   const { raw } = input;
   if (!raw.ok) return null;
-  const st = stampTotal(raw.tags, input.codes);
+  const off = input.disabledStepIds ?? new Set<string>();
+  const offSteps = input.stepIds.filter((id) => off.has(id)).length;
+  const st = offSteps > 0 ? { sends: 0, stamps: 0 } : stampTotal(raw.tags, input.codes);
   const entered = entries(raw.tags, input.codes);
   let content = 0;
   let known = 0;
   for (const id of input.stepIds) {
+    if (off.has(id)) continue;
     const c = input.contentByStep.get(id);
     if (!c) continue;
     if (c.basis === "content" || c.basis === "ambiguous") {
@@ -268,13 +285,16 @@ export function summarizeWorkflow(input: {
       content += c.sends ?? 0;
     }
   }
-  const base = { entries30d: entered, computedAt: raw.computedAt, days: raw.days, outcomes: outcomesFor(raw.outcomes, input.codes) };
+  const base = { entries30d: entered, computedAt: raw.computedAt, days: raw.days, outcomes: outcomesFor(raw.outcomes, input.codes), offSteps };
   if (input.messageSteps === 0) return { ...base, sends30d: 0, basis: "unknown", verdict: "quiet", note: "sends no messages" };
+  if (input.stepIds.length > 0 && offSteps === input.stepIds.length) {
+    return { ...base, sends30d: 0, basis: "unknown", verdict: "turned_off", note: `all ${offSteps} messages are switched off in GHL` };
+  }
 
   const basis: WorkflowSending["basis"] = st.stamps > 0 && known > 0 ? "mixed" : st.stamps > 0 ? "stamp" : known > 0 ? "content" : "unknown";
   if (basis === "unknown") return { ...base, sends30d: null, basis, verdict: "unknown", note: "messages are written at send time or too short to identify" };
   const total = st.sends + content;
-  if (total > 0) return { ...base, sends30d: total, basis, verdict: "sending" };
+  if (total > 0) return { ...base, sends30d: total, basis, verdict: "sending", note: offSteps ? `${offSteps} of ${input.stepIds.length} messages switched off in GHL` : undefined };
   if (input.status !== "published") return { ...base, sends30d: 0, basis, verdict: "quiet", note: "not published" };
   if (entered === 0) return { ...base, sends30d: 0, basis, verdict: "quiet", note: "no leads entered" };
   if (!raw.fresh.ok) return { ...base, sends30d: 0, basis, verdict: "unknown", note: raw.fresh.reason };
@@ -283,9 +303,18 @@ export function summarizeWorkflow(input: {
 }
 
 /** Steps first by stamp, then content, then unknown. */
-export function mergeStepSends(stamp: ReadonlyMap<string, StepSends>, content: ReadonlyMap<string, StepSends>, stepIds: readonly string[]): Map<string, StepSends> {
+export function mergeStepSends(
+  stamp: ReadonlyMap<string, StepSends>,
+  content: ReadonlyMap<string, StepSends>,
+  stepIds: readonly string[],
+  disabledStepIds: ReadonlySet<string> = new Set(),
+): Map<string, StepSends> {
   const out = new Map<string, StepSends>();
   for (const id of stepIds) {
+    if (disabledStepIds.has(id)) {
+      out.set(id, { sends: 0, contacts: 0, basis: "off", note: "turned off in GHL — this message never sends" });
+      continue;
+    }
     out.set(id, stamp.get(id) ?? content.get(id) ?? { sends: null, contacts: null, basis: "unknown" });
   }
   return out;
@@ -310,6 +339,12 @@ export function annotateReach(
   const onPath = (prev: readonly string[], cur: readonly string[]) => prev.length <= cur.length && prev.every((p, i) => cur[i] === p);
   for (const row of schedule) {
     const s = sends.get(row.stepId) ?? { sends: null, contacts: null, basis: "unknown" as const };
+    if (s.basis === "off") {
+      // Leads pass straight through a turned-off step, so it says nothing
+      // about whether the next message was reached; leave it out of `seen`.
+      out.set(row.stepId, { ...s, reach: "unknown" });
+      continue;
+    }
     let reach: Reach;
     const prev = [...seen].reverse().find((p) => onPath(p.branchPath, row.branchPath));
     if (row.day > days) reach = "beyond_window";
@@ -329,6 +364,7 @@ export function annotateReach(
 /** Plain words for a step's send count, given what we know about reach. */
 export function stepSendsWords(s: StepSends | undefined, days = 30): { text: string; tone: "ok" | "none" | "unknown" } | null {
   if (!s) return null;
+  if (s.basis === "off") return { text: "turned off in GHL", tone: "none" };
   if (s.sends === null) return { text: "sends unknown", tone: "unknown" };
   if (s.sends > 0) return { text: `${s.sends.toLocaleString()} sent · ${days} d${s.basis === "stamp" ? "" : " ≈"}`, tone: "ok" };
   switch (s.reach) {

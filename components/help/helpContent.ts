@@ -373,6 +373,12 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "HL `dash_workflow_send_activity` (hourly snapshot of `lead_events` tag additions and outbound `messages`, db/migrations/0023) joined to `workflow_steps` in lib/workflows/sendActivity.ts.",
     fix: "If every row says 'not computed', the hourly job has not run — call `select dash_refresh_send_activity(30)` on HL. Counts refresh hourly; the page caches for 10 minutes.",
   },
+  "workflows.turnedOff": {
+    title: "Messages turned off",
+    what: "Published workflows where every SMS and email step has been switched off with GHL's 'turn off this action' switch. Leads still enter and move through, but nothing is sent. The workflow's own 'sent:' tags are still added after a switched-off message, so they are not proof of a send and are not counted.",
+    where: "HL `workflow_steps` raw step JSON: `advanceCanvasMeta.isDisabled` (GHL's current switch) or `data.skipAction` (the older one). lib/journey/workflowGraph.ts `isStepDisabled`; lib/workflows/sendActivity.ts `summarizeWorkflow`.",
+    fix: "Turn the message steps back on in GHL once their copy is ready. The flowchart marks each switched-off step 'turned off in GHL'.",
+  },
   "workflows.noSends": {
     title: "No sends seen",
     what: "A published workflow with SMS or email steps where at least 20 leads entered in the last 30 days and none of its messages went out. It is the 'accepting leads but not sending' case, and it has to be earned: fewer than 20 leads in reads 'too few to judge'; a workflow nobody entered is 'quiet'; AI-written messages count as unknown, never zero; and when HL's copy of GHL was behind (or the hourly snapshot is old) the verdict is withheld, because a sync that is behind looks exactly like silence.",

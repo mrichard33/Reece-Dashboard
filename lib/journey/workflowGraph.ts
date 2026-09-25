@@ -15,6 +15,12 @@
  * 3. The workflow numbers its own sends: each email is followed by
  *    `Add Tag: sent:s2.2-e1`. That tag — not encounter order — is what a
  *    contact's `sent:*` tag refers to, so it wins when present.
+ * 4. GHL's "turn off this action" switch is `raw.advanceCanvasMeta.isDisabled`
+ *    (2026-09-25), not `data.skipAction`. A turned-off step is skipped but the
+ *    contact carries on, so a `sent:*` tag AFTER a turned-off message is still
+ *    added — E.5's messages were off from 2026-05-21 while 107 contacts got
+ *    `sent:e.5-s1`. `disabled` carries the switch so nothing downstream counts
+ *    a skipped message as sent.
  */
 
 export type GraphStep = {
@@ -30,6 +36,8 @@ export type GraphStep = {
   data: Record<string, unknown>;
   templateId: string | null;
   branchCondition: string | null;
+  /** Turned off in GHL: the step is skipped and the contact moves on. */
+  disabled: boolean;
 };
 
 export type WorkflowGraph = {
@@ -57,6 +65,8 @@ export type ScheduleRow = {
   aiWritten: boolean;
   /** The workflow stamps `sent:<code>-e<n>|s<n>` right after this step (exact send counts exist). */
   stamped: boolean;
+  /** Turned off in GHL — never sends, and any stamp after it is added anyway. */
+  disabled: boolean;
   /** Waits on this path whose unit could not be read (counted as 0). */
   unparsedWait: boolean;
   /** Event waits passed on the way ("waits for: reply, up to 30 days"). */
@@ -94,7 +104,13 @@ export function toGraphStep(row: WorkflowStepRow): GraphStep {
     data: obj(raw.data),
     templateId: row.template_id,
     branchCondition: row.branch_condition,
+    disabled: isStepDisabled(raw),
   };
+}
+
+/** GHL's per-step off switch, in either the current or the legacy field. */
+export function isStepDisabled(raw: Record<string, unknown>): boolean {
+  return obj(raw.advanceCanvasMeta).isDisabled === true || obj(raw.data).skipAction === true;
 }
 
 // ── Waits ─────────────────────────────────────────────────────────────────
@@ -311,7 +327,7 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
     let unp = unparsed;
     const kids = idx.children(step);
 
-    if (!skip && (step.type === "sms" || step.type === "email")) {
+    if (!skip && (step.type === "sms" || step.type === "email") && !(opts.facts && step.disabled)) {
       const c = messageContent(step, graph);
       const stamped = stampedNumber(step, idx);
       const n = stamped ?? counters[step.type] + 1;
@@ -331,6 +347,7 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
         templateId: c.templateId,
         aiWritten: c.aiWritten,
         stamped: stamped !== null,
+        disabled: step.disabled,
         unparsedWait: unp,
         waitNotes: notes,
       });
