@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
 import type { BotState, Journey, JourneyEvent } from "@/lib/journey/types";
 import { formatPhone, ghlContactUrl } from "@/lib/journey/normalize";
+import { dispositionWords } from "@/lib/journey/plain";
 import { humanizeTagValue } from "@/lib/journey/tags";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -66,9 +67,9 @@ export function JourneyCard({ initial, variant = "full" }: { initial: Journey; v
             {[
               h.source,
               h.pipeline ? `${h.pipeline}${h.stage ? ` · ${h.stage}` : ""}` : null,
-              h.lp.disposition ? `LP: ${h.lp.disposition}` : null,
-              h.lp.prospectId ? `Prospect ${h.lp.prospectId}${h.lp.leadIds.length > 1 ? ` (${h.lp.leadIds.length} LP leads)` : ""}` : null,
-              h.lp.rep ? `Rep: ${h.lp.rep}` : null,
+              h.lp.disposition ? `Lead Perfection: ${dispositionWords(h.lp.disposition)}` : null,
+              h.lp.prospectId ? `LP prospect #${h.lp.prospectId}${h.lp.leadIds.length > 1 ? ` · ${h.lp.leadIds.length} LP leads` : ""}` : null,
+              h.lp.rep ? `Rep ${h.lp.rep}` : null,
               h.enteredAt ? `Came in ${etShort(h.enteredAt)}` : null,
             ]
               .filter(Boolean)
@@ -132,7 +133,7 @@ export function JourneyCard({ initial, variant = "full" }: { initial: Journey; v
       </div>
       <p className="-mt-2 text-[11px] text-slate-500">
         {j.stats.messagesOut} messages out · {j.stats.messagesIn} in · {j.stats.calls} calls · {j.stats.appts} appointments
-        {j.stats.workflows.length ? ` · workflows: ${j.stats.workflows.join(", ")}` : ""}
+        {j.stats.workflowLabels?.length ? ` · workflows: ${j.stats.workflowLabels.join(", ")}` : j.stats.workflows.length ? ` · workflows: ${j.stats.workflows.join(", ")}` : ""}
       </p>
 
       <Timeline events={j.events} next={j.next} maxHeightClass={variant === "inline" ? "max-h-[26rem]" : "max-h-[44rem]"} />

@@ -113,8 +113,9 @@ function EventDetail({ event }: { event: JourneyEvent }) {
     .map((k) => (typeof d[k] === "string" ? (d[k] as string) : null))
     .find(Boolean);
 
+  const technical = typeof d.technical === "string" ? d.technical : null;
   const rest = detailEntries(event).filter(
-    ([k]) => !["body", "note", "reasoning", "notes", "added", "removed"].includes(k),
+    ([k]) => !["body", "note", "reasoning", "notes", "added", "removed", "technical"].includes(k),
   );
 
   return (
@@ -133,6 +134,11 @@ function EventDetail({ event }: { event: JourneyEvent }) {
             </span>
           ))}
         </div>
+      )}
+      {technical && (
+        <p className="font-mono text-[10px] text-slate-400" title="What the system stored — for troubleshooting">
+          Technical: {technical}
+        </p>
       )}
       {rest.length > 0 && (
         <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">

@@ -108,6 +108,8 @@ export type Journey = {
     calls: number;
     appts: number;
     workflows: string[];
+    /** The same workflows with their names ("S2.2 Chatbot Indoctrination"). */
+    workflowLabels?: string[];
     notes: number;
   };
   /** Ascending, past only. */

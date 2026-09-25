@@ -18,6 +18,7 @@ import { etDateTime } from "@/lib/utils";
 import type { Journey, JourneyEvent } from "./types";
 import { loadWorkflowGraph } from "./workflowGraph.server";
 import { projectionAnchor, projectNext } from "./projection";
+import { workflowLabel } from "./plain";
 import {
   activeWorkflowCodes,
   botState,
@@ -258,7 +259,7 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
     ...messageEvents(msgs),
     ...appointmentEvents(appts, leadEvents),
     ...opportunityEvents(opps, leadEvents, pipelines),
-    ...lpEvents(lpItems),
+    ...lpEvents(lpItems, registry),
   ];
   events = attributeBotSends(mergeSentTags(events));
   events = collapseRepeatedRules(sortEvents(events).filter((e) => e.ts <= nowIso));
@@ -411,6 +412,7 @@ export async function buildJourney(ghlContactId: string, now: Date = new Date())
       calls: events.filter((e) => e.lane === "call").length,
       appts: new Set(appts.map((a) => a.ghl_appointment_id)).size,
       workflows: [...workflowsSeen].sort(),
+      workflowLabels: [...workflowsSeen].sort().map((c) => workflowLabel(c, registry)),
       notes: events.filter((e) => e.lane === "note").length,
     },
     events,
