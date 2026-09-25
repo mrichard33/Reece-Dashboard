@@ -1970,7 +1970,7 @@
     "verdict": "other",
     "quote": "Not from ads. From neighbors who noticed.",
     "issue": "This message already makes the referral ask ('send them our way... We'll take care of them the same way we took care of you') that C.5 Referral Overlay exists to make. If both fire for the same contact, the customer gets a near-identical ask twice within a few weeks, once here and once from C.5.",
-    "recommendation": "Drop the referral ask from C.2-E02 and let it stay a pure check-in/warranty-reassurance message; let C.5 own the referral ask on its own trigger. If C.2-E02 is meant to set the referral-trigger tag, confirm C.5 is suppressed for contacts who already got this line.",
+    "recommendation": "Ruled 2026-09-25: C.5 Referral Overlay owns the referral ask. Delete the referral paragraphs from this email before the Test Contact gate opens.",
     "checks": {
      "hso": true,
      "sms_standalone": null,
@@ -2439,7 +2439,7 @@
     "verdict": "other",
     "quote": "has been putting their windows off, send us their name and number.",
     "issue": "C.6 is named and formulated (F12-review) as a review amplifier, but S02 asks for a referral instead of amplifying the review. This is the exact job C.5 Referral Overlay already owns, so a customer tagged into both could get a near-identical referral ask from two different workflows.",
-    "recommendation": "Rewrite S02 to amplify the review itself (thank them again, ask permission to feature it, or invite a second-platform review) and let C.5 own every referral ask.",
+    "recommendation": "Ruled 2026-09-25: C.5 Referral Overlay owns the referral ask. This message is only a referral ask, so switch the step off in GHL before the Test Contact gate opens.",
     "checks": {
      "hso": false,
      "sms_standalone": true,
@@ -2474,7 +2474,7 @@
     "verdict": "other",
     "quote": "thank you again for trusting us with your home.",
     "issue": "A third consecutive message doing C.5's referral-ask job instead of C.6's own review-amplifier job; by the third ask in a row it also risks reading as pressure on a customer who already gave what was originally asked (a review).",
-    "recommendation": "Replace the referral ask with a genuine review-amplifier close (thank them, offer to feature their review/photos) and retire the referral cadence into C.5 alone.",
+    "recommendation": "Ruled 2026-09-25: C.5 Referral Overlay owns the referral ask. This message is only a referral ask, so switch the step off in GHL before the Test Contact gate opens.",
     "checks": {
      "hso": false,
      "sms_standalone": true,
@@ -3090,7 +3090,7 @@
     "verdict": "off_voice",
     "quote": "a homeowner in Tampa filed a $45,000 wind damage claim. Impact windows installed. Shutters on every opening. They did everything right",
     "issue": "The $45,000 figure isn't one of the five allowed stats, and it puts a specific claim-denial dollar amount on a Tampa story — the locked Tampa parable is $28,000, so this invents a conflicting number for the same city. 'South Florida' also appears again as the default market.",
-    "recommendation": "Use the actual $3,800 (no-city) or Tampa $28,000 parable as written, or a true unnamed story with no invented dollar figure; replace 'South Florida' with {{contact.city}}.",
+    "recommendation": "Ruled 2026-09-25: the $45,000 figure is not real. Replace the story with the Tampa $28,000 family (P7) on its own, or with a true unnamed story, and use {{contact.city}} instead of 'South Florida'. Wording: docs/copy-changes-2026-09.md.",
     "checks": {
      "hso": true,
      "sms_standalone": null,
@@ -3465,7 +3465,7 @@
     "verdict": "off_voice",
     "quote": "They filed a $45,000 claim and it was denied.",
     "issue": "This email is sent 'from: Mark from Reece' before any appointment has happened — Mark's first-person voice is only approved after the appointment; Randy is the pre-appointment voice. The $45,000 figure also isn't one of the five allowed stats, and it's the same invented number used for a different city (Tampa) in E.3's Email #2, which suggests a recycled, unverified claim-denial story.",
-    "recommendation": "Send this from Randy (or the generic rep voice) instead of Mark pre-appointment, and replace the invented $45,000 figure with a true, verifiable stat or a properly-attributed parable.",
+    "recommendation": "Ruled 2026-09-25: the $45,000 figure is not real. Replace the story with the Tampa $28,000 family (P7) on its own, or with a true unnamed story. Send it from Randy, not Mark, before the appointment. Wording: docs/copy-changes-2026-09.md.",
     "checks": {
      "hso": true,
      "sms_standalone": null,
@@ -3543,7 +3543,7 @@
    ],
    "momentum_break": null,
    "classification": "structure",
-   "why": "Structural finding, not a copy problem: 3,362 leads entered in 30 days and every step shows 0 sends — the messages aren't going out. The copy itself is the strongest in this batch (correct Review naming throughout, one true unnamed story with no invented figures), but two of the seven messages still predict a specific insurance-coverage outcome and should be fixed before the trigger is re-enabled."
+   "why": "Structural finding, not a copy problem. 3,362 leads entered in 30 days and nothing went out, because all 7 messages have been switched off in GHL since May 21 (v38). Its sent: tags kept being added anyway. The copy is the strongest in this batch, but two of its seven messages predict an insurance-coverage outcome. Fix those two before the messages are switched back on."
   },
   "messages": [
    {
@@ -3593,7 +3593,7 @@
     "verdict": "other",
     "quote": "what your insurance company is willing to cover",
     "issue": "Listing 'what your insurance company is willing to cover' as one of the four things the rating affects reads as a coverage-decision prediction, which is a hard compliance line even though the rest of the email is a clean stage-1 curiosity build.",
-    "recommendation": "Reword to something the company can actually confirm, e.g. 'whether your rating is on file the way your policy assumes' rather than what the insurer 'is willing to cover.'",
+    "recommendation": "Ruled 2026-09-25: fix this line before the messages are switched back on. Wording: docs/copy-changes-2026-09.md. Reword to something the company can actually confirm, e.g. 'whether your rating is on file the way your policy assumes' rather than what the insurer 'is willing to cover.'",
     "checks": {
      "hso": true,
      "sms_standalone": null,
@@ -3663,7 +3663,7 @@
     "verdict": "other",
     "quote": "the credit can be reduced or denied",
     "issue": "'The credit can be reduced or denied' predicts a specific insurance outcome tied to the reader's own wind-mit credit, which is a hard compliance line even though the stage-fit and the Review CTA are both done right.",
-    "recommendation": "Reframe around what the homeowner can confirm (does the record match the install) rather than what the insurer will do about the credit.",
+    "recommendation": "Ruled 2026-09-25: fix this line before the messages are switched back on. Wording: docs/copy-changes-2026-09.md. Reframe around what the homeowner can confirm (does the record match the install) rather than what the insurer will do about the credit.",
     "checks": {
      "hso": true,
      "sms_standalone": null,

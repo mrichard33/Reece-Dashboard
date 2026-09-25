@@ -56,7 +56,9 @@ export function StrategyTab({ insight, schedule, sends }: { insight: WorkflowIns
                 </span>
                 {row?.subject && <span className="text-slate-600 dark:text-slate-300">— {row.subject}</span>}
                 <Badge tone={VERDICT_TONE[m.verdict]}>{VERDICT_LABEL[m.verdict]}</Badge>
-                {s && s.sends !== null && (
+                {s?.basis === "off" ? (
+                  <span className="text-xs text-rose-600 dark:text-rose-300">turned off in GHL</span>
+                ) : s && s.sends !== null && (
                   <span className="text-xs text-slate-400">
                     {s.sends.toLocaleString()} sent · 30 d{s.basis === "stamp" ? "" : " ≈"}
                   </span>

@@ -51,10 +51,11 @@ This is where the review found the clearest and most common mistake: **five diff
 ### Stage 2 — Curious (job: reveal secrets, mistakes, alternatives — never position the brand)
 
 - **S2.1 Calculator Indoctrination, Email 3** names the Documented Defense System — Reece's own crews, warranty, and company history — as the answer, days before the reader has any reason to be comparing vendors: *"We built the Documented Defense System around those four pieces."* That's Stage 3 positioning language sitting inside a Stage 2 secret-reveal email. The email before and after it do the job correctly.
-- **A recurring, specific error appears in four separate Stage 2 workflows (S2.1, S2.2, S2.5, and later E.3/E.4 at Stage 1):** a $45,000 Tampa insurance-claim-denial figure that doesn't exist in the five allowed statistics, and that collides with the locked $28,000 Tampa parable (P7) — the canon is explicit that P7's number is $28,000 and it is never paired with a different figure. This number appears to have been invented once and then copied across workflows by whatever process built them, which is why it's worth fixing at the source rather than five separate times.
+- **The $3,800 family is being mixed with a city in all three of these Stage 2 workflows.** $3,800 belongs to the P3 family, who must never be given a city. S2.1 Email 4 tells it as "a family in Tampa". S2.2 Email 4's subject says "One Tampa family found $3,800 a year", and its AI prompt asks for "the Tampa $28K Family story" but hands the writer the $3,800 figure. S2.5 Email 2 reuses $3,800 as the cost of a Broward change order, which is a different, unverified story wearing P3's number.
+- *(Correction, 2026-09-25: an earlier version of this report said an invented **$45,000** figure appeared in S2.1, S2.2, S2.5, E.3 and E.4. It appears **only in E.3 and E.4**, at Stage 1. The S2 workflows have the separate $3,800 problem above.)*
 - **S2.5 Pricing Accuracy Education** is signed "Mark from Reece" and written in first person — but this is sent *before* any appointment exists, and Mark's first-person voice is only approved for *after* the appointment (your ruling on item 8 of the calibration set). Every pre-appointment message needs to be Randy's voice.
 
-**What to test:** pull the Documented Defense System mention out of S2.1's Email 3 and replace it with a third secret or mistake, saving the system name for S3. Replace the $45,000 figure everywhere it appears with either the real $28,000 Tampa parable (used correctly, without a competing city/number) or a true, unnamed story, per your ruling on item 4.
+**What to test:** pull the Documented Defense System mention out of S2.1's Email 3 and replace it with a third secret or mistake, saving the system name for S3. For S2.1, S2.2 and S2.5, keep $3,800 with the P3 family only, with no city, and never next to Tampa. Proposed wording is in `docs/copy-changes-2026-09.md`. It needs your ruling, because this is a different problem from the $45,000 one.
 
 ### Stage 3 — Comparing (job: position Reece as relevant, superior, unique — never re-educate)
 
@@ -118,7 +119,15 @@ These are rule breaks, not stage-fit judgment calls, and most of them are one ed
 
 ## Where the problem is structural, not written
 
-**E.5 Unknown Source Bridge** is the one workflow classified `structure`: 3,362 leads entered in the last 30 days and every one of its 7 steps shows zero sends. This is not a copy problem — the copy itself is, per the reviewer, the strongest in this batch (correct Review naming throughout, a true unnamed story with no invented numbers). Something upstream of the messages — the trigger, or a step that exits everyone — is stopping this workflow from ever sending. Fix the trigger first; the copy is close to ready once it does. (Two of its seven messages still predict a specific insurance-coverage outcome and should be fixed before it's turned back on.)
+**E.5 Unknown Source Bridge** is the one workflow classified `structure`: 3,362 leads entered in the last 30 days and nothing went out. This is not a copy problem. Per the reviewer, the copy is the strongest in this batch: correct Review naming throughout, and a true unnamed story with no invented numbers.
+
+**Cause (found 2026-09-25 from the workflow's saved versions):**
+- On **May 21** (GHL version 38), all 7 message steps were switched off with GHL's "turn off this action" switch. The workflow kept running and kept adding its `sent:e.5-*` tags, so the tags looked like sends. Only the hurricane-guide email reached the contacts we checked.
+- On **June 17** (GHL version 46), the 7 tag steps were switched off too, and 5 "assign user" steps were removed.
+- **Step 28 (the conditional wait) has not changed in any saved version.**
+- The fix is to switch the 7 messages back on in GHL, and their tag steps with them. Fix its two outcome-prediction lines first; the wording is in `docs/copy-changes-2026-09.md`.
+
+The same switch is on for every message in A.WE-1, E.1, E.4, E.6, E.7, S1.1 (both versions), S2.2 and U.SEND-DHP, and for 5 SMS in F.0. Their `sent:` tags are not proof of sends either. The dashboard now shows these as "Published, messages turned off".
 
 ---
 
@@ -147,7 +156,7 @@ These are rule breaks, not stage-fit judgment calls, and most of them are one ed
 | E.2 | Calculator Bridge v2 | **healthy** | A calculator flow booking the in-home visit directly, per your ruling — clean throughout. |
 | E.3 | Chatbot Qualifier Bridge | messaging | Defaults to "South Florida," predicts an insurance-claim outcome, ends on a primary booking push. |
 | E.4 | Canvassing & In-Person Bridge | messaging | One SMS predicts a claim outcome; one email uses Mark's voice pre-appointment. |
-| E.5 | Unknown Source Bridge | **structure** | 3,362 leads in, zero sends — a trigger problem, not a copy problem. |
+| E.5 | Unknown Source Bridge | **structure** | 3,362 leads in, zero sends. All 7 messages have been switched off in GHL since May 21. It is not a trigger or copy problem. |
 | E.6 | Referral Bridge | messaging | The clearest Stage-1 mismatch in the review: every message opens on a direct ask or brand positioning. |
 | E.7 | High-Intent Digital Bridge | messaging | The fast-track strategy is correctly applied, but invents insurance-savings numbers repeatedly. |
 | F.0 | Post-Appointment Follow-Up | messaging | Two emails invent specific dollar outcomes; one states the company's age wrong. |
@@ -188,14 +197,15 @@ These are rule breaks, not stage-fit judgment calls, and most of them are one ed
 
 ---
 
-## Decisions that need you, not a copy edit
+## Mark's rulings (2026-09-25)
 
-These came up during the audit but are outside what a copy review can settle on its own.
+1. **The $45,000 figure is not real. Remove it.** Replace it with the $28,000 Tampa parable (P7) on its own, or with a true unnamed story. It appears only in **E.3 Email 2** (Tampa) and **E.4 Email 2** (Broward). The ruling named S2.1, S2.2 and S2.5 too, based on this report's earlier mistake; those three have the separate $3,800 problem described under Stage 2, which still needs a ruling. This is logged as a canon ruling.
+2. **C.5 Referral Overlay owns the referral ask.** Remove it from C.2 Email 2 and from C.6 SMS 2 and SMS 3. Do this before the Test Contact gate opens on those workflows.
+3. **S1.1-legacy (2094441c) is retired.** Mark will unpublish it in GHL himself. The registry changes to `unpublished` once he confirms. Its copy is not to be rewritten, because the workflow is dead, not pending.
+4. **E.5 is an engineering finding, not a copy one.** See "Where the problem is structural" above: step 28 is unchanged, and the messages were switched off on May 21. The GHL fix is Mark's. The registry now shows E.5 as published (version 48). Fix its two outcome-prediction lines before it is switched back on.
+5. **LP status CCC means "Cannot contact".** NIS2 and OPPPRD are still unruled, so the dashboard shows them as "LP status <code>".
 
-1. **Is the $45,000 Tampa claim-denial figure real, from a source not in the framework, or should it be removed everywhere?** It appears in S2.1, S2.2, S2.5, E.3, and E.4 — five workflows, apparently copied from a common source. If it's not real, it needs to come out of all five and be replaced with the locked $28,000 Tampa figure (used alone) or a true, unnamed story per your ruling.
-2. **Should C.2, C.5, and C.6 be consolidated so only one workflow owns the referral ask?** Right now a single customer can be asked for a referral by all three.
-3. **Is S1.1-legacy actually retired?** Its registry notes say it's superseded by S1.1 v2, and it shows zero sends in 30 days — but it still exists as a live, published workflow with real compliance problems in its copy. Worth confirming it's fully switched off, since if it were ever reactivated its copy would need to be rewritten first, not reused.
-4. **E.5's trigger** needs an engineering look, not a copy one — see "Where the problem is structural" above.
+The before-and-after wording for every edit above is in `docs/copy-changes-2026-09.md`.
 
 ## Registry entries that may need correcting (read-only — nothing here was changed)
 
@@ -203,11 +213,11 @@ Comparing each workflow's registry entry against the copywriting framework's own
 
 - **F.0, O.0, and S5.2** are tagged in the registry as `support` / `support` / `reactivation`, but the framework's deployment matrix puts all three at buyer stage #4 (Negotiating). This review graded them against stage #4, per the framework, not the registry label.
 - **S4.5** is tagged `conversion` in the registry; the deployment matrix marks it buyer stage #2–#3, "trust-built" — a different kind of workflow (a long rotating nurture) than a normal conversion push.
-- **Three published, sending workflows aren't in the registry at all**: B.1B SMS Widget First-Touch, the Missed-Appointment Trust Repair workflow, and U.SEND-DHP.
+- **Three published, sending workflows weren't in the registry**: B.1B SMS Widget First-Touch, the Missed-Appointment Trust Repair workflow, and U.SEND-DHP. *Registered 2026-09-25 per your ruling; the stage-label questions above are left for a separate ruling.*
 - **C.7**'s deployment-matrix entry says "no copy (capture)," but three real, working SMS messages exist and are live.
 
 ---
 
 ## Method note
 
-Reviewed by 8 parallel readers grouped by funnel family, each using the same rubric (`RUBRIC.md`) and the copywriting framework's deployment matrix, with a shared answer key built from your rulings on an 11-message calibration set sent and confirmed before the full review began. Every quoted line in every message was then checked against the stored source text by an independent script — 347 messages, 0 quote mismatches. The underlying per-message data (buyer stage, lever, verdict, full compliance checklist) lives in the dashboard at `lib/workflows/insights/` and powers the Strategy tab on each workflow page and the `/workflows/review` Funnel Review page — held back from the dashboard until this file was reviewed, per your instruction to deliver the write-up first.
+Reviewed by 8 parallel readers grouped by funnel family, each using the same rubric (`RUBRIC.md`) and the copywriting framework's deployment matrix, with a shared answer key built from your rulings on an 11-message calibration set sent and confirmed before the full review began. Every quoted line in every message was then checked against the stored source text by an independent script — 347 messages, 0 quote mismatches. The underlying per-message data (buyer stage, lever, verdict, full compliance checklist) lives in the dashboard at `lib/workflows/insights/` and powers the Strategy tab on each workflow page and the `/workflows/review` Funnel Review page — released on the dashboard on 2026-09-25, after this file was reviewed and ruled on.
