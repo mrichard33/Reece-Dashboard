@@ -10,6 +10,7 @@ import {
   fingerprint,
   freshness,
   matchStepSends,
+  mergeStepSends,
   outcomesFor,
   stampSends,
   stampTotal,
@@ -143,6 +144,31 @@ describe("summarizeWorkflow", () => {
     expect(d?.verdict).toBe("quiet");
     expect(summarizeWorkflow({ status: "published", messageSteps: 2, codes: ["X"], stepIds: ["a"], raw: { ok: false, reason: "down" }, contentByStep: content })).toBeNull();
   });
+  // 2026-09-25: GHL's "turn off this action" switch leaves the workflow
+  // running, so the sent:* stamp after a turned-off message is still added.
+  // S2.2 read 7,405 "exact" sends with every message switched off.
+  it("is turned off, not sending, when every message is switched off — whatever the stamps say", () => {
+    const s = summarizeWorkflow({
+      status: "published", messageSteps: 2, codes: ["S2.2"], stepIds: ["a", "b"],
+      raw: raw({ tags: [{ tag: "sent:s2.2-e1", adds: 7405, contacts: 7405 }, ...entered(500, "s2.2")] }),
+      contentByStep: content, disabledStepIds: new Set(["a", "b"]),
+    });
+    expect(s).toMatchObject({ sends30d: 0, verdict: "turned_off", offSteps: 2 });
+    expect(s?.note).toContain("all 2 messages are switched off");
+  });
+  it("ignores stamps once any message is off and counts only the steps still on", () => {
+    const on = new Map([["a", { sends: 12, contacts: 12, basis: "content" as const }]]);
+    const s = summarizeWorkflow({
+      status: "published", messageSteps: 2, codes: ["S2.2"], stepIds: ["a", "b"],
+      raw: raw({ tags: [{ tag: "sent:s2.2-e1", adds: 900, contacts: 900 }] }),
+      contentByStep: on, disabledStepIds: new Set(["b"]),
+    });
+    expect(s).toMatchObject({ sends30d: 12, basis: "content", verdict: "sending", offSteps: 1, note: "1 of 2 messages switched off in GHL" });
+  });
+  it("reports zero off steps when nothing is switched off", () => {
+    const s = summarizeWorkflow({ status: "published", messageSteps: 2, codes: ["F.0"], stepIds: ["a", "b"], raw: raw({ tags: entered(465) }), contentByStep: content });
+    expect(s?.offSteps).toBe(0);
+  });
   it("sums outcomes for the workflow's codes and leaves them null before 0024", () => {
     const rows = [
       { code: "s2.2", entries: 100, replied: 10, booked: 5, opted_out: 2 },
@@ -191,6 +217,15 @@ describe("annotateReach and stepSendsWords", () => {
     const m = annotateReach(sched, new Map([["e1", c(40)], ["s1", c(0)], ["s2", c(0)]]), 100, 30);
     expect(m.get("s1")?.reach).toBe("reached");
     expect(m.get("s2")?.reach).toBe("not_reached");
+  });
+  it("marks a turned-off step as never sending, and lets reach look straight past it", () => {
+    const merged = mergeStepSends(new Map([["e1", c(40)]]), new Map([["s1", c(9)]]), ["e1", "s1", "s2"], new Set(["s1"]));
+    expect(merged.get("s1")).toMatchObject({ sends: 0, basis: "off" });
+    expect(merged.get("e1")?.sends).toBe(40);
+    const m = annotateReach(sched, new Map([...merged, ["s2", c(0)]]), 100, 30);
+    expect(m.get("s1")?.reach).toBe("unknown");
+    expect(m.get("s2")?.reach).toBe("reached"); // e1 sent, s1 is skipped over
+    expect(stepSendsWords(m.get("s1"))).toEqual({ text: "turned off in GHL", tone: "none" });
   });
   it("is unknown without a tag code or after an unknown step", () => {
     expect(annotateReach(sched, new Map([["e1", c(0)]]), null, 30).get("e1")?.reach).toBe("unknown");

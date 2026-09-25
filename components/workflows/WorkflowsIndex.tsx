@@ -23,6 +23,7 @@ type Props = {
 const STATUS_LABEL: Record<StatusFilter, string> = {
   published: "Published",
   no_sends: "Published, no sends seen",
+  turned_off: "Published, messages turned off",
   draft: "Drafts",
   all: "Everything",
 };
@@ -57,6 +58,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
       drafts: all.filter((r) => r.status !== "published").length,
       active: all.reduce((n, r) => n + (r.activeLeads ?? 0), 0),
       noSends: all.filter((r) => r.status === "published" && r.sending?.verdict === "no_sends_seen").length,
+      turnedOff: all.filter((r) => r.status === "published" && r.sending?.verdict === "turned_off").length,
     };
   };
 
@@ -362,6 +364,13 @@ function SendingCell({ row }: { row: WorkflowRow }) {
   if (row.messageSteps === 0) return <span className="text-slate-400">no messages</span>;
   if (!s) return <span className="text-slate-400">not computed</span>;
   switch (s.verdict) {
+    case "turned_off":
+      return (
+        <span className="inline-flex flex-wrap items-center gap-1" title={s.note}>
+          <Badge tone="rose">Messages turned off</Badge>
+          <span className="text-slate-500">{num(s.entries30d)} leads in</span>
+        </span>
+      );
     case "no_sends_seen":
       return (
         <span className="inline-flex flex-wrap items-center gap-1">
@@ -388,6 +397,7 @@ function SendingCell({ row }: { row: WorkflowRow }) {
         <span className="tabular-nums text-slate-700 dark:text-slate-200" title={s.basis === "stamp" ? "Exact: counted from the workflow's own send stamps" : s.basis === "content" ? "Counted by matching sent text to each message" : "Exact where stamped, matched by text elsewhere"}>
           {num(s.sends30d)} sent · {num(s.entries30d)} in
           {s.basis !== "stamp" && <span className="text-slate-400"> ≈</span>}
+          {s.offSteps > 0 && <span className="text-amber-700 dark:text-amber-400"> · {s.offSteps} off</span>}
         </span>
       );
   }
@@ -401,7 +411,7 @@ function RouteBox({
   compact = false,
 }: {
   def: (typeof ROUTES)[number];
-  stats: { published: number; drafts: number; active: number; noSends: number };
+  stats: { published: number; drafts: number; active: number; noSends: number; turnedOff: number };
   active: boolean;
   onClick: () => void;
   compact?: boolean;
@@ -423,6 +433,7 @@ function RouteBox({
       <div className="text-xs font-semibold text-navy-900 dark:text-white">{def.label}</div>
       <div className="text-[11px] text-slate-500">
         {stats.published} live{stats.drafts ? ` · ${stats.drafts} draft` : ""}
+        {stats.turnedOff > 0 && <span className="text-rose-600"> · {stats.turnedOff} turned off</span>}
         {stats.noSends > 0 && <span className="text-rose-600"> · {stats.noSends} no sends seen</span>}
         {!compact && (
           <>

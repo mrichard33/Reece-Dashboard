@@ -28,6 +28,10 @@ describe("applyFilters", () => {
   it("'no_sends' means an earned no-sends-seen verdict, never 'could not tell'", () => {
     expect(applyFilters(rows, { ...DEFAULT_FILTERS, status: "no_sends" }, none).map((x) => x.ghlWorkflowId)).toEqual(["f0"]);
   });
+  it("'turned_off' lists published workflows whose messages are all switched off in GHL", () => {
+    const e5 = r({ ghlWorkflowId: "e5", canonicalCode: "E.5", sending: { sends30d: 0, verdict: "turned_off" } });
+    expect(applyFilters([...rows, e5], { ...DEFAULT_FILTERS, status: "turned_off" }, none).map((x) => x.ghlWorkflowId)).toEqual(["e5"]);
+  });
   it("filters by route, favorites, messages and search", () => {
     expect(applyFilters(rows, { ...DEFAULT_FILTERS, routes: ["booking"] }, none).map((x) => x.ghlWorkflowId)).toEqual(["s45"]);
     expect(applyFilters(rows, { ...DEFAULT_FILTERS, favoritesOnly: true }, new Set(["s22"])).map((x) => x.ghlWorkflowId)).toEqual(["s22"]);

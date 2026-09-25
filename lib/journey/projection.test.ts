@@ -9,7 +9,7 @@ import { projectionAnchor, projectNext, tagRunStart } from "./projection";
 import type { GraphStep, WorkflowGraph } from "./workflowGraph";
 
 function step(id: string, order: number, type: string, extra: Partial<GraphStep> = {}): GraphStep {
-  return { id, order, type, name: extra.name ?? id, parent: null, nodeType: null, next: [], data: {}, templateId: null, branchCondition: null, ...extra };
+  return { id, order, type, name: extra.name ?? id, parent: null, nodeType: null, next: [], data: {}, templateId: null, branchCondition: null, disabled: false, ...extra };
 }
 const hours = (h: number) => ({ type: "time", startAfter: { type: "hour", value: h } });
 

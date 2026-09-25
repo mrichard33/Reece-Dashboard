@@ -22,7 +22,7 @@ export const ROUTE_KEYS = [
   "other",
 ] as const satisfies readonly RouteKey[];
 
-export const STATUS_FILTERS = ["all", "published", "draft", "no_sends"] as const;
+export const STATUS_FILTERS = ["all", "published", "draft", "no_sends", "turned_off"] as const;
 export type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 export const SORT_KEYS = ["chain", "favorites", "name", "code", "active", "sends", "changed"] as const;
@@ -82,6 +82,8 @@ export function applyFilters<R extends FilterableRow>(rows: readonly R[], f: Wor
     // published, enough leads in, fresh data, nothing went out. A workflow we
     // could not measure, or with too few leads to judge, is never listed here.
     if (f.status === "no_sends" && !(r.status === "published" && r.sending?.verdict === "no_sends_seen")) return false;
+    // Every message switched off in GHL — published, but nothing can send.
+    if (f.status === "turned_off" && !(r.status === "published" && r.sending?.verdict === "turned_off")) return false;
     if (f.hasMessages === true && r.messageSteps === 0) return false;
     if (f.hasMessages === false && r.messageSteps > 0) return false;
     if (f.favoritesOnly && !favorites.has(r.ghlWorkflowId)) return false;

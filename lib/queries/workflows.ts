@@ -45,10 +45,18 @@ export type WorkflowSummary = {
 const getMessageSteps = unstable_cache(
   async () => {
     const sb = hlService();
-    const { data, error } = await sb.from("workflow_steps").select("workflow_id, step_id").in("step_type", ["sms", "email"]);
+    // `off` / `skip`: GHL's per-step off switch (lib/journey/workflowGraph.ts `isStepDisabled`).
+    const { data, error } = await sb
+      .from("workflow_steps")
+      .select("workflow_id, step_id, off:raw_json->raw->advanceCanvasMeta->>isDisabled, skip:raw_json->raw->data->>skipAction")
+      .in("step_type", ["sms", "email"]);
     if (error) throw new Error(`HL workflow_steps: ${error.message}`);
-    const out: Record<string, string[]> = {};
-    for (const r of (data ?? []) as { workflow_id: string; step_id: string }[]) (out[r.workflow_id] ??= []).push(r.step_id);
+    const out: Record<string, { ids: string[]; off: string[] }> = {};
+    for (const r of (data ?? []) as { workflow_id: string; step_id: string; off: string | null; skip: string | null }[]) {
+      const w = (out[r.workflow_id] ??= { ids: [], off: [] });
+      w.ids.push(r.step_id);
+      if (r.off === "true" || r.skip === "true") w.off.push(r.step_id);
+    }
     return out;
   },
   ["workflows", "message-steps"],
@@ -118,7 +126,7 @@ export async function getWorkflowSummary(): Promise<WorkflowSummary> {
 
   const [counts, steps, raw] = await Promise.all([
     getActiveLeadCounts().catch((): Record<string, number | null> => ({})),
-    getMessageSteps().catch((): Record<string, string[]> => ({})),
+    getMessageSteps().catch((): Record<string, { ids: string[]; off: string[] }> => ({})),
     loadSendActivityRaw(),
   ]);
   // Content matches once for every step, then each workflow sums its own.
@@ -128,7 +136,8 @@ export async function getWorkflowSummary(): Promise<WorkflowSummary> {
     const reg = regByGhlId.get(w.ghl_workflow_id);
     const status = (w.status ?? "unknown") as "published" | "draft" | "unknown";
     const codes = reg ? codesFor({ canonical_code: reg.canonical_code, canonical_name: reg.canonical_name, legacy_name: reg.legacy_name, workflow_id: reg.workflow_id }) : [];
-    const stepIds = steps[w.ghl_workflow_id] ?? [];
+    const stepIds = steps[w.ghl_workflow_id]?.ids ?? [];
+    const disabledStepIds = new Set(steps[w.ghl_workflow_id]?.off ?? []);
     const route = routeFor({ stageFamily: reg?.stage_family ?? null, canonicalCode: reg?.canonical_code ?? null, name: w.name });
     return {
       id: w.id,
@@ -144,7 +153,7 @@ export async function getWorkflowSummary(): Promise<WorkflowSummary> {
       routesTo: (reg?.routes_to ?? []).map(String),
       receivesFrom: (reg?.receives_from ?? []).map(String),
       messageSteps: stepIds.length,
-      sending: summarizeWorkflow({ status, messageSteps: stepIds.length, codes, stepIds, raw, contentByStep }),
+      sending: summarizeWorkflow({ status, messageSteps: stepIds.length, codes, stepIds, raw, contentByStep, disabledStepIds }),
     };
   });
   const chain = chainOrder(base.map((r) => ({ ghlWorkflowId: r.ghlWorkflowId, code: r.canonicalCode, route: r.route, routesTo: r.routesTo, receivesFrom: r.receivesFrom })));

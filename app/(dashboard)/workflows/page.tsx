@@ -13,6 +13,7 @@ export default async function WorkflowsPage() {
   const user = await requireRole("operator");
   const [summary, prefs] = await Promise.all([getWorkflowSummary(), loadWorkflowPrefs()]);
   const noSends = summary.rows.filter((r) => r.status === "published" && r.sending?.verdict === "no_sends_seen").length;
+  const turnedOff = summary.rows.filter((r) => r.status === "published" && r.sending?.verdict === "turned_off").length;
 
   return (
     <>
@@ -25,7 +26,7 @@ export default async function WorkflowsPage() {
       />
 
       <div className="space-y-6 p-6">
-        <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
           <StatTile
             label="Total"
             value={summary.total}
@@ -33,6 +34,7 @@ export default async function WorkflowsPage() {
           />
           <StatTile label="Published" value={summary.published} helpKey="workflows.total" />
           <StatTile label="Draft" value={summary.draft} helpKey="workflows.total" />
+          <StatTile label="Messages turned off" value={turnedOff} helpKey="workflows.turnedOff" />
           <StatTile label="No sends seen" value={"error" in summary.sendActivity ? "—" : noSends} helpKey="workflows.noSends" />
         </section>
 

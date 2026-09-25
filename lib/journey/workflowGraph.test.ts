@@ -9,6 +9,7 @@ import {
   evaluateBranch,
   formatMinutes,
   type GraphStep,
+  isStepDisabled,
   linearizeSchedule,
   logicTree,
   parseStartAfter,
@@ -48,7 +49,7 @@ describe("parseStartAfter", () => {
 // an else branch with waits, a condition wait with a 30-day timeout, an email
 // stamped `sent:s2.2-e1`, then a tag-checked SMS.
 function step(id: string, order: number, type: string, extra: Partial<GraphStep> = {}): GraphStep {
-  return { id, order, type, name: extra.name ?? id, parent: null, nodeType: null, next: [], data: {}, templateId: null, branchCondition: null, ...extra };
+  return { id, order, type, name: extra.name ?? id, parent: null, nodeType: null, next: [], data: {}, templateId: null, branchCondition: null, disabled: false, ...extra };
 }
 
 const S = (tag: string, op: "index-of-true" | "index-of-false") => ({
@@ -178,6 +179,23 @@ describe("toGraphStep / logicTree", () => {
       raw_json: { raw: { name: "wait", next: ["b", "c"], parent: "p", data: { type: "condition" } } },
     });
     expect(s).toMatchObject({ id: "a", order: 3, next: ["b", "c"], parent: "p", data: { type: "condition" } });
+  });
+
+  // 2026-09-25: GHL keeps its "turn off this action" switch in
+  // advanceCanvasMeta.isDisabled; data.skipAction was never set on a live step.
+  it("reads GHL's turn-off switch from advanceCanvasMeta, and the older skipAction", () => {
+    expect(isStepDisabled({ advanceCanvasMeta: { isDisabled: true }, data: {} })).toBe(true);
+    expect(isStepDisabled({ data: { skipAction: true } })).toBe(true);
+    expect(isStepDisabled({ advanceCanvasMeta: { isDisabled: false }, data: {} })).toBe(false);
+    expect(isStepDisabled({})).toBe(false);
+    const s = toGraphStep({ step_id: "x", step_order: 1, step_type: "sms", template_id: null, branch_condition: null, raw_json: { raw: { advanceCanvasMeta: { isDisabled: true } } } });
+    expect(s.disabled).toBe(true);
+  });
+
+  it("leaves a turned-off message out of a contact's projected schedule", () => {
+    const g: WorkflowGraph = { ...graph, steps: graph.steps.map((s) => (s.id === "email1" ? { ...s, disabled: true } : s)) };
+    const r = walkSchedule(g, { facts: { tags: [] }, maxMessages: 5 });
+    expect(r.rows.map((x) => x.type)).toEqual(["sms"]);
   });
 
   it("indents by enclosing branch and names things plainly", () => {

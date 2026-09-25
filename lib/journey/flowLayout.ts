@@ -155,7 +155,7 @@ export function buildFlow(graph: WorkflowGraph, workflowName: (id: string) => st
     const d = step.data;
     const kids = idx.children(step);
     const node: Tree = { id: nid(), stepId: step.id, kind: "other", title: step.name || step.type, lines: [], children: [] };
-    if (d.skipAction === true) node.skipped = true;
+    if (step.disabled) node.skipped = true;
 
     if (step.type === "goto") {
       // A go-to usually targets a branch node GHL names "yes"/"no"; name the
