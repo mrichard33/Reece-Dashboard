@@ -1,6 +1,7 @@
 import type { ScheduleRow } from "@/lib/journey/workflowGraph";
 import { formatMinutes } from "@/lib/journey/workflowGraph";
 import { Badge } from "@/components/ui/Badge";
+import { stepSendsWords, type StepSends } from "@/lib/workflows/sendActivity";
 import { Mail, MessageSquare } from "lucide-react";
 
 /**
@@ -8,7 +9,7 @@ import { Mail, MessageSquare } from "lucide-react";
  * to the full body and sender; the branch path sits under the title so a
  * send that only some contacts get says which ones.
  */
-export function ScheduleList({ rows }: { rows: ScheduleRow[] }) {
+export function ScheduleList({ rows, sends = {} }: { rows: ScheduleRow[]; sends?: Record<string, StepSends> }) {
   if (rows.length === 0) {
     return <p className="py-6 text-center text-sm text-slate-500">This workflow sends no SMS or email.</p>;
   }
@@ -45,6 +46,11 @@ export function ScheduleList({ rows }: { rows: ScheduleRow[] }) {
                   )}
                 </span>
                 <span className="flex shrink-0 gap-1">
+                  {sends[r.stepId] && sends[r.stepId]!.sends !== null && (
+                    <Badge tone={stepSendsWords(sends[r.stepId])!.tone === "none" ? "rose" : stepSendsWords(sends[r.stepId])!.tone === "ok" ? "emerald" : "slate"}>
+                      {stepSendsWords(sends[r.stepId])!.text}
+                    </Badge>
+                  )}
                   {r.aiWritten && <Badge tone="sky">AI-written</Badge>}
                   {r.unparsedWait && <Badge tone="amber">unreadable wait</Badge>}
                 </span>

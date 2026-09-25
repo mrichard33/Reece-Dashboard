@@ -14,6 +14,8 @@ import { buildFlow, type Flow } from "@/lib/journey/flowLayout";
 import { codesFor, FULL_STOP_TAGS, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
 import { toIso } from "@/lib/journey/normalize";
 import { projectionAnchor, projectNext, tagRunStart, type TagSnapshot } from "@/lib/journey/projection";
+import { annotateReach, matchStepSends, mergeStepSends, stampSends, summarizeWorkflow, entries as entriesFor, type StepSends, type WorkflowSending } from "@/lib/workflows/sendActivity";
+import { loadSendActivityRaw } from "@/lib/workflows/sendActivity.server";
 
 export type RegistryMeta = {
   canonical_code: string | null;
@@ -59,6 +61,11 @@ export type WorkflowDetail = {
   exitWorkflow: WorkflowLink | null;
   /** How many "Remove from workflow" steps this workflow runs. */
   removeSteps: number;
+  /** Real sends per message step in the last 30 days (lib/workflows/sendActivity.ts). */
+  stepSends: Record<string, StepSends>;
+  sending: WorkflowSending | null;
+  /** Why there is no send data, when there is none. */
+  sendActivityError: string | null;
 };
 
 /**
@@ -85,7 +92,7 @@ function link(id: string, registry: readonly RegistryEntry[], names: Map<string,
 
 export async function getWorkflowDetail(ghlWorkflowId: string): Promise<WorkflowDetail | null> {
   const sb = hlService();
-  const [wfRes, regRes, trigRes, registry, graph] = await Promise.all([
+  const [wfRes, regRes, trigRes, registry, graph, sendRaw] = await Promise.all([
     sb
       .from("workflows")
       .select("ghl_workflow_id, name, status, version, updated_at")
@@ -105,6 +112,7 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
       .eq("workflow_id", ghlWorkflowId),
     loadRegistry(),
     loadWorkflowGraph(ghlWorkflowId),
+    loadSendActivityRaw(),
   ]);
   if (wfRes.error) throw new Error(`HL workflows: ${wfRes.error.message}`);
   const wf = wfRes.data as { ghl_workflow_id: string; name: string; status: string | null; version: number | null; updated_at: string | null } | null;
@@ -157,6 +165,20 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
     }),
   );
 
+  const schedule = linearizeSchedule(graph);
+  const messageStepIds = graph.steps.filter((st) => st.type === "sms" || st.type === "email").map((st) => st.id);
+  const status = (wf.status ?? "unknown") as "published" | "draft" | "unknown";
+  let stepSends: Record<string, StepSends> = {};
+  let sending: WorkflowSending | null = null;
+  if (sendRaw.ok) {
+    const mine = sendRaw.stepHeads.filter((h) => h.workflow_id === ghlWorkflowId);
+    const content = matchStepSends(mine, sendRaw.heads);
+    const stamp = stampSends(sendRaw.tags, codes, schedule);
+    const merged = mergeStepSends(stamp, content, messageStepIds);
+    stepSends = Object.fromEntries(annotateReach(schedule, merged, codes.length ? entriesFor(sendRaw.tags, codes) : null, sendRaw.days));
+    sending = summarizeWorkflow({ status, messageSteps: messageStepIds.length, codes, stepIds: messageStepIds, raw: sendRaw, contentByStep: content });
+  }
+
   return {
     ghlWorkflowId,
     name: wf.name,
@@ -167,7 +189,10 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
     codes,
     routesTo: (reg?.routes_to ?? []).map((id) => link(id, registry, names)),
     receivesFrom: (reg?.receives_from ?? []).map((id) => link(id, registry, names)),
-    schedule: linearizeSchedule(graph),
+    schedule,
+    stepSends,
+    sending,
+    sendActivityError: sendRaw.ok ? null : sendRaw.reason,
     flow: buildFlow(graph, nameFor),
     addedBy,
     exitWorkflow,

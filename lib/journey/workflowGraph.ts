@@ -55,6 +55,8 @@ export type ScheduleRow = {
   templateId: string | null;
   /** Body is filled at send time (ChatGPT step / custom-field merge). */
   aiWritten: boolean;
+  /** The workflow stamps `sent:<code>-e<n>|s<n>` right after this step (exact send counts exist). */
+  stamped: boolean;
   /** Waits on this path whose unit could not be read (counted as 0). */
   unparsedWait: boolean;
   /** Event waits passed on the way ("waits for: reply, up to 30 days"). */
@@ -328,6 +330,7 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
         branchPath: path,
         templateId: c.templateId,
         aiWritten: c.aiWritten,
+        stamped: stamped !== null,
         unparsedWait: unp,
         waitNotes: notes,
       });
