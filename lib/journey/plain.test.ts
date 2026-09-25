@@ -15,12 +15,15 @@ const REGISTRY = [
 describe("dispositionWords", () => {
   it("reads the LP codes people see most", () => {
     expect(dispositionWords("Cnf")).toBe("Appointment confirmed");
-    expect(dispositionWords("CCC")).toBe("Cancelled — could not confirm");
-    expect(dispositionWords("OPPFDN")).toBe("Demo done, no sale yet");
-    expect(dispositionWords("Sale")).toBe("Sold");
+    expect(dispositionWords("ND")).toBe("No demo — disqualified before issue");
+    expect(dispositionWords("NOC")).toBe("Issued, but no rep could cover it");
+    expect(dispositionWords("BO")).toBe("Be-back — rep to follow up");
+    expect(dispositionWords("Issue")).toBe("Appointment issued to a rep");
+    expect(dispositionWords("OPPFDN")).toBe("Demo done, no sale");
+    expect(dispositionWords("Sale")).toBe("Sold (contract signed)");
   });
   it("never invents a meaning for an unknown code", () => {
-    expect(dispositionWords("NOP MPR")).toBe("LP status NOP MPR");
+    expect(dispositionWords("CCC")).toBe("LP status CCC");
     expect(dispositionWords(null)).toBe("LP status changed");
   });
 });

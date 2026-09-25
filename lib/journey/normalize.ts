@@ -802,7 +802,7 @@ export function lpEvents(items: readonly LpTimelineItem[], registry: readonly Re
           ts,
           lane: "lp",
           kind: "lp_disposition",
-          title: `Lead Perfection: ${dispositionWords(to)}${from && to && from !== to ? ` (was ${dispositionWords(from).replace(/^LP status /, "")})` : ""}`,
+          title: `Lead Perfection: ${dispositionWords(to).replace(/^LP status /, "status ")}${from && to && from !== to ? ` (was ${dispositionWords(from).replace(/^LP status /, "")})` : ""}`,
           detail: { reason: pick(payload, ["reason"]), technical: `LP status ${from && to && from !== to ? `${from} → ${to}` : (to ?? from ?? "changed")}` },
         });
         return;

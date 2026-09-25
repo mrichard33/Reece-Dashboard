@@ -138,7 +138,7 @@ describe("lpEvents", () => {
   it("reads the E.0 branch as a workflow move and keeps LP's own GHL echoes quiet", () => {
     expect(byKind("branch_fired")[0]!.title).toBe("E.0 Master Router sent this lead to E.4 Canvassing & In-Person Bridge (canvassing path)");
     expect(byKind("lp_event").every((e) => e.quiet)).toBe(true);
-    expect(byKind("lp_disposition")[0]!.title).toBe("Lead Perfection: Cancelled — could not confirm");
+    expect(byKind("lp_disposition")[0]!.title).toBe("Lead Perfection: status CCC");
     expect(byKind("lp_disposition")[0]!.detail?.technical).toBe("LP status CCC");
     expect(byKind("note")[0]!.detail?.note).toContain("set by Y.Francis");
   });
