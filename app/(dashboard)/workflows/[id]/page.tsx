@@ -12,6 +12,9 @@ import { ScheduleList } from "@/components/workflows/ScheduleList";
 import { LogicTree } from "@/components/workflows/LogicTree";
 import { ActiveLeadsTable } from "@/components/workflows/ActiveLeadsTable";
 import { Flowchart } from "@/components/workflows/Flowchart";
+import { StrategyCard, VERDICT_TONE } from "@/components/workflows/StrategyCard";
+import { StrategyTab } from "@/components/workflows/StrategyTab";
+import { insightFor, VERDICT_LABEL } from "@/lib/workflows/insights";
 import { getWorkflowDetail, type WorkflowDetail, type WorkflowLink } from "@/lib/queries/workflowDetail";
 import { cn, num, relTime } from "@/lib/utils";
 
@@ -26,6 +29,7 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 // reading a step list. Triggers moved into the "in and out" header.
 const TABS = [
   { key: "flow", label: "Flowchart" },
+  { key: "strategy", label: "Strategy" },
   { key: "schedule", label: "Every message" },
   { key: "logic", label: "Step list" },
   { key: "leads", label: "Leads in it now" },
@@ -62,6 +66,7 @@ export default async function WorkflowDetailPage({
     );
   }
   if (!detail) notFound();
+  const insight = insightFor(id);
 
   const reg = detail.registry;
   const title = reg?.canonical_name ?? detail.name;
@@ -157,6 +162,8 @@ export default async function WorkflowDetailPage({
         )}
         {detail.sendActivityError && <p className="text-xs text-slate-400">Send counts unavailable: {detail.sendActivityError}</p>}
 
+        {insight && <StrategyCard insight={insight} currentVersion={detail.version} ghlWorkflowId={id} />}
+
         <InOut detail={detail} />
 
         <nav className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800">
@@ -180,10 +187,18 @@ export default async function WorkflowDetailPage({
           <CardHeader>
             <CardTitle>{TABS.find((t) => t.key === tab)?.label}</CardTitle>
             <InfoPopover
-              helpKey={tab === "flow" ? "workflows.flowchart" : tab === "leads" ? "workflows.activeTab" : tab === "schedule" ? "workflows.schedule" : "workflows.total"}
+              helpKey={
+                tab === "flow" ? "workflows.flowchart" : tab === "strategy" ? "workflows.strategy" : tab === "leads" ? "workflows.activeTab" : tab === "schedule" ? "workflows.schedule" : "workflows.total"
+              }
             />
           </CardHeader>
           <CardContent>
+            {tab === "strategy" &&
+              (insight ? (
+                <StrategyTab insight={insight} schedule={detail.schedule} sends={detail.stepSends} />
+              ) : (
+                <p className="py-6 text-center text-sm text-slate-500">This workflow has not been reviewed yet{detail.schedule.length === 0 ? " — it sends no messages" : ""}.</p>
+              ))}
             {tab === "schedule" && <ScheduleList rows={detail.schedule} sends={detail.stepSends} />}
             {tab === "logic" && <LogicTree lines={detail.logic} />}
             {tab === "leads" && <ActiveLeadsTable ghlWorkflowId={id} />}
@@ -191,7 +206,12 @@ export default async function WorkflowDetailPage({
               <Flowchart
                 flow={detail.flow}
                 draft={detail.status !== "published"}
-                annotations={Object.fromEntries(Object.entries(detail.stepSends).map(([id, s]) => [id, { sends: s }]))}
+                annotations={Object.fromEntries(
+                  Object.entries(detail.stepSends).map(([stepId, s]) => {
+                    const m = insight?.messages.find((x) => x.stepId === stepId);
+                    return [stepId, { sends: s, badge: m && m.verdict !== "ok" ? { label: VERDICT_LABEL[m.verdict], tone: VERDICT_TONE[m.verdict] } : undefined }];
+                  }),
+                )}
               />
             )}
           </CardContent>

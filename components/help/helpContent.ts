@@ -409,6 +409,18 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "lib/workflows/chain.ts (topological order per route from `workflow_registry.routes_to` / `receives_from`).",
     fix: "A workflow in the wrong place has a missing or wrong `routes_to` in the registry.",
   },
+  "workflows.strategy": {
+    title: "Strategy",
+    what: "What this workflow is trying to do to a lead, in plain words: the buyer stage it is written for, the marketing angle, and — message by message — the job each message should do, what it actually does, and a verdict (doing its job / pitching too early / teaching someone who is ready / positioning before they compare / no reason to act now / off voice). Each row quotes the line that earned the verdict and says what to test.",
+    where: "lib/workflows/insights/data.json — a hand-reviewed reading of every message against the Antifragile Sales System stages (antifragile-copywriter framework), taken at the workflow version shown. 'Analysed at v12 — now v14' means the workflow changed after the review.",
+    fix: "Re-run the review after editing copy: re-dump the messages and update the workflow's entry in data.json (the test suite validates it).",
+  },
+  "workflows.review": {
+    title: "Funnel review",
+    what: "The whole funnel read as one story, stage by stage: what each stage should do to a prospect, what we send there today, where the messages and the prospect's state of mind are out of sync (with the copy quoted), and the specific change to test. Problems are sorted into messaging (the copy does the wrong job), offer (the ask is weak), traffic (the wrong people arrive) and structure (the messages aren't going out).",
+    where: "Same data as each workflow's Strategy tab (lib/workflows/insights), plus the 30-day send counts from the Workflows page.",
+    fix: "This page is a snapshot of the review date. Workflows edited since show a 'changed since' mark; re-run the review for those.",
+  },
   "workflows.healthFlags": {
     title: "Health Flags",
     what: "Diagnostic badges flagging workflows with known structural issues: dead (triggers reference missing resources), duplicate trigger, wait bottleneck, or message overlap with another workflow.",

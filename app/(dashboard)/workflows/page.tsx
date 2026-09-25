@@ -1,3 +1,5 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { requireRole } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatTile } from "@/components/tiles/StatTile";
@@ -42,6 +44,9 @@ export default async function WorkflowsPage() {
           <CardHeader>
             <CardTitle>Workflows by funnel route</CardTitle>
             <InfoPopover helpKey="workflows.routeMap" />
+            <Link href={"/workflows/review" as Route} className="ml-auto text-sm text-sky-700 hover:underline dark:text-sky-400">
+              Funnel review →
+            </Link>
           </CardHeader>
           <CardContent>
             {summary.rows.length === 0 ? (
