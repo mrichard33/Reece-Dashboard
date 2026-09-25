@@ -4,13 +4,15 @@ import { StatTile } from "@/components/tiles/StatTile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { getWorkflowSummary } from "@/lib/queries/workflows";
+import { loadWorkflowPrefs } from "@/lib/queries/workflowPrefs";
 import { WorkflowsIndex } from "@/components/workflows/WorkflowsIndex";
 
 export const dynamic = "force-dynamic";
 
 export default async function WorkflowsPage() {
   const user = await requireRole("operator");
-  const summary = await getWorkflowSummary();
+  const [summary, prefs] = await Promise.all([getWorkflowSummary(), loadWorkflowPrefs()]);
+  const silent = summary.rows.filter((r) => r.status === "published" && r.sending?.silent === true).length;
 
   return (
     <>
@@ -31,12 +33,7 @@ export default async function WorkflowsPage() {
           />
           <StatTile label="Published" value={summary.published} helpKey="workflows.total" />
           <StatTile label="Draft" value={summary.draft} helpKey="workflows.total" />
-          <StatTile
-            label="Registered"
-            value={summary.withCanonicalCode}
-            suffix={`/${summary.total}`}
-            helpKey="workflows.total"
-          />
+          <StatTile label="Published but silent" value={"error" in summary.sendActivity ? "—" : silent} helpKey="workflows.silent" />
         </section>
 
         <Card>
@@ -48,7 +45,7 @@ export default async function WorkflowsPage() {
             {summary.rows.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-500">No workflows in the HL cache. Trigger a sync from the topbar.</p>
             ) : (
-              <WorkflowsIndex rows={summary.rows} />
+              <WorkflowsIndex rows={summary.rows} favorites={prefs.favorites} presets={prefs.presets} sendActivity={summary.sendActivity} />
             )}
           </CardContent>
         </Card>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { Maximize2, Minus, Plus, X } from "lucide-react";
 import type { Flow, FlowKind, FlowNode } from "@/lib/journey/flowLayout";
+import type { StepSends } from "@/lib/workflows/sendActivity";
 import { cn } from "@/lib/utils";
 
 const KIND_STYLE: Record<FlowKind, string> = {
@@ -33,7 +34,24 @@ const LEGEND: [FlowKind, string][] = [
  * The whole workflow as a tree: every branch side by side, labelled in plain
  * words. Zoom to fit or read at 100%; click any box for its details.
  */
-export function Flowchart({ flow, draft }: { flow: Flow; draft: boolean }) {
+export type FlowAnnotation = { sends?: StepSends; badge?: { label: string; tone: "rose" | "emerald" | "amber" | "slate" } };
+
+/** "12 sent · 30 d" / "no sends · 30 d" / "sends unknown" for a message box. */
+export function sendsLine(s: StepSends | undefined): { text: string; tone: "ok" | "none" | "unknown" } | null {
+  if (!s) return null;
+  if (s.sends === null) return { text: "sends unknown", tone: "unknown" };
+  if (s.sends === 0) return { text: "no sends · 30 d", tone: "none" };
+  return { text: `${s.sends.toLocaleString()} sent · 30 d${s.basis === "stamp" ? "" : " ≈"}`, tone: "ok" };
+}
+
+const BADGE_TONE: Record<"rose" | "emerald" | "amber" | "slate", string> = {
+  rose: "bg-rose-100 text-rose-700",
+  emerald: "bg-emerald-100 text-emerald-700",
+  amber: "bg-amber-100 text-amber-800",
+  slate: "bg-slate-200 text-slate-700",
+};
+
+export function Flowchart({ flow, draft, annotations = {} }: { flow: Flow; draft: boolean; annotations?: Record<string, FlowAnnotation> }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState(0.5);
   const [scale, setScale] = useState<number | null>(null);
@@ -158,13 +176,26 @@ export function Flowchart({ flow, draft }: { flow: Flow; draft: boolean }) {
                 >
                   <div className="flex items-center gap-1 truncate text-[11px] font-semibold">
                     {n.title}
-                    {n.skipped && <span className="rounded bg-rose-100 px-1 text-[9px] font-medium text-rose-700">not running</span>}
+                    {n.skipped && <span className="rounded bg-rose-100 px-1 text-[9px] font-medium text-rose-700">turned off in GHL</span>}
+                    {n.stepId && annotations[n.stepId]?.badge && (
+                      <span className={cn("rounded px-1 text-[9px] font-medium", BADGE_TONE[annotations[n.stepId]!.badge!.tone])}>{annotations[n.stepId]!.badge!.label}</span>
+                    )}
                   </div>
-                  {n.lines.slice(0, 2).map((l, i) => (
+                  {n.lines.slice(0, n.kind === "message" && n.stepId && annotations[n.stepId]?.sends ? 1 : 2).map((l, i) => (
                     <div key={i} className="truncate text-[10px] opacity-80">
                       {l}
                     </div>
                   ))}
+                  {n.kind === "message" && n.stepId && sendsLine(annotations[n.stepId]?.sends) && (
+                    <div
+                      className={cn(
+                        "truncate text-[10px] font-medium",
+                        sendsLine(annotations[n.stepId]?.sends)!.tone === "none" ? "text-rose-600" : sendsLine(annotations[n.stepId]?.sends)!.tone === "unknown" ? "text-slate-400" : "text-emerald-700",
+                      )}
+                    >
+                      {sendsLine(annotations[n.stepId]?.sends)!.text}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
@@ -187,6 +218,12 @@ export function Flowchart({ flow, draft }: { flow: Flow; draft: boolean }) {
                 {l}
               </p>
             ))}
+            {selected.stepId && annotations[selected.stepId]?.sends && (
+              <p className="mt-1 text-slate-500">
+                {sendsLine(annotations[selected.stepId]?.sends)?.text}
+                {annotations[selected.stepId]?.sends?.note ? ` — ${annotations[selected.stepId]!.sends!.note}` : ""}
+              </p>
+            )}
             {selected.detail?.subject && <p className="mt-2 font-medium">Subject: {selected.detail.subject}</p>}
             {selected.detail?.from && <p className="text-slate-500">From: {selected.detail.from}</p>}
             {selected.detail?.text && (

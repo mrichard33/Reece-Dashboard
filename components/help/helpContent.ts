@@ -367,6 +367,36 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "HL `contacts.tags`; entry time from `lead_events` tag snapshots.",
     fix: "'Entered' blank means the tag history does not reach back to the entry — the contact has been in a long time. Click a row for the full journey.",
   },
+  "workflows.sending": {
+    title: "Sending (last 30 days)",
+    what: "Whether this workflow really sent anything: how many messages went out and how many leads entered in the last 30 days. Exact where the workflow stamps a `sent:` tag after each message; elsewhere counted by matching the text of sent messages to each step (shown with ≈). 'Sends unknown' means the message is written by AI at send time, so there is no fixed text to count.",
+    where: "HL `dash_workflow_send_activity` (hourly snapshot of `lead_events` tag additions and outbound `messages`, db/migrations/0023) joined to `workflow_steps` in lib/workflows/sendActivity.ts.",
+    fix: "If every row says 'not computed', the hourly job has not run — call `select dash_refresh_send_activity(30)` on HL. Counts refresh hourly; the page caches for 10 minutes.",
+  },
+  "workflows.silent": {
+    title: "Published but silent",
+    what: "A workflow that is published, has SMS or email steps, took in leads in the last 30 days, and sent nothing we could find. It is the 'accepting leads but not sending' case. A workflow we could not measure (AI-written text, no snapshot) is never called silent.",
+    where: "lib/workflows/sendActivity.ts `summarizeWorkflow`: silent only when the measurement ran and every message step counted zero.",
+    fix: "Open the workflow: its flowchart shows per-message counts and any step GHL has set to skip. Usual causes: a check right after entry that exits everyone, a wait-until that never fires, or triggers switched off.",
+  },
+  "workflows.favorites": {
+    title: "Favorites",
+    what: "Star the workflows you look at most. Stars are saved to your login, so they follow you to any device, and 'Favorites only' / 'Favorites first' use them.",
+    where: "LP `dashboard_workflow_favorites` (db/migrations/0022), written by lib/actions/workflowPrefs.ts.",
+    fix: "A star that will not stick means the save failed — the error shows next to the saved-filters bar.",
+  },
+  "workflows.presets": {
+    title: "Saved filters",
+    what: "Save the current search, route, status, message and order settings under a name, and get them back with one click next time. Saved to your login, not the browser.",
+    where: "LP `dashboard_workflow_presets` (db/migrations/0022), validated by lib/workflows/filters.ts on save and load.",
+    fix: "Saving under an existing name replaces it. A preset from an older version of the page that no longer reads is skipped with a console warning — save it again.",
+  },
+  "workflows.chainOrder": {
+    title: "Funnel order (chain)",
+    what: "Within each route, workflows are listed in the order a lead moves through them (E.2 → S2.1 → S3.1 → S4.1), using the registry's routes_to / receives_from links. Dots before a code show depth in the chain. Workflows with no links come after, by code.",
+    where: "lib/workflows/chain.ts (topological order per route from `workflow_registry.routes_to` / `receives_from`).",
+    fix: "A workflow in the wrong place has a missing or wrong `routes_to` in the registry.",
+  },
   "workflows.healthFlags": {
     title: "Health Flags",
     what: "Diagnostic badges flagging workflows with known structural issues: dead (triggers reference missing resources), duplicate trigger, wait bottleneck, or message overlap with another workflow.",

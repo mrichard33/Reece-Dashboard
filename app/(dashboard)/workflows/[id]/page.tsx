@@ -111,10 +111,23 @@ export default async function WorkflowDetailPage({
 
         <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <StatTile label="Active leads" value={detail.activeCount === null ? "—" : num(detail.activeCount)} helpKey="workflows.activeLeads" />
-          <StatTile label="Sends" value={num(detail.schedule.length)} helpKey="workflows.schedule" />
+          <StatTile
+            label="Sent (30 d)"
+            value={detail.sending?.sends30d === null || detail.sending?.sends30d === undefined ? "—" : num(detail.sending.sends30d)}
+            suffix={detail.sending ? ` · ${num(detail.sending.entries30d)} in` : undefined}
+            helpKey="workflows.sending"
+          />
           <StatTile label="Steps" value={num(detail.stepCount)} helpKey="workflows.total" />
           <StatTile label="Last changed" value={relTime(detail.updatedAt)} helpKey="workflows.total" />
         </section>
+
+        {detail.sending?.silent === true && (
+          <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-inset ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-900">
+            <strong>Published but silent:</strong> {num(detail.sending.entries30d)} leads entered in the last 30 days and none of this workflow&apos;s messages went out.
+            Check the flowchart for an early exit, a wait that never fires, or a step turned off in GHL.
+          </p>
+        )}
+        {detail.sendActivityError && <p className="text-xs text-slate-400">Send counts unavailable: {detail.sendActivityError}</p>}
 
         <InOut detail={detail} />
 
@@ -143,10 +156,16 @@ export default async function WorkflowDetailPage({
             />
           </CardHeader>
           <CardContent>
-            {tab === "schedule" && <ScheduleList rows={detail.schedule} />}
+            {tab === "schedule" && <ScheduleList rows={detail.schedule} sends={detail.stepSends} />}
             {tab === "logic" && <LogicTree lines={detail.logic} />}
             {tab === "leads" && <ActiveLeadsTable ghlWorkflowId={id} />}
-            {tab === "flow" && <Flowchart flow={detail.flow} draft={detail.status !== "published"} />}
+            {tab === "flow" && (
+              <Flowchart
+                flow={detail.flow}
+                draft={detail.status !== "published"}
+                annotations={Object.fromEntries(Object.entries(detail.stepSends).map(([id, s]) => [id, { sends: s }]))}
+              />
+            )}
           </CardContent>
         </Card>
       </div>
