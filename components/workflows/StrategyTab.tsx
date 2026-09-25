@@ -1,6 +1,7 @@
 import type { ScheduleRow } from "@/lib/journey/workflowGraph";
 import { formatMinutes } from "@/lib/journey/workflowGraph";
 import type { StepSends } from "@/lib/workflows/sendActivity";
+import { COMPLIANCE_LABEL, complianceFails } from "@/lib/workflows/insights/schema";
 import { BUYER_STAGE_LABEL, VERDICT_LABEL, type MessageInsight, type WorkflowInsight } from "@/lib/workflows/insights";
 import { Badge } from "@/components/ui/Badge";
 import { Mail, MessageSquare } from "lucide-react";
@@ -87,6 +88,12 @@ export function StrategyTab({ insight, schedule, sends }: { insight: WorkflowIns
                   <>
                     <span className="text-slate-500">Test this</span>
                     <span className="font-medium text-navy-900 dark:text-slate-100">{m.recommendation}</span>
+                  </>
+                )}
+                {complianceFails(m.compliance).length > 0 && (
+                  <>
+                    <span className="text-slate-500">Brand rules</span>
+                    <span className="text-rose-700 dark:text-rose-300">{complianceFails(m.compliance).map((k) => COMPLIANCE_LABEL[k]).join(" · ")}</span>
                   </>
                 )}
                 {(m.checks.banned_phrases.length > 0 || !m.checks.booking_path || m.checks.sms_standalone === false) && (

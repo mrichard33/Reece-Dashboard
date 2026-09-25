@@ -153,7 +153,7 @@ export default async function FunnelReviewPage() {
                               </Link>
                               <span className="text-xs text-slate-500">
                                 {w.messages.length} messages · {bad === 0 ? "all doing their job" : `${bad} off`}
-                                {row?.sending?.silent ? " · silent" : row?.sending?.sends30d != null ? ` · ${num(row.sending.sends30d)} sent / 30 d` : ""}
+                                {row?.sending?.verdict === "no_sends_seen" ? " · no sends seen" : row?.sending?.sends30d != null ? ` · ${num(row.sending.sends30d)} sent / 30 d` : ""}
                                 {row && isStale(w, row.version) ? " · changed since" : ""}
                               </span>
                               <span className="text-xs text-slate-500">— {w.summary.strategy}</span>
@@ -238,7 +238,7 @@ export default async function FunnelReviewPage() {
                             <td className="px-3 py-1.5 text-xs tabular-nums">{w.messages.length}</td>
                             <td className="px-3 py-1.5 text-xs tabular-nums">{w.messages.length - c.ok}</td>
                             <td className="px-3 py-1.5 text-xs">{CLASSIFICATION_LABEL[w.summary.classification].split(" — ")[0]}</td>
-                            <td className="px-3 py-1.5 text-xs tabular-nums">{row?.sending?.silent ? "silent" : row?.sending?.sends30d != null ? num(row.sending.sends30d) : "—"}</td>
+                            <td className="px-3 py-1.5 text-xs tabular-nums">{row?.sending?.verdict === "no_sends_seen" ? "no sends seen" : row?.sending?.sends30d != null ? num(row.sending.sends30d) : "—"}</td>
                           </tr>
                         );
                       })}

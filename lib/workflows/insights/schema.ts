@@ -42,6 +42,57 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
   other: "Other issue",
 };
 
+/**
+ * Brand and compliance checks, each its own pass/fail (Mark, 2026-09-25):
+ * a message can do the right psychological job and still break a hard
+ * line. true = passes, false = fails, null = not applicable.
+ */
+export const complianceSchema = z.object({
+  /** Randy speaks only in email and video; an SMS in his first person fails. */
+  voice_channel: z.boolean().nullable(),
+  no_carrier_named: z.boolean().nullable(),
+  /** Never predicts a claim, payout, premium change, or how an insurer judges the home. */
+  no_outcome_prediction: z.boolean().nullable(),
+  no_fake_scarcity: z.boolean().nullable(),
+  /** No "save you money", "pays for itself", premium-drop or price-reduction promise. */
+  no_savings_promise: z.boolean().nullable(),
+  /** "Protection Profile Review", "Documented Defense System", the three in-home visit names. */
+  locked_terms: z.boolean().nullable(),
+  /** 1972 Winston-Salem NC and 2005 Florida kept apart; 54 years; over two decades. */
+  history_facts: z.boolean().nullable(),
+  /** Every statistic is one of the five public references. */
+  stats_allowed: z.boolean().nullable(),
+  /** The CTA goes to the Protection Profile Review, not straight to the in-home visit. */
+  cta_review_first: z.boolean().nullable(),
+  /** No exclamation marks, ALL CAPS, emoji in email, "Dear valued customer", "We at Reece", "free estimate". */
+  voice_guardrails: z.boolean().nullable(),
+  crew_wording: z.boolean().nullable(),
+  /** A family story is one of P1–P8. */
+  parable_in_bank: z.boolean().nullable(),
+});
+export type Compliance = z.infer<typeof complianceSchema>;
+
+export const COMPLIANCE_LABEL: Record<keyof Compliance, string> = {
+  voice_channel: "Randy's voice in a text (he is email and video only)",
+  no_carrier_named: "Names an insurance carrier or competitor",
+  no_outcome_prediction: "Predicts a claim, payout or premium outcome",
+  no_fake_scarcity: "Fake scarcity or countdown",
+  no_savings_promise: "Promises savings or a price drop",
+  locked_terms: "Wrong name for the Review, the system or the visit",
+  history_facts: "Company history stated wrong (1972 NC / 2005 FL / 54 years)",
+  stats_allowed: "A statistic outside the five allowed references",
+  cta_review_first: "Sends the lead past the Protection Profile Review",
+  voice_guardrails: "Voice rule broken (exclamation, caps, emoji in email, banned phrase)",
+  crew_wording: "Crew wording off canon",
+  parable_in_bank: "Story is not one of the eight parables",
+};
+
+/** The compliance keys a message fails, in a fixed order. */
+export function complianceFails(c: Compliance | undefined | null): (keyof Compliance)[] {
+  if (!c) return [];
+  return (Object.keys(COMPLIANCE_LABEL) as (keyof Compliance)[]).filter((k) => c[k] === false);
+}
+
 export const messageInsightSchema = z.object({
   stepId: z.string().min(1),
   channel: z.enum(["sms", "email"]),
@@ -66,6 +117,8 @@ export const messageInsightSchema = z.object({
     local_market: z.boolean(),
     banned_phrases: z.array(z.string()).max(10),
   }),
+  /** Optional so older entries still parse; the audit fills it for every message. */
+  compliance: complianceSchema.optional(),
 });
 export type MessageInsight = z.infer<typeof messageInsightSchema>;
 
@@ -100,8 +153,20 @@ export const workflowInsightSchema = z.object({
     why: z.string().min(1).max(500),
   }),
   messages: z.array(messageInsightSchema),
-});
+})
+  // Without reply / booking / opt-out data per workflow (migration 0024), an
+  // offer or traffic call cannot be more than a suspicion, and the record
+  // must say so (Mark, 2026-09-25).
+  .refine((w) => !["offer", "traffic"].includes(w.summary.classification) || /^suspected\b/i.test(w.summary.why), {
+    message: "an offer or traffic classification must open its `why` with \"Suspected\"",
+    path: ["summary", "why"],
+  });
 export type WorkflowInsight = z.infer<typeof workflowInsightSchema>;
+
+/** True when the classification is a suspicion awaiting outcome data. */
+export function isSuspected(w: Pick<WorkflowInsight, "summary">): boolean {
+  return w.summary.classification === "offer" || w.summary.classification === "traffic";
+}
 
 export const insightsMetaSchema = z.object({
   schema: z.literal(1),
