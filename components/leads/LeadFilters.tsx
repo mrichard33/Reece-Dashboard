@@ -40,12 +40,12 @@ export function LeadSearch({ initial }: { initial: string | null }) {
       className="flex w-full max-w-xl items-center gap-2"
     >
       <div className="relative flex-1">
-        <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Name, phone, email, GHL id, Prospect # or LP lead #"
-          className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-8 text-sm text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-8 text-base text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 sm:text-sm"
         />
         {q && (
           <button
@@ -55,7 +55,7 @@ export function LeadSearch({ initial }: { initial: string | null }) {
               setQ("");
               nav((sp) => sp.delete("q"));
             }}
-            className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
           >
             <X className="h-4 w-4" />
           </button>
@@ -63,7 +63,7 @@ export function LeadSearch({ initial }: { initial: string | null }) {
       </div>
       <button
         type="submit"
-        className="rounded-md bg-navy-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-700 dark:bg-navy-700"
+        className="rounded-md bg-navy-800 px-3 py-2 text-sm font-medium text-white hover:bg-navy-700 dark:bg-navy-700 sm:py-1.5"
       >
         Search
       </button>
@@ -77,7 +77,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset transition",
+        "rounded-full px-2.5 py-2 text-xs font-medium ring-1 ring-inset transition sm:py-0.5",
         active
           ? "bg-navy-800 text-white ring-navy-800 dark:bg-navy-600 dark:ring-navy-600"
           : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700",
@@ -98,7 +98,7 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const selectCls =
-  "max-w-[14rem] rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200";
+  "max-w-[14rem] rounded-md border border-slate-300 bg-white px-2 py-2 text-xs text-slate-700 sm:py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200";
 
 export function LeadFilters({
   options,
@@ -273,7 +273,7 @@ export function LeadFilters({
           <button
             type="button"
             onClick={() => nav((sp) => [...sp.keys()].filter((k) => k !== "q").forEach((k) => sp.delete(k)))}
-            className="text-xs text-sky-700 hover:underline dark:text-sky-400"
+            className="py-2 text-xs text-sky-700 hover:underline dark:text-sky-400 sm:py-0"
           >
             Clear all
           </button>
@@ -288,7 +288,7 @@ export function LeadFilters({
                 key={`${m.key}:${v}`}
                 type="button"
                 onClick={() => removeFromList(m.key, v)}
-                className="inline-flex items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 text-xs text-navy-800 ring-1 ring-inset ring-navy-200 dark:bg-navy-900 dark:text-navy-100 dark:ring-navy-700"
+                className="inline-flex items-center gap-1 rounded-full bg-navy-50 px-2 py-1.5 text-xs sm:py-0.5 text-navy-800 ring-1 ring-inset ring-navy-200 dark:bg-navy-900 dark:text-navy-100 dark:ring-navy-700"
               >
                 {m.label}: {m.render ? m.render(v) : v} <X className="h-3 w-3" />
               </button>

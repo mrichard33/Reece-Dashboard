@@ -25,7 +25,7 @@ export function StatTile({
   }[deltaTone];
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           {label}
@@ -34,7 +34,9 @@ export function StatTile({
       </CardHeader>
       <CardContent>
         <div className="flex items-baseline gap-2">
-          <p className="tabular font-display text-3xl font-semibold text-navy-900 dark:text-white">
+          {/* text-2xl + break-words below sm (2026-09-26): "$1,234,567" in a
+              two-column phone grid ran out of the tile at text-3xl. */}
+          <p className="tabular min-w-0 break-words font-display text-2xl font-semibold text-navy-900 sm:text-3xl dark:text-white">
             {value}
             {suffix && (
               <span className="text-base font-normal text-slate-500 dark:text-slate-400">

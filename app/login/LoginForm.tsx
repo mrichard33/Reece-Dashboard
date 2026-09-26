@@ -64,7 +64,7 @@ export function LoginForm() {
             required
             autoComplete="email"
             placeholder="you@reecewindows.com"
-            className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           />
         </div>
 
@@ -93,6 +93,8 @@ export function LoginForm() {
     );
   }
 
+  // Inputs are text-base below sm (2026-09-26): iOS Safari zooms the page on
+  // focus for any field under 16px, and the zoom does not undo itself.
   return (
     <form action={signInAction} className="space-y-4">
       <div>
@@ -109,7 +111,7 @@ export function LoginForm() {
           required
           autoComplete="email"
           placeholder="you@reecewindows.com"
-          className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
         />
       </div>
 
@@ -127,7 +129,7 @@ export function LoginForm() {
             type={showPassword ? "text" : "password"}
             required
             autoComplete="current-password"
-            className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 pr-10 text-sm shadow-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 pr-10 text-base shadow-sm sm:text-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           />
           <button
             type="button"
@@ -162,7 +164,7 @@ export function LoginForm() {
         {signInPending ? "Signing in…" : "Sign in"}
       </button>
 
-      <div className="flex items-center justify-between text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <button
           type="button"
           onClick={() => setMode("reset")}

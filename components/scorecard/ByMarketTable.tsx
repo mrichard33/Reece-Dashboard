@@ -195,6 +195,7 @@ export function ByMarketTable({ data, abbr }: { data: ByMarketView; abbr: string
             )}
           </div>
         )}
+        {/* mobile-ok: the phone card view — three short figures per row fit at 375px */}
         <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
           {metrics.map(([label, value]) => (
             <div key={label}>

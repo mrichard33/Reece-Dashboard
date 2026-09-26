@@ -52,23 +52,26 @@ export function LeadsTable({ initial, query }: { initial: LeadsPage; query: stri
 
   return (
     <>
+      {/* Phones (2026-09-26): the 64rem floor made every row — and the Journey
+          Card opened under it — a sideways scroll. Below md the low-value
+          columns hide (same data is in the expanded card) and the floor lifts. */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[64rem] text-sm">
+        <table className="w-full text-sm md:min-w-[64rem]">
           <thead className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             <tr className="border-b border-slate-200 dark:border-slate-800">
               <th className="w-6 py-2" />
               <th className="py-2 pr-3">Lead</th>
               <th className="py-2 pr-3">Entered</th>
-              <th className="py-2 pr-3">Source / Lane</th>
-              <th className="py-2 pr-3">Pipeline · Stage</th>
+              <th className="hidden py-2 pr-3 md:table-cell">Source / Lane</th>
+              <th className="hidden py-2 pr-3 md:table-cell">Pipeline · Stage</th>
               <th className="py-2 pr-3">
                 <span className="inline-flex items-center gap-1">
                   Now <InfoPopover helpKey="leads.now" align="left" />
                 </span>
               </th>
-              <th className="py-2 pr-3">LP</th>
-              <th className="py-2 pr-3">Last activity</th>
-              <th className="py-2 pr-3">
+              <th className="hidden py-2 pr-3 md:table-cell">LP</th>
+              <th className="hidden py-2 pr-3 md:table-cell">Last activity</th>
+              <th className="hidden py-2 pr-3 md:table-cell">
                 <span className="inline-flex items-center gap-1">
                   Next <InfoPopover helpKey="leads.next" align="left" />
                 </span>
@@ -100,16 +103,22 @@ export function LeadsTable({ initial, query }: { initial: LeadsPage; query: stri
                       <div className="text-xs text-slate-500">
                         {[formatPhone(r.phone), r.city].filter(Boolean).join(" · ") || "—"}
                       </div>
+                      {r.pipeline && (
+                        <div className="text-xs text-slate-500 md:hidden">
+                          {r.pipeline}
+                          {r.stage ? ` · ${r.stage}` : ""}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2 pr-3 text-xs">
                       <div className="tabular-nums">{etShort(r.enteredAt)}</div>
                       <div className="text-slate-400">{relTime(r.enteredAt)}</div>
                     </td>
-                    <td className="py-2 pr-3 text-xs">
+                    <td className="hidden py-2 pr-3 text-xs md:table-cell">
                       <div>{r.source ?? "—"}</div>
                       {r.entryLane && <div className="text-slate-400">{humanizeTagValue(r.entryLane)}</div>}
                     </td>
-                    <td className="py-2 pr-3 text-xs">
+                    <td className="hidden py-2 pr-3 text-xs md:table-cell">
                       {r.pipeline ? (
                         <>
                           <span className="font-medium">{r.pipeline}</span>
@@ -130,14 +139,14 @@ export function LeadsTable({ initial, query }: { initial: LeadsPage; query: stri
                         {r.workflows.length === 0 && !r.stageTag && <span className="text-xs text-slate-400">—</span>}
                       </div>
                     </td>
-                    <td className="py-2 pr-3 text-xs">
+                    <td className="hidden py-2 pr-3 text-xs md:table-cell">
                       {r.lpStatus && <div>{humanizeTagValue(r.lpStatus)}</div>}
                       {r.lpRoute && <div className="text-slate-500">{humanizeTagValue(r.lpRoute)}</div>}
                       {r.prospectId && <div className="text-slate-400">#{r.prospectId}</div>}
                       {!r.lpStatus && !r.lpRoute && !r.prospectId && <span className="text-slate-400">—</span>}
                     </td>
-                    <td className="py-2 pr-3 text-xs text-slate-500">{relTime(r.lastActivity)}</td>
-                    <td className="py-2 pr-3 text-xs">
+                    <td className="hidden py-2 pr-3 text-xs text-slate-500 md:table-cell">{relTime(r.lastActivity)}</td>
+                    <td className="hidden py-2 pr-3 text-xs md:table-cell">
                       {r.nextAppointment ? (
                         <>
                           <div className="tabular-nums">{etShort(r.nextAppointment.start)}</div>
@@ -162,7 +171,7 @@ export function LeadsTable({ initial, query }: { initial: LeadsPage; query: stri
                   </tr>
                   {isOpen && (
                     <tr>
-                      <td colSpan={10} className="bg-white px-3 pb-4 pt-2 dark:bg-slate-900">
+                      <td colSpan={10} className="bg-white px-1 pb-4 pt-2 dark:bg-slate-900 sm:px-3">
                         <JourneyLoader ghlContactId={r.ghlContactId} />
                       </td>
                     </tr>

@@ -9,7 +9,10 @@ export function LogicTree({ lines }: { lines: LogicLine[] }) {
       {lines.map((l) => (
         <li
           key={l.id}
-          style={{ paddingLeft: `${Math.min(l.depth, 14) * 14}px` }}
+          // Capped at 40% of the list width (2026-09-26): 14 levels × 14px left
+          // a phone ~100px for the text. On desktop 40% is wider than the max
+          // indent, so nothing moves there.
+          style={{ paddingLeft: `min(${Math.min(l.depth, 14) * 14}px, 40%)` }}
           className={cn(
             "break-words py-0.5",
             l.branch ? "font-semibold text-navy-800 dark:text-sky-300" : "text-slate-700 dark:text-slate-300",

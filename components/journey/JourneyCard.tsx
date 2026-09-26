@@ -196,8 +196,8 @@ function nextThing(j: Journey): (JourneyEvent & { projected?: boolean }) | null 
 
 function Row({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3 px-3 py-2">
-      <span className="flex w-24 shrink-0 items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <div className="flex flex-col gap-0.5 px-3 py-2 sm:flex-row sm:items-start sm:gap-3">
+      <span className="flex shrink-0 items-center gap-1 sm:w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">
         {label}
         {help && <InfoPopover helpKey={help} align="left" />}
       </span>

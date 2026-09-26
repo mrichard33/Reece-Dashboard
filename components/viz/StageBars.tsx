@@ -69,7 +69,7 @@ export function StageBars({ stages }: { stages: StageDatum[] }) {
       </div>
 
       {/* Mobile: legend chips (proportional labels are unreadable when narrow). */}
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:hidden">
+      <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2 md:hidden">
         {visible.map((s) => {
           const tone = ageTone(s.avgAgeDays);
           return (

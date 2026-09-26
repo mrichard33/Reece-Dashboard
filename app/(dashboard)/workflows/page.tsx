@@ -27,8 +27,8 @@ export default async function WorkflowsPage() {
         syncNow
       />
 
-      <div className="space-y-6 p-6">
-        <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
+      <div className="space-y-6 p-4 sm:p-6">
+        <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-5">
           <StatTile
             label="Total"
             value={summary.total}
@@ -41,7 +41,7 @@ export default async function WorkflowsPage() {
         </section>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-wrap sm:flex-nowrap">
             <CardTitle>Workflows by funnel route</CardTitle>
             <InfoPopover helpKey="workflows.routeMap" />
             <Link href={"/workflows/review" as Route} className="ml-auto text-sm text-sky-700 hover:underline dark:text-sky-400">

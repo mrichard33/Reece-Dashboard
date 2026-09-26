@@ -61,7 +61,7 @@ export default async function WorkflowDetailPage({
     return (
       <>
         <TopBar email={user.email} role={user.role} title="Workflow" />
-        <p className="p-6 text-sm text-rose-600 dark:text-rose-400">Could not read this workflow from the GHL cache. Try again in a minute.</p>
+        <p className="p-4 text-sm text-rose-600 dark:text-rose-400 sm:p-6">Could not read this workflow from the GHL cache. Try again in a minute.</p>
       </>
     );
   }
@@ -89,7 +89,7 @@ export default async function WorkflowDetailPage({
 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-xl font-semibold text-navy-900 dark:text-white">{title}</h1>
+            <h1 className="break-words font-display text-xl font-semibold text-navy-900 dark:text-white">{title}</h1>
             {reg?.stage_family && <Badge tone="navy">{reg.stage_family}</Badge>}
             {detail.status === "published" ? (
               <Badge tone="emerald" dot>
@@ -116,7 +116,7 @@ export default async function WorkflowDetailPage({
           {reg?.notes && <p className="text-xs italic text-slate-500">{reg.notes}</p>}
         </div>
 
-        <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
           <StatTile label="Active leads" value={detail.activeCount === null ? "—" : num(detail.activeCount)} helpKey="workflows.activeLeads" />
           <StatTile
             label="Sent (30 d)"
@@ -154,7 +154,7 @@ export default async function WorkflowDetailPage({
           <p className="text-xs text-slate-500">Sends could not be judged: {detail.sending.note}.</p>
         )}
         {detail.sending?.outcomes && (
-          <section className="grid grid-cols-3 gap-4">
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
             <StatTile label="Replied" value={pct(detail.sending.outcomes.replyRate)} suffix={` · ${num(detail.sending.outcomes.replied)} of ${num(detail.sending.outcomes.entries)}`} helpKey="workflows.outcomes" />
             <StatTile label="Booked" value={pct(detail.sending.outcomes.bookingRate)} suffix={` · ${num(detail.sending.outcomes.booked)}`} helpKey="workflows.outcomes" />
             <StatTile label="Opted out" value={pct(detail.sending.outcomes.optOutRate)} suffix={` · ${num(detail.sending.outcomes.optedOut)}`} helpKey="workflows.outcomes" />

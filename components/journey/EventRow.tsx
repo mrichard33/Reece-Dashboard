@@ -119,7 +119,7 @@ function EventDetail({ event }: { event: JourneyEvent }) {
   );
 
   return (
-    <div className="mb-2 ml-[5.25rem] mr-2 space-y-2 rounded-md bg-slate-50 p-3 text-xs text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+    <div className="mb-2 ml-2 mr-2 space-y-2 sm:ml-[5.25rem] rounded-md bg-slate-50 p-3 text-xs text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
       {longText && <p className="whitespace-pre-wrap leading-relaxed">{longText}</p>}
       {(added?.length || removed?.length) && (
         <div className="flex flex-wrap gap-1">

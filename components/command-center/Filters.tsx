@@ -9,8 +9,10 @@ const TYPES: CardType[] = [
   "decision_needed", "unconfirmed_decision", "open_question", "approval_needed", "conflict",
 ];
 
+// max-w on phones: an area or type name longer than the screen would otherwise
+// size the <select> past the viewport (2026-09-26).
 const selectClass =
-  "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-navy-900 shadow-sm focus:border-navy-500 focus:outline-none focus:ring-2 focus:ring-navy-600/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100";
+  "max-w-[14rem] sm:max-w-none rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-navy-900 shadow-sm focus:border-navy-500 focus:outline-none focus:ring-2 focus:ring-navy-600/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100";
 
 /**
  * Queue filters, held in the URL rather than in component state — so a filtered

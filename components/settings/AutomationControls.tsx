@@ -65,8 +65,8 @@ function WorkflowRow({ workflow }: { workflow: FbWorkflowRow }) {
   }
 
   return (
-    <li className="flex items-center justify-between gap-3 py-2.5">
-      <div className="min-w-0">
+    <li className="flex flex-wrap items-center justify-between gap-3 py-2.5 sm:flex-nowrap">
+      <div className="min-w-0 max-w-full">
         <p className="truncate text-sm font-medium text-navy-900 dark:text-slate-100">
           {workflow.name}
         </p>
@@ -106,7 +106,7 @@ function FailureNotice({ kind, message }: { kind: string; message: string }) {
   return (
     <div className="flex items-start gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
       <StatusDot status={dot} animate={false} />
-      <div>
+      <div className="min-w-0">
         <Badge tone={tone}>{heading}</Badge>
         <p className="mt-1 break-words text-[11px] text-slate-600 dark:text-slate-300">{message}</p>
       </div>

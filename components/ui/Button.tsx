@@ -15,7 +15,9 @@ const variantStyles: Record<Variant, string> = {
 };
 
 const sizeStyles: Record<Size, string> = {
-  sm: "px-2 py-1 text-xs",
+  // 2026-09-26: `sm` is ~24px tall — too small to hit with a thumb. Phones get
+  // a 32px floor; sm+ keeps the compact desktop size.
+  sm: "min-h-8 px-2 py-1 text-xs sm:min-h-0",
   md: "px-3 py-1.5 text-sm",
   lg: "px-4 py-2 text-sm",
 };

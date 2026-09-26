@@ -46,7 +46,7 @@ export default async function OverviewPage() {
         syncNow
       />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <SyncFreshnessBanner lpLastSync={lpSyncLast} hlLastSync={hlSyncLast} />
 
         {/* Row 1 — Service health */}

@@ -139,6 +139,7 @@ export function SourcePerformanceTable({
                       <Badge tone={q.tone}>{q.label}</Badge>
                     </div>
                   </div>
+                  {/* mobile-ok: the phone card view — three short figures per row fit at 375px */}
                   <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
                     {COLS.filter((c) => c.key !== "net_sales").map((c) => (
                       <div key={c.key}>

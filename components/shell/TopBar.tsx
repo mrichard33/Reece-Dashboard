@@ -27,13 +27,17 @@ export function TopBar({
   syncNow?: boolean;
 }) {
   return (
-    <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex min-w-0 items-center gap-2">
+    // 2026-09-26: below sm the header wraps — a page's `actions` plus Sync now
+    // plus the avatar did not fit beside the breadcrumb at 375px and pushed the
+    // page sideways. The right cluster drops under the breadcrumb and wraps
+    // itself; sm+ is the original single nowrap row.
+    <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-200 bg-white px-4 py-3 sm:flex-nowrap sm:px-6 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex min-w-0 max-w-full items-center gap-2">
         <MobileNavToggle />
         <Breadcrumb fallback={title} />
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:gap-3">
         {actions}
         <AttentionChips />
         <RoleToggle role={role} />

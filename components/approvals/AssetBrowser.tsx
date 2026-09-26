@@ -69,7 +69,7 @@ export function AssetBrowser({
               key={s}
               onClick={() => setStatus(s)}
               className={cn(
-                "rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset transition",
+                "rounded-full px-2.5 py-1.5 text-xs font-medium ring-1 ring-inset transition sm:py-0.5",
                 status === s
                   ? "bg-navy-800 text-white ring-navy-800 dark:bg-navy-600 dark:ring-navy-600"
                   : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700",

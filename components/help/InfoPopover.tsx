@@ -154,7 +154,10 @@ export function InfoPopover({
           if (!open) place();
           setOpen((o) => !o);
         }}
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+        // Below sm the button is 32px with a -6px margin, so it is tappable with
+        // a thumb yet still takes the 20px footprint it has on desktop
+        // (2026-09-26). No positioned pseudo-element: see the note above.
+        className="-m-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 sm:m-0 sm:h-5 sm:w-5 transition hover:bg-slate-100 hover:text-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
         aria-label={`Info: ${entry.title}`}
         aria-expanded={open}
       >
@@ -199,7 +202,7 @@ export function InfoPopover({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              className="-m-1.5 p-1.5 text-slate-400 hover:text-slate-700 sm:m-0 sm:p-0 dark:hover:text-slate-200"
               aria-label="Close"
             >
               <X className="h-4 w-4" />

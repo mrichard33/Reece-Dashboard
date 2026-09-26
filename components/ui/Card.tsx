@@ -26,7 +26,9 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        "flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800",
+        // flex-wrap below sm (2026-09-26): a title + badge + action row that
+        // fits on desktop pushed past a 375px phone. sm+ is the original row.
+        "flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:flex-nowrap dark:border-slate-800",
         className,
       )}
       {...props}

@@ -30,7 +30,7 @@ export function IntegrationsGrid({ rows }: { rows: ConnectorStatus[] }) {
           <CardTitle>Integrations</CardTitle>
           <InfoPopover helpKey="settings.integrations" />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <p className="text-[11px] text-slate-400">{summaryLine(summary)}</p>
           <RecheckButton />
         </div>

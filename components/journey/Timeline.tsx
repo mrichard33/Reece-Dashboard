@@ -56,7 +56,7 @@ export function Timeline({
               type="button"
               onClick={() => toggle(c.key)}
               className={cn(
-                "rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset transition",
+                "rounded-full px-2.5 py-1.5 text-xs font-medium ring-1 ring-inset transition sm:py-0.5",
                 active
                   ? "bg-navy-800 text-white ring-navy-800 dark:bg-navy-600 dark:ring-navy-600"
                   : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700",
@@ -66,7 +66,7 @@ export function Timeline({
             </button>
           );
         })}
-        <label className="ml-auto inline-flex cursor-pointer items-center gap-1 text-[11px] text-slate-500">
+        <label className="ml-auto inline-flex cursor-pointer items-center gap-1 py-1.5 text-[11px] text-slate-500 sm:py-0">
           <input type="checkbox" checked={showSystem} onChange={(e) => setShowSystem(e.target.checked)} className="h-3 w-3" />
           Show system detail
         </label>

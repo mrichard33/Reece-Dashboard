@@ -1,4 +1,5 @@
 import { requireExecAdmin } from "@/components/shell/RoleGate";
+import { TopBar } from "@/components/shell/TopBar";
 import { getHealthSnapshot } from "@/lib/queries/health";
 import { getConnections } from "@/lib/queries/connections";
 import { listFbWorkflows } from "@/lib/actions/settings";
@@ -78,28 +79,33 @@ export default async function SettingsPage() {
   ];
 
   return (
-    <div className="p-6">
-      <header className="mb-6">
-        <h1 className="font-display text-xl font-semibold text-slate-800 dark:text-slate-100">
-          General Settings
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Backend control surface — MCP connections, automation, and team roles. The
-          Facebook Page connection and content-engine tuning live in{" "}
-          <span className="font-medium">Content → Settings</span>.
-        </p>
-      </header>
+    <>
+      {/* 2026-09-26: this page rendered no TopBar, so on a phone (sidebar is a
+          drawer below md) there was no hamburger and no way back to the nav. */}
+      <TopBar email={ctx.email} role={ctx.role} title="Settings" />
+      <div className="p-4 sm:p-6">
+        <header className="mb-6">
+          <h1 className="font-display text-xl font-semibold text-slate-800 dark:text-slate-100">
+            General Settings
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Backend control surface — MCP connections, automation, and team roles. The
+            Facebook Page connection and content-engine tuning live in{" "}
+            <span className="font-medium">Content → Settings</span>.
+          </p>
+        </header>
 
-      <div className="space-y-6">
-        <ConnectionsPanel services={services} />
-        <IntegrationsGrid rows={connections} />
-        <UsersCard users={dashboardUsers} selfEmail={ctx.email} />
-        <AutomationControls initial={workflows} />
-        <TeamCard
-          executives={execs}
-          selfExecutiveId={ctx.executive?.id ?? null}
-        />
+        <div className="space-y-6">
+          <ConnectionsPanel services={services} />
+          <IntegrationsGrid rows={connections} />
+          <UsersCard users={dashboardUsers} selfEmail={ctx.email} />
+          <AutomationControls initial={workflows} />
+          <TeamCard
+            executives={execs}
+            selfExecutiveId={ctx.executive?.id ?? null}
+          />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

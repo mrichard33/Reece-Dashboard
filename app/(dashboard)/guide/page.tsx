@@ -18,7 +18,7 @@ function money(n: number | null): string {
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+    <div className="min-w-0 break-words rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
         {label}
       </p>
@@ -40,14 +40,14 @@ function BarRow({
   const width = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
   return (
     <div className="flex items-center gap-3">
-      <span className="w-24 shrink-0 text-xs text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="w-20 shrink-0 text-xs text-slate-500 dark:text-slate-400 sm:w-24">{label}</span>
       <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
         <div
           className="h-full rounded-full bg-sky-600 dark:bg-sky-500"
           style={{ width: `${width}%` }}
         />
       </div>
-      <span className="w-20 shrink-0 text-right text-xs font-medium text-slate-700 dark:text-slate-300">
+      <span className="w-14 shrink-0 text-right text-xs font-medium sm:w-20 text-slate-700 dark:text-slate-300">
         {num(value)}
       </span>
     </div>
@@ -123,7 +123,7 @@ export default async function PageMetricsPage() {
         subtitle="Estimate calculator, Guide & Weakest Point journey"
       />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         {m.error ? (
           <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
             HL Supabase query failed: {m.error}. Confirm HL_SUPABASE_URL and

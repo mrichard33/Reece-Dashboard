@@ -110,7 +110,7 @@ export function LaneCard({ card, canRule }: { card: QueueCard; canRule: boolean 
       <CardContent className="space-y-4 p-5">
         <CardBadges card={card} />
 
-        <p className="whitespace-pre-wrap text-sm text-navy-900 dark:text-slate-100">{body}</p>
+        <p className="whitespace-pre-wrap break-words text-sm text-navy-900 dark:text-slate-100">{body}</p>
 
         <Recommendation card={card} />
 

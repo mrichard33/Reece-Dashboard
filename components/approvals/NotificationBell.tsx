@@ -74,8 +74,11 @@ export function NotificationBell() {
         )}
       </button>
 
+      {/* 2026-09-26: below md the bell sits near the right edge of the 256px
+          sidebar drawer, so a left-anchored w-72 panel ran ~100px off a phone
+          screen. Phones get a panel pinned across the drawer instead. */}
       {open && (
-        <div className="absolute left-0 z-40 mt-2 max-h-96 w-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div className="fixed inset-x-3 top-14 z-40 max-h-96 w-auto overflow-auto md:absolute md:inset-x-auto md:left-0 md:top-auto md:mt-2 md:w-72 rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
           {items.length === 0 ? (
             <p className="p-4 text-center text-sm text-slate-500">Nothing yet.</p>
           ) : (

@@ -17,7 +17,7 @@ export default async function NewAssetPage() {
         title="New asset"
         subtitle="Add a showcase asset and choose who must sign off"
       />
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <AssetForm
           mode="create"
           executives={executives.map((e) => ({ id: e.id, name: e.name }))}

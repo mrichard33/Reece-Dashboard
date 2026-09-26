@@ -48,7 +48,7 @@ export default async function AssetDetailPage({
         }
       />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <Link
           href="/approvals"
           className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
@@ -56,7 +56,7 @@ export default async function AssetDetailPage({
           <ArrowLeft className="h-4 w-4" /> Back to Executive Review
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Badge tone={status.tone} dot>
             {status.label}
           </Badge>

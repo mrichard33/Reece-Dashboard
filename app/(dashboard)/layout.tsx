@@ -27,7 +27,10 @@ export default async function DashboardLayout({
 
   return (
     <MobileNavProvider>
-      <div className="flex h-screen overflow-hidden">
+      {/* h-dvh, not h-screen (2026-09-26): on iOS Safari 100vh counts the area
+          behind the collapsing URL bar, so the bottom of every scrolled page
+          sat under the browser chrome. On desktop dvh and vh are the same. */}
+      <div className="flex h-dvh overflow-hidden">
         {/* Sidebar derives its active-tab state from usePathname() client-side —
             the x-pathname header above only serves the exec-only redirect (a
             layout doesn't re-render on client navigation, so a header-derived

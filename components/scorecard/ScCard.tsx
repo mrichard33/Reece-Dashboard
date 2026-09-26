@@ -32,9 +32,9 @@ export function ScCard({
       id={id}
       className={`scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 ${className}`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 pb-3 pt-4 dark:border-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 pb-3 pt-4 dark:border-slate-800 sm:flex-nowrap">
         <div className="flex min-w-0 items-center gap-1.5">
-          <h3 className="truncate font-display text-[15px] font-semibold text-slate-900 dark:text-slate-100">
+          <h3 className="font-display text-[15px] font-semibold text-slate-900 dark:text-slate-100 sm:truncate">
             {title}
           </h3>
           {info && <InfoPopover info={info} align="left" />}
