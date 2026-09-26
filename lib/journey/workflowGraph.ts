@@ -23,6 +23,8 @@
  *    a skipped message as sent.
  */
 
+import { emailToPlainText } from "./emailText";
+
 export type GraphStep = {
   id: string;
   order: number;
@@ -251,12 +253,8 @@ export function messageContent(step: GraphStep, graph: WorkflowGraph) {
 }
 
 export function previewText(text: string, n = 90): string {
-  const plain = text
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Shares the email decoder (2026-09-26) so a preview never shows `&#8217;`.
+  const plain = emailToPlainText(text).text.replace(/\s+/g, " ").trim();
   return plain.length > n ? `${plain.slice(0, n - 1).trimEnd()}…` : plain;
 }
 

@@ -7,6 +7,8 @@ import { Maximize2, Minus, Plus, X } from "lucide-react";
 import type { Flow, FlowKind, FlowNode } from "@/lib/journey/flowLayout";
 import { stepSendsWords, type StepSends } from "@/lib/workflows/sendActivity";
 import { cn } from "@/lib/utils";
+import { emailToPlainText } from "@/lib/journey/emailText";
+import { EmailPreviewButton } from "./EmailPreviewButton";
 
 const KIND_STYLE: Record<FlowKind, string> = {
   start: "bg-navy-800 text-white border-navy-800",
@@ -222,7 +224,17 @@ export function Flowchart({ flow, draft, annotations = {} }: { flow: Flow; draft
             {selected.detail?.subject && <p className="mt-2 font-medium">Subject: {selected.detail.subject}</p>}
             {selected.detail?.from && <p className="text-slate-500">From: {selected.detail.from}</p>}
             {selected.detail?.text && (
-              <p className="mt-2 whitespace-pre-wrap leading-relaxed text-slate-700 dark:text-slate-200">{plain(selected.detail.text)}</p>
+              <p className="mt-2 whitespace-pre-wrap leading-relaxed text-slate-700 dark:text-slate-200">
+                {emailToPlainText(selected.detail.text).text}
+              </p>
+            )}
+            {selected.detail?.type === "email" && selected.detail.text?.trim() && (
+              <EmailPreviewButton
+                html={selected.detail.text}
+                subject={selected.detail.subject}
+                from={selected.detail.from}
+                className="mt-2"
+              />
             )}
             {selected.workflowIds?.map((id) => (
               <Link key={id} href={`/workflows/${id}` as Route} className="mt-1 block text-sky-700 hover:underline dark:text-sky-400">
@@ -263,15 +275,4 @@ function ZoomBtn({ label, onClick, children }: { label: string; onClick: () => v
       {children}
     </button>
   );
-}
-
-function plain(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|tr|h\d)>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
