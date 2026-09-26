@@ -13,6 +13,7 @@ import {
   BookOpen,
   Scale,
   MessageSquareQuote,
+  PhoneMissed,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -141,6 +142,15 @@ export const NAV_GROUPS: NavGroup[] = [
         desc: "Every lead's full journey",
         Icon: Users,
         audience: "all",
+      },
+      {
+        // Leads we should be calling and are not, and how long leads wait for
+        // a first call — Five9 call records, from LP-MCP's Lead Leak Monitor.
+        href: "/lead-leaks",
+        label: "Lead Leaks",
+        desc: "Leads we haven't called",
+        Icon: PhoneMissed,
+        audience: "operator",
       },
       {
         href: "/appointments",
