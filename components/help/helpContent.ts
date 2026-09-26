@@ -240,6 +240,12 @@ export const helpContent: Record<string, HelpEntry> = {
       "`select count(*) from groupme_approval_requests where status = 'pending'` (LP Supabase).",
     fix: "Open `/agent/approvals` (Phase 2) to review and approve/reject. While waiting, the queued action does not execute.",
   },
+  "overview.leadsNotCalled": {
+    title: "Leads not called",
+    what: "Leads from the last 60 days that should have been worked and Five9 never dialled — the headline of the Lead Leaks page. Click the tile for the list.",
+    where: "`lead_leak_daily`, latest run, reasons that count as leaks. Written every morning at 7:00 AM ET by LP-MCP's Lead Leak Monitor.",
+    fix: "Anything above zero is a named lead on /lead-leaks. A dash means the check could not be read — see that page for which part failed.",
+  },
   "overview.openIssues": {
     title: "Open Issues",
     what: "Issues Claude has logged but not yet resolved. These span data drift, automation breakage, and architectural concerns.",
@@ -787,6 +793,62 @@ export const helpContent: Record<string, HelpEntry> = {
     what: "How far a decision has got: Decided, Built, Verified, or No build needed. Only decisions made through the Command Center carry a stage — every decision that existed before stays untracked. Verified requires a line saying what proved it.",
     where: "`claude_decision_log.rollout_stage`, `built_at` and `verification_note` (sql/102 section A).",
     fix: "Set Built when the work ships and Verified when you have actually seen it working. Flipping a decision that reached Built or Verified files a ROLL BACK to-do, because the record going back does not undo the build.",
+  },
+
+  // ── /lead-leaks ─────────────────────────────────────────────────────
+  "leadLeaks.notCalled": {
+    title: "Leads not called",
+    what: "Leads from the last 60 days that should have been worked and Five9 never dialled after they arrived: not issued to a rep (NIS), set but no rep covered it (NOC), a rep's 7-day hold that ran out, or a clean callable lead nobody rang.",
+    where: "`lead_leak_daily` (latest run), written every morning at 7:00 AM ET by LP-MCP's Lead Leak Monitor. \"Called\" means a Five9 call record on the lead's LP id or phone — LP's own call counts are not used.",
+    fix: "Work the list below. If a lead here was in fact called, check that the call went through Five9 and that the number in LP matches the number dialled.",
+  },
+  "leadLeaks.atRisk": {
+    title: "Revenue at risk",
+    what: "An ESTIMATE of what the uncalled leads are worth: each lead's source close rate times that source's average sold job, over the last 180 days.",
+    where: "`lead_leak_daily.est_value`, summed over the leak rows of the latest run.",
+    fix: "Treat it as a size, not a number to book. A blank means the close-rate read failed that morning; the counts are still right.",
+  },
+  "leadLeaks.speed": {
+    title: "Time to first call",
+    what: "How long a typical lead waited for its first Five9 call over the last 7 complete days, compared with the 28 days before. The clock only runs during call-center hours (8 AM–8 PM ET), so an overnight lead called at 8:05 AM waited 5 minutes. Leads created during a live call are left out — they never waited.",
+    where: "`lead_call_speed_daily.median_min`: the median of the daily medians. LP's clock is corrected from Eastern time before it is compared with Five9's.",
+    fix: "If it turns red (slower), look at the trend below for the day it changed and at the lead list for who is waiting. An alert card goes to #ops-alerts when it slows sharply.",
+  },
+  "leadLeaks.within1h": {
+    title: "Called within 1 hour",
+    what: "Of the leads owed a call in the last 7 complete days, the share whose first Five9 call came within one working hour.",
+    where: "`lead_call_speed_daily`: sum of `called_1h` over sum of `expected`.",
+    fix: "Leads not owed a call (DNC, rep hold, already booked, Data) are left out, so this only moves when the floor's speed moves.",
+  },
+  "leadLeaks.neverReachedLp": {
+    title: "Never reached LP",
+    what: "GHL contacts at least a day old, with a phone, that never became an LP lead and that Five9 never called — so nobody could have dialled them.",
+    where: "`lead_intake_gap_daily` (latest run): contacts from the HL mirror with no LP id, checked by phone against `lp_leads` and Five9.",
+    fix: "Push each one to LP (or call them), then find out why the addlead did not land — the source column shows which intake path is dropping them.",
+  },
+  "leadLeaks.trend": {
+    title: "Time to first call, by day",
+    what: "For each day's new leads, how long the typical lead waited for its first Five9 call, in working time. Hover a day for the slowest 10% too; open the table for the counts behind each day. The slowest 10% is not drawn because it runs 20–40 times the typical wait and would flatten the line.",
+    where: "`lead_call_speed_daily`, one row per Eastern day the leads arrived, rewritten every morning.",
+    fix: "Today and yesterday keep improving as calls land, so judge the trend on older days. A single high day is usually a short-staffed shift; a rising line is the problem.",
+  },
+  "leadLeaks.table": {
+    title: "Leads we haven't called",
+    what: "Every lead that should have been worked and has no Five9 call since it arrived, longest-waiting first, with the reason in plain English. Filter by reason or source with the chips.",
+    where: "`lead_leak_daily` (latest run), leak reasons only. Name and phone come from LP at the time of the check.",
+    fix: "Call them. \"Not issued\" and \"no rep covered it\" are call-center or dispatch misses; \"rep hold over\" means a rep's 7-day hold ran out; \"never dialled\" means the lead never reached a dialling list.",
+  },
+  "leadLeaks.intakeTable": {
+    title: "Never reached our system",
+    what: "GHL contacts that never became an LP lead and were never called — the leads nobody could see.",
+    where: "`lead_intake_gap_daily` (latest run). Contacts in LP by phone but not linked, and contacts Five9 reached anyway, are counted in the note above the table, not listed.",
+    fix: "Get each into LP, then fix the intake path its source points to (chat widget, chatbot, canvassing app, vendor feed).",
+  },
+  "leadLeaks.notLeaks": {
+    title: "Uncalled, but not leaks",
+    what: "Leads with no Five9 call that were never owed one: do-not-call, on a rep's hold, already booked or sold, \"Data\" leads awaiting a ruling, no phone, duplicates of a called lead, dead statuses.",
+    where: "`lead_leak_daily` (latest run), the non-leak reasons.",
+    fix: "\"Booked/sold, no Five9 call on record\" is a gap in LP's call data rather than a missed lead. \"Data\" leads move into the leak count only once Mark rules they should be dialled.",
   },
 };
 

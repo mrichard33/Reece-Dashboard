@@ -19,16 +19,19 @@ import { getHeadlineStats, deltaText } from "@/lib/queries/headlineStats";
 import { getRecentActivity, getActiveAlerts } from "@/lib/queries/activity";
 import { PaidMediaSection } from "@/components/leadgurus/PaidMediaSection";
 import { num } from "@/lib/utils";
+import { getLeadsNotCalledCount } from "@/lib/queries/leadLeaks";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
   const user = await requireUser();
-  const [health, stats, activity, alerts] = await Promise.all([
+  const [health, stats, activity, alerts, leadsNotCalled] = await Promise.all([
     getHealthSnapshot(),
     getHeadlineStats(),
     getRecentActivity(20),
     getActiveAlerts(10),
+    getLeadsNotCalledCount(),
   ]);
 
   const lpSyncLast = "error" in health.lpSync ? null : health.lpSync.last_sync_at;
@@ -114,7 +117,7 @@ export default async function OverviewPage() {
               live · partial
             </span>
           </h2>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
             <StatTile
               label="Leads today"
               value={num(stats.leadsToday)}
@@ -146,6 +149,16 @@ export default async function OverviewPage() {
               deltaTone={stats.openIssues > 0 ? "rose" : "slate"}
               helpKey="overview.openIssues"
             />
+            {/* Same table and leak definition as /lead-leaks — a link, not a second path. */}
+            <Link href="/lead-leaks" className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500">
+              <StatTile
+                label="Leads not called"
+                value={leadsNotCalled === null ? "—" : num(leadsNotCalled)}
+                delta="as of this morning's check →"
+                deltaTone={leadsNotCalled ? "rose" : "slate"}
+                helpKey="overview.leadsNotCalled"
+              />
+            </Link>
           </div>
         </section>
 
