@@ -104,6 +104,7 @@ export function LeadCostTable({
                   </span>
                   <span className="shrink-0 font-mono text-[14px] font-semibold tabular text-slate-900 dark:text-slate-100">{usd(r.net_sales)}</span>
                 </div>
+                {/* mobile-ok: the phone card view — three short figures per row fit at 375px */}
                 <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
                   {metrics.map((m) => (
                     <div key={m.label}>

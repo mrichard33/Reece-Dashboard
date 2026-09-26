@@ -74,7 +74,7 @@ export function GeneratePostButton({ defaultDate }: { defaultDate?: string }) {
   }
 
   const inputCls =
-    "w-full rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900";
+    "w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs disabled:opacity-60 sm:py-1 dark:border-slate-700 dark:bg-slate-900";
 
   return (
     <div className="relative" ref={wrapRef}>
@@ -88,8 +88,10 @@ export function GeneratePostButton({ defaultDate }: { defaultDate?: string }) {
         <ChevronDown className="ml-0.5 h-3 w-3 opacity-70" />
       </Button>
 
+      {/* Below sm: pinned to the viewport gutters so it can't hang off-screen —
+          see the matching note in PlanControls (2026-09-26). */}
       {open && (
-        <div className="absolute right-0 z-30 mt-1.5 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div className="fixed inset-x-4 z-30 mt-1.5 rounded-lg border border-slate-200 bg-white p-3 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:w-64 dark:border-slate-700 dark:bg-slate-900">
           <p className="mb-2.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
             Adds one draft for a chosen day, on top of the nightly one.
           </p>

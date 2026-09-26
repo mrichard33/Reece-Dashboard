@@ -26,7 +26,7 @@ export default async function IssuesPage() {
     <>
       <TopBar email={user.email} role={user.role} title="Issues" />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <SectionHeader
           title="Issues"
           subtitle="Open issues, contamination violations, data drift, and stuck contacts."
@@ -275,7 +275,12 @@ function Table({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-[12.5px]">
+      {/* 2026-09-26: a 3–4 column table squeezed to a phone's ~300px left the
+          description column a word wide. Below sm it keeps a readable minimum
+          and scrolls sideways inside the card instead. */}
+      <table
+        className={`w-full text-[12.5px] ${head.length > 2 ? "min-w-[30rem] sm:min-w-0" : ""}`}
+      >
         <thead>
           <tr className="text-left text-slate-500 dark:text-slate-400">
             {head.map((h) => (
@@ -324,7 +329,7 @@ function ErrBanner({
   return (
     <div className={`mb-3 flex items-start gap-2 rounded border px-3 py-2 text-xs ${cls}`}>
       <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-      <div>
+      <div className="min-w-0 break-words">
         <strong>{heading}</strong> {msg}
       </div>
     </div>

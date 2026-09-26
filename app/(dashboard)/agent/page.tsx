@@ -51,7 +51,7 @@ export default async function AgentPage() {
     <>
       <TopBar email={user.email} role={user.role} title="Decision Engine" />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <SectionHeader
           title="Decision Engine"
           subtitle="Rules, action throughput, and the background jobs that keep the system fed."
@@ -176,13 +176,13 @@ function JobsCard({
   if (needsMigration) {
     return (
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-navy-900 dark:text-slate-100">
             The job roster needs migration 113
           </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             Apply
-            <code className="mx-1 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">
+            <code className="mx-1 break-all rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">
               {JOB_RUNS_MIGRATION.file}
             </code>
             from the {JOB_RUNS_MIGRATION.repo} repo in the LP Supabase SQL editor and reload. It
@@ -324,7 +324,10 @@ function RulesCard({ rules, error }: { rules: AgentRule[]; error?: string }) {
 function Table({ head, children }: { head: string[]; children: React.ReactNode }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-[12.5px]">
+      {/* 2026-09-26: six columns in a phone's ~300px made every cell a word
+          wide; below sm the table keeps a readable width and scrolls inside
+          the card. */}
+      <table className="w-full min-w-[40rem] text-[12.5px] sm:min-w-0">
         <thead>
           <tr className="text-left text-slate-500 dark:text-slate-400">
             {head.map((h) => (

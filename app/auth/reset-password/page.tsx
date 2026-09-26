@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default function ResetPasswordPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-navy-800 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-2xl dark:bg-slate-900">
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl sm:p-8 dark:bg-slate-900">
         <div className="mb-6 flex items-center gap-3">
           <Image
             src="/reece-logo.png"

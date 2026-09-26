@@ -232,8 +232,10 @@ function UserRow({
       : { tone: "slate" as const, label: "Never signed in" };
 
   return (
-    <li className="flex items-center justify-between gap-3 py-2.5">
-      <div className="min-w-0">
+    // Wraps below sm so the three buttons drop under the email instead of
+    // truncating it to a few characters on a phone (2026-09-26).
+    <li className="flex flex-wrap items-center justify-between gap-3 py-2.5 sm:flex-nowrap">
+      <div className="min-w-0 max-w-full">
         <p className="truncate text-sm text-navy-900 dark:text-slate-100">
           {user.email} {isSelf && <span className="text-[11px] text-slate-400">(you)</span>}
         </p>

@@ -106,7 +106,7 @@ export default async function CommandCenterPage({
     <>
       <TopBar email={ctx.email} role={ctx.role} title="Command Center" />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <SectionHeader
           title="Command Center"
           subtitle="Rule, review, roll back."
@@ -214,13 +214,13 @@ function ChangesTab({
   if (needsMigration) {
     return (
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-navy-900 dark:text-slate-100">
             The Changes lane needs migration 0020
           </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             Apply
-            <code className="mx-1 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">db/migrations/0020_command_center_changes.sql</code>
+            <code className="mx-1 break-all rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">db/migrations/0020_command_center_changes.sql</code>
             in the LP Supabase SQL editor and reload. It creates the table and backfills
             the build items that have been filed but never shown.
           </p>
@@ -353,11 +353,11 @@ function Pager({
     return `/command-center?${q.toString()}` as Route;
   };
   return (
-    <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
       <span>Page {page} of {last} · {total.toLocaleString()} total</span>
-      <div className="flex gap-2">
-        {page > 1 ? <Link className="underline" href={href(page - 1)}>Previous</Link> : null}
-        {page < last ? <Link className="underline" href={href(page + 1)}>Next</Link> : null}
+      <div className="flex gap-4 sm:gap-2">
+        {page > 1 ? <Link className="py-1.5 underline sm:py-0" href={href(page - 1)}>Previous</Link> : null}
+        {page < last ? <Link className="py-1.5 underline sm:py-0" href={href(page + 1)}>Next</Link> : null}
       </div>
     </div>
   );
@@ -379,7 +379,7 @@ function MigrationCard({ migration }: { migration: MigrationRef }) {
   const isR2 = migration.file === MIGRATIONS.r2.file;
   return (
     <Card>
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         <h2 className="text-sm font-semibold text-navy-900 dark:text-slate-100">
           Command Center needs {migration.file.replace(/^sql\/(\d+).*$/, "sql/$1")}
         </h2>
@@ -387,7 +387,7 @@ function MigrationCard({ migration }: { migration: MigrationRef }) {
           {isR2
             ? "The Stale-issue and To-do lanes are not in the database yet, so they would show as empty rather than as the thousands of cards they hold. Apply"
             : "The rulings queue and its audit log are not in the database yet. Apply"}
-          <code className="mx-1 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">{migration.file}</code>
+          <code className="mx-1 break-all rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">{migration.file}</code>
           in the LP Supabase SQL editor — sections {migration.sections}, in order — and reload.
         </p>
       </CardContent>

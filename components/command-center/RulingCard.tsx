@@ -184,7 +184,7 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
 
   return (
     <Card>
-      <CardContent className="space-y-4 p-5">
+      <CardContent className="space-y-4 p-4 sm:p-5">
         {/* ── what kind of thing this is ─────────────────────────────── */}
         <CardBadges card={card} />
 
@@ -197,7 +197,7 @@ export function RulingCard({ card, canRule }: { card: QueueCard; canRule: boolea
               confidence={card.right_confidence} date={card.right_date} stage={card.right_rollout_stage} />
           </div>
         ) : (
-          <p className="whitespace-pre-wrap text-sm text-navy-900 dark:text-slate-100">{body}</p>
+          <p className="whitespace-pre-wrap break-words text-sm text-navy-900 dark:text-slate-100">{body}</p>
         )}
 
         {card.options && card.options.length > 0 && card.card_type !== "conflict" ? (
@@ -361,7 +361,7 @@ function Side({
         {date ? <span>{date}</span> : null}
         {stage ? <Badge tone="navy">{stage}</Badge> : null}
       </div>
-      <p className="whitespace-pre-wrap text-sm text-navy-900 dark:text-slate-100">{text ?? "—"}</p>
+      <p className="whitespace-pre-wrap break-words text-sm text-navy-900 dark:text-slate-100">{text ?? "—"}</p>
     </div>
   );
 }
@@ -383,7 +383,7 @@ function OptionDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <button className="absolute inset-0 bg-black/30" aria-label="Close" onClick={onCancel} />
-      <div className="relative w-full max-w-lg rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
+      <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
         <h3 className="text-sm font-semibold text-navy-900 dark:text-slate-100">Pick one</h3>
         <ul className="mt-3 space-y-2">
           {options.map((o, i) => (

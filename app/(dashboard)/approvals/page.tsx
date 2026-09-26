@@ -35,7 +35,7 @@ export default async function ApprovalsPage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <AssetBrowser
             assets={assets}

@@ -70,7 +70,7 @@ export function Drawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex-shrink-0 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="flex-shrink-0 rounded-md p-1.5 text-slate-400 sm:p-1 transition hover:bg-slate-100 hover:text-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             aria-label="Close"
           >
             <X className="h-5 w-5" />

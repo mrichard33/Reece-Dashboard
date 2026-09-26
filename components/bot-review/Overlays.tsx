@@ -59,12 +59,12 @@ export function UndoToast({
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-navy-900 dark:text-white">{message}</p>
-          {detail && <p className="truncate text-xs text-slate-500 dark:text-slate-400">{detail}</p>}
+          {detail && <p className="break-words text-xs text-slate-500 sm:truncate dark:text-slate-400">{detail}</p>}
         </div>
         <button
           type="button"
           onClick={onUndo}
-          className="shrink-0 text-sm font-semibold text-navy-700 hover:underline dark:text-navy-200"
+          className="-my-2 shrink-0 py-2 text-sm font-semibold text-navy-700 hover:underline dark:text-navy-200"
         >
           Undo
         </button>
@@ -103,7 +103,7 @@ export function StopBotModal({
   }, [onCancel]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/50 p-4">
       <div
         role="dialog"
         aria-modal="true"
@@ -122,10 +122,10 @@ export function StopBotModal({
           lead again until someone removes it.
         </p>
         <div className="mt-5 flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          <Button variant="ghost" size="sm" className="py-2 sm:py-1" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="danger" size="sm" onClick={onConfirm} disabled={busy}>
+          <Button variant="danger" size="sm" className="py-2 sm:py-1" onClick={onConfirm} disabled={busy}>
             {busy ? "Stopping…" : "Stop the bot"}
           </Button>
         </div>
@@ -212,7 +212,7 @@ export function RetractModal({
   const ready = reason.trim().length > 0 && !busy;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/50 p-4">
       <div
         role="dialog"
         aria-modal="true"
@@ -234,13 +234,13 @@ export function RetractModal({
           disabled={busy}
           onChange={(e) => setReason(e.target.value)}
           placeholder="Scored the wrong message, changed my mind, misread the thread…"
-          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm text-slate-800 focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-base text-slate-800 sm:text-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
         />
         <div className="mt-5 flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          <Button variant="ghost" size="sm" className="py-2 sm:py-1" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="danger" size="sm" onClick={() => onConfirm(reason.trim())} disabled={!ready}>
+          <Button variant="danger" size="sm" className="py-2 sm:py-1" onClick={() => onConfirm(reason.trim())} disabled={!ready}>
             {busy ? "Removing…" : "Remove review"}
           </Button>
         </div>
@@ -281,7 +281,7 @@ export function DismissModal({
   }, [onCancel]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/50 p-4">
       <div
         role="dialog"
         aria-modal="true"
@@ -304,14 +304,14 @@ export function DismissModal({
             disabled={busy}
             onChange={(e) => setReason(e.target.value)}
             placeholder="Test lead, duplicate, nothing to judge here…"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-normal text-slate-800 focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-base font-normal text-slate-800 sm:text-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
         </label>
         <div className="mt-5 flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          <Button variant="ghost" size="sm" className="py-2 sm:py-1" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" onClick={() => onConfirm(reason.trim())} disabled={busy}>
+          <Button variant="primary" size="sm" className="py-2 sm:py-1" onClick={() => onConfirm(reason.trim())} disabled={busy}>
             {busy ? "Saving…" : "Nothing to review here"}
           </Button>
         </div>

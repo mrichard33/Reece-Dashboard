@@ -23,8 +23,8 @@ export default function ScorecardError({
   }, [error]);
 
   return (
-    <div className="p-6">
-      <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 dark:border-amber-900 dark:bg-amber-950">
+    <div className="p-4 sm:p-6">
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950 sm:p-6">
         <h2 className="font-display text-base font-semibold text-amber-900 dark:text-amber-200">
           The scorecard couldn&apos;t render
         </h2>

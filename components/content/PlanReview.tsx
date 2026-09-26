@@ -26,6 +26,11 @@ import type { FbContentPlan, FbSubtopic } from "@/lib/supabase/types";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Phone sizing — same reasoning as PostReview's TAP / FIELD_TEXT (2026-09-26):
+// ~32px tap targets and 16px fields below sm so iOS doesn't zoom on focus.
+const TAP = "py-2 sm:py-1";
+const FIELD_TEXT = "text-base sm:text-sm";
+
 /**
  * Drawer body for a planned (not-yet-generated) calendar slot. Executives can edit the
  * slot's pillar/archetype/campaign, skip it, or generate it now. Mirrors PostReview's
@@ -151,7 +156,7 @@ export function PlanReview({
               {slot.brief_status === "approved" ? "Approved" : "Draft"}
             </Badge>
           </div>
-          <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+          <div className="space-y-1.5 break-words text-xs text-slate-600 dark:text-slate-300">
             {brief.post_strategy && (
               <p>
                 <span className="font-medium">Strategy:</span> {brief.post_strategy}
@@ -197,6 +202,7 @@ export function PlanReview({
             <div className="mt-2">
               <Button
                 size="sm"
+                className={TAP}
                 variant="primary"
                 disabled={pending}
                 onClick={() =>
@@ -270,7 +276,7 @@ export function PlanReview({
           <select
             value={pillar}
             onChange={(e) => setPillar(e.target.value)}
-            className="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className={`block w-full rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT} sm:py-1 dark:border-slate-700 dark:bg-slate-900`}
           >
             {PILLARS.map((p) => (
               <option key={p} value={p}>
@@ -282,7 +288,7 @@ export function PlanReview({
           <select
             value={archetype}
             onChange={(e) => setArchetype(e.target.value)}
-            className="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className={`block w-full rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT} sm:py-1 dark:border-slate-700 dark:bg-slate-900`}
           >
             {ARCHETYPES.map((a) => (
               <option key={a} value={a}>
@@ -295,11 +301,12 @@ export function PlanReview({
             value={campaign}
             onChange={(e) => setCampaign(e.target.value)}
             placeholder="e.g. hurricane-season urgency"
-            className="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className={`block w-full rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT} sm:py-1 dark:border-slate-700 dark:bg-slate-900`}
           />
           <div className="flex gap-2 pt-1">
             <Button
               size="sm"
+              className={TAP}
               disabled={pending}
               onClick={() =>
                 run("edit", async () => {
@@ -311,7 +318,7 @@ export function PlanReview({
             >
               {busy("edit") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Save
             </Button>
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => setEditing(false)}>
+            <Button size="sm" className={TAP} variant="ghost" disabled={pending} onClick={() => setEditing(false)}>
               Cancel
             </Button>
           </div>
@@ -322,6 +329,7 @@ export function PlanReview({
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
           <Button
             size="sm"
+            className={TAP}
             variant="secondary"
             disabled={pending}
             onClick={() =>
@@ -346,7 +354,7 @@ export function PlanReview({
             onChange={(e) => setGenMedia(e.target.value as "auto" | "image" | "text")}
             aria-label="Media type for Generate now"
             disabled={pending}
-            className="rounded-md border border-slate-300 px-1.5 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-md border border-slate-300 px-1.5 py-2 text-base disabled:opacity-60 sm:py-1 sm:text-xs dark:border-slate-700 dark:bg-slate-900"
           >
             <option value="auto">Auto</option>
             <option value="image">With image</option>
@@ -354,6 +362,7 @@ export function PlanReview({
           </select>
           <Button
             size="sm"
+            className={TAP}
             variant="secondary"
             disabled={pending}
             onClick={() =>
@@ -373,11 +382,11 @@ export function PlanReview({
             Generate now
           </Button>
           </span>
-          <Button size="sm" variant="secondary" disabled={pending} onClick={() => setEditing((v) => !v)}>
+          <Button size="sm" className={TAP} variant="secondary" disabled={pending} onClick={() => setEditing((v) => !v)}>
             <Pencil className="h-3.5 w-3.5" /> {editing ? "Editing…" : "Edit slot"}
           </Button>
           {slot.status !== "skipped" && (
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => run("skip", () => skipPlanSlot(slot.id))}>
+            <Button size="sm" className={TAP} variant="ghost" disabled={pending} onClick={() => run("skip", () => skipPlanSlot(slot.id))}>
               {busy("skip") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SkipForward className="h-3.5 w-3.5" />} Skip
             </Button>
           )}

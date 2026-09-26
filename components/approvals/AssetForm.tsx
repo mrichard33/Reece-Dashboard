@@ -168,7 +168,7 @@ export function AssetForm({
           <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
               Type
@@ -224,7 +224,7 @@ export function AssetForm({
 
       {/* Attachments */}
       <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-navy-900 dark:text-slate-100">
             Attachments
           </h3>
@@ -248,13 +248,13 @@ export function AssetForm({
               return (
                 <li
                   key={a.id}
-                  className={`flex items-center justify-between rounded-md border px-3 py-1.5 text-sm ${
+                  className={`flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 text-sm ${
                     removed
                       ? "border-rose-200 bg-rose-50 line-through opacity-60 dark:border-rose-900 dark:bg-rose-950"
                       : "border-slate-200 dark:border-slate-700"
                   }`}
                 >
-                  <span>
+                  <span className="min-w-0 break-words">
                     [{a.kind}] {a.label}
                   </span>
                   <button
@@ -384,7 +384,7 @@ export function AssetForm({
 
       {error && <p className="text-sm text-rose-600">{error}</p>}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" disabled={pending} onClick={() => submit("draft")}>
           {isLive ? "Save changes" : "Save draft"}
         </Button>

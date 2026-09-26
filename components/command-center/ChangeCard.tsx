@@ -247,7 +247,7 @@ export function ChangeCard({ change, canEdit }: { change: ChangeRow; canEdit: bo
                   value={prRef}
                   onChange={(e) => setPrRef(e.target.value)}
                   placeholder="Paste the PR link once it's open"
-                  className="min-w-[16rem] flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className="min-w-0 flex-1 basis-full rounded-md sm:min-w-[16rem] sm:basis-auto border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 />
                 <Button variant="secondary" size="sm" disabled={pending || !prRef.trim()}
                   onClick={() => run("pr", () => linkPr(change.id, prRef), () => setPrRef(""))}>

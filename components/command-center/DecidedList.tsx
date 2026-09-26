@@ -166,7 +166,7 @@ function DecidedItem({ row, canRule }: { row: DecidedRow; canRule: boolean }) {
       {confirmBuilt ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <button className="absolute inset-0 bg-black/30" aria-label="Close" onClick={() => setConfirmBuilt(false)} />
-          <div className="relative w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900 dark:text-slate-100">
               <AlertTriangle className="h-4 w-4 text-amber-500" aria-hidden />
               This one was already {row.rollout_stage}
@@ -216,7 +216,7 @@ function ProofDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <button className="absolute inset-0 bg-black/30" aria-label="Close" onClick={onCancel} />
-      <div className="relative w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
+      <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
         <h3 className="text-sm font-semibold text-navy-900 dark:text-slate-100">What proved it?</h3>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           A PR, a query you ran, a screen you looked at — one line.

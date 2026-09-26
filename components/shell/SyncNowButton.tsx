@@ -69,7 +69,7 @@ export function SyncNowButton() {
       </Button>
       {err ? (
         <span
-          className="max-w-[24rem] truncate text-xs text-rose-600 dark:text-rose-400"
+          className="max-w-[12rem] truncate sm:max-w-[24rem] text-xs text-rose-600 dark:text-rose-400"
           title={err}
         >
           {err}

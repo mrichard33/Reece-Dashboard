@@ -136,7 +136,7 @@ export function Calendar({
         <div className="flex items-center gap-2">
           <Link
             href={`/content?month=${prev}`}
-            className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-1.5 dark:border-slate-700 dark:hover:bg-slate-800"
             aria-label="Previous month"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -146,7 +146,7 @@ export function Calendar({
           </h2>
           <Link
             href={`/content?month=${next}`}
-            className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-1.5 dark:border-slate-700 dark:hover:bg-slate-800"
             aria-label="Next month"
           >
             <ChevronRight className="h-4 w-4" />
@@ -158,9 +158,10 @@ export function Calendar({
           {isExecutive && (
             <PlanControls planHorizonDays={planHorizonDays} maxPerGeneration={maxPerGeneration} />
           )}
-          <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+          <label className="flex items-center gap-1.5 py-1 text-xs text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
+              className="h-4 w-4 sm:h-auto sm:w-auto"
               checked={needsOnly}
               onChange={(e) => setNeedsOnly(e.target.checked)}
             />
@@ -189,7 +190,7 @@ export function Calendar({
         </div>
       )}
 
-      {/* Month grid — md+ only. */}
+      {/* Month grid — md+ only. mobile-ok: hidden below md; the agenda below replaces it on phones. */}
       <div className="hidden grid-cols-7 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 text-sm md:grid dark:border-slate-800 dark:bg-slate-800">
         {WEEKDAYS.map((d) => (
           <div
@@ -376,7 +377,7 @@ export function Calendar({
 
 function Legend() {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
       {(["draft", "approved", "posted", "skipped"] as FbPostStatus[]).map((s) => (
         <span key={s} className="flex items-center gap-1">
           <span className={cn("h-2 w-2 rounded-full", DOT[s])} /> {s}

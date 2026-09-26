@@ -24,7 +24,7 @@ export default async function ContentSettingsPage() {
     process.env.FB_GROUP_URL ?? process.env.NEXT_PUBLIC_FB_GROUP_URL ?? null;
 
   return (
-    <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-2">
       <FbConnectionCard connection={connection} isAdmin={isAdmin} />
 
       <TuningCard tuning={tuning} isAdmin={isAdmin} />
@@ -44,11 +44,11 @@ export default async function ContentSettingsPage() {
           </p>
           <ul className="space-y-1.5 text-sm">
             {execs.map((e) => (
-              <li key={e.id} className="flex items-center justify-between">
-                <span>
+              <li key={e.id} className="flex items-center justify-between gap-2">
+                <span className="min-w-0 break-words">
                   {e.name} <span className="text-slate-400">· {e.email}</span>
                 </span>
-                <span className="flex gap-1">
+                <span className="flex shrink-0 gap-1">
                   {e.is_admin && <Badge tone="navy">Admin</Badge>}
                   {e.is_approver && <Badge tone="emerald">Approver</Badge>}
                 </span>
@@ -78,7 +78,7 @@ export default async function ContentSettingsPage() {
             </Row>
             <Row label="Facebook Group URL">
               {groupUrl ? (
-                <a href={groupUrl} className="truncate text-navy-700 hover:underline dark:text-sky-300">
+                <a href={groupUrl} className="block truncate text-navy-700 hover:underline dark:text-sky-300">
                   {groupUrl}
                 </a>
               ) : (

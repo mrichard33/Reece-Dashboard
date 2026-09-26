@@ -32,7 +32,7 @@ export default async function EditAssetPage({
         title={`Edit: ${asset.title}`}
         subtitle="Update the asset, attachments, or required approvers"
       />
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <AssetForm
           mode="edit"
           executives={executives.map((e) => ({ id: e.id, name: e.name }))}

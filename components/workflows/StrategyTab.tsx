@@ -64,7 +64,7 @@ export function StrategyTab({ insight, schedule, sends }: { insight: WorkflowIns
                   </span>
                 )}
               </div>
-              <div className="ml-[8.75rem] mt-1 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[7.5rem_1fr]">
+              <div className="mt-1 grid sm:ml-[8.75rem] gap-x-4 gap-y-1 text-xs sm:grid-cols-[7.5rem_1fr]">
                 <span className="text-slate-500">Speaks to</span>
                 <span className={mismatch ? "text-rose-700 dark:text-rose-300" : "text-slate-700 dark:text-slate-200"}>
                   {short(m.stage_actual)}

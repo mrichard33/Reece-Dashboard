@@ -57,7 +57,7 @@ export function ResetPasswordForm() {
             required
             minLength={8}
             autoComplete="new-password"
-            className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 pr-10 text-sm shadow-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 pr-10 text-base shadow-sm sm:text-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           />
           <button
             type="button"
@@ -92,7 +92,7 @@ export function ResetPasswordForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
         />
       </div>
 

@@ -32,7 +32,7 @@ export default async function PipelinesPage() {
         subtitle="Stage distributions across all pipelines. Color = aging in stage."
       />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <SyncFreshnessBanner lpLastSync={lpSync} hlLastSync={hlSync} />
           <AgingLegend />
@@ -51,8 +51,8 @@ export default async function PipelinesPage() {
 
         {cards.map((p) => (
           <Card key={p.id}>
-            <CardHeader>
-              <div className="flex flex-1 items-center gap-3">
+            <CardHeader className="flex-wrap sm:flex-nowrap">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-navy-900 px-2 text-[11px] font-bold text-white dark:bg-white dark:text-navy-900">
                   {p.badge}
                 </span>
@@ -61,7 +61,7 @@ export default async function PipelinesPage() {
                 </h3>
                 <InfoPopover helpKey="pipelines.dataLineage" />
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <span className="text-xs text-slate-500">
                   <span className="font-mono tabular text-slate-800 dark:text-slate-200">
                     {num(p.count)}

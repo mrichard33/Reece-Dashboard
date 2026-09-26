@@ -36,7 +36,7 @@ export default async function LeadJourneyPage({ params }: { params: Promise<{ id
     return (
       <>
         <TopBar email={user.email} role={user.role} title="Lead" />
-        <p className="p-6 text-sm text-rose-600 dark:text-rose-400">
+        <p className="p-4 text-sm text-rose-600 dark:text-rose-400 sm:p-6">
           Could not read this contact from the GHL cache. Try again in a minute.
         </p>
       </>

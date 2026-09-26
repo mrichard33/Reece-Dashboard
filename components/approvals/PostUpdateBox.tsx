@@ -43,7 +43,7 @@ export function PostUpdateBox() {
         placeholder="Post a quick update…"
         className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 dark:border-slate-700 dark:bg-slate-900"
       />
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}

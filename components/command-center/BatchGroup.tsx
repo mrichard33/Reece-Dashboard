@@ -125,7 +125,7 @@ export function BatchGroup({ group, canRule }: { group: Group; canRule: boolean 
                     className="mt-1 h-3.5 w-3.5 shrink-0 rounded border-slate-300 dark:border-slate-600"
                     aria-label={`include #${i.source_id}`}
                   />
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 break-words">
                     <span className="text-slate-700 dark:text-slate-200">{stripOmiPrefix(i.description)}</span>
                     <span className="ml-1.5 text-xs text-slate-400 dark:text-slate-500">
                       #{i.source_id}

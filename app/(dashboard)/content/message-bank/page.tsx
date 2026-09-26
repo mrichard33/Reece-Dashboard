@@ -9,7 +9,7 @@ export default async function MessageBankPage() {
   const [bank, prompts] = await Promise.all([getMessageBank(), getPrompts()]);
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <MessageBankEditor bank={bank} prompts={prompts} isAdmin={ctx?.isAdmin ?? false} />
     </div>
   );

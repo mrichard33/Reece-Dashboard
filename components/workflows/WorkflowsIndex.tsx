@@ -158,7 +158,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
               type="button"
               onClick={() => applyPreset(p)}
               className={cn(
-                "rounded-l-full border px-2.5 py-0.5 text-xs font-medium",
+                "rounded-l-full border px-2.5 py-1.5 text-xs font-medium sm:py-0.5",
                 activePreset === p.id
                   ? "border-navy-700 bg-navy-800 text-white dark:border-sky-400 dark:bg-navy-600"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
@@ -171,7 +171,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
               onClick={() => removePreset(p)}
               aria-label={`Delete saved filter ${p.name}`}
               title="Delete this saved filter"
-              className="rounded-r-full border border-l-0 border-slate-200 px-1.5 py-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700"
+              className="rounded-r-full border border-l-0 border-slate-200 px-2 py-2 text-slate-400 sm:px-1.5 sm:py-0.5 hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700"
             >
               <Trash2 className="h-3 w-3" />
             </button>
@@ -189,9 +189,9 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
               }}
               placeholder="Name this filter"
               maxLength={60}
-              className="w-44 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-900"
+              className="w-40 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-base dark:border-slate-700 dark:bg-slate-900 sm:w-44 sm:py-0.5 sm:text-xs"
             />
-            <button type="button" onClick={submitPreset} className="rounded-md bg-navy-800 px-2 py-0.5 text-xs font-medium text-white">
+            <button type="button" onClick={submitPreset} className="rounded-md bg-navy-800 px-2 py-1.5 text-xs font-medium text-white sm:py-0.5">
               Save
             </button>
             <button type="button" onClick={() => setSaving(false)} className="text-xs text-slate-500 hover:underline">
@@ -199,7 +199,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
             </button>
           </span>
         ) : (
-          <button type="button" onClick={() => setSaving(true)} className="text-xs text-sky-700 hover:underline dark:text-sky-400">
+          <button type="button" onClick={() => setSaving(true)} className="py-1.5 text-xs text-sky-700 hover:underline dark:text-sky-400 sm:py-0">
             + Save current filters
           </button>
         )}
@@ -216,12 +216,12 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={f.q}
             onChange={(e) => update({ q: e.target.value })}
             placeholder="Search by code or name"
-            className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-sm text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-base text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-navy-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 sm:text-sm"
           />
         </div>
         <label className="inline-flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
@@ -229,7 +229,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
           <select
             value={f.status}
             onChange={(e) => update({ status: e.target.value as StatusFilter })}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 sm:py-1"
           >
             {(Object.keys(STATUS_LABEL) as StatusFilter[]).map((k) => (
               <option key={k} value={k}>
@@ -243,7 +243,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
           <select
             value={f.hasMessages === null ? "any" : f.hasMessages ? "yes" : "no"}
             onChange={(e) => update({ hasMessages: e.target.value === "any" ? null : e.target.value === "yes" })}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 sm:py-1"
           >
             <option value="any">With or without messages</option>
             <option value="yes">Sends messages</option>
@@ -259,7 +259,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
           <select
             value={f.sort.key}
             onChange={(e) => update({ sort: { key: e.target.value as SortKey, dir: f.sort.dir } })}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 sm:py-1"
           >
             <option value="chain">Funnel order (chain)</option>
             <option value="favorites">Favorites first</option>
@@ -272,7 +272,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
           <InfoPopover helpKey="workflows.chainOrder" align="left" />
         </label>
         {(f.routes.length > 0 || f.q || f.status !== DEFAULT_FILTERS.status || f.hasMessages !== null || f.favoritesOnly) && (
-          <button type="button" onClick={() => update(DEFAULT_FILTERS)} className="text-xs text-sky-700 hover:underline dark:text-sky-400">
+          <button type="button" onClick={() => update(DEFAULT_FILTERS)} className="py-1.5 text-xs text-sky-700 hover:underline dark:text-sky-400 sm:py-0">
             Reset
           </button>
         )}
@@ -288,7 +288,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
         const list = byRoute.get(r.key) ?? [];
         return (
           <section key={r.key} id={`route-${r.key}`} className="space-y-1">
-            <h3 className="flex items-baseline gap-2 text-sm font-semibold text-navy-900 dark:text-white">
+            <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm font-semibold text-navy-900 dark:text-white">
               {r.label}
               <span className="text-xs font-normal text-slate-500">{r.blurb}</span>
             </h3>
@@ -318,7 +318,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
                           onClick={() => star(w.ghlWorkflowId)}
                           aria-label={favorites.has(w.ghlWorkflowId) ? "Remove from favorites" : "Add to favorites"}
                           title={favorites.has(w.ghlWorkflowId) ? "Remove from favorites" : "Add to favorites"}
-                          className="text-slate-300 hover:text-amber-500"
+                          className="-m-1.5 p-1.5 text-slate-300 hover:text-amber-500"
                         >
                           <Star className={cn("h-4 w-4", favorites.has(w.ghlWorkflowId) && "fill-amber-400 text-amber-500")} />
                         </button>

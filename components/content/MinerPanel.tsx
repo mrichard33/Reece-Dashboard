@@ -131,7 +131,7 @@ export function MinerPanel({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-500">
           {proposals.length} proposal{proposals.length === 1 ? "" : "s"} awaiting review
         </p>
@@ -208,7 +208,7 @@ export function MinerPanel({
         <CardContent>
           {isExecutive && <AddSubtopicForm pending={pending} run={run} />}
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[34rem] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wider text-slate-500 dark:border-slate-800">
                   <th className="py-2 pr-2">Subtopic</th>
@@ -250,7 +250,9 @@ function ProposalRow({
 
   return (
     <li className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-      <div className="flex items-start justify-between gap-3">
+      {/* Phones: the action buttons drop under the proposal so the text (and the
+          edit input) get the full width instead of ~130px (2026-09-26). */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           {editing ? (
             <div className="space-y-2">
@@ -296,7 +298,7 @@ function ProposalRow({
                   </span>
                 )}
                 {!expanded && proposal.answers_question && (
-                  <span className="truncate text-xs text-slate-500">{proposal.answers_question}</span>
+                  <span className="min-w-0 max-w-full truncate text-xs text-slate-500">{proposal.answers_question}</span>
                 )}
               </div>
 
@@ -338,13 +340,13 @@ function ProposalRow({
               </>
             ) : (
               <>
-                <Button size="sm" disabled={pending} onClick={() => run(() => approveSubtopic(proposal.id))}>
+                <Button size="sm" className="p-2 sm:px-2 sm:py-1" aria-label="Approve" title="Approve" disabled={pending} onClick={() => run(() => approveSubtopic(proposal.id))}>
                   <Check className="h-3.5 w-3.5" />
                 </Button>
-                <Button size="sm" variant="secondary" disabled={pending} onClick={() => setEditing(true)}>
+                <Button size="sm" variant="secondary" className="p-2 sm:px-2 sm:py-1" aria-label="Edit" title="Edit" disabled={pending} onClick={() => setEditing(true)}>
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
-                <Button size="sm" variant="danger" disabled={pending} onClick={() => run(() => rejectSubtopic(proposal.id))}>
+                <Button size="sm" variant="danger" className="p-2 sm:px-2 sm:py-1" aria-label="Reject" title="Reject" disabled={pending} onClick={() => run(() => rejectSubtopic(proposal.id))}>
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </>
@@ -423,7 +425,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-2">
       <dt className="w-24 flex-shrink-0 text-slate-400">{label}</dt>
-      <dd className="whitespace-pre-wrap text-slate-600 dark:text-slate-300">{value}</dd>
+      <dd className="min-w-0 whitespace-pre-wrap break-words text-slate-600 dark:text-slate-300">{value}</dd>
     </div>
   );
 }

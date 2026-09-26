@@ -123,7 +123,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   return (
     <div className="flex justify-between gap-4 py-1.5 text-sm">
       <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
-      <dd className="text-right font-medium text-navy-900 dark:text-slate-100">{value}</dd>
+      <dd className="min-w-0 break-words text-right font-medium text-navy-900 dark:text-slate-100">{value}</dd>
     </div>
   );
 }

@@ -48,7 +48,7 @@ export default async function InsightsPage() {
     ]);
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 sm:p-6">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Posts published" value={num(topline.postsPublished)} />
         <StatCard label="Avg engagement" value={pct(topline.avgEngagementRate)} />

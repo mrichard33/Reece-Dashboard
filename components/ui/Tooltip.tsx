@@ -17,6 +17,8 @@ export function Tooltip({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // 2026-09-26: below sm the label wraps inside a viewport-capped width — a
+  // centered nowrap label near a screen edge ran off a 375px phone.
   return (
     <span
       className={cn("relative inline-flex items-center", className)}
@@ -27,7 +29,7 @@ export function Tooltip({
     >
       {children}
       {open && (
-        <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-navy-900 px-2 py-1 text-xs text-white shadow-lg ring-1 ring-navy-800 dark:bg-slate-700 dark:ring-slate-600">
+        <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-1.5 w-max max-w-[min(16rem,calc(100vw-2rem))] -translate-x-1/2 whitespace-normal rounded-md sm:max-w-none sm:whitespace-nowrap bg-navy-900 px-2 py-1 text-xs text-white shadow-lg ring-1 ring-navy-800 dark:bg-slate-700 dark:ring-slate-600">
           {label}
         </span>
       )}

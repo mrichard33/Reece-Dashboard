@@ -116,7 +116,7 @@ export function Sidebar({
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close navigation"
-              className="rounded-md p-1 text-navy-300 hover:bg-navy-800 hover:text-white md:hidden"
+              className="rounded-md p-1.5 text-navy-300 hover:bg-navy-800 hover:text-white md:hidden"
             >
               <X className="h-5 w-5" />
             </button>
