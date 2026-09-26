@@ -148,7 +148,7 @@ export function CompletedTable({
               type="button"
               onClick={() => set("show", s.key === "reviews" ? "all" : s.key)}
               className={cn(
-                "rounded-md px-2.5 py-1 text-xs font-medium transition",
+                "rounded-md px-2.5 py-2 text-xs font-medium transition sm:py-1",
                 show === s.key
                   ? "bg-white text-navy-900 shadow-sm dark:bg-slate-900 dark:text-white"
                   : "text-slate-600 hover:text-navy-800 dark:text-slate-300 dark:hover:text-white",
@@ -168,7 +168,7 @@ export function CompletedTable({
                 aria-label="Reviewer"
                 value={sp.get("reviewer") ?? myEmail}
                 onChange={(e) => set("reviewer", e.target.value)}
-                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-base text-slate-700 sm:py-1 sm:text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
               >
                 <option value={myEmail}>Me</option>
                 <option value="everyone">Everyone</option>
@@ -185,7 +185,7 @@ export function CompletedTable({
               aria-label="Verdict"
               value={sp.get("verdict") ?? "all"}
               onChange={(e) => set("verdict", e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-base text-slate-700 sm:py-1 sm:text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             >
               <option value="all">Any verdict</option>
               <option value="good">Good</option>
@@ -196,7 +196,7 @@ export function CompletedTable({
               aria-label="Lane"
               value={sp.get("lane") ?? "all"}
               onChange={(e) => set("lane", e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-base text-slate-700 sm:py-1 sm:text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             >
               <option value="all">Any lane</option>
               <option value="must_review">Must review</option>
@@ -207,7 +207,7 @@ export function CompletedTable({
               aria-label="Date"
               value={sp.get("date") ?? "all"}
               onChange={(e) => set("date", e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-base text-slate-700 sm:py-1 sm:text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             >
               <option value="all">Any time</option>
               <option value="today">Today</option>
@@ -389,7 +389,7 @@ function DismissedList({
           <ul className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
             {rows.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-3 py-2">
-                <div className="min-w-0">
+                <div className="min-w-0 break-words">
                   <p className="text-sm text-navy-900 dark:text-white">
                     {d.scope === "message" ? "One message" : "Whole conversation"}
                     <span className="ml-2 font-mono text-[11px] text-slate-500 dark:text-slate-400">

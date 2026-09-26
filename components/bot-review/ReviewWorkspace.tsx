@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useOptimistic, useState, useTransition } from "react";
+import { useCallback, useOptimistic, useRef, useState, useTransition } from "react";
 import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { QueueList } from "./QueueList";
@@ -125,6 +125,27 @@ export function ReviewWorkspace({
     [go, setOptimisticId],
   );
 
+  /*
+   * Phones stack the panes, so the thread sits BELOW the queue: picking a lead
+   * (or "Submit and next" landing on a new one) used to leave the reviewer
+   * looking at the queue with nothing visibly changed. Below lg, moves that
+   * change the message from outside the thread bring the thread into view.
+   * Clicks inside the thread deliberately don't — the reviewer is already
+   * looking at it, and a jump to its top would lose their place (2026-09-26).
+   */
+  const threadRef = useRef<HTMLDivElement>(null);
+  const revealThread = useCallback(() => {
+    if (typeof window === "undefined" || !window.matchMedia("(max-width: 1023px)").matches) return;
+    threadRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, []);
+  const selectFromQueue = useCallback(
+    (contextId: number) => {
+      selectRow(contextId);
+      revealThread();
+    },
+    [selectRow, revealThread],
+  );
+
   /**
    * Where "and next" goes: finish this conversation before moving on.
    *
@@ -145,7 +166,7 @@ export function ReviewWorkspace({
       conversation.find(open) ??
       rows.slice(rows.findIndex((r) => r.context_id === fromId) + 1).find(open) ??
       rows.find(open);
-    if (next) selectRow(next.context_id);
+    if (next) selectFromQueue(next.context_id);
     else go({ ctx: null });
   }
 
@@ -322,12 +343,12 @@ export function ReviewWorkspace({
           page={page}
           reviewedIds={reviewedIds}
           dismissedIds={dismissedIds}
-          onSelect={selectRow}
+          onSelect={selectFromQueue}
           onLoadMore={() => go({ page: String(page + 1) })}
         />
       </div>
 
-      <div className={`flex min-h-0 flex-col gap-3${selected ? "" : " xl:col-span-2"}`}>
+      <div ref={threadRef} className={`flex min-h-0 scroll-mt-4 flex-col gap-3${selected ? "" : " xl:col-span-2"}`}>
         {errorMsg && (
           <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
             {errorMsg}
@@ -335,14 +356,14 @@ export function ReviewWorkspace({
         )}
 
         {!selected ? (
-          <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 p-10 text-center dark:border-slate-700">
+          <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 p-6 text-center sm:p-10 dark:border-slate-700">
             <p className="font-display text-lg font-semibold text-navy-900 dark:text-white">
               {rows.length === 0 ? "You're caught up." : "Pick a conversation to review."}
             </p>
             <p className="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">
               {rows.length === 0
                 ? "New messages show up here as the bot sends them."
-                : "Open a lead on the left, then click the message you want to score. J and K step through them."}
+                : "Open a lead from the list, then click the message you want to score. J and K step through them."}
             </p>
           </div>
         ) : (

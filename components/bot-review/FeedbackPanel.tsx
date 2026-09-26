@@ -148,8 +148,8 @@ export function FeedbackPanel({
   if (readOnly && !editing) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Reviewed by you · {existingVerdict?.at ?? ""}
             </p>
@@ -164,7 +164,7 @@ export function FeedbackPanel({
               )}
             </p>
             {existingVerdict?.note && (
-              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Note: {existingVerdict.note}</p>
+              <p className="mt-1 break-words text-xs text-slate-600 dark:text-slate-300">Note: {existingVerdict.note}</p>
             )}
           </div>
           <div className="flex shrink-0 items-center gap-3">
@@ -203,7 +203,7 @@ export function FeedbackPanel({
           A skip is the ABSENCE of a score: it writes no bot_feedback row and
           moves neither the Good rate nor anyone's reviewer count. */}
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        <Button variant="ghost" size="sm" onClick={onSkipMessage} disabled={disabled}>
+        <Button variant="ghost" size="sm" className="py-2 sm:py-1" onClick={onSkipMessage} disabled={disabled}>
           Skip (S)
         </Button>
         <span className="text-xs text-slate-500 dark:text-slate-400">Don&apos;t score this one.</span>
@@ -226,7 +226,7 @@ export function FeedbackPanel({
                   aria-pressed={on}
                   onClick={() => toggleReason(r.code)}
                   className={cn(
-                    "rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition",
+                    "rounded-full px-2.5 py-1.5 text-xs font-medium ring-1 transition sm:py-1",
                     on
                       ? "bg-navy-700 text-white ring-navy-700"
                       : "bg-white text-slate-700 ring-slate-300 hover:ring-navy-400 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700",
@@ -258,9 +258,9 @@ export function FeedbackPanel({
         {showDiff && originalText ? (
           <div className="rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-950">
             <p className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Bot said</p>
-            <p className="whitespace-pre-wrap text-rose-700 line-through dark:text-rose-300">{originalText}</p>
+            <p className="whitespace-pre-wrap break-words text-rose-700 line-through dark:text-rose-300">{originalText}</p>
             <p className="mb-1 mt-2 text-[11px] uppercase tracking-wide text-slate-500">Better</p>
-            <p className="whitespace-pre-wrap text-emerald-700 dark:text-emerald-300">{draft.betterText}</p>
+            <p className="whitespace-pre-wrap break-words text-emerald-700 dark:text-emerald-300">{draft.betterText}</p>
           </div>
         ) : (
           <textarea
@@ -274,7 +274,7 @@ export function FeedbackPanel({
                 ? "What should the bot have said?"
                 : "Rewrite the message the way it should have read."
             }
-            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm text-slate-800 focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-base text-slate-800 sm:text-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
         )}
       </div>
@@ -299,7 +299,7 @@ export function FeedbackPanel({
           onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
           placeholder={draft.verdict === "unsafe" ? "Tell us what could go wrong." : "Add a note for the next reviewer."}
           className={cn(
-            "w-full rounded-lg border bg-white px-2.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-1 disabled:opacity-60 dark:bg-slate-950 dark:text-slate-100",
+            "w-full rounded-lg border bg-white px-2.5 py-2 text-base text-slate-800 sm:text-sm focus:outline-none focus:ring-1 disabled:opacity-60 dark:bg-slate-950 dark:text-slate-100",
             error?.field === "note"
               ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500"
               : "border-slate-300 focus:border-navy-500 focus:ring-navy-500 dark:border-slate-700",
@@ -336,7 +336,10 @@ export function FeedbackPanel({
         {error?.field === "gold" && <FieldError>{error.message}</FieldError>}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+      {/* Phones: Submit goes full width on top, the dismiss menu full width under
+          it. Side by side, the menu's right-anchored dropdown opened off the
+          left edge of the screen (2026-09-26). */}
+      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
         {/* The wider "not now". Skip above handles this one message; this is
             the whole thread, which is why it keeps its confirm step. The old
             session-only "Skip for now" is gone — it recorded nothing, and two
@@ -347,7 +350,13 @@ export function FeedbackPanel({
           canDismissConversation={canDismissConversation}
           onDismiss={onDismiss}
         />
-        <Button variant="primary" size="sm" onClick={attemptSubmit} disabled={disabled}>
+        <Button
+          variant="primary"
+          size="sm"
+          className="justify-center py-2.5 text-sm sm:py-1 sm:text-xs"
+          onClick={attemptSubmit}
+          disabled={disabled}
+        >
           {submitting ? "Saving…" : "Submit and next →"}
         </Button>
       </div>
@@ -392,13 +401,19 @@ function DismissMenu({
 
   return (
     <div className="relative" onClick={(e) => e.stopPropagation()}>
-      <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)} disabled={disabled}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-center py-2 sm:w-auto sm:py-1"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+      >
         Nothing to review here ▾
       </Button>
       {open && (
         <div
           role="menu"
-          className="absolute bottom-full right-0 z-20 mb-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+          className="absolute inset-x-0 bottom-full z-20 mb-1 overflow-hidden sm:left-auto sm:w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
         >
           <button
             type="button"

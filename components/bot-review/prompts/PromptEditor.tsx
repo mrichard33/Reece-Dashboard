@@ -127,7 +127,7 @@ export function PromptEditor({ detail }: { detail: PromptDetail }) {
       {/* ── Header ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 font-mono text-sm font-semibold text-navy-900 dark:text-white">
+          <p className="flex flex-wrap items-center gap-2 break-all font-mono text-sm font-semibold text-navy-900 dark:text-white">
             {prompt.prompt_code}
             <Badge tone={prompt.active ? "emerald" : "slate"}>{prompt.active ? "Live" : "Off"}</Badge>
             {savedDraftKeys.length > 0 && <Badge tone="amber">Draft saved</Badge>}
@@ -316,7 +316,9 @@ export function PromptEditor({ detail }: { detail: PromptDetail }) {
           onChange={(e) => setNote(e.target.value)}
           disabled={disabled}
           placeholder="Why are you changing this? (optional)"
-          className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-navy-900 placeholder:text-slate-400 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+          // Phones: the note takes its own line so the three buttons don't crush
+          // it to a sliver, at 16px so iOS doesn't zoom on focus (2026-09-26).
+          className="min-w-0 flex-1 basis-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-base sm:basis-0 sm:text-xs text-navy-900 placeholder:text-slate-400 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
         />
 
         <Button

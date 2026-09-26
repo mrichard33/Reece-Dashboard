@@ -76,14 +76,14 @@ export function ConversationThread({
         if (item.kind === "turn") {
           return (
             <div key={item.key} className={cn("flex", item.inbound ? "justify-start" : "justify-end")}>
-              <div className="max-w-[78%]">
+              <div className="max-w-[88%] sm:max-w-[78%]">
                 <Meta>
                   {item.inbound ? leadLabel : "Bot"}
                   {item.at ? ` · ${formatEt(item.at)}` : ""}
                 </Meta>
                 <div
                   className={cn(
-                    "rounded-xl px-3 py-2 text-sm leading-relaxed",
+                    "break-words rounded-xl px-3 py-2 text-sm leading-relaxed",
                     item.inbound
                       ? "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100"
                       : "bg-navy-50 text-navy-900 dark:bg-navy-900 dark:text-navy-50",
@@ -110,7 +110,7 @@ export function ConversationThread({
 
         return (
           <div key={item.key} className="flex justify-end">
-            <div className={cn(isEmail ? "w-[85%]" : "max-w-[78%]")}>
+            <div className={cn(isEmail ? "w-[92%] sm:w-[85%]" : "max-w-[88%] sm:max-w-[78%]")}>
               <Meta>
                 <span className="inline-flex flex-wrap items-center gap-x-1.5">
                   <span>
@@ -152,7 +152,7 @@ export function ConversationThread({
                 ) : (
                   <span
                     className={cn(
-                      "block whitespace-pre-wrap",
+                      "block whitespace-pre-wrap break-words",
                       isEmail && !open && "max-h-[132px] overflow-hidden",
                     )}
                   >

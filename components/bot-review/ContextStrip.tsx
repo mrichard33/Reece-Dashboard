@@ -70,7 +70,7 @@ export function ContextStrip({
       {(row.contact_phone || row.contact_email) && (
         <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-slate-500 dark:text-slate-400">
           {row.contact_phone && <span className="font-mono">{formatPhone(row.contact_phone)}</span>}
-          {row.contact_email && <span className="truncate">{row.contact_email}</span>}
+          {row.contact_email && <span className="min-w-0 max-w-full truncate">{row.contact_email}</span>}
         </div>
       )}
 
@@ -104,7 +104,10 @@ export function ContextStrip({
             Used {row.learned_items_count} learned item{row.learned_items_count === 1 ? "" : "s"}
           </button>
           {learnedOpen && (
-            <div className="absolute left-0 top-7 z-20 w-72 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900">
+            // Below sm the chips wrap, so this button can sit near the right edge
+            // and a left-anchored w-72 would run off-screen: pin it to the
+            // viewport gutters there, opening under the button (2026-09-26).
+            <div className="fixed inset-x-4 z-20 mt-1 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-lg sm:absolute sm:inset-x-auto sm:left-0 sm:top-7 sm:mt-0 sm:w-72 dark:border-slate-700 dark:bg-slate-900">
               <p className="font-semibold text-navy-900 dark:text-white">What shaped this message</p>
               {row.learned_items_count === 0 ? (
                 <p className="mt-1 text-slate-600 dark:text-slate-300">
@@ -122,7 +125,9 @@ export function ContextStrip({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* ml-auto keeps this group (and its right-anchored menu) on the right
+          when the row wraps on a phone. */}
+      <div className="ml-auto flex items-center gap-2">
         {row.ghl_contact_id && (
           <a
             href={`https://app.gohighlevel.com/v2/location/contacts/detail/${row.ghl_contact_id}`}
@@ -139,12 +144,12 @@ export function ContextStrip({
               type="button"
               aria-label="Lead actions"
               onClick={() => setMenuOpen((v) => !v)}
-              className="rounded-md p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="rounded-md p-2 text-slate-500 hover:bg-slate-100 sm:p-1 dark:hover:bg-slate-800"
             >
               <MoreHorizontal className="h-4 w-4" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-7 z-20 w-56 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              <div className="absolute right-0 top-9 z-20 w-56 sm:top-7 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
                 <button
                   type="button"
                   onClick={() => {
@@ -152,7 +157,7 @@ export function ContextStrip({
                     onStopBot();
                   }}
                   className={cn(
-                    "w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-rose-700 hover:bg-rose-50",
+                    "w-full rounded-md px-2 py-2.5 text-left text-xs font-medium text-rose-700 hover:bg-rose-50 sm:py-1.5",
                     "dark:text-rose-300 dark:hover:bg-rose-950",
                   )}
                 >

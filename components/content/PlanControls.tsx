@@ -105,7 +105,7 @@ export function PlanControls({
   }
 
   const inputCls =
-    "rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900";
+    "rounded-md border border-slate-300 px-2 py-1.5 text-xs disabled:opacity-60 sm:py-1 dark:border-slate-700 dark:bg-slate-900";
 
   return (
     <div className="relative" ref={wrapRef}>
@@ -119,8 +119,12 @@ export function PlanControls({
         <ChevronDown className="ml-0.5 h-3 w-3 opacity-60" />
       </Button>
 
+      {/* Phones: the toolbar wraps, so this button can sit anywhere in the row and a
+          right-anchored panel would hang off the left edge. Below sm the panel is
+          fixed to the viewport's side gutters instead; top stays auto, so it still
+          opens directly under the button (2026-09-26). */}
       {open && (
-        <div className="absolute right-0 z-30 mt-1.5 w-80 rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div className="fixed inset-x-4 z-30 mt-1.5 max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:max-h-none sm:w-80 sm:overflow-visible dark:border-slate-700 dark:bg-slate-900">
           <p className="mb-2.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
             Run in order. Plan sets the topic for each date, the brief adds the angle for
             one day, generate writes the drafts.

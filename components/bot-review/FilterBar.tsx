@@ -94,7 +94,7 @@ export function FilterBar({
                 onClick={() => set("lane", l.key)}
                 aria-current={on}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition",
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-medium transition sm:py-1",
                   on
                     ? "bg-white text-navy-900 shadow-sm dark:bg-slate-900 dark:text-white"
                     : "text-slate-600 hover:text-navy-800 dark:text-slate-300 dark:hover:text-white",
@@ -129,7 +129,7 @@ export function FilterBar({
                 type="button"
                 onClick={() => set("view", v.key === "riskiest" ? "all" : v.key)}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition",
+                  "rounded-md px-2.5 py-2 text-xs font-medium transition sm:py-1",
                   activeView === v.key
                     ? "bg-white text-navy-900 shadow-sm dark:bg-slate-900 dark:text-white"
                     : "text-slate-600 hover:text-navy-800 dark:text-slate-300 dark:hover:text-white",
@@ -147,7 +147,7 @@ export function FilterBar({
             aria-label={d.label}
             value={sp.get(d.param) ?? "all"}
             onChange={(e) => set(d.param, e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-base text-slate-700 sm:py-1 sm:text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             {d.options.map(([k, label]) => (
               <option key={k} value={k}>
@@ -162,7 +162,7 @@ export function FilterBar({
             aria-label="Rule or workflow"
             value={sp.get("rule") ?? "all"}
             onChange={(e) => set("rule", e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-base text-slate-700 sm:py-1 sm:text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             <option value="all">Any rule</option>
             {rules.map((r) => (
@@ -178,7 +178,7 @@ export function FilterBar({
             aria-label="Office"
             value={sp.get("office") ?? "all"}
             onChange={(e) => set("office", e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-base text-slate-700 sm:py-1 sm:text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             <option value="all">All offices</option>
             {offices.map((o) => (

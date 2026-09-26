@@ -40,7 +40,9 @@ export function PromptList({
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* Capped below lg, where the editor stacks under this list instead of
+          beside it — same reason as the review queue (2026-09-26). */}
+      <div className="max-h-[40vh] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
         {[...groups.entries()].map(([workflow, rows]) => (
           <div key={workflow}>
             <p className="sticky top-0 z-10 bg-slate-50 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">

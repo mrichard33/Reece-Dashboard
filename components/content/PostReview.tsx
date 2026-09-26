@@ -45,6 +45,17 @@ import {
 import { deletePost } from "@/lib/actions/deletePost";
 import type { FbPost, FbComponent, FbReasonCode } from "@/lib/supabase/types";
 
+/**
+ * Phone sizing for the review flow (2026-09-26). Executives approve posts from
+ * their phones, so below sm every size="sm" button is padded to a ~32px tap
+ * target and form fields use a 16px font — iOS Safari zooms the whole page when
+ * a field under 16px takes focus, which strands the drawer half off-screen.
+ * The sm: halves restore the compact desktop sizing exactly.
+ */
+const TAP = "py-2 sm:py-1";
+const FIELD_TEXT = "text-base sm:text-sm";
+const FIELD_TEXT_XS = "text-base sm:text-xs";
+
 export function PostReview({
   post,
   isExecutive,
@@ -195,19 +206,20 @@ export function PostReview({
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={6}
-              className="block w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className={`block w-full rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT} dark:border-slate-700 dark:bg-slate-900`}
               placeholder="Post body"
             />
             <textarea
               value={firstComment}
               onChange={(e) => setFirstComment(e.target.value)}
               rows={2}
-              className="block w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className={`block w-full rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT} dark:border-slate-700 dark:bg-slate-900`}
               placeholder="First comment (link / CTA)"
             />
             <div className="flex gap-2">
               <Button
                 size="sm"
+                className={TAP}
                 disabled={pending}
                 onClick={() =>
                   run("edit", async () => {
@@ -222,18 +234,18 @@ export function PostReview({
               >
                 {busy("edit") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Save
               </Button>
-              <Button size="sm" variant="ghost" disabled={pending} onClick={() => setEditing(false)}>
+              <Button size="sm" variant="ghost" className={TAP} disabled={pending} onClick={() => setEditing(false)}>
                 Cancel
               </Button>
             </div>
           </div>
         ) : (
           <>
-            <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-200">
+            <p className="whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-200">
               {post.post_body || <span className="text-slate-400">No copy yet.</span>}
             </p>
             {post.first_comment && (
-              <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-500 dark:border-slate-800">
+              <p className="mt-2 break-words border-t border-slate-100 pt-2 text-xs text-slate-500 dark:border-slate-800">
                 <span className="font-medium">First comment:</span> {post.first_comment}
               </p>
             )}
@@ -275,6 +287,7 @@ export function PostReview({
               <Button
                 size="sm"
                 variant="ghost"
+                className={TAP}
                 disabled={pending}
                 onClick={() => run("make-text", () => makeTextOnly(post.id))}
               >
@@ -325,10 +338,10 @@ export function PostReview({
       <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
         {isExecutive && (
           <>
-            <Button size="sm" variant="secondary" disabled={pending} onClick={() => setEditing((v) => !v)}>
+            <Button size="sm" variant="secondary" className={TAP} disabled={pending} onClick={() => setEditing((v) => !v)}>
               <Pencil className="h-3.5 w-3.5" /> {editing ? "Editing…" : "Edit"}
             </Button>
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => run("skip", () => skipPost(post.id))}>
+            <Button size="sm" variant="ghost" className={TAP} disabled={pending} onClick={() => run("skip", () => skipPost(post.id))}>
               {busy("skip") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SkipForward className="h-3.5 w-3.5" />} Skip
             </Button>
           </>
@@ -340,7 +353,7 @@ export function PostReview({
             onChange={(e) => setGenMedia(e.target.value as "auto" | "image" | "text")}
             aria-label="Media type for Generate Now"
             disabled={pending}
-            className="rounded-md border border-slate-300 px-1.5 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
+            className={`rounded-md border border-slate-300 px-1.5 py-2 ${FIELD_TEXT_XS} disabled:opacity-60 sm:py-1 dark:border-slate-700 dark:bg-slate-900`}
           >
             <option value="auto">Auto</option>
             <option value="image">With image</option>
@@ -349,6 +362,7 @@ export function PostReview({
           <Button
             size="sm"
             variant="ghost"
+            className={TAP}
             disabled={pending}
             onClick={() =>
               run(
@@ -377,11 +391,12 @@ export function PostReview({
         )}
         {isExecutive &&
           (confirmingDelete ? (
-            <span className="inline-flex items-center gap-2">
+            <span className="inline-flex flex-wrap items-center gap-2">
               <span className="text-xs text-rose-600">Delete this draft permanently?</span>
               <Button
                 size="sm"
                 variant="danger"
+                className={TAP}
                 disabled={pending}
                 onClick={() =>
                   run("delete", async () => {
@@ -401,6 +416,7 @@ export function PostReview({
               <Button
                 size="sm"
                 variant="ghost"
+                className={TAP}
                 disabled={pending}
                 onClick={() => setConfirmingDelete(false)}
               >
@@ -411,6 +427,7 @@ export function PostReview({
             <Button
               size="sm"
               variant="danger"
+              className={TAP}
               disabled={pending}
               onClick={() => setConfirmingDelete(true)}
             >
@@ -429,19 +446,20 @@ export function PostReview({
               type="date"
               value={moveDate}
               onChange={(e) => setMoveDate(e.target.value)}
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              className={`rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT_XS} sm:py-1 dark:border-slate-700 dark:bg-slate-900`}
             />
             <input
               type="time"
               value={moveTime}
               onChange={(e) => setMoveTime(e.target.value)}
               aria-label="Post time (Eastern)"
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              className={`rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT_XS} sm:py-1 dark:border-slate-700 dark:bg-slate-900`}
             />
             <span className="text-xs text-slate-400">Eastern time</span>
             <Button
               size="sm"
               variant="secondary"
+              className={TAP}
               disabled={pending || (moveDate === post.scheduled_date && moveTime === currentTime)}
               onClick={() =>
                 run("reschedule", async () => {
@@ -483,10 +501,11 @@ export function PostReview({
             value={permalink}
             onChange={(e) => setPermalink(e.target.value)}
             placeholder="Group post permalink (optional)"
-            className="flex-1 rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+            className={`w-full min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT_XS} sm:w-auto sm:py-1 dark:border-slate-700 dark:bg-slate-900`}
           />
           <Button
             size="sm"
+            className={TAP}
             disabled={pending}
             onClick={() => run("markposted", () => markPosted(post.id, permalink))}
           >
@@ -566,13 +585,16 @@ function ComponentBlock({
 
       {isExecutive && status !== "approved" && (
         <div className="mt-3 space-y-2">
-          <div className="flex gap-2">
-            <Button size="sm" variant="primary" disabled={disabled} onClick={onApprove}>
+          {/* Phones: Approve and Reject split the row evenly — a full-width pair is
+              the easiest thing to hit one-handed. */}
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <Button size="sm" variant="primary" className={`justify-center ${TAP}`} disabled={disabled} onClick={onApprove}>
               {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Approve {title.toLowerCase()}
             </Button>
             <Button
               size="sm"
               variant="danger"
+              className={`justify-center ${TAP}`}
               disabled={disabled}
               onClick={() => setRejecting((v) => !v)}
             >
@@ -585,7 +607,7 @@ function ComponentBlock({
               <select
                 value={code}
                 onChange={(e) => setCode(e.target.value as FbReasonCode)}
-                className="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                className={`block w-full rounded-md border border-slate-300 px-2 py-1.5 ${FIELD_TEXT} sm:py-1 dark:border-slate-700 dark:bg-slate-900`}
               >
                 {reasonCodes.map((r) => (
                   <option key={r.value} value={r.value}>
@@ -598,11 +620,12 @@ function ComponentBlock({
                 onChange={(e) => setText(e.target.value)}
                 rows={2}
                 placeholder="Add specifics — this note goes straight into the regeneration prompt"
-                className="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                className={`block w-full rounded-md border border-slate-300 px-2 py-1 ${FIELD_TEXT} dark:border-slate-700 dark:bg-slate-900`}
               />
               <Button
                 size="sm"
                 variant="danger"
+                className={`w-full justify-center sm:w-auto ${TAP}`}
                 disabled={disabled}
                 onClick={() => {
                   onReject(code, text);

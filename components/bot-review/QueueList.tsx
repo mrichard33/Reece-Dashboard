@@ -80,7 +80,10 @@ export function QueueList({
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* Below lg nothing bounds this pane's height, so a full page of leads
+          pushed the thread thousands of pixels down on a phone. Cap the list
+          there; lg+ is bounded by the workspace grid as before (2026-09-26). */}
+      <div className="max-h-[45vh] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
         {groups.length === 0 && (
           <p className="px-3 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
             No messages in this view.
@@ -165,7 +168,7 @@ export function QueueList({
           {groups.length} conversation{groups.length === 1 ? "" : "s"} · {shown} of {total} messages
         </span>
         {shown < total && (
-          <button type="button" onClick={onLoadMore} className="font-medium text-navy-700 hover:underline dark:text-navy-200">
+          <button type="button" onClick={onLoadMore} className="-my-1.5 py-1.5 font-medium text-navy-700 hover:underline dark:text-navy-200">
             Load more
           </button>
         )}

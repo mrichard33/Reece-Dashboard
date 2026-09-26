@@ -52,6 +52,7 @@ export function VerdictButtons({
   showKeys?: boolean;
 }) {
   return (
+    // mobile-ok: three short choices; below sm each stacks icon over label to fit a third of a phone.
     <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="How was this message?">
       {OPTIONS.map((o) => {
         const selected = value === o.value;
@@ -64,7 +65,10 @@ export function VerdictButtons({
             disabled={disabled}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold ring-1 transition",
+              // Phones: a third of ~310px can't hold icon + "Needs work" + key hint
+              // on one line, so the icon stacks over the label and the key hint
+              // (no keyboard there anyway) is hidden (2026-09-26).
+              "flex flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-3 text-sm font-semibold ring-1 transition sm:flex-row sm:gap-2 sm:px-3",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500",
               disabled && "cursor-not-allowed opacity-60",
               selected
@@ -80,7 +84,7 @@ export function VerdictButtons({
             {showKeys && (
               <span
                 className={cn(
-                  "text-[11px] font-normal",
+                  "hidden text-[11px] font-normal sm:inline",
                   selected ? "text-white/80" : "text-slate-400 dark:text-slate-500",
                 )}
               >

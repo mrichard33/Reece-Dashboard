@@ -15,7 +15,9 @@ const TABS = [
 export function ContentNav() {
   const path = usePathname();
   return (
-    <nav className="flex gap-1 border-b border-slate-200 px-6 dark:border-slate-800">
+    // Five tabs are ~430px of text, wider than a phone: the strip scrolls
+    // sideways there instead of pushing the whole page wide (2026-09-26).
+    <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 px-4 sm:px-6 dark:border-slate-800">
       {TABS.map((t) => {
         // Anchored prefix match: "/content/settings" must not light up for a
         // sibling like "/content/settings-v2" — only exact or a "/" boundary.
@@ -28,7 +30,7 @@ export function ContentNav() {
             key={t.href}
             href={t.href}
             className={cn(
-              "border-b-2 px-3 py-2 text-sm font-medium transition",
+              "shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition",
               active
                 ? "border-brick text-navy-900 dark:text-white"
                 : "border-transparent text-slate-500 hover:text-navy-800 dark:hover:text-slate-200",

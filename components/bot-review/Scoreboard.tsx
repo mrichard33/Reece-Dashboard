@@ -173,7 +173,7 @@ export function Scoreboard({
                   const max = Math.max(...issues.map((x) => x.this_week), 1);
                   return (
                     <li key={i.reason_code} className="flex items-center gap-3">
-                      <span className="w-48 shrink-0 truncate text-sm text-slate-700 dark:text-slate-200">{i.label}</span>
+                      <span className="w-32 shrink-0 truncate text-sm text-slate-700 sm:w-48 dark:text-slate-200">{i.label}</span>
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                         <div className="h-full rounded-full bg-navy-600" style={{ width: `${(i.this_week / max) * 100}%` }} />
                       </div>
@@ -214,8 +214,10 @@ export function Scoreboard({
                   const ok = enoughData(p2.reviewed) && p2.good_rate != null;
                   const pct = ok ? Math.round((p2.good_rate as number) * 100) : 0;
                   return (
-                    <li key={`${p2.path}-${p2.channel}`} className="flex items-center gap-3">
-                      <span className="w-64 shrink-0 truncate font-mono text-xs text-slate-700 dark:text-slate-200">
+                    // Fixed columns here total ~480px, wider than a phone card:
+                    // below sm the path takes its own line over the bar (2026-09-26).
+                    <li key={`${p2.path}-${p2.channel}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap sm:gap-y-0">
+                      <span className="w-full shrink-0 truncate font-mono text-xs text-slate-700 sm:w-64 dark:text-slate-200">
                         {p2.path}
                         <span className="ml-1 font-sans text-slate-400">{p2.channel}</span>
                       </span>
@@ -228,7 +230,7 @@ export function Scoreboard({
                           style={{ width: `${ok ? pct : 100}%` }}
                         />
                       </div>
-                      <span className="w-32 shrink-0 text-right text-xs">
+                      <span className="w-28 shrink-0 text-right text-xs sm:w-32">
                         {ok ? (
                           <span className="font-mono text-slate-700 dark:text-slate-200">{pct}%</span>
                         ) : (

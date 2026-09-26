@@ -22,9 +22,9 @@ export default async function ContentLayout({
       />
       <ContentNav />
       {!ready && (
-        <div className="mx-6 mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <div className="mx-4 mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 sm:mx-6 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
           Content engine tables aren&apos;t set up yet. Apply{" "}
-          <code className="font-mono">db/migrations/0003_fb_content_engine.sql</code> and{" "}
+          <code className="break-all font-mono">db/migrations/0003_fb_content_engine.sql</code> and{" "}
           <code className="font-mono">0004_fb_seed.sql</code> in Supabase to enable the
           calendar, idea miner, and message bank.
         </div>

@@ -134,15 +134,17 @@ export default async function BotReviewPage({ searchParams }: { searchParams: Pr
           }
         />
 
-        <nav className="flex flex-wrap items-stretch gap-1 border-b border-slate-200 dark:border-slate-800">
+        {/* Phones: one scrolling strip rather than tabs wrapping into a second and
+            third row under a shared border (2026-09-26). */}
+        <nav className="flex items-stretch gap-1 overflow-x-auto border-b border-slate-200 sm:flex-wrap sm:overflow-visible dark:border-slate-800">
           {TABS.filter((t) => allowed.includes(t.key)).map((t) => (
             <Link
               key={t.key}
               href={(t.key === "review" ? "/bot-review" : `/bot-review?tab=${t.key}`) as Route}
               className={
                 t.key === tab
-                  ? "border-b-2 border-navy-800 px-3 py-2.5 text-sm font-semibold text-navy-900 dark:border-navy-300 dark:text-white"
-                  : "border-b-2 border-transparent px-3 py-2.5 text-sm text-slate-500 hover:text-navy-800 dark:text-slate-400 dark:hover:text-white"
+                  ? "shrink-0 whitespace-nowrap border-b-2 border-navy-800 px-3 py-2.5 text-sm font-semibold text-navy-900 dark:border-navy-300 dark:text-white"
+                  : "shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-sm text-slate-500 hover:text-navy-800 dark:text-slate-400 dark:hover:text-white"
               }
             >
               {t.label}
@@ -247,7 +249,7 @@ async function ReviewTab({
       <Card>
         <CardContent>
           <p className="text-sm font-semibold text-navy-900 dark:text-white">We couldn&apos;t load the review queue.</p>
-          <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{queue.error}</p>
+          <p className="mt-1 break-all font-mono text-xs text-slate-500 dark:text-slate-400">{queue.error}</p>
         </CardContent>
       </Card>
     );
@@ -396,7 +398,7 @@ async function CompletedTab({
       <Card>
         <CardContent>
           <p className="text-sm font-semibold text-navy-900 dark:text-white">We couldn&apos;t load Completed.</p>
-          <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{completed.error}</p>
+          <p className="mt-1 break-all font-mono text-xs text-slate-500 dark:text-slate-400">{completed.error}</p>
         </CardContent>
       </Card>
     );
@@ -437,7 +439,7 @@ async function ScoreboardTab() {
       <Card>
         <CardContent>
           <p className="text-sm font-semibold text-navy-900 dark:text-white">We couldn&apos;t load the Scoreboard.</p>
-          <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{board.error}</p>
+          <p className="mt-1 break-all font-mono text-xs text-slate-500 dark:text-slate-400">{board.error}</p>
         </CardContent>
       </Card>
     );
@@ -469,7 +471,7 @@ async function PromptsTab({
           <p className="text-sm font-semibold text-navy-900 dark:text-white">
             We couldn&apos;t load the prompts.
           </p>
-          <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{list.error}</p>
+          <p className="mt-1 break-all font-mono text-xs text-slate-500 dark:text-slate-400">{list.error}</p>
         </CardContent>
       </Card>
     );
@@ -496,7 +498,7 @@ async function PromptsTab({
               <p className="text-sm font-semibold text-navy-900 dark:text-white">
                 We couldn&apos;t open that prompt.
               </p>
-              <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-1 break-all font-mono text-xs text-slate-500 dark:text-slate-400">
                 {detail.error}
               </p>
             </CardContent>
@@ -505,7 +507,7 @@ async function PromptsTab({
           <Card>
             <CardContent>
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                Pick a prompt on the left to read or edit it.
+                Pick a prompt from the list to read or edit it.
               </p>
             </CardContent>
           </Card>
