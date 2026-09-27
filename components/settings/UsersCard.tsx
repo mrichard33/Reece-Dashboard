@@ -30,7 +30,7 @@ export function UsersCard({
   const [pending, startTransition] = useTransition();
 
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"operator" | "team">("team");
+  const [role, setRole] = useState<"operator" | "team" | "partner">("team");
   const [method, setMethod] = useState<Method>("password");
   const [password, setPassword] = useState("");
 
@@ -104,11 +104,12 @@ export function UsersCard({
               <select
                 id="new-user-role"
                 value={role}
-                onChange={(e) => setRole(e.target.value as "operator" | "team")}
+                onChange={(e) => setRole(e.target.value as "operator" | "team" | "partner")}
                 className={inputCls}
               >
                 <option value="team">Team</option>
                 <option value="operator">Operator</option>
+                <option value="partner">Partner – LightFire (payroll page only)</option>
               </select>
             </div>
           </div>
@@ -247,6 +248,8 @@ function UserRow({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {/* A partner login (db/migrations/0026) never switches to a staff role. */}
+        {(user.role as string) !== "partner" && (
         <Button
           size="sm"
           variant="secondary"
@@ -261,6 +264,7 @@ function UserRow({
           {busy("role") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           Make {user.role === "operator" ? "team" : "operator"}
         </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"

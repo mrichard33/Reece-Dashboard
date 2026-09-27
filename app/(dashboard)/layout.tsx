@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { MobileNavProvider } from "@/components/shell/MobileNav";
-import { getAccessContext } from "@/lib/auth";
+import { getAccessContext, getPartnerContext } from "@/lib/auth";
 
 export default async function DashboardLayout({
   children,
@@ -10,7 +10,12 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const ctx = await getAccessContext();
-  if (!ctx) redirect("/login");
+  if (!ctx) {
+    // A payroll partner (db/migrations/0026) is not a dashboard user; its one
+    // page lives outside this layout.
+    if (await getPartnerContext()) redirect("/partner/payroll");
+    redirect("/login");
+  }
 
   const hdrs = await headers();
   const pathname = hdrs.get("x-pathname") ?? "/";

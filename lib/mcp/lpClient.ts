@@ -117,7 +117,19 @@ export const lpMcp = {
       args: { ...args, via: "dashboard", confirm: true },
       timeoutMs: 60_000,
     }),
+  /**
+   * Payroll dispute tickets (LP-MCP sql/133, 2026-09-27). The only write path
+   * for payroll from the dashboard — LP MCP owns the money rules, scoping and
+   * the audit row. A refusal comes back as ordinary JSON { ok:false, error },
+   * not an MCP isError, so the action can show it.
+   */
+  payrollFileDispute: (args: Record<string, unknown>) =>
+    client.call<PayrollToolResult>("payroll_file_dispute", { args, timeoutMs: 20_000 }),
+  payrollDecideDispute: (args: Record<string, unknown>) =>
+    client.call<PayrollToolResult>("payroll_decide_dispute", { args, timeoutMs: 20_000 }),
 };
+
+export type PayrollToolResult = { ok: boolean; error?: string; [k: string]: unknown };
 
 /**
  * What memory_rule returns. Note the failure shape is ordinary JSON with

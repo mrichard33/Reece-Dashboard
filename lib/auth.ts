@@ -25,10 +25,55 @@ export const getSessionUser = cache(async (): Promise<DashboardUser | null> => {
     .from("dashboard_users")
     .select("email, role, created_at")
     .eq("email", user.email)
-    .maybeSingle<DashboardUser>();
+    .maybeSingle<{ email: string; role: string; created_at: string }>();
 
   if (lookupError || !data) return null;
-  return data;
+  // Partner accounts (db/migrations/0026) are NOT dashboard users. Returning
+  // null here is what keeps a partner out of every existing page, API route and
+  // server action — all of them gate on this function, so to them a partner is
+  // simply signed out. Partners reach only /partner/payroll, via
+  // getPartnerContext below. Do not widen this to admit 'partner'.
+  if (data.role !== "operator" && data.role !== "team") return null;
+  return data as DashboardUser;
+});
+
+export type PartnerContext = {
+  email: string;
+  partnerId: string;
+  partnerName: string;
+};
+
+/**
+ * The signed-in PARTNER (role 'partner' in dashboard_users), or null. The
+ * partner id comes from the account row — never from the browser — and every
+ * payroll read and dispute write is scoped to it server-side.
+ */
+export const getPartnerContext = cache(async (): Promise<PartnerContext | null> => {
+  const supabase = await lpServer();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  if (error || !user?.email) return null;
+
+  const svc = lpService();
+  const { data } = await svc
+    .from("dashboard_users")
+    .select("email, role, partner_id, lf_partners(display_name, active)")
+    .eq("email", user.email)
+    .maybeSingle<{
+      email: string;
+      role: string;
+      partner_id: string | null;
+      lf_partners: { display_name: string | null; active: boolean | null } | null;
+    }>();
+  if (!data || data.role !== "partner" || !data.partner_id) return null;
+  if (data.lf_partners?.active === false) return null;
+  return {
+    email: data.email.toLowerCase(),
+    partnerId: data.partner_id,
+    partnerName: data.lf_partners?.display_name ?? "Partner",
+  };
 });
 
 /** Convenience: returns just the role, or null. */
