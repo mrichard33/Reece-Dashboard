@@ -6,7 +6,7 @@ import type { Dispute, PayrollLine, PayrollRun } from "@/lib/payroll/core";
  * Payroll reads for /payroll (staff) and /partner/payroll (partner).
  *
  * Service-role client, because every payroll table has RLS on with no
- * policies (LP-MCP sql/132, sql/133). That makes SCOPE this file's job: a
+ * policies (LP-MCP sql/132, sql/134). That makes SCOPE this file's job: a
  * partner viewer is filtered to its own partner_id on EVERY query here, and
  * that id comes from the signed-in account (lib/auth getPartnerContext) —
  * never from a URL or a form. A run id from the URL is only honoured if it is
@@ -90,7 +90,7 @@ export async function isPayrollApprover(email: string | null | undefined): Promi
   return data.some((r) => String(r.email).toLowerCase() === email.toLowerCase());
 }
 
-/** True when the payroll tables are not there yet (LP-MCP sql/132 / sql/133 unapplied). */
+/** True when the payroll tables are not there yet (LP-MCP sql/132 / sql/134 unapplied). */
 export function isMissingTable(e: unknown): boolean {
   const m = e instanceof Error ? e.message : String(e);
   return /does not exist|Could not find the table|schema cache/i.test(m);

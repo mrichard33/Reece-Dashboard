@@ -118,7 +118,7 @@ export const lpMcp = {
       timeoutMs: 60_000,
     }),
   /**
-   * Payroll dispute tickets (LP-MCP sql/133, 2026-09-27). The only write path
+   * Payroll dispute tickets (LP-MCP sql/134, 2026-09-27). The only write path
    * for payroll from the dashboard — LP MCP owns the money rules, scoping and
    * the audit row. A refusal comes back as ordinary JSON { ok:false, error },
    * not an MCP isError, so the action can show it.

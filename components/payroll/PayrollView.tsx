@@ -71,7 +71,7 @@ export async function PayrollView({
           </p>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             {isMissingTable(e)
-              ? "The payroll tables are not in the database yet (LP-MCP sql/132 and sql/133)."
+              ? "The payroll tables are not in the database yet (LP-MCP sql/132 and sql/134)."
               : "Please try again in a minute. If it keeps happening, tell Reece."}
           </p>
         </CardContent>
