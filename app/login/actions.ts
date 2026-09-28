@@ -29,15 +29,17 @@ export async function signIn(
   const svc = lpService();
   const { data: allowlistRow } = await svc
     .from("dashboard_users")
-    .select("email")
+    .select("email, role")
     .eq("email", email)
-    .maybeSingle();
+    .maybeSingle<{ email: string; role: string }>();
 
   if (!allowlistRow) {
     await supabase.auth.signOut();
     return { error: "Account not authorized. Contact the system administrator." };
   }
 
+  // Payroll partners (db/migrations/0026) have one page and nothing else.
+  if (allowlistRow.role === "partner") redirect("/partner/payroll");
   redirect("/overview");
 }
 
@@ -86,4 +88,11 @@ export async function updatePassword(
   }
 
   redirect("/overview");
+}
+
+/** Sign out and return to the login page. Used by the partner shell (app/partner/layout.tsx). */
+export async function signOut(): Promise<void> {
+  const supabase = await lpServer();
+  await supabase.auth.signOut();
+  redirect("/login");
 }

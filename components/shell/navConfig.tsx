@@ -14,6 +14,7 @@ import {
   Scale,
   MessageSquareQuote,
   PhoneMissed,
+  Wallet,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -150,6 +151,16 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Lead Leaks",
         desc: "Leads we haven't called",
         Icon: PhoneMissed,
+        audience: "operator",
+      },
+      {
+        // Partner payroll (2026-09-27): LightFire's weekly pay lines by program
+        // and its dispute tickets. Partners see their own copy at
+        // /partner/payroll, outside this shell.
+        href: "/payroll",
+        label: "Payroll",
+        desc: "Partner pay and disputes",
+        Icon: Wallet,
         audience: "operator",
       },
       {

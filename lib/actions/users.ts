@@ -29,7 +29,9 @@ export type DashboardUserRow = DashboardUser & {
 
 export type CreateUserInput = {
   email: string;
-  role: "operator" | "team";
+  /** "partner" (db/migrations/0026) = a payroll partner login. It sees only
+   *  /partner/payroll; lib/auth getSessionUser never admits it anywhere else. */
+  role: "operator" | "team" | "partner";
   /** "invite" emails a set-password link; "password" sets one directly. */
   method: "invite" | "password";
   /** Required (>= 8 chars) when method === "password". */
@@ -112,8 +114,8 @@ export async function createDashboardUser(input: CreateUserInput): Promise<Actio
 
   const email = input.email.trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return { ok: false, error: "Enter a valid email address." };
-  if (input.role !== "operator" && input.role !== "team") {
-    return { ok: false, error: "Role must be operator or team." };
+  if (input.role !== "operator" && input.role !== "team" && input.role !== "partner") {
+    return { ok: false, error: "Role must be operator, team or partner." };
   }
   const wantsPassword = input.method === "password";
   const password = input.password ?? "";
@@ -122,6 +124,20 @@ export async function createDashboardUser(input: CreateUserInput): Promise<Actio
   }
 
   const svc = lpService();
+
+  // A partner login is tied to its partner (today only LightFire, the one
+  // active lf_partners row). Resolved server-side, never taken from the form.
+  let partnerId: string | null = null;
+  if (input.role === "partner") {
+    const { data: partner } = await svc
+      .from("lf_partners")
+      .select("id")
+      .eq("slug", "lightfire")
+      .eq("active", true)
+      .maybeSingle<{ id: string }>();
+    if (!partner) return { ok: false, error: "No active LightFire partner row (lf_partners)." };
+    partnerId = partner.id;
+  }
 
   // 1. Ensure the auth identity exists.
   const { data: created, error: createErr } = await svc.auth.admin.createUser({
@@ -145,7 +161,7 @@ export async function createDashboardUser(input: CreateUserInput): Promise<Actio
   // 2. Add / update the allowlist row (this is the gate sign-in checks).
   const { error: allowErr } = await svc
     .from("dashboard_users")
-    .upsert({ email, role: input.role }, { onConflict: "email" });
+    .upsert({ email, role: input.role, partner_id: partnerId }, { onConflict: "email" });
   if (allowErr) return { ok: false, error: allowErr.message };
 
   // 3. If they should set their own password, send the link.
