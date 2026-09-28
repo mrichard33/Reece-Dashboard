@@ -1054,9 +1054,9 @@ async function buildView(
   // A market's PRIMARY source row carries the WHOLE market's goal, so a primary
   // row in growth mode resolves against the COMBINED display-market baseline —
   // FTLAU at +15% means "Fort Lauderdale grows 15% over the FTLAU+BOCA+MIAMI+
-  // RFED baseline", not over one branch's slice. Since Lakeland became its own
-  // market (2026-08-06) every market is 1:1 with its code except Fort
-  // Lauderdale, whose sources arrive pre-folded upstream — so this map is
+  // RFED baseline", not over one branch's slice. Every market is 1:1 with its
+  // code except Fort Lauderdale, whose sources arrive pre-folded upstream (and
+  // Lakeland, merged into Orlando upstream on 2026-09-28) — so this map is
   // effectively identity today. It stays because the merge is a real upstream
   // possibility, and per-source resolution on a non-primary row is what stops a
   // combined baseline being double-counted.
@@ -1471,8 +1471,8 @@ export async function getScorecardGoals(market = "REECE"): Promise<ScorecardGoal
 }
 
 /** REECE + every office source code the editor manages (derived from the single
- *  market source of truth — Lakeland is one of them, editable in its own right
- *  since 2026-08-06). */
+ *  market source of truth — six offices; Lakeland merged into Orlando on
+ *  2026-09-28 and has no goal row of its own). */
 export const EDITOR_MARKETS: readonly string[] = ["REECE", ...OFFICE_SOURCE_CODES];
 
 export type MarketGoalEntry = {
@@ -1556,8 +1556,7 @@ export async function getScorecardGoalsForEditor(): Promise<ScorecardGoalsEditor
       // Primary source rows (and REECE) resolve growth against their display
       // market's combined baseline; any secondary row resolves per-source, so a
       // merged market's whole goal lives on the primary row without
-      // double-counting. Every market is its own primary today — Lakeland
-      // included (ruling 2026-08-06).
+      // double-counting. Every market is its own primary today.
       const isPrimary =
         market === "REECE" || SCORECARD_MARKETS.some((m) => (m.sources[0] ?? m.code) === market);
       const [baseline, rates] = await Promise.all([

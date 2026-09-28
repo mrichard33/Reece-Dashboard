@@ -93,7 +93,7 @@ function effectiveFromForm(w: Record<string, string>, baseline: number | null): 
  * Admin-only per-market / per-month goal editor. A Market + Month selector switch the
  * form between every market's live goal and its frozen monthly history (client-side).
  * Saving dual-writes the live goal and the month's frozen row. An amber banner warns
- * when the 7 markets' goals don't sum to the All-Markets (REECE) goal.
+ * when the 6 markets' goals don't sum to the All-Markets (REECE) goal.
  */
 export function GoalEditor({
   data,

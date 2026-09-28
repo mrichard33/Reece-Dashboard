@@ -25,8 +25,8 @@ import { firstOfMonthET } from "@/lib/date/sellingDays";
  * only commit/redistribute touch lpService. Commit recomputes the split
  * server-side (the client preview is display-only, never trusted).
  *
- * Lakeland (ruling 2026-08-06): Lakeland is its own display market, so it takes
- * its own trailing share and its allocation writes to its own LAKE_MKT row.
+ * Lakeland (ruling 2026-09-28): merged into Orlando — no LAKE_MKT row, no share
+ * of its own; its trailing sales already sit inside Orlando's rows upstream.
  * A market's allocation still writes to its PRIMARY source row — that matters
  * only for Fort Lauderdale, whose BOCA/MIAMI/RFED rows arrive pre-folded as
  * FTLAU_MKT upstream. No market's goal is zeroed.

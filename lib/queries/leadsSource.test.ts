@@ -64,11 +64,13 @@ const ldd = (market: string, branch: string | null, count: number): ReportFactRo
  */
 const LIVE: ReportFactRow[] = [
   ld("STPET_MKT", "STPET", 17_405), ld("STPET_MKT", null, 89),
-  ld("ORL_MKT", "ORL", 16_527), ld("ORL_MKT", null, 28),
+  // LAKELAND IS ORLANDO (2026-09-28): the former LAKE_MKT rows are ORL_MKT now
+  // (LP-MCP sql/135) — branch rows keep branch_code_raw 'LAKE', and the two
+  // market-level (null-branch) rows were summed (28 + 28).
+  ld("ORL_MKT", "ORL", 16_527), ld("ORL_MKT", "LAKE", 2_899), ld("ORL_MKT", null, 56),
   ld("FTMYR_MKT", "FTMYR", 11_623), ld("FTMYR_MKT", null, 43),
   ld("JAX_MKT", "JAX", 9_140), ld("JAX_MKT", null, 19),
   ld("SAR_MKT", "SAR", 6_418), ld("SAR_MKT", null, 30),
-  ld("LAKE_MKT", "LAKE", 2_899), ld("LAKE_MKT", null, 28),
   // Fort Lauderdale's five real branch rows — the grain trap.
   ld("FTLAU_MKT", "FTLAU", 3_181), ld("FTLAU_MKT", "BOCA", 5_427),
   ld("FTLAU_MKT", "MIAMI", 1_608), ld("FTLAU_MKT", "RFED", 286),
@@ -77,11 +79,10 @@ const LIVE: ReportFactRow[] = [
   ld("OUT_OF_AREA", "0", 2),
 
   ldd("STPET_MKT", "STPET", 15_710), ldd("STPET_MKT", null, 83),
-  ldd("ORL_MKT", "ORL", 14_903), ldd("ORL_MKT", null, 28),
+  ldd("ORL_MKT", "ORL", 14_903), ldd("ORL_MKT", "LAKE", 2_603), ldd("ORL_MKT", null, 46),
   ldd("FTMYR_MKT", "FTMYR", 10_332), ldd("FTMYR_MKT", null, 40),
   ldd("JAX_MKT", "JAX", 8_268), ldd("JAX_MKT", null, 19),
   ldd("SAR_MKT", "SAR", 5_743), ldd("SAR_MKT", null, 29),
-  ldd("LAKE_MKT", "LAKE", 2_603), ldd("LAKE_MKT", null, 18),
   ldd("FTLAU_MKT", "FTLAU", 2_966), ldd("FTLAU_MKT", "BOCA", 5_015),
   ldd("FTLAU_MKT", "MIAMI", 1_476), ldd("FTLAU_MKT", "RFED", 285),
   ldd("FTLAU_MKT", null, 28),
@@ -149,12 +150,10 @@ describe("§4 — Leads resolve per market and sum to the company total", () => 
     expect(sumOf((f) => f.leadRows)).toBe(company.leadRows);
   });
 
-  test("Lakeland carries its own leads, and Orlando's exclude them", () => {
+  test("Orlando carries the former Lakeland leads (merged 2026-09-28)", () => {
     const orl = buildReportFacts(LIVE, YTD, "ORL_MKT").leads!.leads;
-    const lake = buildReportFacts(LIVE, YTD, "LAKE_MKT").leads!.leads;
-    expect(orl).toBe(14_903 + 28);
-    expect(lake).toBe(2_603 + 18);
-    expect(orl).not.toBe(14_903 + 28 + 2_603 + 18); // the old fold
+    expect(orl).toBe(14_903 + 2_603 + 46);
+    expect(SCORECARD_MARKETS.some((m) => m.code === "LAKE_MKT")).toBe(false);
   });
 });
 

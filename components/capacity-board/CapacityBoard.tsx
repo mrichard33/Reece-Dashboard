@@ -101,15 +101,13 @@ const ET = "America/New_York";
 const POLL_MS = 60_000;
 
 // Display order from the reviewed design, membership-checked against the
-// canonical market list (lib/scorecard/markets). Lakeland IS its own market
-// (ruling 2026-08-06) and sits next to Orlando — the two are adjacent
-// territories and read together. Seven tiles fit the 4×2 TV grid; unknown
-// markets append alphabetically.
+// canonical market list (lib/scorecard/markets). Six markets since Lakeland
+// merged into Orlando (ruling 2026-09-28) — Orlando's tile carries the former
+// Lakeland reps and appointments. Unknown markets append alphabetically.
 const BOARD_DESIGN_ORDER = [
   "FTLAU_MKT",
   "JAX_MKT",
   "ORL_MKT",
-  "LAKE_MKT",
   "STPET_MKT",
   "FTMYR_MKT",
   "SAR_MKT",
@@ -204,7 +202,7 @@ type TileVM = {
   border: string;
   tileOpacity: number;
   empty: boolean;
-  /** Five9 dial priority badge, 1..7. null = no badge. */
+  /** Five9 dial priority badge, 1..6 (six markets since 2026-09-28). null = no badge. */
   rank: number | null;
 };
 
@@ -346,6 +344,9 @@ export default function CapacityBoard({
   const tiles: TileVM[] = orderedOffices.map((o) =>
     tileFor(o.office_label.toUpperCase(), o, o.dial_rank ?? null),
   );
+  // TV grid: 2 rows × tvCols; the legend takes whatever cells the tiles leave.
+  const tvCols = Math.max(4, Math.ceil((tiles.length + 1) / 2));
+  const legendSpan = Math.max(1, tvCols * 2 - tiles.length);
 
   // UNRESOLVED safety strip (fix-pass 2): no longer a grid tile — it has no
   // slot capacity, so a tile rendered a nonsense "7 / 0 confirmed". Instead:
@@ -658,7 +659,13 @@ export default function CapacityBoard({
             </div>
 
             {/* Office tile grid */}
-            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gridTemplateRows: "repeat(2, minmax(0, 1fr))", gap: u(24), minHeight: 0, minWidth: 0 }}>
+            {/* Two rows: the market tiles plus the legend cell. Seven markets
+                filled the 4×2 grid exactly (7 tiles + legend). Six since the
+                2026-09-28 Lakeland → Orlando merge, so the legend stretches
+                across the spare cells (see legendSpan) instead of leaving a
+                dead gap. An unknown extra market widens the grid rather than
+                spilling into a third row the fixed-height canvas would clip. */}
+            <div style={{ flex: 1, display: "grid", gridTemplateColumns: `repeat(${tvCols}, minmax(0, 1fr))`, gridTemplateRows: "repeat(2, minmax(0, 1fr))", gap: u(24), minHeight: 0, minWidth: 0 }}>
               {tiles.map((t) => (
                 <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: u(8), padding: `${u(24)} ${u(28)} ${u(22)}`, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, overflow: "hidden", opacity: t.tileOpacity }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: u(8) }}>
@@ -727,7 +734,7 @@ export default function CapacityBoard({
 
               {/* Legend cell — UNRESOLVED lives in the bottom safety strip, so
                   the legend always renders. */}
-              <div style={{ border: "1px dashed #334155", borderRadius: u(8), padding: `${u(24)} ${u(28)}`, display: "flex", flexDirection: "column", gap: u(14), justifyContent: "center" }}>
+              <div style={{ gridColumn: `span ${legendSpan}`, border: "1px dashed #334155", borderRadius: u(8), padding: `${u(24)} ${u(28)}`, display: "flex", flexDirection: "column", gap: u(14), justifyContent: "center" }}>
                 <div style={{ fontFamily: DISPLAY, fontSize: u(15), fontWeight: 700, letterSpacing: ".14em", color: "#94a3b8" }}>COLOR = STATE</div>
                 <div style={{ display: "flex", alignItems: "center", gap: u(12) }}>
                   <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: "#34d399", flex: "none" }} />
