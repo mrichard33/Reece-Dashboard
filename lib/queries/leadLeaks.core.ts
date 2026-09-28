@@ -31,7 +31,7 @@ export type LeakReason = (typeof LEAK_REASONS)[number];
 
 export const REASON_LABELS: Record<string, string> = {
   not_issued_call_center: "Not issued to a rep (call center, NIS)",
-  not_covered_by_rep: "Set, but no rep covered it (NOC)",
+  not_covered_by_rep: "Not Covered (no rep)",
   rep_hold_expired: "Rep hold over, back in play",
   routing_or_automation_failure: "Never dialled — Five9 has the number",
   not_in_five9: "Never dialled — not in Five9 at all",
@@ -46,6 +46,8 @@ export const REASON_LABELS: Record<string, string> = {
   missing_source: "No lead source",
   data_undecided: "\"Data\" lead — awaiting a ruling",
   dead_status: "Dead status",
+  // NOC whose zip is missing or outside the service area — $0, for review (2026-09-28).
+  noc_out_of_area: "NOC — out of area (review)",
 };
 
 export const isLeak = (reason: string): reason is LeakReason =>
