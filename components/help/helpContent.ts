@@ -798,7 +798,7 @@ export const helpContent: Record<string, HelpEntry> = {
   // ── /lead-leaks ─────────────────────────────────────────────────────
   "leadLeaks.notCalled": {
     title: "Leads not called",
-    what: "Leads from the last 60 days that should have been worked and Five9 never dialled after they arrived: not issued to a rep (NIS), set but no rep covered it (NOC), a rep's 7-day hold that ran out, or a clean callable lead nobody rang.",
+    what: "Leads from the last 60 days that should have been worked and Five9 never dialled after they arrived: not issued to a rep (NIS), not covered — no rep took it (NOC; a zip outside the service area shows separately at $0 for review), a rep's 7-day hold that ran out, or a clean callable lead nobody rang.",
     where: "`lead_leak_daily` (latest run), written every morning at 7:00 AM ET by LP-MCP's Lead Leak Monitor. \"Called\" means a Five9 call record on the lead's LP id or phone — LP's own call counts are not used.",
     fix: "Work the list below. If a lead here was in fact called, check that the call went through Five9 and that the number in LP matches the number dialled.",
   },
