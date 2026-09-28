@@ -15,12 +15,12 @@
  *
  * The rollup also collapses market codes onto display entities (OUT_OF_AREA →
  * UNASSIGNED), so `DISTINCT market` over rolled-up rows returns exactly the
- * SEVEN markets + UNASSIGNED.
+ * SIX markets + UNASSIGNED.
  *
- * Lakeland is one of the seven. This comment used to say LAKE_MKT folded into
- * ORL_MKT and that Lakeland had no display identity; the 2026-08-06 ruling
- * reversed that fold and the code followed, but the comment did not — see
- * markets.ts for the standing rule.
+ * Lakeland is part of Orlando (ruling 2026-09-28, reversing the 2026-08-06
+ * split). The merge happened in the warehouse, so rows arrive as ORL_MKT; a
+ * stray LAKE_MKT row still folds onto ORL_MKT here through
+ * LEGACY_CODE_ALIASES — see markets.ts for the standing rule.
  *
  * SNAPSHOT IDENTITY: fact rows do not carry `snapshot_id`, but
  * (period_start, period_end, as_of_date, scope) separates any two

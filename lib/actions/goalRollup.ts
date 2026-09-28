@@ -10,7 +10,8 @@ import { OFFICE_SOURCE_CODES } from "@/lib/scorecard/markets";
  */
 
 /** The office SOURCE codes whose goals roll up into the company (REECE) total —
- *  every warehouse code, so Orlando contributes both its ORL and LAKE goal rows. */
+ *  every warehouse code. Six since 2026-09-28: Lakeland's goal rows were
+ *  folded into Orlando's and deleted (LP-MCP sql/135), so there is no LAKE row. */
 export const OFFICE_CODES = [...OFFICE_SOURCE_CODES];
 
 export type Sb = ReturnType<typeof lpService>;

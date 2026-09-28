@@ -315,12 +315,12 @@ describe("leadTarget — E3", () => {
 describe("MIN_LEADS_FOR_OWN_RATE — thin markets borrow, never blend", () => {
   test("a thin market falls back to the company rate and is MARKED", () => {
     const companyRate = netSalesPerRawLead(ALL_COHORTS, ALL_LEADS, AS_OF, "REECE");
-    const thin = [leadFact("2026-01-01", 50, { market: "LAKE_MKT" })];
+    const thin = [leadFact("2026-01-01", 50, { market: "JAX_MKT" })];
     const r = netSalesPerRawLead(
       [cohort("2026-01-01", 8_715_862)],
       thin,
       AS_OF,
-      "LAKE_MKT",
+      "JAX_MKT",
       companyRate,
     );
     if (!r.known) throw new Error("expected the company rate");

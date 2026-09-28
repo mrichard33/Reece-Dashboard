@@ -8,7 +8,7 @@ import { SCORECARD_MARKETS, marketLabel } from "@/lib/scorecard/markets";
 /**
  * Market scope picker. "All Markets" is the REECE company roll-up (no `market`
  * param); picking a market sets `?market=<code>` and the whole scorecard re-sources
- * for that market. The 7 markets map to the per-market snapshot rows written by
+ * for that market. The 6 markets map to the per-market snapshot rows written by
  * the LP-MCP per-market writer. SCORECARD_MARKETS / marketLabel now live in
  * lib/scorecard/markets so the server page can call marketLabel too.
  */
