@@ -37,6 +37,8 @@ export const REASON_LABELS: Record<string, string> = {
   rep_hold_expired: "Rep hold over, back in play",
   routing_or_automation_failure: "Never dialled — Five9 has the number",
   not_on_dial_list: "In Five9 but not on any dialing list",
+  // Shown on the hourly Slack card only; the daily table does not store it.
+  called_no_retry: "Called, no retry since",
   not_in_five9: "Not in Five9 at all",
   unverified: "Not verified — Five9 lookup failed or skipped",
   // Not leaks — shown in the collapsed breakdown.
@@ -124,20 +126,36 @@ export const formatMinutes = (m: number | null): string => (m === null ? "—" :
 
 // ─── Leads we haven't called ────────────────────────────────────────────────
 
-export type LeakLead = {
+/**
+ * One uncalled lead as the page lists it. `why` is LP-MCP's plain-English
+ * sentence (src/lead-leak-explain.js, stored in `detail.why` from the
+ * 2026-09-30 run on): which Five9 list it is on, which LP call queue, where a
+ * DNC comes from, whether the phone was ever DNC. Asked for 2026-09-29: "we
+ * need the reasoning", not just a label. Older rows have none — null, and the
+ * page shows the label alone.
+ */
+export type UncalledLead = {
   lpLeadId: string;
   name: string;
   phone: string;
   source: string;
-  reason: LeakReason;
+  disposition: string | null;
+  reason: string;
   reasonLabel: string;
+  why: string | null;
   estValue: number | null;
   createdAt: string | null;
   waitingMs: number | null;
 };
 
+export type LeakLead = UncalledLead & { reason: LeakReason };
+
+/** The uncalled leads that were NOT owed a call, grouped by reason (DNC first). */
+export type NotLeakGroup = { reason: string; label: string; leads: UncalledLead[] };
+
 export type LeaksView = {
   leaks: LeakLead[];
+  notLeaks: NotLeakGroup[];
   totalLeaks: number;
   valueAtRisk: number;
   byReason: { reason: string; label: string; count: number; leak: boolean }[];
@@ -153,38 +171,54 @@ export type LeaksView = {
 export function shapeLeaks(rows: LeakRowRaw[], nowMs: number): LeaksView {
   const counts = new Map<string, number>();
   const leaks: LeakLead[] = [];
+  const notLeakByReason = new Map<string, UncalledLead[]>();
   let valueAtRisk = 0;
   for (const r of rows) {
     counts.set(r.reason, (counts.get(r.reason) ?? 0) + 1);
-    if (!isLeak(r.reason)) continue;
-    const d = r.detail ?? {};
-    const createdAt = s(d.created_utc);
-    const createdMs = createdAt ? Date.parse(createdAt) : NaN;
-    const est = n(r.est_value);
-    valueAtRisk += est ?? 0;
-    leaks.push({
-      lpLeadId: String(r.lp_lead_id),
-      name: fullName(d.first_name, d.last_name),
-      phone: formatPhone(s(d.phone10)),
-      source: s(r.lead_source) ?? "(none)",
-      reason: r.reason,
-      reasonLabel: REASON_LABELS[r.reason] ?? r.reason,
-      estValue: est,
-      createdAt,
-      waitingMs: Number.isFinite(createdMs) ? nowMs - createdMs : null,
-    });
+    const lead = toUncalledLead(r, nowMs);
+    if (!isLeak(r.reason)) {
+      notLeakByReason.set(r.reason, [...(notLeakByReason.get(r.reason) ?? []), lead]);
+      continue;
+    }
+    valueAtRisk += lead.estValue ?? 0;
+    leaks.push({ ...lead, reason: r.reason });
   }
-  leaks.sort((a, b) => (b.waitingMs ?? -1) - (a.waitingMs ?? -1));
+  const byWaiting = (a: UncalledLead, b: UncalledLead) => (b.waitingMs ?? -1) - (a.waitingMs ?? -1);
+  leaks.sort(byWaiting);
+  const notLeaks = [...notLeakByReason.entries()]
+    .map(([reason, list]) => ({ reason, label: REASON_LABELS[reason] ?? reason, leads: list.sort(byWaiting) }))
+    // DNC first — the question that prompted per-lead reasons (2026-09-29) — then the biggest groups.
+    .sort((a, b) => Number(b.reason === "dnc") - Number(a.reason === "dnc") || b.leads.length - a.leads.length);
   const byReason = [...counts.entries()]
     .map(([reason, count]) => ({ reason, label: REASON_LABELS[reason] ?? reason, count, leak: isLeak(reason) }))
     .sort((a, b) => Number(b.leak) - Number(a.leak) || b.count - a.count);
   return {
     leaks,
+    notLeaks,
     totalLeaks: leaks.length,
     valueAtRisk: Math.round(valueAtRisk),
     byReason,
     sources: [...new Set(leaks.map((l) => l.source))].sort(),
     uncalled: rows.length,
+  };
+}
+
+function toUncalledLead(r: LeakRowRaw, nowMs: number): UncalledLead {
+  const d = r.detail ?? {};
+  const createdAt = s(d.created_utc);
+  const createdMs = createdAt ? Date.parse(createdAt) : NaN;
+  return {
+    lpLeadId: String(r.lp_lead_id),
+    name: fullName(d.first_name, d.last_name),
+    phone: formatPhone(s(d.phone10)),
+    source: s(r.lead_source) ?? "(none)",
+    disposition: s(r.disposition),
+    reason: r.reason,
+    reasonLabel: REASON_LABELS[r.reason] ?? r.reason,
+    why: s(d.why),
+    estValue: n(r.est_value),
+    createdAt,
+    waitingMs: Number.isFinite(createdMs) ? nowMs - createdMs : null,
   };
 }
 

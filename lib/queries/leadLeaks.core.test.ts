@@ -65,6 +65,38 @@ describe("shapeLeaks", () => {
     expect(filterLeaks(leaks, {})).toHaveLength(2);
   });
 
+  it("carries LP-MCP's plain-English why onto each lead, and null for older rows", () => {
+    const view = shapeLeaks(
+      [
+        leakRow({ lp_lead_id: "1", disposition: "Data", detail: { ...leakRow().detail,
+          why: "Five9 has the number but it is on no dialing list, 0 dial attempts. Five9 has never dialled it." } }),
+        leakRow({ lp_lead_id: "2" }),
+      ],
+      NOW,
+    );
+    const byId = Object.fromEntries(view.leaks.map((l) => [l.lpLeadId, l]));
+    expect(byId["1"]?.why).toMatch(/on no dialing list/);
+    expect(byId["1"]?.disposition).toBe("Data");
+    expect(byId["2"]?.why).toBeNull();
+  });
+
+  it("lists the not-owed leads per reason, do-not-call first, each with its why", () => {
+    const view = shapeLeaks(
+      [
+        leakRow({ lp_lead_id: "1" }),
+        leakRow({ lp_lead_id: "2", reason: "duplicate", est_value: null }),
+        leakRow({ lp_lead_id: "3", reason: "duplicate", est_value: null }),
+        leakRow({ lp_lead_id: "4", reason: "dnc", est_value: null,
+          detail: { ...leakRow().detail, why: "Not called because the phone is on the Five9 do-not-call list. LP still codes it Data." } }),
+      ],
+      NOW,
+    );
+    expect(view.notLeaks.map((g) => [g.reason, g.leads.length])).toEqual([["dnc", 1], ["duplicate", 2]]);
+    expect(view.notLeaks[0]?.label).toBe("Do not call");
+    expect(view.notLeaks[0]?.leads[0]?.why).toMatch(/Five9 do-not-call list/);
+    expect(view.leaks.map((l) => l.lpLeadId)).toEqual(["1"]);
+  });
+
   it("knows which reasons are leaks", () => {
     expect(isLeak("rep_hold_expired")).toBe(true);
     expect(isLeak("not_on_dial_list")).toBe(true);
