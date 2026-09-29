@@ -25,6 +25,8 @@ export const LEAK_REASONS = [
   "routing_or_automation_failure",
   // In Five9, but on no dialing list and never attempted (LP-MCP, 2026-09-29).
   "not_on_dial_list",
+  // On a Five9 list, but no call for it in Five9's history (LP-MCP, 2026-09-29).
+  "on_list_not_dialed",
   "not_in_five9",
   "unverified",
 ] as const;
@@ -37,6 +39,7 @@ export const REASON_LABELS: Record<string, string> = {
   rep_hold_expired: "Rep hold over, back in play",
   routing_or_automation_failure: "Never dialled — Five9 has the number",
   not_on_dial_list: "In Five9 but not on any dialing list",
+  on_list_not_dialed: "On a Five9 list but no call recorded",
   // Shown on the hourly Slack card only; the daily table does not store it.
   called_no_retry: "Called, no retry since",
   not_in_five9: "Not in Five9 at all",

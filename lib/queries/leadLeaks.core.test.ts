@@ -12,6 +12,7 @@ import {
   formatMinutes,
   formatPhone,
   isLeak,
+  REASON_LABELS,
   shapeIntake,
   shapeLeaks,
   shapeSpeed,
@@ -100,6 +101,8 @@ describe("shapeLeaks", () => {
   it("knows which reasons are leaks", () => {
     expect(isLeak("rep_hold_expired")).toBe(true);
     expect(isLeak("not_on_dial_list")).toBe(true);
+    expect(isLeak("on_list_not_dialed")).toBe(true);
+    expect(REASON_LABELS.on_list_not_dialed).toBe("On a Five9 list but no call recorded");
     expect(isLeak("rep_hold")).toBe(false);
     expect(isLeak("already_progressed")).toBe(false);
   });
