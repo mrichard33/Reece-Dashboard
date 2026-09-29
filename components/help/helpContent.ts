@@ -834,8 +834,8 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "leadLeaks.table": {
     title: "Leads we haven't called",
-    what: "Every lead that should have been worked and has no Five9 call since it arrived, longest-waiting first, with the reason in plain English. Filter by reason or source with the chips.",
-    where: "`lead_leak_daily` (latest run), leak reasons only. Name and phone come from LP at the time of the check.",
+    what: "Every lead that should have been worked and has no Five9 call since it arrived, longest-waiting first. Under each reason is a sentence saying why it isn't being called: which Five9 list it is on and how many times it was dialled, which LP call queue it sits in, and whether the phone was ever do-not-call. Filter by reason or source with the chips.",
+    where: "`lead_leak_daily` (latest run), leak reasons only. The sentence is `detail.why`, written by LP-MCP's Lead Leak Monitor from live LP and Five9 reads; anything it couldn't read says \"couldn't check\". Runs before 2026-09-30 have no sentence.",
     fix: "Call them. \"Not issued\" and \"no rep covered it\" are call-center or dispatch misses; \"rep hold over\" means a rep's 7-day hold ran out; \"never dialled\" means the lead never reached a dialling list.",
   },
   "leadLeaks.intakeTable": {
@@ -846,9 +846,9 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "leadLeaks.notLeaks": {
     title: "Uncalled, but not leaks",
-    what: "Leads with no Five9 call that were never owed one: do-not-call, on a rep's hold, already booked or sold, \"Data\" leads awaiting a ruling, no phone, duplicates of a called lead, dead statuses.",
-    where: "`lead_leak_daily` (latest run), the non-leak reasons.",
-    fix: "\"Booked/sold, no Five9 call on record\" is a gap in LP's call data rather than a missed lead. \"Data\" leads move into the leak count only once Mark rules they should be dialled.",
+    what: "Leads with no Five9 call that were never owed one: do-not-call, on a rep's hold, already booked or sold, no phone, duplicates of a called lead, dead statuses. Open a reason to see each lead and why — for do-not-call, where the block comes from (LP's code or the Five9 list) and whether LP still codes the lead \"Data\".",
+    where: "`lead_leak_daily` (latest run), the non-leak reasons, with `detail.why` per lead.",
+    fix: "\"Booked/sold, no Five9 call on record\" is a gap in LP's call data rather than a missed lead. A do-not-call lead that LP still codes \"Data\" means LP and Five9 disagree — fix the record in whichever system is wrong. \"Data\" leads count as leaks since 2026-09-28.",
   },
 };
 
