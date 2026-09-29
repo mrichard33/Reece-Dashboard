@@ -8,6 +8,7 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { StatTile } from "@/components/tiles/StatTile";
 import { SpeedTrend } from "@/components/leadLeaks/SpeedTrend";
+import { LeadSubLine, WhyCell } from "@/components/leadLeaks/LeadWhy";
 import {
   getIntakeSection,
   getLeaksSection,
@@ -18,7 +19,6 @@ import {
   filterLeaks,
   formatAge,
   formatMinutes,
-  REASON_LABELS,
   LEAK_REASONS,
 } from "@/lib/queries/leadLeaks.core";
 import { cn, num, shortDate, usd } from "@/lib/utils";
@@ -63,7 +63,7 @@ export default async function LeadLeaksPage({
         subtitle="Leads we should be calling and aren't"
       />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <SectionHeader
           title="Lead Leaks"
           subtitle={
@@ -171,16 +171,19 @@ export default async function LeadLeaksPage({
                   {shown.length === 0 ? (
                     <Empty>{l.totalLeaks === 0 ? "Every lead that should have been called was called." : "No leads match these filters."}</Empty>
                   ) : (
-                    <Table head={["Lead", "Phone", "Source", "Waiting", "Why", "Est. value", "LP lead"]}>
+                    <Table head={["Lead", { label: "Phone", hide: true }, { label: "Source", hide: true }, "Waiting", "Why it isn't being called", { label: "Est. value", hide: true }, { label: "LP lead", hide: true }]}>
                       {shown.map((x) => (
                         <tr key={x.lpLeadId} className={rowClass}>
-                          <td className={`${cellClass} font-medium text-slate-800 dark:text-slate-200`}>{x.name}</td>
-                          <td className={`${cellClass} tabular text-slate-600 dark:text-slate-300`}>{x.phone}</td>
-                          <td className={`${cellClass} text-slate-600 dark:text-slate-300`}>{x.source}</td>
+                          <td className={`${cellClass} font-medium text-slate-800 dark:text-slate-200`}>
+                            {x.name}
+                            <LeadSubLine phone={x.phone} source={x.source} lpLeadId={x.lpLeadId} />
+                          </td>
+                          <td className={`${cellClass} ${hideOnPhone} tabular text-slate-600 dark:text-slate-300`}>{x.phone}</td>
+                          <td className={`${cellClass} ${hideOnPhone} text-slate-600 dark:text-slate-300`}>{x.source}</td>
                           <td className={`${cellClass} tabular text-slate-600 dark:text-slate-300`}>{formatAge(x.waitingMs)}</td>
-                          <td className={cellClass}><Badge tone={reasonTone(x.reason)}>{x.reasonLabel}</Badge></td>
-                          <td className={`${cellClass} tabular text-slate-600 dark:text-slate-300`}>{usd(x.estValue)}</td>
-                          <td className={`${cellClass} font-mono text-slate-500`}>{x.lpLeadId}</td>
+                          <td className={cellClass}><WhyCell tone={reasonTone(x.reason)} label={x.reasonLabel} why={x.why} /></td>
+                          <td className={`${cellClass} ${hideOnPhone} tabular text-slate-600 dark:text-slate-300`}>{usd(x.estValue)}</td>
+                          <td className={`${cellClass} ${hideOnPhone} break-all font-mono text-slate-500`}>{x.lpLeadId}</td>
                         </tr>
                       ))}
                     </Table>
@@ -225,23 +228,43 @@ export default async function LeadLeaksPage({
           </SectionBody>
         </LeakCard>
 
-        {/* 5. Not leaks — collapsed */}
+        {/* 5. Not leaks — collapsed, each reason opens to its leads */}
         <LeakCard title="Uncalled, but not leaks" helpKey="leadLeaks.notLeaks">
           <SectionBody section={leaks}>
             {(l) => (
-              <details>
-                <summary className="cursor-pointer text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {num(l.uncalled - l.totalLeaks)} leads with no Five9 call that were not owed one — show why
-                </summary>
-                <Table head={["Reason", "Leads"]}>
-                  {l.byReason.filter((r) => !r.leak).map((r) => (
-                    <tr key={r.reason} className={rowClass}>
-                      <td className={cellClass}>{REASON_LABELS[r.reason] ?? r.reason}</td>
-                      <td className={`${cellClass} tabular`}>{num(r.count)}</td>
-                    </tr>
-                  ))}
-                </Table>
-              </details>
+              <>
+                <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                  {num(l.uncalled - l.totalLeaks)} leads with no Five9 call that were not owed one. Open a reason to see each lead and why.
+                </p>
+                {l.notLeaks.length === 0 ? (
+                  <Empty>None.</Empty>
+                ) : (
+                  <div className="space-y-2">
+                    {l.notLeaks.map((g) => (
+                      <details key={g.reason} className="rounded-md border border-slate-100 px-3 py-2 dark:border-slate-800">
+                        <summary className="cursor-pointer text-[12.5px] font-medium text-slate-700 dark:text-slate-300">
+                          {g.label} · <span className="tabular">{num(g.leads.length)}</span>
+                        </summary>
+                        <div className="mt-2">
+                          <Table head={["Lead", "Why it isn't being called", { label: "Source", hide: true }, { label: "LP lead", hide: true }]}>
+                            {g.leads.map((x) => (
+                              <tr key={x.lpLeadId} className={rowClass}>
+                                <td className={`${cellClass} font-medium text-slate-800 dark:text-slate-200`}>
+                                  {x.name}
+                                  <LeadSubLine phone={x.phone} source={x.source} lpLeadId={x.lpLeadId} />
+                                </td>
+                                <td className={cellClass}><WhyCell tone="slate" label={x.reasonLabel} why={x.why} /></td>
+                                <td className={`${cellClass} ${hideOnPhone} text-slate-600 dark:text-slate-300`}>{x.source}</td>
+                                <td className={`${cellClass} ${hideOnPhone} break-all font-mono text-slate-500`}>{x.lpLeadId}</td>
+                              </tr>
+                            ))}
+                          </Table>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </SectionBody>
         </LeakCard>
@@ -254,6 +277,9 @@ export default async function LeadLeaksPage({
 
 const rowClass = "hover:bg-slate-50 dark:hover:bg-slate-800/50";
 const cellClass = "py-2 pr-3";
+// Low-value columns drop off on phones; LeadSubLine (components/leadLeaks/LeadWhy.tsx)
+// repeats them under the name — the components/leads/LeadsTable.tsx pattern.
+const hideOnPhone = "hidden md:table-cell";
 
 function chipHref(reason: string | null, source: string | null): Route {
   const q = new URLSearchParams();
@@ -353,15 +379,18 @@ function Chip({ href, active, children }: { href: Route; active: boolean; childr
   );
 }
 
-function Table({ head, children }: { head: string[]; children: React.ReactNode }) {
+type Head = string | { label: string; hide?: boolean };
+
+function Table({ head, children }: { head: Head[]; children: React.ReactNode }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[12.5px]">
         <thead>
           <tr className="text-left text-slate-500 dark:text-slate-400">
-            {head.map((h) => (
-              <th key={h} className="pb-2 pr-3 font-medium">{h}</th>
-            ))}
+            {head.map((h) => {
+              const { label, hide } = typeof h === "string" ? { label: h, hide: false } : h;
+              return <th key={label} className={cn("pb-2 pr-3 font-medium", hide && hideOnPhone)}>{label}</th>;
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">{children}</tbody>
