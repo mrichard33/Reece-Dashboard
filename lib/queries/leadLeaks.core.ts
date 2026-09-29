@@ -23,6 +23,8 @@ export const LEAK_REASONS = [
   "not_covered_by_rep",
   "rep_hold_expired",
   "routing_or_automation_failure",
+  // In Five9, but on no dialing list and never attempted (LP-MCP, 2026-09-29).
+  "not_on_dial_list",
   "not_in_five9",
   "unverified",
 ] as const;
@@ -34,8 +36,9 @@ export const REASON_LABELS: Record<string, string> = {
   not_covered_by_rep: "Not Covered (no rep)",
   rep_hold_expired: "Rep hold over, back in play",
   routing_or_automation_failure: "Never dialled — Five9 has the number",
-  not_in_five9: "Never dialled — not in Five9 at all",
-  unverified: "Never dialled (Five9 not checked yet)",
+  not_on_dial_list: "In Five9 but not on any dialing list",
+  not_in_five9: "Not in Five9 at all",
+  unverified: "Not verified — Five9 lookup failed or skipped",
   // Not leaks — shown in the collapsed breakdown.
   rep_hold: "On rep hold (7 days)",
   already_progressed: "Booked/sold, no Five9 call on record",
