@@ -67,6 +67,7 @@ describe("shapeLeaks", () => {
 
   it("knows which reasons are leaks", () => {
     expect(isLeak("rep_hold_expired")).toBe(true);
+    expect(isLeak("not_on_dial_list")).toBe(true);
     expect(isLeak("rep_hold")).toBe(false);
     expect(isLeak("already_progressed")).toBe(false);
   });
