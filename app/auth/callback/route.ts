@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { safeNextPath } from "@/lib/security/safeNextPath";
 
 /**
  * Supabase auth callback. Handles password-reset (recovery) emails and any
@@ -11,7 +12,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
   const type = searchParams.get("type");
-  const next = searchParams.get("next") ?? "/overview";
+  // Only a same-site path, never a host (open redirect, 2026-10-03).
+  const next = safeNextPath(searchParams.get("next"));
 
   // Always use the public app URL, not request.nextUrl.origin.
   // On Railway, the container's internal origin is 0.0.0.0:PORT — using it
