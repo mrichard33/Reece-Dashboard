@@ -12,7 +12,9 @@
  * which step is missing rather than rendering an empty screen that looks broken.
  */
 
+import { cache } from "react";
 import { lpService } from "@/lib/supabase/lp";
+import { fetchReviewCounts, type CountsClient, type ReviewCounts } from "@/lib/queries/botReviewCounts";
 import { buildQueuePlan, PAGE_SIZE, type QueueFilters, type LaneCounts } from "@/lib/botReview/core";
 
 function isMissingRelation(error: { code?: string; message?: string } | null): boolean {
@@ -147,28 +149,27 @@ export async function getQueue(filters: QueueFilters): Promise<QueueResult> {
 export type { LaneCounts } from "@/lib/botReview/core";
 
 export async function getLaneCounts(): Promise<LaneCounts> {
-  const svc = lpService();
-  const open = (lane: string) =>
-    svc
-      .from("v_bot_review_queue")
-      .select("context_id", { count: "exact", head: true })
-      .eq("review_lane", lane)
-      .is("dismissed", false)
-      .eq("review_count", 0);
+  const c = await getReviewCounts();
+  return { must_review: c.mustReview, spot_check: c.spotCheck, everything: c.everything };
+}
 
-  const [must, spot, all] = await Promise.all([
-    open("must_review"),
-    open("spot_check"),
-    svc.from("v_bot_review_queue").select("context_id", { count: "exact", head: true }),
-  ]);
+/**
+ * All six counts, read once per render (2026-10-06). The header and the lane
+ * switcher both ask; React's request cache makes that one call to
+ * bot_review_counts (LP MCP sql/146) instead of six count queries. The week
+ * boundary is taken to the minute so both callers share one cache key.
+ */
+const getReviewCounts = cache(async (): Promise<ReviewCounts> => {
+  const minute = Math.floor((Date.now() - 7 * 86_400_000) / 60_000) * 60_000;
+  return fetchReviewCounts(lpService() as unknown as CountsClient, new Date(minute).toISOString());
+});
 
-  // A missing sql/106 reads as zero work, never as an error: the lane switcher
-  // renders with empty badges and the Everything lane still lists everything.
-  return {
-    must_review: must.error ? 0 : (must.count ?? 0),
-    spot_check: spot.error ? 0 : (spot.count ?? 0),
-    everything: all.error ? 0 : (all.count ?? 0),
-  };
+/**
+ * bot_settings.review_thread_cutover_at — no timestamped turn before it is
+ * shown (Mark, 2026-10-06). Rides along with the counts, so it costs no read.
+ */
+export async function getThreadCutover(): Promise<string | null> {
+  return (await getReviewCounts()).cutoverAt;
 }
 
 /** One message by context id — the row the review panel renders. */
@@ -194,6 +195,8 @@ export type ThreadTurn = {
   channel: string | null;
   body: string | null;
   at: string | null;
+  /** LP MCP 2026-10-06+: 'activity' marks a GHL activity row. Absent on older snapshots. */
+  kind?: "message" | "activity" | null;
 };
 
 export async function getThread(contextId: number): Promise<{ turns: ThreadTurn[]; source: "snapshot" | "none" }> {
@@ -273,14 +276,25 @@ export async function getMyFeedback(email: string, refs: Array<{ type: string; r
 /** The active reason list, for the chips. */
 export type Reason = { code: string; label: string; default_lane: string; severity: number; sort: number };
 
+/*
+ * 2026-10-06: the chip list is config that changes a few times a year, yet it
+ * was one of the reads on every message click. Kept for five minutes in this
+ * process. A failed read is never cached, so an outage costs the chips one
+ * render, not five minutes.
+ */
+const REASONS_TTL_MS = 5 * 60_000;
+let reasonsCache: { at: number; rows: Reason[] } | null = null;
+
 export async function getReasons(): Promise<Reason[]> {
+  if (reasonsCache && Date.now() - reasonsCache.at < REASONS_TTL_MS) return reasonsCache.rows;
   const { data, error } = await lpService()
     .from("bot_feedback_reasons")
     .select("code,label,default_lane,severity,sort")
     .eq("active", true)
     .order("sort", { ascending: true });
   if (error || !data) return [];
-  return data as unknown as Reason[];
+  reasonsCache = { at: Date.now(), rows: data as unknown as Reason[] };
+  return reasonsCache.rows;
 }
 
 /** Calibration state for the banner. Null when the reviewer has no reviews yet. */
@@ -305,33 +319,12 @@ export async function getCalibration(email: string): Promise<Calibration | null>
 
 /** The header chip: how much is left, and how much of this week is done. */
 export async function getHeaderCounts(): Promise<{ toReview: number; reviewedPct: number | null; needsMigration: boolean }> {
-  const svc = lpService();
-  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-
-  // All three are independent count-only reads of the same view. The
-  // unreviewed count used to be awaited on its own before the other two were
-  // even issued, which made the page header three serial round trips instead
-  // of one. The missing-relation check below is unchanged — it just happens
-  // after all three have settled rather than gating the other two.
-  const [unreviewed, weekTotal, weekReviewed] = await Promise.all([
-    svc
-      .from("v_bot_review_queue")
-      .select("context_id", { count: "exact", head: true })
-      .eq("review_count", 0),
-    svc.from("v_bot_review_queue").select("context_id", { count: "exact", head: true }).gte("generated_at", since),
-    svc.from("v_bot_review_queue").select("context_id", { count: "exact", head: true })
-      .gte("generated_at", since).gt("review_count", 0),
-  ]);
-
-  if (unreviewed.error && isMissingRelation(unreviewed.error)) {
-    return { toReview: 0, reviewedPct: null, needsMigration: true };
-  }
-
-  const total = weekTotal.count ?? 0;
+  const c = await getReviewCounts();
+  if (c.needsMigration) return { toReview: 0, reviewedPct: null, needsMigration: true };
   return {
-    toReview: unreviewed.count ?? 0,
+    toReview: c.toReview,
     // No messages this week is not 0% reviewed — it is nothing to report.
-    reviewedPct: total > 0 ? Math.round(((weekReviewed.count ?? 0) / total) * 100) : null,
+    reviewedPct: c.weekTotal > 0 ? Math.round((c.weekReviewed / c.weekTotal) * 100) : null,
     needsMigration: false,
   };
 }
