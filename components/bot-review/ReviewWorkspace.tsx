@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useOptimistic, useRef, useState, useTransition } from "react";
+import { useCallback, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { QueueList } from "./QueueList";
 import { ContextStrip } from "./ContextStrip";
-import { ConversationThread } from "./ConversationThread";
+import { ConversationThread, type MyVerdict } from "./ConversationThread";
+import { WhyCard } from "./WhyCard";
+import { LeadStatusCard } from "./LeadStatusCard";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { UndoToast, StopBotModal, RetractModal, DismissModal } from "./Overlays";
 import {
@@ -22,8 +24,10 @@ import {
   contactNameOnly,
   type FeedbackDraft,
   type MessageType,
-  type TimelineItem,
 } from "@/lib/botReview/core";
+import { timeEt, type ConversationView } from "@/lib/botReview/conversation";
+import type { LeadStatus } from "@/lib/botReview/leadStatus";
+import { createThumbsUp } from "@/lib/botReview/quickReview";
 import type { QueueRow, MyFeedback, Reason } from "@/lib/queries/botReview";
 
 /**
@@ -46,31 +50,40 @@ export function ReviewWorkspace({
   page,
   selected,
   conversation,
-  timeline,
+  view,
+  why,
+  leadStatus,
+  issueChips,
   feedbackByContext,
   myFeedback,
   reasons,
   canStopBot,
   canRemoveReview,
+  canReview,
 }: {
   rows: QueueRow[];
   total: number;
   page: number;
   selected: QueueRow | null;
   conversation: QueueRow[];
-  timeline: TimelineItem[];
+  view: ConversationView;
+  why: { text: string; facts: Array<{ label: string; value: string; tone?: "rose" | "amber" }> } | null;
+  leadStatus: LeadStatus | null;
+  /** Issue chips per GHL contact id, for the queue rows. */
+  issueChips: Record<string, string[]>;
   feedbackByContext: Record<number, MyFeedback>;
   myFeedback: MyFeedback | null;
   reasons: Reason[];
   canStopBot: boolean;
   canRemoveReview: boolean;
+  canReview: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
 
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<{ message: string; detail?: string; id: number | null } | null>(null);
+  const [toast, setToast] = useState<{ message: string; detail?: string; id: number | null; contextId?: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [stopOpen, setStopOpen] = useState(false);
   const [stopBusy, setStopBusy] = useState(false);
@@ -82,6 +95,12 @@ export function ReviewWorkspace({
   // Set aside in THIS session. The server has the durable copy; this only keeps
   // the row from being re-offered before the next render lands.
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
+  // Verdicts given from the thread's 👍 in THIS session, until the server
+  // re-render carries them.
+  const [quickVerdicts, setQuickVerdicts] = useState<Record<number, MyVerdict>>({});
+  // 👎 asks for the panel on that message with Needs work picked. The nonce
+  // remounts the panel even when that message is already the selected one.
+  const [needsWorkFor, setNeedsWorkFor] = useState<{ id: number; nonce: number } | null>(null);
 
   /*
    * Selection lives in the URL, which means every click is a server round trip.
@@ -208,7 +227,20 @@ export function ReviewWorkspace({
   async function onUndo() {
     if (!toast?.id) return;
     const res = await undoFeedback(toast.id);
+    const undone = toast.contextId;
     setToast(null);
+    if (res.ok && undone != null) {
+      setQuickVerdicts((v) => {
+        const next = { ...v };
+        delete next[undone];
+        return next;
+      });
+      setReviewedIds((s) => {
+        const next = new Set(s);
+        next.delete(undone);
+        return next;
+      });
+    }
     if (!res.ok) setErrorMsg(res.error ?? "Could not undo.");
     else router.refresh();
   }
@@ -320,7 +352,54 @@ export function ReviewWorkspace({
     void runDismiss("message", "Skipped by reviewer");
   }
 
+  const byContext = useMemo(() => new Map(conversation.map((r) => [r.context_id, r])), [conversation]);
+
+  const thumbsUp = useMemo(
+    () =>
+      createThumbsUp({
+        submit: submitFeedback,
+        onSaved: (contextId, feedbackId, uncalibrated) => {
+          setReviewedIds((s) => new Set(s).add(contextId));
+          setQuickVerdicts((v) => ({ ...v, [contextId]: "good" }));
+          const row = byContext.get(contextId);
+          setToast({
+            message: "Saved · Good",
+            detail: uncalibrated
+              ? "Stored, but it won't count until you're calibrated."
+              : row
+                ? `${contactLabel(row)} · ${formatEt(row.sent_at ?? row.generated_at)} message`
+                : undefined,
+            id: feedbackId,
+            contextId,
+          });
+        },
+        onError: (message) => setErrorMsg(message),
+      }),
+    [byContext],
+  );
+
+  function onThumbsUp(contextId: number) {
+    const row = byContext.get(contextId);
+    if (!row) return;
+    setErrorMsg(null);
+    void thumbsUp({
+      contextId,
+      messageType: row.message_type as MessageType,
+      messageRef: row.message_ref,
+      originalText: row.reply_text,
+    });
+  }
+
+  function onThumbsDown(contextId: number) {
+    setNeedsWorkFor({ id: contextId, nonce: Date.now() });
+    if (selected?.context_id !== contextId) selectRow(contextId);
+  }
+
+  const myVerdicts: Record<number, MyVerdict> = { ...quickVerdicts };
+  for (const [id, f] of Object.entries(feedbackByContext)) myVerdicts[Number(id)] = f.verdict as MyVerdict;
+
   const leadLabel = selected ? contactLabel(selected) : "Lead";
+  const preselect = needsWorkFor && selected && needsWorkFor.id === selected.context_id ? needsWorkFor : null;
 
   /*
    * Three panes on a wide screen, two on a laptop, stacked on a phone.
@@ -343,6 +422,7 @@ export function ReviewWorkspace({
           page={page}
           reviewedIds={reviewedIds}
           dismissedIds={dismissedIds}
+          issueChips={issueChips}
           onSelect={selectFromQueue}
           onLoadMore={() => go({ page: String(page + 1) })}
         />
@@ -369,6 +449,7 @@ export function ReviewWorkspace({
         ) : (
           <>
             <ContextStrip row={selected} canStopBot={canStopBot} onStopBot={() => setStopOpen(true)} />
+            {why && <WhyCard text={why.text} facts={why.facts} issues={view.issues} />}
             <div
               aria-busy={pending}
               className={`min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 transition-opacity dark:border-slate-800 dark:bg-slate-900${
@@ -376,13 +457,15 @@ export function ReviewWorkspace({
               }`}
             >
               <ConversationThread
-                timeline={timeline}
+                view={view}
                 rows={conversation}
                 selectedId={selected.context_id}
-                feedbackByContext={feedbackByContext}
-                reviewedIds={reviewedIds}
+                myVerdicts={myVerdicts}
                 leadLabel={leadLabel}
                 onSelect={selectRow}
+                onThumbsUp={onThumbsUp}
+                onThumbsDown={onThumbsDown}
+                canReview={canReview}
               />
             </div>
           </>
@@ -398,9 +481,12 @@ export function ReviewWorkspace({
         * lg, this lands under the thread; at xl it lands in the third column.
         */}
       {selected && (
-        <div className="min-h-0 xl:h-[calc(100vh-19rem)] xl:overflow-y-auto">
+        <div className="flex min-h-0 flex-col gap-3 xl:h-[calc(100vh-19rem)] xl:overflow-y-auto">
           <FeedbackPanel
-            key={selected.context_id}
+            key={`${selected.context_id}:${preselect?.nonce ?? 0}`}
+            title={`How was the ${timeEt(selected.sent_at ?? selected.generated_at)} ${selected.message_type === "skip" ? "skip" : "message"}?`}
+            initialVerdict={preselect ? "needs_work" : null}
+            focusOnMount={preselect != null}
             messageType={selected.message_type as MessageType}
             originalText={selected.reply_text}
             reasons={reasons}
@@ -426,6 +512,9 @@ export function ReviewWorkspace({
             // stops a held-down S from firing a second dismissal.
             submitting={submitting || dismissBusy}
           />
+          {leadStatus && (
+            <LeadStatusCard status={leadStatus} prospectId={selected.lp_prospect_id} leadId={selected.lp_lead_id} />
+          )}
         </div>
       )}
 

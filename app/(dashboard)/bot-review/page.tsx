@@ -22,15 +22,16 @@ import {
 import {
   getQueue,
   getContext,
-  getConversation,
-  getThreads,
+  getConversationTimeline,
+  getTagEvents,
+  getReviewSettings,
+  logReviewRender,
   getMyFeedback,
   getReasons,
   getCalibration,
   getHeaderCounts,
   getScoreboard,
   getLaneCounts,
-  getThreadCutover,
   getLaneScoreboard,
   getCompleted,
   getCompletedSummary,
@@ -45,12 +46,20 @@ import {
   canSeeOtherReviewers,
   canSeeRetracted,
   canUndoDismiss,
-  buildTimeline,
   resolveLane,
+  formatEt,
   TABS,
   type TabKey,
   type LaneKey,
 } from "@/lib/botReview/core";
+
+import {
+  buildConversation,
+  buildWhyText,
+  queueIssueChips,
+  type TagEvent,
+} from "@/lib/botReview/conversation";
+import { buildLeadStatus, placeLabel } from "@/lib/botReview/leadStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -204,7 +213,10 @@ async function ReviewTab({
    * already settled by the time they are awaited below.
    */
   const reasonsPromise = getReasons();
-  const calibrationPromise = getCalibration(ctx.email);
+  // The banner is only ever shown to a team member, so an operator's render
+  // does not pay for the read (2026-10-06: ≤ 8 reads per click).
+  const calibrationPromise = ctx.role === "team" ? getCalibration(ctx.email) : Promise.resolve(null);
+  const settingsPromise = getReviewSettings();
 
   const laneCounts = await getLaneCounts();
 
@@ -278,22 +290,80 @@ async function ReviewTab({
     queue.rows.find((r) => r.context_id === selectedId) ??
     (selectedId ? await getContext(selectedId) : null);
 
-  // The whole conversation, not just the clicked message. A contact with no
-  // GHL id cannot be shown to have other messages, so it stands alone.
-  const conversation = selected?.ghl_contact_id
-    ? await getConversation(selected.ghl_contact_id)
-    : selected
-      ? [selected]
-      : [];
+  /*
+   * The conversation view (2026-10-06): the HL messages mirror, the contact's
+   * bot rows, its tag events, its current tags and its LP lead, read in ONE
+   * parallel batch. The other contacts on this queue page ride on the same
+   * tag-event read, which is what their issue chips are built from.
+   */
+  const settings = await settingsPromise;
+  const pageContacts = [...new Set(queue.rows.map((r) => r.ghl_contact_id).filter((c): c is string => Boolean(c)))];
+  const contactId = selected?.ghl_contact_id ?? null;
+  const data = contactId ? await getConversationTimeline(contactId, settings.cutoverAt, pageContacts) : null;
+  const tagEventsByContact: Map<string, TagEvent[]> = data?.tagEventsByContact ?? (await getTagEvents(pageContacts));
 
-  const [snapshots, mine, cutoverAt] = await Promise.all([
-    getThreads(conversation.map((r) => r.context_id)),
-    getMyFeedback(ctx.email, [...queue.rows, ...conversation].map((r) => ({ type: r.message_type, ref: r.message_ref }))),
-    // Already read with the counts above (one request cache), so no round trip.
-    getThreadCutover(),
-  ]);
+  // A contact with no GHL id cannot be shown to have other messages, so it stands alone.
+  const conversation = data?.rows.length ? data.rows : selected ? [selected] : [];
+  const tagEvents = contactId ? (tagEventsByContact.get(contactId) ?? []) : [];
 
-  const timeline = buildTimeline(conversation, snapshots, { cutoverAt });
+  const mine = await getMyFeedback(
+    ctx.email,
+    [...queue.rows, ...conversation].map((r) => ({ type: r.message_type, ref: r.message_ref })),
+  );
+
+  const view = buildConversation({
+    messages: data?.messages ?? [],
+    rows: conversation,
+    tagEvents,
+    cutoverAt: settings.cutoverAt,
+    mustReviewScoreBelow: settings.mustReviewScoreBelow,
+  });
+
+  // Issue chips for each lead on this page, from all its bot rows and tag events.
+  const issueChips: Record<string, string[]> = {};
+  for (const id of pageContacts) {
+    const chips = queueIssueChips(
+      data?.rowsByContact.get(id) ?? queue.rows.filter((r) => r.ghl_contact_id === id),
+      tagEventsByContact.get(id) ?? [],
+    );
+    if (chips.length) issueChips[id] = chips;
+  }
+
+  const leadStatus = selected
+    ? buildLeadStatus({ contact: data?.contact ?? null, lead: data?.lead ?? null, office: selected.office, tagEvents })
+    : null;
+
+  let why: { text: string; facts: Array<{ label: string; value: string; tone?: "rose" | "amber" }> } | null = null;
+  if (selected) {
+    const flagged = selected.must_review_cause ? selected : (conversation.find((r) => r.must_review_cause) ?? selected);
+    const optOutTag = tagEvents.find((e) => e.action === "add_tag" && /^(dnc|dnc-sms|stage:dnc|suppress:dnc-reply)$/.test(e.tag));
+    const optedOutAt = flagged.opted_out_at ?? conversation.find((r) => r.opted_out_at)?.opted_out_at ?? optOutTag?.at ?? null;
+    const firstName =
+      data?.contact?.first_name?.trim() || selected.contact_name?.trim().split(/\s+/)[0] || "The lead";
+    const place = placeLabel(data?.contact ?? null) ?? selected.contact_city;
+    const facts: Array<{ label: string; value: string; tone?: "rose" | "amber" }> = [];
+    if (place) facts.push({ label: "Where", value: place });
+    if (leadStatus?.known) {
+      facts.push({
+        label: "Service area",
+        value: leadStatus.serviceArea.label,
+        tone: leadStatus.serviceArea.label === "Out of area" ? "amber" : undefined,
+      });
+    }
+    if (leadStatus?.job.estimateStatus) facts.push({ label: "Estimate", value: leadStatus.job.estimateStatus });
+    if (optedOutAt) facts.push({ label: "Opted out", value: formatEt(optedOutAt), tone: "rose" });
+    why = {
+      text: buildWhyText({
+        firstName,
+        cause: flagged.must_review_cause,
+        flaggedAt: flagged.sent_at ?? flagged.generated_at,
+        flaggedScore: flagged.ai_score,
+        optedOutAt,
+        view,
+      }),
+      facts,
+    };
+  }
 
   // Keyed by context id for the thread, which knows a bubble by the message it
   // renders, not by the (type, ref) pair the feedback table is keyed on.
@@ -310,6 +380,7 @@ async function ReviewTab({
   const offices = [...new Set(queue.rows.map((r) => r.office).filter(Boolean))] as string[];
 
   const showCalibration = calibration != null && !calibration.calibrated && ctx.role === "team";
+  logReviewRender(`review tab, contact ${contactId ?? "none"}`);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -334,7 +405,10 @@ async function ReviewTab({
         page={page}
         selected={selected}
         conversation={conversation}
-        timeline={timeline}
+        view={view}
+        why={why}
+        leadStatus={leadStatus}
+        issueChips={issueChips}
         feedbackByContext={feedbackByContext}
         myFeedback={myFeedback}
         reasons={reasons}
@@ -342,6 +416,7 @@ async function ReviewTab({
         // The panel hides Remove review for anyone who could not use it. LP MCP
         // re-checks the actual row's author either way.
         canRemoveReview={canReview(ctx)}
+        canReview={canReview(ctx)}
       />
     </div>
   );

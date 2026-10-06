@@ -41,6 +41,7 @@ export function QueueList({
   page,
   reviewedIds,
   dismissedIds,
+  issueChips = {},
   onSelect,
   onLoadMore,
 }: {
@@ -50,6 +51,8 @@ export function QueueList({
   page: number;
   reviewedIds: Set<number>;
   dismissedIds: Set<number>;
+  /** "Sent after out-of-area" and friends, per GHL contact id (2026-10-06). */
+  issueChips?: Record<string, string[]>;
   onSelect: (contextId: number) => void;
   onLoadMore: () => void;
 }) {
@@ -108,6 +111,7 @@ export function QueueList({
             // them out in SQL. Showing the chip here is what makes an undo
             // findable without opening Completed.
             const setAside = g.rows.every((r) => r.dismissed || dismissedIds.has(r.context_id));
+            const chips = g.contactId ? (issueChips[g.contactId] ?? []) : [];
             return (
               <li key={g.key}>
                 <button
@@ -140,13 +144,26 @@ export function QueueList({
                       <span>{formatEt(g.latestAt)}</span>
                     </p>
                     <p className={cn("mt-0.5 text-[11px] font-medium", TONE[g.signal.tone])}>{g.signal.label}</p>
-                    {(cause || setAside) && (
+                    {(cause || setAside || chips.length > 0) && (
                       <p className="mt-1 flex flex-wrap items-center gap-1">
                         {cause && (
                           <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-900">
                             {cause}
                           </span>
                         )}
+                        {chips.map((c) => (
+                          <span
+                            key={c}
+                            className={cn(
+                              "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                              c === "Sent after opt-out"
+                                ? "bg-rose-700 text-white dark:bg-rose-600"
+                                : "bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
+                            )}
+                          >
+                            {c}
+                          </span>
+                        ))}
                         {setAside && (
                           <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 ring-1 ring-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
                             Dismissed
