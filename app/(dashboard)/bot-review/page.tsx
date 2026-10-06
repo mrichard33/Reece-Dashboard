@@ -30,6 +30,7 @@ import {
   getHeaderCounts,
   getScoreboard,
   getLaneCounts,
+  getThreadCutover,
   getLaneScoreboard,
   getCompleted,
   getCompletedSummary,
@@ -285,12 +286,14 @@ async function ReviewTab({
       ? [selected]
       : [];
 
-  const [snapshots, mine] = await Promise.all([
+  const [snapshots, mine, cutoverAt] = await Promise.all([
     getThreads(conversation.map((r) => r.context_id)),
     getMyFeedback(ctx.email, [...queue.rows, ...conversation].map((r) => ({ type: r.message_type, ref: r.message_ref }))),
+    // Already read with the counts above (one request cache), so no round trip.
+    getThreadCutover(),
   ]);
 
-  const timeline = buildTimeline(conversation, snapshots);
+  const timeline = buildTimeline(conversation, snapshots, { cutoverAt });
 
   // Keyed by context id for the thread, which knows a bubble by the message it
   // renders, not by the (type, ref) pair the feedback table is keyed on.

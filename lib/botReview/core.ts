@@ -597,11 +597,41 @@ export type TimelineMessage = {
   key: string;
   at: string;
   contextId: number;
+  /**
+   * The lead message this one answers, taken from the thread, when the row
+   * recorded none. A rule-written send (SERVICE_AREA_EXIT, …) skipped
+   * generation and filed inbound_text = null until LP MCP 2026-10-06.
+   */
+  replyingTo: string | null;
 };
 
 export type TimelineItem = TimelineTurn | TimelineMessage;
 
-type SnapshotTurn = { direction?: string | null; body?: string | null; at?: string | null };
+export type SnapshotTurn = {
+  direction?: string | null;
+  body?: string | null;
+  at?: string | null;
+  channel?: string | null;
+  /** LP MCP 2026-10-06+. Older snapshots carry no kind. */
+  kind?: "message" | "activity" | null;
+};
+
+export type TimelineRow = {
+  context_id: number;
+  reply_text?: string | null;
+  inbound_text?: string | null;
+  message_type?: string | null;
+  sent_at?: string | null;
+  generated_at: string;
+};
+
+export type TimelineOptions = {
+  /**
+   * bot_settings.review_thread_cutover_at. Any timestamped turn before it is
+   * hidden (Mark, 2026-10-06: nothing from before the new agentic system).
+   */
+  cutoverAt?: string | null;
+};
 
 /** Whitespace and case are not differences worth keeping two copies over. */
 function normText(s: string | null | undefined): string {
@@ -624,6 +654,142 @@ function epoch(at: string | null | undefined): number | null {
 }
 
 /**
+ * GHL activity entries, as their text reads in a snapshot that predates
+ * LP MCP's `kind` field (2026-10-06). GHL returns these from the same
+ * messages endpoint as real messages, and the old snapshot labelled every one
+ * an outbound turn — so "Opportunity created" showed as the bot speaking
+ * (Charles Jessup, context 414: six of them). One list, so the rule is
+ * readable and tested in one place.
+ */
+export const ACTIVITY_BODY_PATTERNS: readonly RegExp[] = [
+  /^(Opportunity (created|updated|status changed)|Appointment (created|updated|booked|cancelled)|Task (created|completed)|Note added)$/i,
+  / - Window Estimate$/i,
+];
+
+/** Is this snapshot turn a GHL activity row rather than something someone said? */
+export function isActivityTurn(t: SnapshotTurn): boolean {
+  if (t.kind === "activity") return true;
+  if (t.kind === "message") return false;
+  // Old snapshot: only an outbound turn with no channel can be one.
+  if (t.direction !== "outbound" || t.channel) return false;
+  const body = (t.body ?? "").trim();
+  return ACTIVITY_BODY_PATTERNS.some((rx) => rx.test(body));
+}
+
+/**
+ * Plain words for each skip_reason code a reviewer sees on a "Bot didn't
+ * reply" note. An unknown code shows as itself — a new code is still
+ * readable, just not translated yet.
+ */
+export const SKIP_REASON_LABELS: Readonly<Record<string, string>> = {
+  superseded_by_newer_job: "a newer message took over",
+  superseded_by_newer_inbound: "the lead wrote again, so that reply took over",
+  superseded_by_newer_message: "the lead wrote again, so that reply took over",
+  answered_since_inbound: "it was already answered",
+  compliance_gate_handoff: "a person took over",
+  suppressed: "the contact is set not to get bot messages",
+  suppressed_at_send_time: "the contact is set not to get bot messages",
+  decision_maker_message_generation_failed: "the reply could not be written",
+  no_trigger_message_in_event_context: "there was no message to answer",
+};
+
+export function skipReasonLabel(code: string | null | undefined): string {
+  if (!code) return "no reason recorded";
+  return SKIP_REASON_LABELS[code] ?? code;
+}
+
+function lastIndex<T>(arr: T[], pred: (t: T) => boolean, before = arr.length): number {
+  for (let i = before - 1; i >= 0; i--) if (pred(arr[i]!)) return i;
+  return -1;
+}
+
+const isIn = (t: SnapshotTurn) => t.direction === "inbound";
+
+/**
+ * Where the new system's part of one snapshot starts (Mark, 2026-10-06: Bot
+ * Review shows nothing from before the new agentic system took over; the old
+ * GHL Conversation AI history is hidden here, never deleted).
+ *
+ * The anchor is the contact's FIRST bot_message_context row. From it, the
+ * thread shows the inbound turn immediately before that first message, and
+ * everything after. In order of evidence:
+ *   1. a turn whose text IS that first message (its reply, or its inbound);
+ *   2. timestamps — turns at or after the inbound that triggered it;
+ *   3. neither: nothing that could be from before it. A later snapshot that
+ *      no longer contains the first reply but does contain a later bot reply
+ *      started after the first one, so it is kept whole.
+ */
+function cutoffStart(
+  turns: SnapshotTurn[],
+  ownFirst: boolean,
+  first: TimelineRow,
+  laterReplies: Set<string>,
+  triggerAt: number | null,
+): number {
+  const firstReply = normText(first.reply_text);
+  const firstInbound = normText(first.inbound_text);
+  const firstGen = epoch(first.generated_at);
+
+  if (ownFirst) {
+    // The first message's own snapshot is everything BEFORE it: keep only the
+    // inbound it answered.
+    if (firstInbound) {
+      const j = lastIndex(turns, (t) => isIn(t) && normText(t.body) === firstInbound);
+      if (j >= 0) return j;
+    }
+    if (firstGen != null) {
+      const j = lastIndex(turns, (t) => isIn(t) && (epoch(t.at) ?? Infinity) <= firstGen);
+      if (j >= 0) return j;
+    }
+    const j = lastIndex(turns, isIn);
+    return j >= 0 ? j : turns.length;
+  }
+
+  if (firstReply) {
+    const i = turns.findIndex((t) => !isIn(t) && normText(t.body) === firstReply);
+    if (i >= 0) {
+      const j = lastIndex(turns, isIn, i);
+      return j >= 0 ? j : i;
+    }
+  }
+  if (firstInbound) {
+    const j = lastIndex(turns, (t) => isIn(t) && normText(t.body) === firstInbound);
+    if (j >= 0) return j;
+  }
+  if (triggerAt != null && turns.some((t) => epoch(t.at) != null)) {
+    const k = turns.findIndex((t) => (epoch(t.at) ?? -Infinity) >= triggerAt);
+    return k >= 0 ? k : turns.length;
+  }
+  if (firstReply && turns.some((t) => !isIn(t) && laterReplies.has(normText(t.body)))) return 0;
+  return turns.length;
+}
+
+/**
+ * When the inbound that triggered the contact's first new-system message
+ * arrived, from any snapshot that dates it. Falls back to that message's own
+ * time. Null when no snapshot has a timestamp to compare against.
+ */
+function firstTriggerAt(first: TimelineRow, snapshots: Map<number, SnapshotTurn[]>): number | null {
+  const firstGen = epoch(first.generated_at);
+  const want = normText(first.inbound_text);
+  let matched: number | null = null;
+  let latest: number | null = null;
+  let anyDated = false;
+  for (const turns of snapshots.values()) {
+    for (const t of turns) {
+      const e = epoch(t.at);
+      if (e == null) continue;
+      anyDated = true;
+      if (!isIn(t) || (firstGen != null && e > firstGen)) continue;
+      if (want && normText(t.body) === want && (matched == null || e > matched)) matched = e;
+      if (latest == null || e > latest) latest = e;
+    }
+  }
+  if (!anyDated) return null;
+  return matched ?? latest ?? firstGen;
+}
+
+/**
  * One timeline for a whole conversation.
  *
  * Each message carries its own snapshot of the thread AS THE BOT SAW IT, so
@@ -634,30 +800,34 @@ function epoch(at: string | null | undefined): number | null {
  * reviewer must never see the same reply twice and have to guess which one the
  * verdict lands on.
  *
- * `rows` are the reviewable messages; `snapshots` maps a context id to the
- * thread captured for it.
+ * 2026-10-06 (Charles Jessup): GHL activity rows are hidden, nothing from
+ * before the new system is shown, and an undated turn is placed by POSITION —
+ * between the known points around it in its snapshot (a dated turn, or a turn
+ * that is one of our replies, which sits at that reply's time) — instead of
+ * taking its parent message's time. Every old snapshot turn was undated, so
+ * all of them landed on the reviewed reply's instant and the thread rendered
+ * out of order.
+ *
+ * `rows` are the reviewable messages, oldest first; `snapshots` maps a context
+ * id to the thread captured for it.
  */
 export function buildTimeline(
-  rows: Array<{ context_id: number; reply_text?: string | null; sent_at?: string | null; generated_at: string }>,
+  rows: TimelineRow[],
   snapshots: Map<number, SnapshotTurn[]>,
+  opts: TimelineOptions = {},
 ): TimelineItem[] {
   /*
-   * Ordering runs on four numeric keys, never on the item itself, so the
-   * exported TimelineTurn / TimelineMessage shapes stay what the renderer
-   * needs and nothing more:
+   * Ordering runs on three numeric keys, never on the item itself:
    *
-   *   at     — the instant, in epoch ms. The real sort.
-   *   anchor — the instant of the message this item belongs to.
-   *   slot   — turns (0) before messages (1) on an equal instant, because
-   *            every turn in a snapshot happened BEFORE the message that
-   *            captured it.
-   *   order  — position within the snapshot, or within `rows` for a message.
-   *
-   * Every tier is a number, so the comparison is total: a turn and its message
-   * cannot swap between renders.
+   *   at    — the instant, in epoch ms. A placed turn takes the instant of the
+   *           next known point after it in its snapshot.
+   *   slot  — turns (0) before messages (1) on an equal instant, because every
+   *           turn in a snapshot happened BEFORE the message that captured it.
+   *   order — snapshot position (row, then turn index), or the row index.
    */
-  type Entry = { item: TimelineItem; at: number; anchor: number; slot: 0 | 1; order: number };
+  type Entry = { item: TimelineItem; at: number; slot: 0 | 1; order: number };
   const entries: Entry[] = [];
+  const SPAN = 100_000; // turns per snapshot slot in `order`; snapshots are ≤ a few dozen turns
 
   /*
    * An unparseable message time falls back to the previous message's instant
@@ -672,43 +842,104 @@ export function buildTimeline(
     lastKnown = at;
     anchors.set(r.context_id, at);
     entries.push({
-      item: { kind: "message", key: `m:${r.context_id}`, at: raw, contextId: r.context_id },
+      item: { kind: "message", key: `m:${r.context_id}`, at: raw, contextId: r.context_id, replyingTo: null },
       at,
-      anchor: at,
       slot: 1,
-      order: i,
+      order: i * SPAN + (SPAN - 1),
     });
   });
 
-  const reviewable = new Set(rows.map((r) => normText(r.reply_text)).filter(Boolean));
+  // A reply's text → the instant it went out (first row wins on a repeat).
+  const replyAt = new Map<string, number>();
+  rows.forEach((r) => {
+    const k = normText(r.reply_text);
+    if (k && !replyAt.has(k)) replyAt.set(k, anchors.get(r.context_id)!);
+  });
+
+  const first = rows[0];
+  const laterReplies = new Set(rows.slice(1).map((r) => normText(r.reply_text)).filter(Boolean));
+  const triggerAt = first ? firstTriggerAt(first, snapshots) : null;
+  const cutover = epoch(opts.cutoverAt ?? null);
 
   const seen = new Set<string>();
-  for (const row of rows) {
+  const shownInbound = new Set<string>();
+
+  rows.forEach((row, rowIdx) => {
     const anchor = anchors.get(row.context_id) ?? lastKnown;
-    (snapshots.get(row.context_id) ?? []).forEach((t, idx) => {
-      const inbound = t.direction === "inbound";
+    const all = snapshots.get(row.context_id) ?? [];
+    const start = first ? cutoffStart(all, rowIdx === 0, first, laterReplies, triggerAt) : 0;
+
+    const kept = all
+      .map((t, idx) => ({ t, idx }))
+      .filter(({ t, idx }) => {
+        if (idx < start) return false;
+        if (isActivityTurn(t)) return false;
+        const e = epoch(t.at);
+        if (cutover != null && e != null && e < cutover) return false;
+        return true;
+      });
+
+    // Known points: a dated turn, or a turn that is one of our replies.
+    const known = kept.map(({ t }) => epoch(t.at) ?? (isIn(t) ? null : (replyAt.get(normText(t.body)) ?? null)));
+
+    kept.forEach(({ t, idx }, k) => {
+      const inbound = isIn(t);
       const body = normText(t.body);
-      if (!inbound && body && reviewable.has(body)) return;
+      let at = known[k];
+      if (at == null) {
+        // Positional: the next known point after it in this snapshot, and the
+        // message that captured the snapshot is the last point of all.
+        for (let n = k + 1; n < known.length && at == null; n++) at = known[n] ?? null;
+        at ??= anchor;
+      }
+      if (!inbound && body && replyAt.has(body)) return;
       const key = `${inbound ? "in" : "out"}|${t.at ?? ""}|${body}`;
       if (seen.has(key)) return;
       seen.add(key);
+      if (inbound && body) shownInbound.add(body);
       entries.push({
         item: { kind: "turn", key: `t:${seen.size}`, at: t.at ?? null, inbound, body: t.body ?? null },
-        /*
-         * An undated turn is anchored to its message rather than floated to
-         * the top. Every snapshot belongs to a message that HAS a timestamp,
-         * and every turn in it happened before that message — so the lead's
-         * untimestamped turns interleave with the bot's replies instead of
-         * piling up in one block above the whole conversation.
-         */
-        at: epoch(t.at) ?? anchor,
-        anchor,
+        at,
         slot: 0,
-        order: idx,
+        order: rowIdx * SPAN + idx,
       });
     });
-  }
+  });
 
-  entries.sort((a, b) => a.at - b.at || a.anchor - b.anchor || a.slot - b.slot || a.order - b.order);
-  return entries.map((e) => e.item);
+  /*
+   * A skip quotes the message it did not answer, unless the thread shows it.
+   * A reply does the same: live-chat rows store the lead's message but no
+   * snapshot, so without this a chat read as the bot talking to itself.
+   */
+  rows.forEach((row, rowIdx) => {
+    const body = normText(row.inbound_text);
+    if (row.message_type === "nurture" || !body || shownInbound.has(body)) return;
+    // Two rows in a row on the same words answer one message (a reply and the
+    // skip it overtook); further apart, a second "yes" is a second message.
+    if (rowIdx > 0 && normText(rows[rowIdx - 1]!.inbound_text) === body) return;
+    entries.push({
+      item: { kind: "turn", key: `s:${row.context_id}`, at: null, inbound: true, body: row.inbound_text ?? null },
+      at: anchors.get(row.context_id) ?? lastKnown,
+      slot: 0,
+      order: rowIdx * SPAN + (SPAN - 2),
+    });
+  });
+
+  entries.sort((a, b) => a.at - b.at || a.slot - b.slot || a.order - b.order);
+  const items = entries.map((e) => e.item);
+
+  // A message with no recorded inbound replies to the lead turn above it.
+  const byId = new Map(rows.map((r) => [r.context_id, r]));
+  let lastLead: string | null = null;
+  for (const item of items) {
+    if (item.kind === "turn") {
+      if (item.inbound && item.body) lastLead = item.body;
+      continue;
+    }
+    const row = byId.get(item.contextId);
+    if (row && !row.inbound_text && row.message_type !== "nurture" && row.message_type !== "skip") {
+      item.replyingTo = lastLead;
+    }
+  }
+  return items;
 }

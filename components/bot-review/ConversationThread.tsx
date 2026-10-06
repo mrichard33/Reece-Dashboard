@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
-import { formatEt } from "@/lib/botReview/core";
+import { formatEt, skipReasonLabel } from "@/lib/botReview/core";
 import type { TimelineItem } from "@/lib/botReview/core";
 import type { QueueRow, MyFeedback } from "@/lib/queries/botReview";
 
@@ -21,6 +21,12 @@ import type { QueueRow, MyFeedback } from "@/lib/queries/botReview";
  * THE BOT SAW IT. That is the only honest thing to score against: the live
  * thread has moved on, and judging a reply against messages that arrived after
  * it would be unfair to the bot and useless as evidence.
+ *
+ * 2026-10-06 (Charles Jessup): only the bot's own messages say "Bot". A lead
+ * turn carries the lead's name; any other outbound turn (a workflow text, a
+ * person on the team) says so, because the old view called every outbound
+ * line "Bot" — GHL activity rows included. A skip is a small grey note, not a
+ * red bot bubble: the bot did not speak.
  */
 
 const VERDICT: Record<string, { label: string; className: string }> = {
@@ -78,18 +84,18 @@ export function ConversationThread({
             <div key={item.key} className={cn("flex", item.inbound ? "justify-start" : "justify-end")}>
               <div className="max-w-[88%] sm:max-w-[78%]">
                 <Meta>
-                  {item.inbound ? leadLabel : "Bot"}
+                  {item.inbound ? leadLabel : "Reece · not the bot"}
                   {item.at ? ` · ${formatEt(item.at)}` : ""}
                 </Meta>
                 <div
                   className={cn(
-                    "break-words rounded-xl px-3 py-2 text-sm leading-relaxed",
+                    "whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-sm leading-relaxed",
                     item.inbound
                       ? "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100"
-                      : "bg-navy-50 text-navy-900 dark:bg-navy-900 dark:text-navy-50",
+                      : "border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
                   )}
                 >
-                  {item.body ?? <span className="italic text-slate-400">(empty)</span>}
+                  {item.body?.trim() || <span className="italic text-slate-400">(empty)</span>}
                 </div>
               </div>
             </div>
@@ -107,6 +113,37 @@ export function ConversationThread({
         const isEmail = row.channel === "email";
         const isSkip = row.message_type === "skip";
         const open = expanded.has(row.context_id);
+
+        if (isSkip) {
+          // Still a button: a skip is reviewable, so selecting it must work.
+          return (
+            <div key={item.key} className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => onSelect(row.context_id)}
+                aria-current={selected}
+                aria-label={`Review the skipped reply from ${formatEt(item.at)}`}
+                className={cn(
+                  "max-w-[92%] rounded-2xl px-3 py-1.5 text-center text-xs text-slate-600 transition dark:text-slate-300",
+                  "bg-slate-100 dark:bg-slate-800",
+                  selected
+                    ? "ring-2 ring-navy-500 dark:ring-navy-300"
+                    : "hover:ring-2 hover:ring-slate-300 dark:hover:ring-slate-600",
+                )}
+              >
+                Bot didn&apos;t reply · {skipReasonLabel(row.skip_reason)}
+                <span className="text-slate-400"> · {formatEt(item.at)}</span>
+                {selected ? (
+                  <span className="font-semibold text-navy-700 dark:text-navy-200"> · Reviewing this</span>
+                ) : verdict ? (
+                  <span className={cn("font-semibold", verdict.className)}> · {verdict.label}</span>
+                ) : justReviewed ? (
+                  <span className="font-semibold text-emerald-700 dark:text-emerald-400"> · Reviewed</span>
+                ) : null}
+              </button>
+            </div>
+          );
+        }
 
         return (
           <div key={item.key} className="flex justify-end">
@@ -127,6 +164,11 @@ export function ConversationThread({
                   ) : null}
                 </span>
               </Meta>
+              {item.replyingTo && (
+                <p className="mb-1 line-clamp-2 break-words text-[11px] italic text-slate-500 dark:text-slate-400">
+                  Replying to: “{item.replyingTo}”
+                </p>
+              )}
 
               {/* The whole message is the click target: a reviewer reads it,
                   decides it is the one, and clicks where they are already
@@ -138,30 +180,23 @@ export function ConversationThread({
                 aria-current={selected}
                 aria-label={`Review the message sent ${formatEt(item.at)}`}
                 className={cn(
-                  "w-full rounded-xl px-3 py-2 text-left text-sm leading-relaxed transition",
-                  isSkip
-                    ? "border border-dashed border-rose-400 bg-rose-50/60 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
-                    : "bg-navy-50 text-navy-900 dark:bg-navy-900 dark:text-navy-50",
+                  "w-full rounded-xl bg-navy-50 px-3 py-2 text-left text-sm leading-relaxed text-navy-900 transition dark:bg-navy-900 dark:text-navy-50",
                   selected
                     ? "border-2 border-navy-500 dark:border-navy-300"
                     : "hover:ring-2 hover:ring-navy-300 dark:hover:ring-navy-600",
                 )}
               >
-                {isSkip ? (
-                  <span className="font-medium">No reply sent · Reason: {row.skip_reason ?? "not recorded"}</span>
-                ) : (
-                  <span
-                    className={cn(
-                      "block whitespace-pre-wrap break-words",
-                      isEmail && !open && "max-h-[132px] overflow-hidden",
-                    )}
-                  >
-                    {row.reply_text ?? <span className="italic text-slate-400">(no text recorded)</span>}
-                  </span>
-                )}
+                <span
+                  className={cn(
+                    "block whitespace-pre-wrap break-words",
+                    isEmail && !open && "max-h-[132px] overflow-hidden",
+                  )}
+                >
+                  {row.reply_text ?? <span className="italic text-slate-400">(no text recorded)</span>}
+                </span>
               </button>
 
-              {isEmail && !isSkip && (
+              {isEmail && (
                 <button
                   type="button"
                   onClick={() => toggle(row.context_id)}

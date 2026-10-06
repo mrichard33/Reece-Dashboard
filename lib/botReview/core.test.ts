@@ -501,12 +501,17 @@ describe("buildTimeline", () => {
   });
 
   it("keeps two identical lead messages sent at different times", () => {
+    // Both after the bot's first message (2026-10-06: nothing from before it shows).
     const items = buildTimeline(
-      [{ context_id: 1, reply_text: null, generated_at: "2026-09-10T13:00:00Z" }],
+      [
+        { context_id: 0, reply_text: "Hi there", generated_at: "2026-09-10T11:00:00Z" },
+        { context_id: 1, reply_text: null, generated_at: "2026-09-10T13:00:00Z" },
+      ],
       new Map([
         [
           1,
           snap([
+            { direction: "outbound", body: "Hi there", at: "2026-09-10T11:00:00Z" },
             { direction: "inbound", body: "hello?", at: "2026-09-10T12:00:00Z" },
             { direction: "inbound", body: "hello?", at: "2026-09-10T12:30:00Z" },
           ]),
