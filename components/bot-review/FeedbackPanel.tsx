@@ -54,6 +54,9 @@ export function FeedbackPanel({
   onDismiss,
   onRetract,
   submitting,
+  title = "How was this message?",
+  initialVerdict = null,
+  focusOnMount = false,
 }: {
   messageType: MessageType;
   originalText: string | null;
@@ -67,8 +70,19 @@ export function FeedbackPanel({
   onDismiss: (scope: "message" | "conversation") => void;
   onRetract: () => void;
   submitting: boolean;
+  /** "How was the 10:34 AM message?" (2026-10-06). */
+  title?: string;
+  /** 👎 on a bubble opens the panel with Needs work already picked. */
+  initialVerdict?: Verdict | null;
+  /** Bring the panel into view and focus it (the 👎 path). */
+  focusOnMount?: boolean;
 }) {
-  const [draft, setDraft] = useState<FeedbackDraft>({ ...emptyDraft, betterText: originalText ?? "" });
+  const [draft, setDraft] = useState<FeedbackDraft>({
+    ...emptyDraft,
+    verdict: initialVerdict,
+    betterText: originalText ?? "",
+  });
+  const panelRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<ValidationError | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [editing, setEditing] = useState(!readOnly);
@@ -112,6 +126,12 @@ export function FeedbackPanel({
     setError(null);
     startTransition(() => void onSubmit(draft));
   }
+
+  useEffect(() => {
+    if (!focusOnMount) return;
+    panelRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    panelRef.current?.focus({ preventScroll: true });
+  }, [focusOnMount]);
 
   // Screen-wide shortcuts. Ignored while typing, and while the form is locked.
   useEffect(() => {
@@ -193,8 +213,13 @@ export function FeedbackPanel({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-      <p className="mb-2 text-sm font-semibold text-navy-900 dark:text-white">How was this message?</p>
+    <div
+      ref={panelRef}
+      tabIndex={-1}
+      aria-label={title}
+      className="rounded-xl border border-slate-200 bg-white p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 dark:border-slate-800 dark:bg-slate-900"
+    >
+      <p className="mb-2 text-sm font-semibold text-navy-900 dark:text-white">{title}</p>
       <VerdictButtons value={draft.verdict} onChange={setVerdict} disabled={disabled} />
       {error?.field === "verdict" && <FieldError>{error.message}</FieldError>}
 

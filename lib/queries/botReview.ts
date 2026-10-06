@@ -15,7 +15,38 @@
 import { cache } from "react";
 import { lpService } from "@/lib/supabase/lp";
 import { fetchReviewCounts, type CountsClient, type ReviewCounts } from "@/lib/queries/botReviewCounts";
+import { hlService } from "@/lib/supabase/hl";
 import { buildQueuePlan, PAGE_SIZE, type QueueFilters, type LaneCounts } from "@/lib/botReview/core";
+import {
+  DEFAULT_CUTOVER_AT,
+  DEFAULT_MUST_REVIEW_SCORE_BELOW,
+  type HlMessage,
+  type TagEvent,
+} from "@/lib/botReview/conversation";
+import { THREAD_EVENT_TAGS } from "@/lib/botReview/contactTags";
+import type { LeadContact, LeadRecord } from "@/lib/botReview/leadStatus";
+
+/**
+ * Dev-only read counter (2026-10-06): the conversation view's budget is
+ * ≤ 8 Supabase reads and < 1.5 s per click, and this is how that is measured.
+ * Off in production; it never changes what a read returns.
+ */
+const readStats = cache(() => ({ reads: 0, startedAt: Date.now() }));
+
+function noteRead(): void {
+  if (process.env.NODE_ENV !== "production") readStats().reads += 1;
+}
+
+function countRead<T>(q: T): T {
+  noteRead();
+  return q;
+}
+
+export function logReviewRender(label: string): void {
+  if (process.env.NODE_ENV === "production") return;
+  const s = readStats();
+  console.info(`[bot-review] ${label}: ${s.reads} Supabase reads, ${Date.now() - s.startedAt} ms`);
+}
 
 function isMissingRelation(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
@@ -121,6 +152,7 @@ export async function getQueue(filters: QueueFilters): Promise<QueueResult> {
   for (const [col, val] of plan.is) q = q.is(col, val);
   for (const o of plan.order) q = q.order(o.column, { ascending: o.ascending, nullsFirst: o.nullsFirst });
 
+  noteRead();
   const { data, error, count } = await q.range(plan.range[0], plan.range[1]);
 
   if (error) {
@@ -161,16 +193,9 @@ export async function getLaneCounts(): Promise<LaneCounts> {
  */
 const getReviewCounts = cache(async (): Promise<ReviewCounts> => {
   const minute = Math.floor((Date.now() - 7 * 86_400_000) / 60_000) * 60_000;
+  noteRead();
   return fetchReviewCounts(lpService() as unknown as CountsClient, new Date(minute).toISOString());
 });
-
-/**
- * bot_settings.review_thread_cutover_at — no timestamped turn before it is
- * shown (Mark, 2026-10-06). Rides along with the counts, so it costs no read.
- */
-export async function getThreadCutover(): Promise<string | null> {
-  return (await getReviewCounts()).cutoverAt;
-}
 
 /** One message by context id — the row the review panel renders. */
 export async function getContext(contextId: number): Promise<QueueRow | null> {
@@ -184,36 +209,7 @@ export async function getContext(contextId: number): Promise<QueueRow | null> {
 }
 
 /**
- * The thread the review panel shows, straight from the fingerprint's
- * input_snapshot (handoff §7). This is the conversation AS THE BOT SAW IT,
- * which is the only honest thing to score a reply against — the live thread has
- * moved on since, and judging a reply against messages that arrived after it
- * would be unfair to the bot and useless as evidence.
- */
-export type ThreadTurn = {
-  direction: "inbound" | "outbound" | null;
-  channel: string | null;
-  body: string | null;
-  at: string | null;
-  /** LP MCP 2026-10-06+: 'activity' marks a GHL activity row. Absent on older snapshots. */
-  kind?: "message" | "activity" | null;
-};
-
-export async function getThread(contextId: number): Promise<{ turns: ThreadTurn[]; source: "snapshot" | "none" }> {
-  const { data, error } = await lpService()
-    .from("bot_message_context")
-    .select("input_snapshot")
-    .eq("id", contextId)
-    .maybeSingle();
-
-  if (error || !data?.input_snapshot) return { turns: [], source: "none" };
-  const snap = data.input_snapshot as { thread?: ThreadTurn[] };
-  const turns = Array.isArray(snap.thread) ? snap.thread : [];
-  return { turns, source: turns.length ? "snapshot" : "none" };
-}
-
-/**
- * Every bot message to one contact, oldest first.
+ * Every bot message to a contact, oldest first.
  *
  * The queue page is 25 messages, so the contact's other messages may well sit
  * on a page the reviewer has not loaded. The conversation is fetched on its
@@ -226,31 +222,184 @@ export async function getThread(contextId: number): Promise<{ turns: ThreadTurn[
  */
 const CONVERSATION_CAP = 200;
 
-export async function getConversation(contactId: string): Promise<QueueRow[]> {
+/**
+ * The same, for several contacts in ONE read (2026-10-06): the selected lead's
+ * thread and the issue chips of every other lead on the queue page. A page is
+ * at most 25 leads and a lead rarely has more than a few dozen rows.
+ */
+export async function getConversations(contactIds: string[]): Promise<Map<string, QueueRow[]>> {
+  const out = new Map<string, QueueRow[]>();
+  if (!contactIds.length) return out;
+  noteRead();
   const { data, error } = await lpService()
     .from("v_bot_review_queue")
     .select(QUEUE_COLUMNS)
-    .eq("ghl_contact_id", contactId)
+    .in("ghl_contact_id", contactIds)
     .order("generated_at", { ascending: true })
-    .limit(CONVERSATION_CAP);
-  if (error || !data) return [];
-  return data as unknown as QueueRow[];
+    .limit(CONVERSATION_CAP * 10);
+  if (error || !data) return out;
+  for (const r of data as unknown as QueueRow[]) {
+    if (!r.ghl_contact_id) continue;
+    const list = out.get(r.ghl_contact_id) ?? [];
+    if (list.length < CONVERSATION_CAP) list.push(r);
+    out.set(r.ghl_contact_id, list);
+  }
+  return out;
 }
 
-/** The captured thread for each message in a conversation, keyed by context id. */
-export async function getThreads(contextIds: number[]): Promise<Map<number, ThreadTurn[]>> {
-  const out = new Map<number, ThreadTurn[]>();
-  if (!contextIds.length) return out;
 
-  const { data, error } = await lpService()
-    .from("bot_message_context")
-    .select("id,input_snapshot")
-    .in("id", contextIds);
+// ─── The conversation view (2026-10-06) ─────────────────────────────
 
+/**
+ * bot_settings the conversation view needs: the cutover (Mark, 2026-10-06:
+ * nothing from before the new system) and the must-review score line. Config
+ * that changes a few times a year, so it is kept five minutes like the reason
+ * chips. A missing key uses the default and a failed read is not cached.
+ */
+export type ReviewSettings = { cutoverAt: string; mustReviewScoreBelow: number; cutoverIsDefault: boolean };
+const SETTINGS_TTL_MS = 5 * 60_000;
+let settingsCache: { at: number; value: ReviewSettings } | null = null;
+
+export async function getReviewSettings(): Promise<ReviewSettings> {
+  if (settingsCache && Date.now() - settingsCache.at < SETTINGS_TTL_MS) return settingsCache.value;
+  const fallback: ReviewSettings = {
+    cutoverAt: DEFAULT_CUTOVER_AT,
+    mustReviewScoreBelow: DEFAULT_MUST_REVIEW_SCORE_BELOW,
+    cutoverIsDefault: true,
+  };
+  const { data, error } = await countRead(
+    lpService().from("bot_settings").select("key,value").in("key", ["review_thread_cutover_at", "must_review_score_below"]),
+  );
+  if (error || !data) return fallback;
+  const byKey = new Map((data as Array<{ key: string; value: unknown }>).map((r) => [r.key, r.value]));
+  const cut = byKey.get("review_thread_cutover_at");
+  const cutIso = typeof cut === "string" && !Number.isNaN(Date.parse(cut)) ? cut : null;
+  const score = Number(byKey.get("must_review_score_below"));
+  const value: ReviewSettings = {
+    cutoverAt: cutIso ?? DEFAULT_CUTOVER_AT,
+    mustReviewScoreBelow: Number.isFinite(score) ? score : DEFAULT_MUST_REVIEW_SCORE_BELOW,
+    cutoverIsDefault: cutIso == null,
+  };
+  settingsCache = { at: Date.now(), value };
+  return value;
+}
+
+export type ContactRecord = LeadContact & { first_name: string | null };
+
+export type ConversationTimelineData = {
+  /** (a) HL messages, oldest first. */
+  messages: HlMessage[];
+  /** (b) every bot_message_context row for the contact, with bot_outcomes' times. */
+  rows: QueueRow[];
+  /** (b) for the other contacts asked for, for their queue chips. */
+  rowsByContact: Map<string, QueueRow[]>;
+  /** (c) tag events for the contact AND the other contacts asked for (queue chips). */
+  tagEventsByContact: Map<string, TagEvent[]>;
+  /** (e) the HL contact: current tags, place, source. Null when it could not be read. */
+  contact: ContactRecord | null;
+  /** The LP lead: estimate status, market, source. */
+  lead: LeadRecord | null;
+};
+
+const MESSAGES_CAP = 200;
+
+/**
+ * Everything the conversation view reads, in ONE Promise.all.
+ *
+ * (d) bot_outcomes is not a separate read: v_bot_review_queue already LEFT
+ * JOINs it (replied_at / booked_at / opted_out_at), so (b) carries it.
+ *
+ * `alsoTagsFor` are the other contacts on the visible queue page. Their bot
+ * rows and tag events ride on the same two reads, so the queue's issue chips
+ * cost no query per row.
+ */
+export async function getConversationTimeline(
+  contactId: string,
+  cutoverAt: string,
+  alsoTagsFor: string[] = [],
+): Promise<ConversationTimelineData> {
+  const hl = hlService();
+  const tagContacts = [...new Set([contactId, ...alsoTagsFor].filter(Boolean))];
+
+  const [messages, rowsByContact, tagEventsByContact, contact, lead] = await Promise.all([
+    // Newest 200 at or after the cutover, then put back in order.
+    Promise.resolve(
+      countRead(
+        hl
+          .from("messages")
+          .select("ghl_message_id,direction,type,body,sent_at")
+          .eq("ghl_contact_id", contactId)
+          .is("deleted_at", null)
+          .gte("sent_at", cutoverAt)
+          .order("sent_at", { ascending: false })
+          .limit(MESSAGES_CAP),
+      ),
+    ).then(({ data, error }) => (error || !data ? [] : (data as HlMessage[]).slice().reverse())),
+    getConversations(tagContacts),
+    getTagEvents(tagContacts),
+    Promise.resolve(
+      countRead(
+        hl
+          .from("contacts")
+          .select("first_name,tags,city,state,postal_code,source")
+          .eq("ghl_contact_id", contactId)
+          .is("deleted_at", null)
+          .maybeSingle(),
+      ),
+    ).then(({ data, error }) => {
+      if (error || !data) return null;
+      const c = data as { first_name: string | null; tags: string[] | null } & Omit<LeadContact, "tags">;
+      return { ...c, tags: Array.isArray(c.tags) ? c.tags : [] } as ContactRecord;
+    }),
+    Promise.resolve(
+      countRead(
+        lpService()
+          .from("lp_leads")
+          .select("disposition_label,disposition_code,lead_source,lp_branch_id")
+          .eq("ghl_contact_id", contactId)
+          .order("created_at_lp", { ascending: false, nullsFirst: false })
+          .limit(1),
+      ),
+    ).then(({ data, error }) => (error || !data?.length ? null : (data[0] as LeadRecord))),
+  ]);
+
+  return { messages, rows: rowsByContact.get(contactId) ?? [], rowsByContact, tagEventsByContact, contact, lead };
+}
+
+/**
+ * Tag events for some contacts: only the tags the thread shows
+ * (THREAD_EVENT_TAGS), completed actions only — a skipped or suppressed
+ * add_tag never touched the contact. Filtered on the full idx_aa_target key
+ * (target_system, target_entity, target_id) so it stays an index read.
+ */
+export async function getTagEvents(contactIds: string[]): Promise<Map<string, TagEvent[]>> {
+  const out = new Map<string, TagEvent[]>();
+  if (!contactIds.length) return out;
+  const { data, error } = await countRead(
+    lpService()
+      .from("agent_actions")
+      .select("target_id,action_type,action_payload->>tag,created_at,executed_at")
+      .eq("target_system", "ghl")
+      .eq("target_entity", "contact")
+      .in("target_id", contactIds)
+      .in("action_type", ["add_tag", "remove_tag"])
+      .eq("status", "completed")
+      .in("action_payload->>tag", [...THREAD_EVENT_TAGS])
+      .order("created_at", { ascending: true })
+      .limit(2000),
+  );
   if (error || !data) return out;
-  for (const r of data as Array<{ id: number; input_snapshot: { thread?: ThreadTurn[] } | null }>) {
-    const turns = Array.isArray(r.input_snapshot?.thread) ? r.input_snapshot.thread : [];
-    out.set(r.id, turns);
+  for (const r of data as unknown as Array<{
+    target_id: string;
+    action_type: "add_tag" | "remove_tag";
+    tag: string | null;
+    created_at: string;
+    executed_at: string | null;
+  }>) {
+    if (!r.tag) continue;
+    const list = out.get(r.target_id) ?? [];
+    list.push({ tag: r.tag, action: r.action_type, at: r.executed_at ?? r.created_at });
+    out.set(r.target_id, list);
   }
   return out;
 }
@@ -260,6 +409,7 @@ export async function getMyFeedback(email: string, refs: Array<{ type: string; r
   const out = new Map<string, MyFeedback>();
   if (!refs.length) return out;
 
+  noteRead();
   const { data, error } = await lpService()
     .from("v_bot_current_feedback")
     .select("id,message_type,message_ref,verdict,reason_codes,better_text,note,gold,counts,created_at,reviewer_email")
@@ -287,6 +437,7 @@ let reasonsCache: { at: number; rows: Reason[] } | null = null;
 
 export async function getReasons(): Promise<Reason[]> {
   if (reasonsCache && Date.now() - reasonsCache.at < REASONS_TTL_MS) return reasonsCache.rows;
+  noteRead();
   const { data, error } = await lpService()
     .from("bot_feedback_reasons")
     .select("code,label,default_lane,severity,sort")
@@ -308,6 +459,7 @@ export type Calibration = {
 };
 
 export async function getCalibration(email: string): Promise<Calibration | null> {
+  noteRead();
   const { data, error } = await lpService()
     .from("v_bot_reviewer_agreement")
     .select("reviewer_email,calibration_done,agreement,calibrated,calibration_target,agreement_target")
