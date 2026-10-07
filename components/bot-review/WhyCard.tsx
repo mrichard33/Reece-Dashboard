@@ -1,14 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
-import type { Issue } from "@/lib/botReview/conversation";
+import { groupIssues, WHY_CARD_MAX_LINES, type Issue } from "@/lib/botReview/conversation";
+import { requestJump } from "./ConversationThread";
 
 /**
  * "Why this is here" — the top of the middle column (2026-10-06).
  *
  * The text is built by code (buildWhyText), never by a model (AI OS
- * CANON.P.001: code decides). Each issue chip is a button that brings its
- * message into view, so the reviewer reads the problem before the thread.
+ * CANON.P.001: code decides). Each issue line has a Jump that opens the
+ * message's session and brings it into view, so the reviewer reads the problem
+ * before the thread. Identical chips are grouped (AI OS CANON.K.009: show only
+ * what the step needs).
  */
 export function WhyCard({
   text,
@@ -19,12 +23,11 @@ export function WhyCard({
   facts: Array<{ label: string; value: string; tone?: "rose" | "amber" }>;
   issues: Issue[];
 }) {
-  function jump(anchor: string) {
-    const el = document.getElementById(anchor);
-    if (!el) return;
-    el.scrollIntoView({ block: "center", behavior: "smooth" });
-    el.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
-  }
+  const [showAll, setShowAll] = useState(false);
+  // 2026-10-07: identical chips are one line ("Sent after outbound paused × 4")
+  // with one Jump, and the card stops at six lines. McKoy's card listed 16.
+  const groups = groupIssues(issues);
+  const shown = showAll ? groups : groups.slice(0, WHY_CARD_MAX_LINES);
 
   return (
     <section
@@ -60,23 +63,40 @@ export function WhyCard({
           <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
             {issues.length} issue{issues.length === 1 ? "" : "s"} found
           </p>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {issues.map((x, i) => (
-              <button
-                key={`${x.anchor}-${x.label}-${i}`}
-                type="button"
-                onClick={() => jump(x.anchor)}
-                className={cn(
-                  "rounded-full px-2 py-1 text-[11px] font-semibold underline-offset-2 hover:underline",
-                  x.tone === "rose"
-                    ? "bg-rose-700 text-white dark:bg-rose-600"
-                    : "bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
-                )}
-              >
-                {x.label}
-              </button>
+          <ul className="mt-1 flex flex-col gap-1">
+            {shown.map((g) => (
+              <li key={g.label} className="flex min-w-0 items-center gap-2">
+                <span
+                  className={cn(
+                    "min-w-0 truncate rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                    g.tone === "rose"
+                      ? "bg-rose-700 text-white dark:bg-rose-600"
+                      : "bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
+                  )}
+                >
+                  {g.label}
+                  {g.count > 1 ? ` × ${g.count}` : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => requestJump(g.anchors[0]!)}
+                  className="shrink-0 rounded px-2 py-1.5 text-xs font-medium text-navy-700 hover:underline dark:text-navy-200"
+                  aria-label={`Jump to the first message: ${g.label}`}
+                >
+                  Jump
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
+          {groups.length > WHY_CARD_MAX_LINES && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-1 py-1 text-xs font-medium text-navy-700 hover:underline dark:text-navy-200"
+            >
+              {showAll ? "Show less" : `Show all ${groups.length}`}
+            </button>
+          )}
         </div>
       )}
     </section>

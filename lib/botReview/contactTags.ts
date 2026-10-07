@@ -70,6 +70,9 @@ export const THREAD_EVENT_TAGS: readonly string[] = [
   "dnc-sms",
   "stage:dnc",
   "suppress:dnc-reply",
+  // 2026-10-07 — read for the workflow "Sent while paused" chip only; never
+  // drawn as a line and never a bot stop (it follows every bot reply).
+  "pause-workflow",
 ];
 
 /** Opt-out tags among THREAD_EVENT_TAGS: any of them means texts and calls stopped. */

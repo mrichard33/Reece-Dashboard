@@ -177,8 +177,9 @@ function rowChannelLabel(channel: string | null): string {
   return "Message";
 }
 
-type TagLine = { text: string; state?: State; clears?: State };
-type State = "out_of_area" | "paused" | "bot_stopped" | "opted_out";
+/** `quiet`: counts for the chips, never drawn as a line (it would follow every reply). */
+type TagLine = { text: string; state?: State; clears?: State; quiet?: boolean };
+type State = "out_of_area" | "paused" | "bot_stopped" | "opted_out" | "drip_paused";
 
 /** What each tag change says, and which state it sets or clears. */
 function tagLine(e: TagEvent): TagLine | null {
@@ -198,6 +199,15 @@ function tagLine(e: TagEvent): TagLine | null {
     return added ? { text: "Bot stopped", state: "bot_stopped" } : { text: "Bot stop removed", clears: "bot_stopped" };
   }
   if (tag === "agentic-active") return { text: added ? "Bot turned on" : "Bot turned off" };
+  // 2026-10-07 — pause-workflow is a GHL drip signal (rule 106 adds it after
+  // every bot reply). It never stops the bot, so it never chips a bot message;
+  // it does mean a workflow drip should have held, so a workflow or team
+  // message sent while it is on gets "Sent while paused".
+  if (tag === "pause-workflow") {
+    return added
+      ? { text: "Workflow drip paused", state: "drip_paused", quiet: true }
+      : { text: "Workflow drip resumed", clears: "drip_paused", quiet: true };
+  }
   if (THREAD_OPTOUT_TAGS.includes(tag)) {
     return added
       ? { text: "Opted out · texts and calls stopped", state: "opted_out" }
@@ -211,15 +221,24 @@ const STATE_CHIP: Record<State, string> = {
   bot_stopped: "Sent after bot stopped",
   out_of_area: "Sent after out-of-area",
   paused: "Sent after outbound paused",
+  drip_paused: "Sent while paused",
 };
 
 /*
  * One chip per message: the state that most plainly should have stopped THAT
- * sender. stop-bot gates only the bot (checkConversationGate), and the service
- * area is the bot's own decision, so a workflow text is judged on the pause.
+ * sender, judged at the message's own time from the tag events before it —
+ * never from the contact's current tags.
+ *
+ * Bot messages (2026-10-07, LP-MCP's one send gate): opt-out, stop-bot,
+ * out-of-area / dq-out-of-area and suppress-outbound. Never pause-workflow:
+ * it is a drip signal, not a bot stop.
+ * Workflow / team messages: opt-out, suppress-outbound, out-of-area, and
+ * pause-workflow ("Sent while paused"). Not stop-bot: it is also the
+ * rep-takeover convention, so a person texting after it is the point, and the
+ * mirror cannot tell a person's text from a workflow's.
  */
 const BOT_STATE_ORDER: State[] = ["opted_out", "bot_stopped", "out_of_area", "paused"];
-const OTHER_STATE_ORDER: State[] = ["opted_out", "paused", "out_of_area"];
+const OTHER_STATE_ORDER: State[] = ["opted_out", "paused", "out_of_area", "drip_paused"];
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -321,8 +340,9 @@ type Flat =
       ord: number;
       sets: State[];
       clears: State[];
-      /** Counts for the state, but is not drawn (before the first shown message). */
+      /** Counts for the state, but is not drawn (before the first shown message, or quiet). */
       hidden?: boolean;
+      quiet?: boolean;
     };
 
 /**
@@ -441,7 +461,9 @@ export function buildConversation(input: ConversationInput): ConversationView {
   let group: typeof tagLines = [];
   const flushGroup = () => {
     if (!group.length) return;
-    const texts = [...new Set(group.map((g) => g.line.text))];
+    // A quiet change (pause-workflow) rides along for the chips but is never drawn.
+    const loud = group.filter((g) => !g.line.quiet);
+    const texts = [...new Set(loud.map((g) => g.line.text))];
     const sets = [...new Set(group.flatMap((g) => (g.line.state ? [g.line.state] : [])))];
     const clears = [...new Set(group.flatMap((g) => (g.line.clears ? [g.line.clears] : [])))];
     flat.push({
@@ -453,7 +475,8 @@ export function buildConversation(input: ConversationInput): ConversationView {
       contextId: null,
       sets,
       clears,
-      hidden: group[0]!.ms < firstMessageMs || (cutoff != null && group[0]!.ms < cutoff),
+      hidden: !loud.length || group[0]!.ms < firstMessageMs || (cutoff != null && group[0]!.ms < cutoff),
+      quiet: !loud.length,
       ord: ord++,
     });
     group = [];
@@ -621,7 +644,7 @@ export function buildConversation(input: ConversationInput): ConversationView {
     notice: HIDDEN_HISTORY_NOTICE,
     cutoffAt: cutoff != null ? new Date(cutoff).toISOString() : null,
     stateEvents: flat
-      .filter((f): f is Extract<Flat, { kind: "event" }> => f.kind === "event" && f.contextId == null)
+      .filter((f): f is Extract<Flat, { kind: "event" }> => f.kind === "event" && f.contextId == null && !f.quiet)
       .map((f) => ({ at: f.at, text: f.text })),
   };
 }
@@ -779,4 +802,134 @@ export function queueIssueChips(rows: BotRow[], tagEvents: TagEvent[]): string[]
   const order = Object.values(STATE_CHIP);
   const labels = new Set(view.issues.map((i) => i.label));
   return order.filter((l) => labels.has(l));
+}
+
+// ─── Tag history from GHL (2026-10-07) ───────────────────────────────
+
+/** One row of LP's ghl_tag_inbox: the contact's whole tag set at a moment. */
+export type TagSnapshot = { occurred_at: string; tags: string[] | null };
+
+/**
+ * Tag changes read from GHL's own tag-set history, as add/remove events.
+ *
+ * WHY: the thread read tag changes only from agent_actions, so a tag removed
+ * anywhere else (a GHL workflow, a person) never ended its state. McKoy
+ * (rRPO34Ooq0QmtSfXyqSw): HARD_DISQUALIFIED_CLOSEOUT added suppress-outbound
+ * on 09-22 at 21:28 and GHL took it off at 21:30; every message for the next
+ * two weeks still got "Sent after outbound paused". ghl_tag_inbox keeps every
+ * tag set GHL sent us, with its time, so the removal is there.
+ *
+ * Consecutive sets are diffed for the watched tags only. The first set counts
+ * as "added" for each watched tag it holds. Pure.
+ */
+export function tagEventsFromHistory(snapshots: TagSnapshot[], watched: readonly string[]): TagEvent[] {
+  const want = new Set(watched.map((t) => t.toLowerCase()));
+  const rows = snapshots
+    .map((r) => ({ ms: epoch(r.occurred_at), at: r.occurred_at, tags: new Set((r.tags ?? []).map((t) => String(t).trim().toLowerCase()).filter((t) => want.has(t))) }))
+    .filter((r): r is { ms: number; at: string; tags: Set<string> } => r.ms != null)
+    .sort((a, b) => a.ms - b.ms);
+  const out: TagEvent[] = [];
+  let prev = new Set<string>();
+  for (const r of rows) {
+    for (const t of r.tags) if (!prev.has(t)) out.push({ tag: t, action: "add_tag", at: r.at });
+    for (const t of prev) if (!r.tags.has(t)) out.push({ tag: t, action: "remove_tag", at: r.at });
+    prev = r.tags;
+  }
+  return out;
+}
+
+/** Our action log and GHL's history together, in time order. */
+export function mergeTagEvents(actions: TagEvent[], history: TagEvent[]): TagEvent[] {
+  return [...actions, ...history].sort((a, b) => (epoch(a.at) ?? 0) - (epoch(b.at) ?? 0));
+}
+
+// ─── The Why card's issue list ───────────────────────────────────────
+
+export type IssueGroup = { label: string; tone: IssueTone; count: number; anchors: string[] };
+
+/** Identical chips become one line ("Sent after outbound paused × 4"), in first-seen order. */
+export function groupIssues(issues: Issue[]): IssueGroup[] {
+  const by = new Map<string, IssueGroup>();
+  for (const i of issues) {
+    const g = by.get(i.label);
+    if (g) {
+      g.count += 1;
+      if (!g.anchors.includes(i.anchor)) g.anchors.push(i.anchor);
+      if (i.tone === "rose") g.tone = "rose";
+    } else {
+      by.set(i.label, { label: i.label, tone: i.tone, count: 1, anchors: [i.anchor] });
+    }
+  }
+  return [...by.values()];
+}
+
+export const WHY_CARD_MAX_LINES = 6;
+
+// ─── Collapsible sessions ────────────────────────────────────────────
+
+export type SessionBlock =
+  | { kind: "item"; item: ConvItem }
+  | {
+      kind: "session";
+      header: Extract<ConvItem, { kind: "session" }>;
+      items: ConvItem[];
+      /** Message bubbles in the session (lead, bot and workflow/team). */
+      messageCount: number;
+      endAt: string;
+      anchors: string[];
+    };
+
+/**
+ * The thread as blocks: each session header with the items under it, until
+ * the next header or day divider. Day dividers and anything before the first
+ * header stay single items, so they are always visible. Pure.
+ */
+export function toSessionBlocks(items: ConvItem[]): SessionBlock[] {
+  const out: SessionBlock[] = [];
+  let cur: Extract<SessionBlock, { kind: "session" }> | null = null;
+  const close = () => {
+    if (cur) out.push(cur);
+    cur = null;
+  };
+  for (const item of items) {
+    if (item.kind === "day") {
+      close();
+      out.push({ kind: "item", item });
+      continue;
+    }
+    if (item.kind === "session") {
+      close();
+      cur = { kind: "session", header: item, items: [], messageCount: 0, endAt: item.startAt, anchors: [] };
+      continue;
+    }
+    if (!cur) {
+      out.push({ kind: "item", item });
+      continue;
+    }
+    cur.items.push(item);
+    if (item.kind === "lead" || item.kind === "bot" || item.kind === "other_outbound") cur.messageCount += 1;
+    if ("at" in item && (epoch(item.at) ?? 0) > (epoch(cur.endAt) ?? 0)) cur.endAt = item.at;
+    if (item.kind === "bot" || item.kind === "other_outbound") cur.anchors.push(item.anchor);
+    if (item.kind === "event" && item.contextId != null) cur.anchors.push(`skip-c${item.contextId}`);
+  }
+  close();
+  return out;
+}
+
+/**
+ * Which sessions start open: the one holding the selected message and the one
+ * on each side of it. With no selected message in the thread, the last three.
+ */
+export function defaultOpenSessions(blocks: SessionBlock[], selectedAnchor: string | null): Set<string> {
+  const sessions = blocks.filter((b): b is Extract<SessionBlock, { kind: "session" }> => b.kind === "session");
+  const idx = selectedAnchor ? sessions.findIndex((b) => b.anchors.includes(selectedAnchor)) : -1;
+  const pick = idx >= 0 ? sessions.slice(Math.max(0, idx - 1), idx + 2) : sessions.slice(-3);
+  return new Set(pick.map((b) => b.header.key));
+}
+
+/** "Agentic bot · Reply · 4 messages · 10:45 AM–11:02 AM" */
+export function collapsedSessionLine(b: Extract<SessionBlock, { kind: "session" }>): string {
+  const start = timeEt(b.header.startAt);
+  const end = timeEt(b.endAt);
+  return `${b.header.label} · ${b.messageCount} message${b.messageCount === 1 ? "" : "s"} · ${start === end ? start : `${start}–${end}`}`;
 }

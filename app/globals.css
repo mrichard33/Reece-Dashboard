@@ -147,3 +147,16 @@
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Bot Review thread box (2026-10-07): the thread scrolls inside its own box at
+   lg+, so the scrollbar must be visible, not an overlay that hides until hover. */
+@media (min-width: 1024px) {
+  .thread-scroll {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184) transparent;
+  }
+  .thread-scroll::-webkit-scrollbar { width: 8px; }
+  .thread-scroll::-webkit-scrollbar-thumb { background: rgb(148 163 184); border-radius: 9999px; }
+  .thread-scroll::-webkit-scrollbar-track { background: transparent; }
+}
