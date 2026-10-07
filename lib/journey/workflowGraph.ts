@@ -24,6 +24,7 @@
  */
 
 import { emailToPlainText } from "./emailText";
+import { describeBranch, splitPathLabel, stepDisplayName } from "./branchWords";
 
 export type GraphStep = {
   id: string;
@@ -49,6 +50,17 @@ export type WorkflowGraph = {
   templates: Record<string, { name: string | null; subject: string | null; body: string | null }>;
 };
 
+/** One fork on the way to a message, in the flowchart's words ("If: Email Exist" → "Yes · has email"). */
+export type RouteStep = {
+  decision: string;
+  answer: string;
+  /** The fork step and the side taken — so two forks worded alike never merge. */
+  forkId: string;
+  pathId: string;
+  /** "condition" for if/else and A/B, "wait" for "wait until … or give up". */
+  kind: "condition" | "wait";
+};
+
 export type ScheduleRow = {
   stepId: string;
   type: "sms" | "email";
@@ -62,6 +74,14 @@ export type ScheduleRow = {
   body: string;
   from: string | null;
   branchPath: string[];
+  /**
+   * Every fork taken to reach this message, worded like the flowchart's arrow
+   * labels — if/else answers, A/B paths, and "when it happens" / "if not
+   * within 30d" on event waits (2026-10-07: "Every message" grouped by route).
+   */
+  route: RouteStep[];
+  /** Position in the graph walk, so routes list in flowchart order, not send order. */
+  walkOrder: number;
   templateId: string | null;
   /** Body is filled at send time (ChatGPT step / custom-field merge). */
   aiWritten: boolean;
@@ -296,7 +316,14 @@ export type WalkOptions = {
   counterSeed?: { email: number; sms: number };
 };
 
-export type WalkResult = { rows: ScheduleRow[]; dependsOn: string[] };
+/**
+ * A route that runs into a step another route already reached (a "go to", or a
+ * branch looping back). The schedule lists each message once, so the route
+ * says where it carries on instead.
+ */
+export type RouteJoin = { route: RouteStep[]; atStepId: string; atLabel: string; toRoute: RouteStep[] };
+
+export type WalkResult = { rows: ScheduleRow[]; dependsOn: string[]; joins: RouteJoin[] };
 
 /**
  * Walk the graph accumulating waits. Without `facts`, every branch is walked
@@ -312,13 +339,26 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
   const counters = { email: opts.counterSeed?.email ?? 0, sms: opts.counterSeed?.sms ?? 0 };
   let expansions = 0;
 
-  const visit = (id: string, offset: number, path: string[], notes: string[], unparsed: boolean, skip = false): void => {
+  const firstRoute = new Map<string, RouteStep[]>();
+  const joins: RouteJoin[] = [];
+  const joinSeen = new Set<string>();
+
+  const visit = (id: string, offset: number, path: string[], route: RouteStep[], notes: string[], unparsed: boolean, skip = false): void => {
     if (expansions >= MAX_EXPANSIONS) return;
     if (opts.maxMessages && rows.length >= opts.maxMessages) return;
     if (opts.maxMinutes !== undefined && offset > opts.maxMinutes) return;
     const step = idx.byId.get(id);
-    if (!step || expanded.has(id)) return;
+    if (!step) return;
+    if (expanded.has(id)) {
+      const key = `${routeKey(route)}→${id}`;
+      if (!opts.facts && !joinSeen.has(key)) {
+        joinSeen.add(key);
+        joins.push({ route, atStepId: id, atLabel: landingLabel(step, idx), toRoute: firstRoute.get(id) ?? [] });
+      }
+      return;
+    }
     expanded.add(id);
+    firstRoute.set(id, route);
     expansions++;
 
     let off = offset;
@@ -342,6 +382,8 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
         body: c.body,
         from: c.from,
         branchPath: path,
+        route,
+        walkOrder: rows.length,
         templateId: c.templateId,
         aiWritten: c.aiWritten,
         stamped: stamped !== null,
@@ -365,10 +407,16 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
         };
         const eventKid = kids.find((k) => !isTimeout(k));
         const timeoutKid = kids.find(isTimeout);
+        const decision = `Wait until: ${label}`;
+        const onRoute: RouteStep[] = [...route, { decision, answer: "when it happens", forkId: step.id, pathId: eventKid ?? "event", kind: "wait" }];
+        const offRoute: RouteStep[] = [
+          ...route,
+          { decision, answer: w.unparsed ? "if it never happens" : `if not within ${formatMinutes(w.minutes)}`, forkId: step.id, pathId: timeoutKid ?? "timeout", kind: "wait" },
+        ];
         const onTimeout = () =>
-          timeoutKid && visit(timeoutKid, off + w.minutes, path, [...notes, `if no ${label} within ${formatMinutes(w.minutes)}`], unp || w.unparsed);
+          timeoutKid && visit(timeoutKid, off + w.minutes, path, offRoute, [...notes, `if no ${label} within ${formatMinutes(w.minutes)}`], unp || w.unparsed);
         if (!opts.facts) {
-          if (eventKid) visit(eventKid, off, path, waitType === "condition" ? notes : [...notes, `on ${label}`], unp);
+          if (eventKid) visit(eventKid, off, path, onRoute, waitType === "condition" ? notes : [...notes, `on ${label}`], unp);
           onTimeout();
           return;
         }
@@ -381,7 +429,7 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
           const v = evaluateBranch(def, opts.facts);
           if (v === false) return void onTimeout();
           if (v === null) dependsOn.push(label);
-          if (eventKid) visit(eventKid, off, path, notes, unp);
+          if (eventKid) visit(eventKid, off, path, onRoute, notes, unp);
           return;
         }
         return void onTimeout();
@@ -413,24 +461,60 @@ export function walkSchedule(graph: WorkflowGraph, opts: WalkOptions = {}): Walk
         dependsOn.push(idx.byId.get(unknownFirst)?.name ?? "a condition");
       }
       chosen ??= elseKid;
-      if (chosen) visit(chosen, off, [...path, idx.byId.get(chosen)?.name ?? "branch"], notes, unp);
+      if (chosen) visit(chosen, off, [...path, idx.byId.get(chosen)?.name ?? "branch"], [...route, forkStep(step, chosen, idx)], notes, unp);
       return;
     }
 
     for (const kid of kids) {
       const kidStep = idx.byId.get(kid);
       const label = kids.length > 1 ? kidStep?.name : undefined;
-      visit(kid, off, label ? [...path, label] : path, notes, unp);
+      visit(kid, off, label ? [...path, label] : path, kids.length > 1 ? [...route, forkStep(step, kid, idx)] : route, notes, unp);
     }
   };
 
-  if (start) visit(start.id, 0, [], [], false, Boolean(opts.skipStart));
+  if (start) visit(start.id, 0, [], [], [], false, Boolean(opts.skipStart));
   // Walk order is graph order; a schedule reads in send order.
   const ordered = rows
     .map((r, i) => ({ r, i }))
     .sort((a, b) => a.r.offsetMinutes - b.r.offsetMinutes || a.i - b.i)
     .map((x) => x.r);
-  return { rows: ordered, dependsOn: [...new Set(dependsOn)] };
+  return { rows: ordered, dependsOn: [...new Set(dependsOn)], joins };
+}
+
+export function routeKey(route: readonly RouteStep[]): string {
+  return route.map((r) => `${r.forkId}:${r.pathId}`).join("|");
+}
+
+/** One fork in the flowchart's words: the if/else answer, the A/B path, or the kid's name. */
+function forkStep(step: GraphStep, kid: string, idx: ReturnType<typeof indexGraph>): RouteStep {
+  const kidName = idx.byId.get(kid)?.name;
+  if (step.type === "if_else") {
+    const branches = Array.isArray(step.data.branches) ? (step.data.branches as Record<string, unknown>[]) : [];
+    const def = branches.find((b) => b.id === kid);
+    const name = kidName ?? (def ? String(def.name ?? "branch") : "Otherwise");
+    const words = def ? describeBranch(def) : "none of the above";
+    const cond = step.branchCondition && step.branchCondition !== "Condition" ? step.branchCondition : stepDisplayName(step);
+    return { decision: `If: ${cond}`, answer: words ? `${name} · ${words}` : name, forkId: step.id, pathId: kid, kind: "condition" };
+  }
+  const split = splitPathLabel(step, kid, kidName);
+  if (split) return { decision: stepDisplayName(step), answer: split, forkId: step.id, pathId: kid, kind: "condition" };
+  return { decision: stepDisplayName(step), answer: kidName || "a path", forkId: step.id, pathId: kid, kind: "condition" };
+}
+
+/** What a jump lands on, named like the flowchart's "↪ continues at" chip. */
+function landingLabel(step: GraphStep, idx: ReturnType<typeof indexGraph>): string {
+  let cur: GraphStep | undefined = step;
+  for (let hop = 0; hop < 20 && cur && (cur.type === "transition" || cur.nodeType === "branch-yes" || cur.nodeType === "branch-no"); hop++) {
+    const k: string | undefined = idx.children(cur)[0];
+    cur = k ? idx.byId.get(k) : undefined;
+  }
+  if (!cur) return "the end";
+  if (cur.type === "wait") {
+    const w = parseStartAfter(cur.data);
+    if (EVENT_WAITS.has(String(cur.data.type ?? "time"))) return `Wait until: ${String(cur.data.name ?? cur.name)}`;
+    return w.unparsed ? cur.name || "a wait" : `Wait ${formatMinutes(w.minutes)}`;
+  }
+  return stepDisplayName(cur);
 }
 
 /**

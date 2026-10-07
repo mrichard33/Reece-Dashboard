@@ -9,7 +9,8 @@
 import { hlService } from "@/lib/supabase/hl";
 import { loadRegistry } from "@/lib/journey/build";
 import { loadWorkflowGraph } from "@/lib/journey/workflowGraph.server";
-import { linearizeSchedule, logicTree, type LogicLine, type ScheduleRow } from "@/lib/journey/workflowGraph";
+import { logicTree, walkSchedule, type LogicLine, type ScheduleRow } from "@/lib/journey/workflowGraph";
+import { groupScheduleByRoute, type ScheduleRoutes } from "@/lib/workflows/scheduleRoutes";
 import { buildFlow, type Flow } from "@/lib/journey/flowLayout";
 import { codesFor, FULL_STOP_TAGS, type RegistryEntry, sentPosition } from "@/lib/journey/tags";
 import { toIso } from "@/lib/journey/normalize";
@@ -42,6 +43,13 @@ export type WorkflowDetail = {
   name: string;
   status: string | null;
   version: number | null;
+  /**
+   * The GHL version the cached steps were built from (raw_json.version, which
+   * HL-MCP writes in the same pass as the step rows). Behind `version` means
+   * the flowchart and messages on screen are older than GHL: on 2026-10-07 F.0
+   * showed v118 while drawing v108's steps (the hourly deep read was failing).
+   */
+  stepsVersion: number | null;
   updatedAt: string | null;
   registry: RegistryMeta | null;
   /** Every tag code that means this workflow (canonical, legacy, dotless). */
@@ -49,6 +57,8 @@ export type WorkflowDetail = {
   routesTo: WorkflowLink[];
   receivesFrom: WorkflowLink[];
   schedule: ScheduleRow[];
+  /** The same messages grouped by the route (forks) that leads to them — the "Every message" tab. */
+  scheduleRoutes: ScheduleRoutes;
   logic: LogicLine[];
   triggers: WorkflowTrigger[];
   activeCount: number | null;
@@ -90,12 +100,24 @@ function link(id: string, registry: readonly RegistryEntry[], names: Map<string,
   return { ghlWorkflowId: id, code: reg?.canonical_code ?? null, name: reg?.canonical_name ?? names.get(id) ?? id.slice(0, 8) };
 }
 
+/** raw_json.version when it parses, else last_refreshed_version, else unknown. */
+export function stepsVersionOf(rawVersion: string | null | undefined, lastRefreshed: number | null | undefined): number | null {
+  const n = rawVersion == null ? NaN : Number(rawVersion);
+  if (Number.isInteger(n) && n > 0) return n;
+  return typeof lastRefreshed === "number" ? lastRefreshed : null;
+}
+
+/** True only when both versions are known and the steps are older. Unknown is not stale. */
+export function stepsBehind(d: Pick<WorkflowDetail, "version" | "stepsVersion">): boolean {
+  return d.version !== null && d.stepsVersion !== null && d.stepsVersion < d.version;
+}
+
 export async function getWorkflowDetail(ghlWorkflowId: string): Promise<WorkflowDetail | null> {
   const sb = hlService();
   const [wfRes, regRes, trigRes, registry, graph, sendRaw] = await Promise.all([
     sb
       .from("workflows")
-      .select("ghl_workflow_id, name, status, version, updated_at")
+      .select("ghl_workflow_id, name, status, version, updated_at, raw_version:raw_json->>version, last_refreshed_version")
       .eq("ghl_workflow_id", ghlWorkflowId)
       .is("deleted_at", null)
       .maybeSingle(),
@@ -115,7 +137,15 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
     loadSendActivityRaw(),
   ]);
   if (wfRes.error) throw new Error(`HL workflows: ${wfRes.error.message}`);
-  const wf = wfRes.data as { ghl_workflow_id: string; name: string; status: string | null; version: number | null; updated_at: string | null } | null;
+  const wf = wfRes.data as {
+    ghl_workflow_id: string;
+    name: string;
+    status: string | null;
+    version: number | null;
+    updated_at: string | null;
+    raw_version: string | null;
+    last_refreshed_version: number | null;
+  } | null;
   if (!wf) return null;
   const reg = (regRes.data ?? null) as RegistryMeta | null;
 
@@ -165,7 +195,9 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
     }),
   );
 
-  const schedule = linearizeSchedule(graph);
+  const walk = walkSchedule(graph);
+  const schedule = walk.rows;
+  const scheduleRoutes = groupScheduleByRoute(schedule, walk.joins);
   const messageStepIds = graph.steps.filter((st) => st.type === "sms" || st.type === "email").map((st) => st.id);
   const disabledStepIds = new Set(graph.steps.filter((st) => (st.type === "sms" || st.type === "email") && st.disabled).map((st) => st.id));
   const status = (wf.status ?? "unknown") as "published" | "draft" | "unknown";
@@ -185,12 +217,14 @@ export async function getWorkflowDetail(ghlWorkflowId: string): Promise<Workflow
     name: wf.name,
     status: wf.status,
     version: wf.version,
+    stepsVersion: stepsVersionOf(wf.raw_version, wf.last_refreshed_version),
     updatedAt: toIso(wf.updated_at),
     registry: reg,
     codes,
     routesTo: (reg?.routes_to ?? []).map((id) => link(id, registry, names)),
     receivesFrom: (reg?.receives_from ?? []).map((id) => link(id, registry, names)),
     schedule,
+    scheduleRoutes,
     stepSends,
     sending,
     sendActivityError: sendRaw.ok ? null : sendRaw.reason,

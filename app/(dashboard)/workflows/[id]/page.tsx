@@ -15,7 +15,8 @@ import { Flowchart } from "@/components/workflows/Flowchart";
 import { StrategyCard, VERDICT_TONE } from "@/components/workflows/StrategyCard";
 import { StrategyTab } from "@/components/workflows/StrategyTab";
 import { insightFor, VERDICT_LABEL } from "@/lib/workflows/insights";
-import { getWorkflowDetail, type WorkflowDetail, type WorkflowLink } from "@/lib/queries/workflowDetail";
+import { getWorkflowDetail, stepsBehind, type WorkflowDetail, type WorkflowLink } from "@/lib/queries/workflowDetail";
+import { RefreshWorkflowButton } from "@/components/workflows/RefreshWorkflowButton";
 import { cn, num, relTime } from "@/lib/utils";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -68,6 +69,7 @@ export default async function WorkflowDetailPage({
   if (!detail) notFound();
   const insight = insightFor(id);
 
+  const behind = stepsBehind(detail);
   const reg = detail.registry;
   const title = reg?.canonical_name ?? detail.name;
   const meta: [string, string | null][] = [
@@ -98,8 +100,21 @@ export default async function WorkflowDetailPage({
             ) : (
               <Badge tone="amber">Draft</Badge>
             )}
-            {detail.version !== null && <span className="text-xs text-slate-500">v{detail.version}</span>}
+            {detail.version !== null && (
+              <span className="text-xs text-slate-500">
+                v{behind ? `${detail.stepsVersion} shown · GHL is on v${detail.version}` : detail.version}
+              </span>
+            )}
+            <span className="w-full sm:ml-auto sm:w-auto">
+              <RefreshWorkflowButton workflowId={detail.ghlWorkflowId} shownVersion={detail.stepsVersion ?? detail.version} />
+            </span>
           </div>
+          {behind && (
+            <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+              <strong>This page is behind GHL.</strong> The flowchart and messages are from version {detail.stepsVersion}; GHL is on version {detail.version}.
+              Steps that were changed or turned on or off since then are not shown. Press <em>Refresh from GHL</em> to update now (it also updates on its own within the hour).
+            </p>
+          )}
           {reg?.canonical_name && reg.canonical_name !== detail.name && <p className="text-xs text-slate-500">GHL name: {detail.name}</p>}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
             {meta
@@ -199,7 +214,7 @@ export default async function WorkflowDetailPage({
               ) : (
                 <p className="py-6 text-center text-sm text-slate-500">This workflow has not been reviewed yet{detail.schedule.length === 0 ? " — it sends no messages" : ""}.</p>
               ))}
-            {tab === "schedule" && <ScheduleList rows={detail.schedule} sends={detail.stepSends} />}
+            {tab === "schedule" && <ScheduleList rows={detail.schedule} routes={detail.scheduleRoutes} sends={detail.stepSends} />}
             {tab === "logic" && <LogicTree lines={detail.logic} />}
             {tab === "leads" && <ActiveLeadsTable ghlWorkflowId={id} />}
             {tab === "flow" && (

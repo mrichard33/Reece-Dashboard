@@ -383,7 +383,7 @@ export const helpContent: Record<string, HelpEntry> = {
     title: "Flowchart",
     what: "The whole workflow drawn from GHL's step graph: every step, every if/else branch side by side with its condition in plain words, every SMS and email, every wait with its real time. ↪ chips are 'go to' jumps. Steps not connected to the start are listed under the chart; a 'not running' badge marks steps set to skip. Click any box for its full text.",
     where: "HL `workflow_steps` + `workflow_connections` (synced from GHL) and `templates`. Waits read `startAfter`, never `delay_minutes`.",
-    fix: "If the chart disagrees with GHL, the step cache is behind — re-sync workflows (HL MCP `sync_workflows`). GHL does not export a per-step on/off switch; only 'skip action' steps and unconnected steps can be shown.",
+    fix: "If the chart disagrees with GHL, the step copy is behind — the version next to the title then reads 'v108 shown · GHL is on v118' with an amber banner. Press 'Refresh from GHL' at the top of the page to pull this workflow now (HL MCP `refresh_workflow`); HL-MCP also catches up on its own 20 minutes past every hour. 'Turned off in GHL' reads GHL's per-step switch (`advanceCanvasMeta.isDisabled`).",
   },
   "workflows.activeLeads": {
     title: "Active leads",
@@ -393,7 +393,7 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "workflows.schedule": {
     title: "Messages & timing",
-    what: "Every SMS and email the workflow can send, in send order, with the time since entry. Branches are labelled with the if/else path that leads to them; each node is shown once (first path wins).",
+    what: "Every SMS and email the workflow can send, grouped by ROUTE. A route is the set of choices that leads to a message, worded like the flowchart's arrows (an if/else answer, an A/B path). Only a choice where two sides both send messages makes a route. A one-sided check, such as 'has an email' with nothing sent on the other side, shows on the message as 'only if'. Inside a route, messages are in send order with the time since entry. Each message is listed once: a route that jumps into another one says where it carries on.",
     where: "HL `workflow_steps` + `workflow_connections` (the step graph) and `templates` (bodies). Waits are read from each step's `startAfter` — never `delay_minutes`, which stores 1 for an hour and 43200 for 30 days.",
     fix: "A row flagged 'unreadable wait' counted a wait as 0 because its unit was not minute/hour/day/week — its real time is later. 'AI-written' bodies are generated at send time (ChatGPT step or a custom-field merge), so the template shows only the placeholder.",
   },

@@ -34,6 +34,18 @@ export type NamespaceViolation = {
   conflicting_tags: string[];
 };
 
+/** The fields of HL-MCP's refresh_workflow result the dashboard reads. */
+export type HlRefreshWorkflowResult = {
+  workflow_id?: string;
+  version?: number;
+  status?: string;
+  steps_rebuilt?: boolean;
+  steps_rebuilt_reason?: string | null;
+  steps_synced?: number;
+  detail_errors?: string[];
+  version_recorded?: boolean;
+};
+
 /** A row from n8n_list_workflows (fields beyond these are ignored). */
 export type N8nWorkflowSummary = {
   id: string;
@@ -79,6 +91,17 @@ export const hlMcp = {
    */
   triggerSync: () =>
     client.call<Record<string, unknown>>("sync_all_entities", {
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * Rebuild one workflow's cached steps from live GHL (HL-MCP `refresh_workflow`).
+   * Used by the "Refresh from GHL" button on /workflows/[id] (2026-10-07). The
+   * deep read plus the rebuild of a 200-step workflow takes a few seconds.
+   */
+  refreshWorkflow: (workflowId: string) =>
+    client.call<HlRefreshWorkflowResult>("refresh_workflow", {
+      args: { workflowId },
       timeoutMs: 60_000,
     }),
 
