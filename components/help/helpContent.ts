@@ -273,7 +273,7 @@ export const helpContent: Record<string, HelpEntry> = {
     title: "AI calls today",
     what: "Every model call LP-MCP made today (ET): analyzer, reply writer, live chat, nurture, call intelligence, notifications. 'Failed' counts calls that errored or timed out.",
     where: "`v_llm_usage_daily` summed for today (LP Supabase), fed by `llm_usage_log` — one row per `callLLM()` in LP-MCP src/llm-client.js.",
-    fix: "Zero with a live chip means no inbound traffic yet. A failed count above a handful means a model id or budget regression — check LP-MCP Railway logs for [LLMClient] errors.",
+    fix: "Zero with a live chip means no inbound traffic yet. A failed count above a handful means a model id or budget regression — check LP-MCP Railway logs for [LLMClient] errors. 'avg' is the average time per call, weighted by calls; customer replies wait on it, so a jump shows up as slower texts and chats.",
   },
   "overview.aiTokens": {
     title: "AI tokens today",
@@ -289,9 +289,15 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "overview.aiByFunction": {
     title: "AI usage by function",
-    what: "Today's calls, tokens and cost split by the LP-MCP function key and model, largest token consumer first. This is where a model swap or prompt change shows up first.",
+    what: "Today's calls, tokens, average time per call and cost split by the LP-MCP function key and model, largest token consumer first. This is where a model swap or prompt change shows up first. Average time is hidden on phones.",
     where: "`v_llm_usage_daily` for today (LP Supabase), top 8 by tokens.",
     fix: "If one function dominates unexpectedly, check its `<FN>_MODEL_*` Railway var and max_tokens in LP-MCP src/llm-client.js FUNCTION_GROUPS.",
+  },
+  "overview.aiTrend": {
+    title: "Daily AI cost (30 days)",
+    what: "Model spend per ET day, from the first day the ledger recorded, up to 30 days. Until any call in the window has a price it charts calls per day instead. Hover or tap a bar for that day's cost and calls; 'not priced' means that day's calls had no rate.",
+    where: "`v_llm_usage_daily` (LP Supabase) summed per `day_et`; cost from `llm_usage_log.cost_usd`.",
+    fix: "A spike: the By function table shows today's driver. A day with zero calls means LP-MCP made none or the ledger was off (`LLM_USAGE_LOG_MODE`). Rates live in LP-MCP `docs/llm-price-table.md`.",
   },
 
   // ── /pipelines ─────────────────────────────────────────────
