@@ -5,7 +5,7 @@ import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { QueueList } from "./QueueList";
 import { ContextStrip } from "./ContextStrip";
-import { ConversationThread, type MyVerdict } from "./ConversationThread";
+import { ConversationThread, ThreadScrollBox, type MyVerdict } from "./ConversationThread";
 import { WhyCard } from "./WhyCard";
 import { LeadStatusCard } from "./LeadStatusCard";
 import { FeedbackPanel } from "./FeedbackPanel";
@@ -428,7 +428,16 @@ export function ReviewWorkspace({
         />
       </div>
 
-      <div ref={threadRef} className={`flex min-h-0 scroll-mt-4 flex-col gap-3${selected ? "" : " xl:col-span-2"}`}>
+      {/*
+        * 2026-10-07 (Revin pattern): at lg+ this column is exactly as tall as
+        * the queue, the lead strip and Why card stay at the top, and only the
+        * thread scrolls, in its own box. The page no longer grows with a long
+        * thread, so the review panel at xl stays in view. Below lg it stacks.
+        */}
+      <div
+        ref={threadRef}
+        className={`flex min-h-0 scroll-mt-4 flex-col gap-3 lg:h-[calc(100vh-19rem)]${selected ? "" : " xl:col-span-2"}`}
+      >
         {errorMsg && (
           <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
             {errorMsg}
@@ -450,16 +459,12 @@ export function ReviewWorkspace({
           <>
             <ContextStrip row={selected} canStopBot={canStopBot} onStopBot={() => setStopOpen(true)} />
             {why && <WhyCard text={why.text} facts={why.facts} issues={view.issues} />}
-            <div
-              aria-busy={pending}
-              className={`min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 transition-opacity dark:border-slate-800 dark:bg-slate-900${
-                pending ? " opacity-60" : ""
-              }`}
-            >
+            <ThreadScrollBox pending={pending}>
               <ConversationThread
                 view={view}
                 rows={conversation}
                 selectedId={selected.context_id}
+                contactKey={selected.ghl_contact_id ?? `ctx-${selected.context_id}`}
                 myVerdicts={myVerdicts}
                 leadLabel={leadLabel}
                 onSelect={selectRow}
@@ -467,7 +472,7 @@ export function ReviewWorkspace({
                 onThumbsDown={onThumbsDown}
                 canReview={canReview}
               />
-            </div>
+            </ThreadScrollBox>
           </>
         )}
       </div>

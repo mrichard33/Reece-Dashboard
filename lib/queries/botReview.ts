@@ -22,6 +22,9 @@ import {
   DEFAULT_MUST_REVIEW_SCORE_BELOW,
   type HlMessage,
   type TagEvent,
+  type TagSnapshot,
+  mergeTagEvents,
+  tagEventsFromHistory,
 } from "@/lib/botReview/conversation";
 import { THREAD_EVENT_TAGS } from "@/lib/botReview/contactTags";
 import type { LeadContact, LeadRecord } from "@/lib/botReview/leadStatus";
@@ -373,6 +376,48 @@ export async function getConversationTimeline(
  * (target_system, target_entity, target_id) so it stays an index read.
  */
 export async function getTagEvents(contactIds: string[]): Promise<Map<string, TagEvent[]>> {
+  const [actions, history] = await Promise.all([getActionTagEvents(contactIds), getTagHistory(contactIds)]);
+  const out = new Map<string, TagEvent[]>();
+  for (const id of new Set([...actions.keys(), ...history.keys()])) {
+    out.set(id, mergeTagEvents(actions.get(id) ?? [], history.get(id) ?? []));
+  }
+  return out;
+}
+
+/**
+ * GHL's own tag-set history for some contacts (LP ghl_tag_inbox, one row per
+ * tag set GHL sent us), diffed into add/remove events for THREAD_EVENT_TAGS.
+ *
+ * 2026-10-07: our action log never sees a tag that GHL, a workflow or a person
+ * removed, so a state it opened never closed (McKoy's suppress-outbound, off
+ * two minutes after it went on, chipped two weeks of messages). Indexed on
+ * (ghl_contact_id, received_at). A failed read leaves only the action log —
+ * the view as it was before, never an empty one.
+ */
+export async function getTagHistory(contactIds: string[]): Promise<Map<string, TagEvent[]>> {
+  const out = new Map<string, TagEvent[]>();
+  if (!contactIds.length) return out;
+  const { data, error } = await countRead(
+    lpService()
+      .from("ghl_tag_inbox")
+      .select("ghl_contact_id,occurred_at,tags")
+      .in("ghl_contact_id", contactIds)
+      .order("received_at", { ascending: true })
+      .limit(5000),
+  );
+  if (error || !data) return out;
+  const byContact = new Map<string, TagSnapshot[]>();
+  for (const r of data as unknown as Array<{ ghl_contact_id: string; occurred_at: string; tags: string[] | null }>) {
+    const list = byContact.get(r.ghl_contact_id) ?? [];
+    list.push({ occurred_at: r.occurred_at, tags: r.tags });
+    byContact.set(r.ghl_contact_id, list);
+  }
+  for (const [id, snaps] of byContact) out.set(id, tagEventsFromHistory(snaps, THREAD_EVENT_TAGS));
+  return out;
+}
+
+/** Tag events from our own action log (agent_actions). */
+async function getActionTagEvents(contactIds: string[]): Promise<Map<string, TagEvent[]>> {
   const out = new Map<string, TagEvent[]>();
   if (!contactIds.length) return out;
   const { data, error } = await countRead(

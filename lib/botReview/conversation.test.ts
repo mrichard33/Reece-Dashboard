@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildConversation,
   buildWhyText,
+  collapsedSessionLine,
+  defaultOpenSessions,
+  groupIssues,
+  mergeTagEvents,
+  tagEventsFromHistory,
+  toSessionBlocks,
   matchBotMessages,
   queueIssueChips,
   timeEt,
@@ -11,6 +17,7 @@ import {
   type TagEvent,
 } from "./conversation";
 import { buildLeadStatus } from "./leadStatus";
+import { THREAD_EVENT_TAGS } from "./contactTags";
 import { createThumbsUp, type QuickDeps } from "./quickReview";
 
 /*
@@ -253,5 +260,136 @@ describe("buildWhyText — many sends after a stand-down", () => {
     expect(buildWhyText({ firstName: "Brian", cause: null, flaggedAt: null, flaggedScore: null, optedOutAt: null, view })).toBe(
       "Outbound messages were paused, then 4 messages kept going out: 4 AI replies, the last 4 minutes later.",
     );
+  });
+});
+
+// ─── 2026-10-07: chip semantics, GHL tag history, grouping, sessions ──────
+
+
+/*
+ * Robert McKoy (GHL rRPO34Ooq0QmtSfXyqSw), read live 2026-10-07. Bodies
+ * trimmed. The workflow text at 10:45 ET came BEFORE the 10:50 pause-workflow
+ * tag; HARD_DISQUALIFIED_CLOSEOUT's suppress-outbound (09-22 21:28Z) was taken
+ * off by GHL two minutes later, which only ghl_tag_inbox shows.
+ */
+const MCKOY_MESSAGES: HlMessage[] = [
+  { ghl_message_id: "Wha", direction: "outbound", type: "2", sent_at: "2026-10-01T14:45:40.838Z", body: "Robert, the Reece team here. The 15-minute version is a phone call." },
+  { ghl_message_id: "in1", direction: "inbound", type: "2", sent_at: "2026-10-01T14:49:00.013Z", body: "Your sales man told me you only sell vinyl windows." },
+  { ghl_message_id: "yYb", direction: "outbound", type: "2", sent_at: "2026-10-01T14:50:35.837Z", body: "Robert, that's worth a straight answer. Brian from our team will follow up." },
+  { ghl_message_id: "8Dd", direction: "outbound", type: "3", sent_at: "2026-10-01T19:45:54.021Z", body: "No rebook ask in this email." },
+  { ghl_message_id: "DxU", direction: "outbound", type: "2", sent_at: "2026-10-02T13:45:59.984Z", body: "Robert, most homeowners never find out until someone looks." },
+  { ghl_message_id: "Sbz", direction: "outbound", type: "2", sent_at: "2026-10-02T13:50:07.794Z", body: "We only build in vinyl, not aluminum." },
+];
+const MCKOY_ROWS: BotRow[] = [
+  { context_id: 900, message_type: "reply", rule_applied: "AGENTIC_RESPOND_POST_CHATBOT", channel: "sms", skip_reason: null,
+    reply_text: "Robert, that's worth a straight answer. Brian from our team will follow up.", inbound_text: null,
+    generated_at: "2026-10-01T14:50:30.000Z", sent_at: "2026-10-01T14:50:36.000Z", ai_score: 80 },
+  { context_id: 901, message_type: "reply", rule_applied: "AGENTIC_RESPOND_POST_CHATBOT", channel: "sms", skip_reason: null,
+    reply_text: "We only build in vinyl, not aluminum.", inbound_text: null,
+    generated_at: "2026-10-02T13:50:00.000Z", sent_at: "2026-10-02T13:50:08.000Z", ai_score: 80 },
+];
+const MCKOY_ACTION_TAGS: TagEvent[] = [
+  { tag: "suppress-outbound", action: "add_tag", at: "2026-09-22T21:28:05.567Z" },
+  { tag: "agentic-active", action: "add_tag", at: "2026-09-22T21:30:48.012Z" },
+  { tag: "pause-workflow", action: "add_tag", at: "2026-10-01T14:50:25.716Z" },
+];
+const MCKOY_HISTORY = [
+  { occurred_at: "2026-09-22T21:28:05.819Z", tags: ["suppress-outbound"] },
+  { occurred_at: "2026-09-22T21:30:26.153Z", tags: ["agentic-active"] },
+  { occurred_at: "2026-10-01T14:50:25.963Z", tags: ["agentic-active", "pause-workflow"] },
+];
+
+const mckoy = (tagEvents: TagEvent[]) =>
+  buildConversation({ messages: MCKOY_MESSAGES, rows: MCKOY_ROWS, tagEvents, cutoverAt: "2026-09-11T19:00:00Z", mustReviewScoreBelow: 60 });
+const chipsOf = (v: ReturnType<typeof mckoy>, anchor: string) => v.issues.filter((i) => i.anchor === anchor).map((i) => i.label);
+
+describe("McKoy: chips follow event time, never pause-workflow for the bot", () => {
+  it("the old read (our action log only) kept suppress-outbound on for two weeks", () => {
+    const v = mckoy(MCKOY_ACTION_TAGS);
+    expect(chipsOf(v, "msg-gWha")).toContain("Sent after outbound paused");
+  });
+
+  it("with GHL's history the pause ends at 21:30 on 09-22: the 10:45 message gets no chip", () => {
+    const v = mckoy(mergeTagEvents(MCKOY_ACTION_TAGS, tagEventsFromHistory(MCKOY_HISTORY, THREAD_EVENT_TAGS)));
+    expect(chipsOf(v, "msg-gWha")).toEqual([]);
+  });
+
+  it("pause-workflow counts from 10:50 for workflow messages, never for the bot", () => {
+    const v = mckoy(mergeTagEvents(MCKOY_ACTION_TAGS, tagEventsFromHistory(MCKOY_HISTORY, THREAD_EVENT_TAGS)));
+    expect(chipsOf(v, "msg-g8Dd")).toEqual(["Sent while paused"]);
+    expect(chipsOf(v, "msg-gDxU")).toEqual(["Sent while paused"]);
+    expect(chipsOf(v, "msg-c900")).toEqual([]);
+    expect(chipsOf(v, "msg-c901")).toEqual([]);
+    expect(v.issues.length).toBeLessThanOrEqual(4);
+  });
+
+  it("pause-workflow is never drawn as a line and never reaches the Why text", () => {
+    const v = mckoy(MCKOY_ACTION_TAGS);
+    expect(v.items.some((i) => i.kind === "event" && /drip/i.test(i.text))).toBe(false);
+    expect(v.stateEvents.some((e) => /drip/i.test(e.text))).toBe(false);
+  });
+
+  it("a bot message after suppress-outbound still chips (the send gate's DQ class)", () => {
+    const v = mckoy([{ tag: "suppress-outbound", action: "add_tag", at: "2026-10-01T14:46:00.000Z" }]);
+    expect(chipsOf(v, "msg-c900")).toEqual(["Sent after outbound paused"]);
+  });
+});
+
+describe("tagEventsFromHistory", () => {
+  it("diffs consecutive tag sets for watched tags only, case-insensitive", () => {
+    const ev = tagEventsFromHistory(
+      [
+        { occurred_at: "2026-10-01T10:00:00Z", tags: ["Stop-Bot", "random"] },
+        { occurred_at: "2026-10-01T09:00:00Z", tags: [] },
+        { occurred_at: "2026-10-01T11:00:00Z", tags: ["random"] },
+      ],
+      ["stop-bot"],
+    );
+    expect(ev).toEqual([
+      { tag: "stop-bot", action: "add_tag", at: "2026-10-01T10:00:00Z" },
+      { tag: "stop-bot", action: "remove_tag", at: "2026-10-01T11:00:00Z" },
+    ]);
+  });
+});
+
+describe("groupIssues", () => {
+  it("one line per label with a count and the first anchor; rose wins", () => {
+    const g = groupIssues([
+      { label: "Sent after outbound paused", tone: "amber", anchor: "a" },
+      { label: "Sent after outbound paused", tone: "amber", anchor: "b" },
+      { label: "Sent after opt-out", tone: "rose", anchor: "c" },
+      { label: "Sent after outbound paused", tone: "amber", anchor: "d" },
+    ]);
+    expect(g.map((x) => [x.label, x.count, x.anchors[0]])).toEqual([
+      ["Sent after outbound paused", 3, "a"],
+      ["Sent after opt-out", 1, "c"],
+    ]);
+  });
+});
+
+describe("sessions collapse", () => {
+  const v = () => mckoy(mergeTagEvents(MCKOY_ACTION_TAGS, tagEventsFromHistory(MCKOY_HISTORY, THREAD_EVENT_TAGS)));
+
+  it("groups items under their header; day dividers stay outside every session", () => {
+    const blocks = toSessionBlocks(v().items);
+    expect(blocks.some((b) => b.kind === "item" && b.item.kind === "day")).toBe(true);
+    for (const b of blocks) if (b.kind === "session") expect(b.items.some((i) => i.kind === "day" || i.kind === "session")).toBe(false);
+  });
+
+  it("opens the selected message's session and its neighbours only", () => {
+    const blocks = toSessionBlocks(v().items);
+    const sessions = blocks.filter((b) => b.kind === "session");
+    expect(sessions.length).toBeGreaterThanOrEqual(4);
+    const open = defaultOpenSessions(blocks, "msg-c901");
+    const idx = sessions.findIndex((b) => b.kind === "session" && b.anchors.includes("msg-c901"));
+    expect(open.size).toBe(Math.min(sessions.length, idx + 2) - Math.max(0, idx - 1));
+    expect(open.has((sessions[idx] as Extract<(typeof sessions)[number], { kind: "session" }>).header.key)).toBe(true);
+    // No selection in the thread: the last three.
+    expect(defaultOpenSessions(blocks, null).size).toBe(3);
+  });
+
+  it("the collapsed line reads label · n messages · start–end", () => {
+    const s = toSessionBlocks(v().items).find((b) => b.kind === "session" && b.messageCount > 1);
+    expect(s && s.kind === "session" ? collapsedSessionLine(s) : "").toMatch(/^.+ · \d+ messages · \d{1,2}:\d{2} [AP]M(–\d{1,2}:\d{2} [AP]M)?$/);
   });
 });

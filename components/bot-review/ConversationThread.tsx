@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ThumbsDown, ThumbsUp } from "lucide-react";
-import { timeEt, type ConvItem, type ConversationView, type Issue } from "@/lib/botReview/conversation";
+import { ChevronDown, ChevronRight, ThumbsDown, ThumbsUp } from "lucide-react";
+import {
+  collapsedSessionLine,
+  defaultOpenSessions,
+  timeEt,
+  toSessionBlocks,
+  type ConvItem,
+  type ConversationView,
+  type Issue,
+} from "@/lib/botReview/conversation";
 import type { QueueRow } from "@/lib/queries/botReview";
 
 /**
@@ -22,6 +30,30 @@ import type { QueueRow } from "@/lib/queries/botReview";
  */
 
 export type MyVerdict = "good" | "needs_work" | "unsafe";
+
+/*
+ * 2026-10-07 — a Why-card Jump can point at a message inside a collapsed
+ * session, which is not in the DOM. The card asks the thread instead: the
+ * thread opens that session, then scrolls the message into view.
+ */
+const JUMP_EVENT = "bot-review:jump";
+
+export function requestJump(anchor: string) {
+  if (typeof window === "undefined" || !anchor) return;
+  window.dispatchEvent(new CustomEvent<string>(JUMP_EVENT, { detail: anchor }));
+}
+
+/** Scroll `el` to the middle of the thread's own scroll box; never the page. */
+function centerInThreadBox(el: HTMLElement, { onlyIfHidden, smooth }: { onlyIfHidden: boolean; smooth: boolean }): boolean {
+  const box = el.closest<HTMLElement>("[data-thread-scroll]");
+  if (!box || box.scrollHeight <= box.clientHeight + 1) return false;
+  const b = box.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  if (onlyIfHidden && r.top >= b.top && r.bottom <= b.bottom) return true;
+  const target = box.scrollTop + (r.top - b.top) - (box.clientHeight - r.height) / 2;
+  box.scrollTo({ top: Math.max(0, target), behavior: smooth ? "smooth" : "auto" });
+  return true;
+}
 
 const VERDICT_LABEL: Record<MyVerdict, string> = { good: "Good", needs_work: "Needs work", unsafe: "Unsafe" };
 
@@ -55,10 +87,32 @@ function EmailBody({ body, open }: { body: string; open: boolean }) {
   return <span className="block whitespace-pre-wrap break-words">{open ? text : firstLine || "(empty)"}</span>;
 }
 
+/**
+ * The box the thread scrolls in (2026-10-07, Revin pattern). At lg+ it fills
+ * what is left of the middle column (flex-1, min-h-0) and scrolls on its own
+ * (overflow-y-auto, a visible scrollbar from .thread-scroll); below lg it is a
+ * plain stacked box and the page scrolls. `data-thread-scroll` is how the
+ * thread finds it to centre a message without moving the page.
+ */
+export function ThreadScrollBox({ pending, children }: { pending: boolean; children?: React.ReactNode }) {
+  return (
+    <div
+      aria-busy={pending}
+      data-thread-scroll=""
+      className={`thread-scroll min-h-0 rounded-xl border border-slate-200 bg-white p-3 transition-opacity dark:border-slate-800 dark:bg-slate-900 lg:flex-1 lg:overflow-y-auto${
+        pending ? " opacity-60" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function ConversationThread({
   view,
   rows,
   selectedId,
+  contactKey,
   myVerdicts,
   leadLabel,
   onSelect,
@@ -67,6 +121,8 @@ export function ConversationThread({
   canReview,
 }: {
   view: ConversationView;
+  /** Whose thread this is; the open/closed sessions are remembered per contact. */
+  contactKey: string;
   rows: QueueRow[];
   selectedId: number | null;
   /** This reviewer's verdict per context id, from the server or this session. */
@@ -91,6 +147,78 @@ export function ConversationThread({
 
   const hasMessages = view.items.some((i) => i.kind === "lead" || i.kind === "bot" || i.kind === "other_outbound");
 
+  /*
+   * Sessions collapse (2026-10-07). A long thread is mostly sessions nobody
+   * needs for this review: the one holding the selected message and its two
+   * neighbours start open, the rest are one line each. A reviewer's own
+   * open/close choices are kept per contact, in component state only.
+   */
+  const blocks = useMemo(() => toSessionBlocks(view.items), [view.items]);
+  const selectedAnchor = useMemo(() => {
+    if (selectedId == null) return null;
+    const hit = view.items.find(
+      (i) => (i.kind === "bot" && i.contextId === selectedId) || (i.kind === "event" && i.contextId === selectedId),
+    );
+    if (!hit) return null;
+    return hit.kind === "bot" ? hit.anchor : `skip-c${selectedId}`;
+  }, [view.items, selectedId]);
+  const defaults = useMemo(() => defaultOpenSessions(blocks, selectedAnchor), [blocks, selectedAnchor]);
+  const [overrides, setOverrides] = useState<Record<string, Record<string, boolean>>>({});
+  const mine = overrides[contactKey] ?? {};
+  const isOpen = (key: string) => mine[key] ?? defaults.has(key);
+  function setOpen(key: string, open: boolean) {
+    setOverrides((o) => ({ ...o, [contactKey]: { ...(o[contactKey] ?? {}), [key]: open } }));
+  }
+
+  // Where to scroll after the next render: the selected message when the
+  // thread loads or the selection moves, or a Why-card Jump.
+  const pending = useRef<{ anchor: string; onlyIfHidden: boolean; smooth: boolean } | null>(null);
+  useEffect(() => {
+    if (selectedAnchor) pending.current = { anchor: selectedAnchor, onlyIfHidden: true, smooth: false };
+  }, [selectedAnchor, contactKey]);
+  useEffect(() => {
+    function onJump(e: Event) {
+      const anchor = (e as CustomEvent<string>).detail;
+      const block = blocks.find((b) => b.kind === "session" && b.anchors.includes(anchor));
+      if (block && block.kind === "session" && !isOpen(block.header.key)) setOpen(block.header.key, true);
+      pending.current = { anchor, onlyIfHidden: false, smooth: true };
+      // When nothing needs to open, there is no re-render to wait for.
+      requestAnimationFrame(() => flushScroll());
+    }
+    window.addEventListener(JUMP_EVENT, onJump);
+    return () => window.removeEventListener(JUMP_EVENT, onJump);
+  });
+  function flushScroll() {
+    const p = pending.current;
+    if (!p) return;
+    const el = document.getElementById(p.anchor);
+    if (!el) return;
+    pending.current = null;
+    // Inside the thread's own box at lg+; below lg the page scrolls (Jump only).
+    if (!centerInThreadBox(el, p) && !p.onlyIfHidden) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+  }
+  useEffect(() => {
+    flushScroll();
+  });
+
+  const renderItem = (item: ConvItem) => (
+    <Item
+      key={item.key}
+      item={item}
+      row={item.kind === "bot" ? byId.get(item.contextId) : undefined}
+      selectedId={selectedId}
+      myVerdicts={myVerdicts}
+      leadLabel={leadLabel}
+      emailOpen={openEmails.has(item.key)}
+      onToggleEmail={() => toggleEmail(item.key)}
+      onSelect={onSelect}
+      onThumbsUp={onThumbsUp}
+      onThumbsDown={onThumbsDown}
+      canReview={canReview}
+    />
+  );
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-center text-[11px] text-slate-600 dark:text-slate-400">{view.notice}</p>
@@ -101,22 +229,45 @@ export function ConversationThread({
         </p>
       )}
 
-      {view.items.map((item) => (
-        <Item
-          key={item.key}
-          item={item}
-          row={item.kind === "bot" ? byId.get(item.contextId) : undefined}
-          selectedId={selectedId}
-          myVerdicts={myVerdicts}
-          leadLabel={leadLabel}
-          emailOpen={openEmails.has(item.key)}
-          onToggleEmail={() => toggleEmail(item.key)}
-          onSelect={onSelect}
-          onThumbsUp={onThumbsUp}
-          onThumbsDown={onThumbsDown}
-          canReview={canReview}
-        />
-      ))}
+      {blocks.map((b) => {
+        if (b.kind === "item") return renderItem(b.item);
+        const open = isOpen(b.header.key);
+        const bodyId = `sess-${b.header.key}`;
+        return (
+          <div key={b.header.key} className="flex flex-col gap-3">
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={bodyId}
+              onClick={() => setOpen(b.header.key, !open)}
+              className="flex min-h-8 w-full items-center gap-1.5 border-t border-slate-100 pt-2 text-left text-[11px] font-semibold text-slate-700 hover:text-navy-800 dark:border-slate-800 dark:text-slate-300 dark:hover:text-navy-100"
+            >
+              {open ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              )}
+              {open ? (
+                <span className="flex min-w-0 flex-wrap items-center gap-x-1.5">
+                  <span>{b.header.label}</span>
+                  <span className="font-normal text-slate-600 dark:text-slate-400">
+                    · {b.header.count} message{b.header.count === 1 ? "" : "s"} · {timeEt(b.header.startAt)}
+                  </span>
+                </span>
+              ) : (
+                <span className="min-w-0 break-words font-normal text-slate-600 dark:text-slate-400">
+                  {collapsedSessionLine(b)}
+                </span>
+              )}
+            </button>
+            {open && (
+              <div id={bodyId} className="flex flex-col gap-3">
+                {b.items.map(renderItem)}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -189,7 +340,7 @@ function Item({
     const selected = item.contextId === selectedId;
     const mine = myVerdicts[item.contextId];
     return (
-      <div className="flex justify-center">
+      <div id={`skip-c${item.contextId}`} className="flex scroll-mt-4 justify-center">
         <button
           type="button"
           onClick={() => onSelect(item.contextId!)}
