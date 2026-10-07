@@ -24,6 +24,7 @@ import {
   rootStep,
   type WorkflowGraph,
 } from "./workflowGraph";
+import { describeBranch, splitPathLabel, stepDisplayName } from "./branchWords";
 
 export type FlowKind = "start" | "condition" | "message" | "wait" | "update" | "workflow" | "webhook" | "jump" | "end" | "other";
 
@@ -74,33 +75,8 @@ type Tree = {
 
 // ── Plain-English conditions ─────────────────────────────────────────────
 
-type Cond = { conditionSubType?: unknown; conditionOperator?: unknown; conditionValue?: unknown; conditionType?: unknown };
-
-function describeCondition(c: Cond): string {
-  const sub = String(c.conditionSubType ?? "");
-  const op = String(c.conditionOperator ?? "");
-  const vals = (Array.isArray(c.conditionValue) ? c.conditionValue : [c.conditionValue]).filter((v) => v !== undefined && v !== null && v !== "").map(String);
-  const list = vals.join(" or ");
-  if (sub === "tags") return op === "index-of-false" ? `does not have tag ${list}` : `has tag ${list}`;
-  if (sub === "trigger") return "came in through this workflow's trigger";
-  if (op === "has_value") return `has ${sub || "a value"}`;
-  if (op === "has_no_value") return `has no ${sub || "value"}`;
-  if (sub === "day_week") return `day of week ${op} ${list}`;
-  if (sub === "quarter_hour") return `time ${op} ${list}`;
-  const field = /^[A-Za-z0-9]{20}$/.test(sub) ? "a custom field" : sub.replace(/_/g, " ") || "a field";
-  return `${field} ${op} ${list}`.trim();
-}
-
-/** A branch definition (condition node's data.branches[i]) in plain words. */
-export function describeBranch(def: Record<string, unknown> | undefined): string {
-  if (!def) return "";
-  const segs = Array.isArray(def.segments) ? (def.segments as Record<string, unknown>[]) : [];
-  const parts = segs.map((sg) => {
-    const conds = Array.isArray(sg.conditions) ? (sg.conditions as Cond[]) : [];
-    return conds.map(describeCondition).join(String(sg.operator ?? "and") === "or" ? " or " : " and ");
-  });
-  return parts.filter(Boolean).join(String(def.operator ?? "and") === "or" ? " — or — " : " — and — ");
-}
+// Moved to branchWords.ts (2026-10-07) so "Every message" names forks the same way.
+export { describeBranch } from "./branchWords";
 
 // ── Step → box ───────────────────────────────────────────────────────────
 
@@ -150,11 +126,11 @@ export function buildFlow(graph: WorkflowGraph, workflowName: (id: string) => st
     if (drawn.has(step.id)) {
       return { id: nid(), stepId: step.id, kind: "jump", title: `↪ continues at: ${drawn.get(step.id)}`, lines: [], children: [] };
     }
-    drawn.set(step.id, step.name || step.type);
+    drawn.set(step.id, stepDisplayName(step));
 
     const d = step.data;
     const kids = idx.children(step);
-    const node: Tree = { id: nid(), stepId: step.id, kind: "other", title: step.name || step.type, lines: [], children: [] };
+    const node: Tree = { id: nid(), stepId: step.id, kind: "other", title: stepDisplayName(step), lines: [], children: [] };
     if (step.disabled) node.skipped = true;
 
     if (step.type === "goto") {
@@ -235,7 +211,8 @@ export function buildFlow(graph: WorkflowGraph, workflowName: (id: string) => st
     }
 
     if (kids.length > 1) {
-      node.children = kids.map((k) => ({ label: idx.byId.get(k)?.name, node: build(k) }));
+      if (step.type === "workflow_split") node.kind = "condition";
+      node.children = kids.map((k) => ({ label: splitPathLabel(step, k, idx.byId.get(k)?.name) ?? idx.byId.get(k)?.name, node: build(k) }));
     } else {
       node.children = [{ node: kids[0] ? build(kids[0]) : end() }];
     }
