@@ -126,6 +126,34 @@ export type ClaudeKnownIssue = {
   impact: string | null;
 };
 
+/** Row of LP-MCP `v_llm_usage_daily` (sql/151). Numerics arrive as strings over PostgREST. */
+export type LlmUsageDailyRaw = {
+  day_et: string;
+  fn: string;
+  provider: string;
+  model: string;
+  calls: number | string;
+  errors: number | string;
+  input_tokens: number | string;
+  output_tokens: number | string;
+  cache_read_tokens: number | string;
+  cache_write_tokens: number | string;
+  cost_usd: number | string | null;
+  unpriced_calls: number | string;
+  avg_latency_ms: number | string | null;
+};
+
+/** One firing condition from LP-MCP `alert_conditions`, grouped by label. */
+export type LiveAlert = {
+  label: string;
+  keys: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  detail: string | null;
+  /** No sweep has confirmed it in over 2h (the sync tile's stale boundary). */
+  stale: boolean;
+};
+
 export type DashboardUser = {
   email: string;
   role: "operator" | "team";

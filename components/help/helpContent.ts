@@ -263,11 +263,35 @@ export const helpContent: Record<string, HelpEntry> = {
     fix: "If the feed is empty or stale, the event bus isn't firing. Check the Decision Engine heartbeat tile, or run the LP MCP heartbeat manually.",
   },
   "overview.alerts": {
-    title: "Active Alerts",
-    what: "Open issues, most recent first, written in plain language with a severity label. Click an alert for what happened, who's affected, how important it is, and the recommended next steps.",
+    title: "Live Alerts",
+    what: "Conditions the system currently believes are bad — one row per condition, with how many entities it covers (× N), when it started, and the last sweep that still saw it. 'Stale' means no sweep has confirmed it in over 2 hours: the watchdog may be down, or the condition cleared without being recorded.",
     where:
-      "`claude_known_issues` where `status = 'open'` (LP Supabase). Plain-language titles and actions are mapped from the issue category.",
-    fix: "Use “View details” for recommended actions, or open `/issues` to triage. Resolve by setting `resolved_date` and `status = 'closed'` on the row once addressed.",
+      "`alert_conditions` where `state = 'firing'` (LP Supabase), grouped by `label`. Written edge-triggered by every LP-MCP watchdog (src/alert-state.js); the same rows gate the Slack alert cards. The logged-issues backlog (`claude_known_issues`) is on /issues, not here.",
+    fix: "A firing row clears itself when the next sweep sees the condition healthy. A stale row means check the job that owns it on /jobs. Never edit `alert_conditions` by hand — a deleted firing row re-announces the incident.",
+  },
+  "overview.aiCalls": {
+    title: "AI calls today",
+    what: "Every model call LP-MCP made today (ET): analyzer, reply writer, live chat, nurture, call intelligence, notifications. 'Failed' counts calls that errored or timed out.",
+    where: "`v_llm_usage_daily` summed for today (LP Supabase), fed by `llm_usage_log` — one row per `callLLM()` in LP-MCP src/llm-client.js.",
+    fix: "Zero with a live chip means no inbound traffic yet. A failed count above a handful means a model id or budget regression — check LP-MCP Railway logs for [LLMClient] errors.",
+  },
+  "overview.aiTokens": {
+    title: "AI tokens today",
+    what: "Input + output + cache tokens across all providers today. The raw driver of cost; watch it even when cost shows 'tokens only'.",
+    where: "`v_llm_usage_daily` (LP Supabase): input_tokens + output_tokens + cache_read_tokens + cache_write_tokens.",
+    fix: "A sudden jump with flat call count means a prompt or max_tokens change — compare by-function below.",
+  },
+  "overview.aiCost": {
+    title: "AI cost",
+    what: "USD computed per call from the per-model rate table. 'tokens only' means no rate is configured yet; '(N calls unpriced)' means some models have no rate. Cost is never guessed — a missing rate shows as unpriced, not $0.",
+    where: "`llm_usage_log.cost_usd` (LP Supabase), computed in LP-MCP from the `LLM_PRICE_TABLE_JSON` Railway var (per-1M-token rates from the Anthropic / OpenAI pricing pages).",
+    fix: "To price calls, set `LLM_PRICE_TABLE_JSON` on the LP-MCP Railway service with the current provider rates. Existing rows are not re-priced; new calls are.",
+  },
+  "overview.aiByFunction": {
+    title: "AI usage by function",
+    what: "Today's calls, tokens and cost split by the LP-MCP function key and model, largest token consumer first. This is where a model swap or prompt change shows up first.",
+    where: "`v_llm_usage_daily` for today (LP Supabase), top 8 by tokens.",
+    fix: "If one function dominates unexpectedly, check its `<FN>_MODEL_*` Railway var and max_tokens in LP-MCP src/llm-client.js FUNCTION_GROUPS.",
   },
 
   // ── /pipelines ─────────────────────────────────────────────
