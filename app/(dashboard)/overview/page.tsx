@@ -3,7 +3,8 @@ import { TopBar } from "@/components/shell/TopBar";
 import { StatTile } from "@/components/tiles/StatTile";
 import { HealthTile } from "@/components/tiles/HealthTile";
 import { McpStatusTile } from "@/components/tiles/McpStatusTile";
-import { AlertTile } from "@/components/tiles/AlertTile";
+import { LiveAlertsCard } from "@/components/tiles/LiveAlertsCard";
+import { AiUsageSection } from "@/components/tiles/AiUsageSection";
 import { SyncFreshnessBanner } from "@/components/tiles/SyncFreshnessBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
@@ -16,8 +17,9 @@ import {
   railwayStatus,
 } from "@/lib/queries/health";
 import { getHeadlineStats, deltaText } from "@/lib/queries/headlineStats";
-import { getRecentActivity, getActiveAlerts } from "@/lib/queries/activity";
-import { PaidMediaSection } from "@/components/leadgurus/PaidMediaSection";
+import { getRecentActivity } from "@/lib/queries/activity";
+import { getLiveAlerts } from "@/lib/queries/liveAlerts";
+import { getLlmUsageSummary } from "@/lib/queries/llmUsage";
 import { num } from "@/lib/utils";
 import { getLeadsNotCalledCount } from "@/lib/queries/leadLeaks";
 import Link from "next/link";
@@ -26,12 +28,13 @@ export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
   const user = await requireUser();
-  const [health, stats, activity, alerts, leadsNotCalled] = await Promise.all([
+  const [health, stats, activity, alerts, leadsNotCalled, usage] = await Promise.all([
     getHealthSnapshot(),
     getHeadlineStats(),
     getRecentActivity(20),
-    getActiveAlerts(10),
+    getLiveAlerts(),
     getLeadsNotCalledCount(),
+    getLlmUsageSummary(),
   ]);
 
   const lpSyncLast = "error" in health.lpSync ? null : health.lpSync.last_sync_at;
@@ -45,7 +48,7 @@ export default async function OverviewPage() {
         email={user.email}
         role={user.role}
         title="Mission Control"
-        subtitle="System health, pipeline flow, and active alerts"
+        subtitle="System health, pipeline flow, AI usage, and live alerts"
         syncNow
       />
 
@@ -162,8 +165,10 @@ export default async function OverviewPage() {
           </div>
         </section>
 
-        {/* Row 3 — Paid Media (Lead Gurus) */}
-        <PaidMediaSection />
+        {/* Row 3 — AI usage (llm_usage_log, LP-MCP sql/151). Paid Media (Lead
+            Gurus) was removed from this page 2026-10-07; its data still feeds
+            the scorecard lead-cost table. */}
+        <AiUsageSection usage={usage} />
 
         {/* Row 4 — Activity + Alerts */}
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -179,23 +184,11 @@ export default async function OverviewPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Active alerts</CardTitle>
+              <CardTitle>Live alerts</CardTitle>
               <InfoPopover helpKey="overview.alerts" />
             </CardHeader>
             <CardContent>
-              {alerts.length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-500">
-                  No active alerts.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {alerts.map((issue) => (
-                    <li key={issue.id}>
-                      <AlertTile issue={issue} />
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <LiveAlertsCard alerts={alerts} />
             </CardContent>
           </Card>
         </section>
