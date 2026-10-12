@@ -6,31 +6,45 @@ import { Badge } from "@/components/ui/Badge";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { num, usd } from "@/lib/utils";
 import { pct } from "./format";
-import type { LeadCostRow } from "@/lib/queries/leadcost";
-import { METRIC_LABELS, METRIC_FORMULAS } from "@/lib/scorecard/labels";
+import { na, type CostRow, type CostView } from "@/lib/queries/marketingCost.core";
+import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
-type SortKey = "net_sales" | "spend" | "cost_pct" | "romi" | "leads";
+/**
+ * Lead Cost — Brad's columns, from the marketing cost ledger (LP-MCP sql/158).
+ *
+ * One row per LP sub-source for the selected market and window: Raw / Set /
+ * Issue / % Issue / # Demo / % Demo / # Sold / STD % / Gross $ / Working $ /
+ * Net Sales $ / Net per Issued Appointment / Invoice Cost / Calculated Cost /
+ * Total Cost / Cost ÷ Issued leads / Mkt %. † = provisional (Lead Gurus feed,
+ * no invoice yet). Held company-level money shows under the table with its
+ * recommendation; it is never inside a market total.
+ */
 
-function costTone(costPct: number | null, target: number): string {
-  if (costPct == null) return "text-slate-400";
-  if (costPct <= target) return "text-emerald-600 dark:text-emerald-400";
-  if (costPct <= target * 1.33) return "text-amber-600 dark:text-amber-400";
+type SortKey = "total_cost" | "cost_per_issued" | "issued" | "net" | "raw" | "mkt_pct";
+
+function costTone(mktPct: number | null, target: number): string {
+  if (mktPct == null) return "text-slate-400";
+  if (mktPct <= target) return "text-emerald-600 dark:text-emerald-400";
+  if (mktPct <= target * 1.33) return "text-amber-600 dark:text-amber-400";
   return "text-rose-600 dark:text-rose-400";
 }
+const money2 = (v: number | null) => (v == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v));
+const cell = "py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300";
 
 export function LeadCostTable({
-  rows,
+  view,
   targetPct,
-  asOfDate,
-  anyConnected,
+  needsMigration,
+  error,
 }: {
-  rows: LeadCostRow[];
+  view: CostView | null;
   targetPct: number;
-  asOfDate: string;
-  anyConnected: boolean;
+  needsMigration: boolean;
+  error: string | null;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>("net_sales");
+  const [sortKey, setSortKey] = useState<SortKey>("total_cost");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
+  const rows = useMemo(() => view?.rows ?? [], [view]);
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -44,65 +58,86 @@ export function LeadCostTable({
 
   const onSort = (k: SortKey) => {
     if (k === sortKey) setDir((d) => (d === "desc" ? "asc" : "desc"));
-    else {
-      setSortKey(k);
-      setDir("desc");
-    }
+    else { setSortKey(k); setDir("desc"); }
   };
   const arrow = (k: SortKey) => (k === sortKey ? (dir === "desc" ? " ↓" : " ↑") : "");
+  const sortable = (k: SortKey, label: string) => (
+    <button type="button" onClick={() => onSort(k)} className="hover:text-slate-800 dark:hover:text-slate-200">{label}{arrow(k)}</button>
+  );
 
-  const cols: { key: SortKey; label: string }[] = [
-    { key: "leads", label: "Leads" },
-    { key: "net_sales", label: "Net Sales" },
-    { key: "spend", label: "Spend" },
-    { key: "cost_pct", label: "Cost %" },
-    { key: "romi", label: "ROMI" },
-  ];
+  const renderRow = (r: CostRow, bold = false) => (
+    <tr key={r.campaign} className={`border-b border-slate-100 last:border-0 dark:border-slate-800/60 ${bold ? "bg-slate-50 font-semibold dark:bg-slate-900/60" : ""}`}>
+      <td className="sticky left-0 bg-white py-2 pr-3 text-left font-medium text-slate-700 dark:bg-slate-900 dark:text-slate-300">
+        {r.campaign}{r.provisional ? <span title="Provisional: Lead Gurus feed, no invoice yet"> †</span> : null}
+      </td>
+      <td className={cell}>{num(r.raw)}</td>
+      <td className={cell}>{num(r.set)}</td>
+      <td className={cell}>{num(r.issued)}</td>
+      <td className={cell}>{na(r.issue_pct, pct)}</td>
+      <td className={cell}>{num(r.demos)}</td>
+      <td className={cell}>{na(r.demo_pct, pct)}</td>
+      <td className={cell}>{num(r.sold)}</td>
+      <td className={cell}>{na(r.std_pct, pct)}</td>
+      <td className={`${cell} hidden xl:table-cell`}>{usd(r.gross)}</td>
+      <td className={`${cell} hidden xl:table-cell`}>{usd(r.working)}</td>
+      <td className={cell}>{usd(r.net)}</td>
+      <td className={`${cell} hidden xl:table-cell`}>{na(r.nsli, usd)}</td>
+      <td className={cell}>{money2(r.invoice_cost)}</td>
+      <td className={cell}>{money2(r.calculated_cost)}</td>
+      <td className={`${cell} font-semibold`}>{money2(r.total_cost)}</td>
+      <td className={`${cell} font-semibold`}>{na(r.cost_per_issued, money2)}</td>
+      <td className={`${cell} ${costTone(r.mkt_pct, targetPct)}`}>{na(r.mkt_pct, pct)}</td>
+    </tr>
+  );
 
   return (
     <Card>
       <CardHeader>
         <div className="flex flex-1 flex-wrap items-center gap-2">
-          <h3 className="font-display text-base font-semibold text-navy-900 dark:text-white">
-            Lead Cost
-          </h3>
+          <h3 className="font-display text-base font-semibold text-navy-900 dark:text-white">Lead Cost</h3>
           <InfoPopover helpKey="scorecard.leadcost" />
           <span className="text-xs text-slate-400">
-            Target cost ≤ {targetPct}% of net sales · snapshot {asOfDate}
+            Cost ÷ issued leads · target ≤ {targetPct}% of net
+            {view?.as_of_snapshot ? ` · Net/Working as of ${view.as_of_snapshot}` : ""}
+            {view?.grain === "week" ? " · weekly (no Net/Working at week grain)" : ""}
           </span>
         </div>
       </CardHeader>
       <CardContent>
-        {!anyConnected && (
-          <p className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/40">
-            No spend feed connected yet. Cost % and ROMI populate per source once
-            spend lands in <code>lp_source_spend_daily</code> (or the LeadGurus feed
-            for the Lead Gurus source).
+        {needsMigration && (
+          <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            The marketing cost ledger is not in this database yet. Apply LP-MCP <code>sql/158_marketing_cost_ledger.sql</code> from the Supabase dashboard.
           </p>
         )}
+        {error && !needsMigration && (
+          <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+            Lead cost could not be read: {error}
+          </p>
+        )}
+        {view && !view.any_cost && !needsMigration && (
+          <p className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/40">
+            No marketing cost in the ledger for this window yet. Costs arrive from invoices approved in #marketing-invoice-review, the Lead Gurus feed and the monthly commission rules.
+          </p>
+        )}
+
         {/* Phone + tablet: stacked cards */}
         <div className="space-y-2 lg:hidden">
           {sorted.map((r) => {
             const metrics: { label: string; value: string; tone?: string }[] = [
-              { label: METRIC_LABELS.demoToSale, value: pct(r.close_pct) },
-              { label: "Leads", value: num(r.leads) },
-              { label: "Cost/Lead", value: r.connected ? usd(r.cost_per_lead) : "—" },
-              { label: "Spend", value: r.connected ? usd(r.spend) : "—" },
-              { label: "Cost %", value: r.connected ? pct(r.cost_pct) : "—", tone: r.connected ? costTone(r.cost_pct, targetPct) : undefined },
-              { label: "ROMI", value: r.connected && r.romi != null ? `${r.romi.toFixed(2)}×` : "—" },
+              { label: "Issued", value: num(r.issued) },
+              { label: "Cost / Issued", value: na(r.cost_per_issued, money2) },
+              { label: "Total cost", value: money2(r.total_cost) },
+              { label: "Net sales", value: usd(r.net) },
+              { label: METRIC_LABELS.demoToSale, value: na(r.std_pct, pct) },
+              { label: "Mkt %", value: na(r.mkt_pct, pct), tone: costTone(r.mkt_pct, targetPct) },
             ];
             return (
-              <div key={r.source} className="rounded-lg border border-slate-200 px-3.5 py-3 dark:border-slate-800">
+              <div key={r.campaign} className="rounded-lg border border-slate-200 px-3.5 py-3 dark:border-slate-800">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-[13.5px] font-medium text-slate-700 dark:text-slate-200">
-                    {r.source}
-                    {r.source_system && (
-                      <span className="ml-1.5 align-middle">
-                        <Badge tone="slate">{r.source_system}</Badge>
-                      </span>
-                    )}
+                    {r.campaign}{r.provisional ? " †" : ""}
                   </span>
-                  <span className="shrink-0 font-mono text-[14px] font-semibold tabular text-slate-900 dark:text-slate-100">{usd(r.net_sales)}</span>
+                  <span className="shrink-0 font-mono text-[14px] font-semibold tabular text-slate-900 dark:text-slate-100">{money2(r.total_cost)}</span>
                 </div>
                 {/* mobile-ok: the phone card view — three short figures per row fit at 375px */}
                 <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
@@ -116,57 +151,63 @@ export function LeadCostTable({
               </div>
             );
           })}
+          {view && rows.length > 0 && (
+            <div className="rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-3 text-[13px] dark:border-slate-700 dark:bg-slate-900/60">
+              <div className="flex justify-between font-semibold text-slate-800 dark:text-slate-100">
+                <span>All campaigns</span><span className="font-mono tabular">{money2(view.totals.total_cost)}</span>
+              </div>
+              <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
+                <span>Cost ÷ issued ({num(view.totals.issued)} issued)</span><span className="font-mono tabular">{na(view.totals.cost_per_issued, money2)}</span>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Desktop: full table */}
+        {/* Desktop: the full Brad-format table */}
         <div className="hidden overflow-x-auto lg:block">
-          <table className="w-full text-sm">
+          <table className="w-full whitespace-nowrap text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800">
-                <th className="py-2 pr-3 text-left font-medium">Source</th>
-                <th className="py-2 pl-3 text-right font-medium" title={METRIC_FORMULAS.demoToSale}>{METRIC_LABELS.demoToSale}</th>
-                {cols.map((c) => (
-                  <th key={c.key} className="py-2 pl-3 text-right font-medium">
-                    <button type="button" onClick={() => onSort(c.key)} className="hover:text-slate-800 dark:hover:text-slate-200">
-                      {c.label}
-                      {arrow(c.key)}
-                    </button>
-                  </th>
-                ))}
-                <th className="py-2 pl-3 text-right font-medium">Cost / Lead</th>
+                <th className="sticky left-0 bg-white py-2 pr-3 text-left font-medium dark:bg-slate-900">Campaign</th>
+                <th className="py-2 pl-3 text-right font-medium">{sortable("raw", "Raw")}</th>
+                <th className="py-2 pl-3 text-right font-medium">Set</th>
+                <th className="py-2 pl-3 text-right font-medium">{sortable("issued", "Issue")}</th>
+                <th className="py-2 pl-3 text-right font-medium">{METRIC_LABELS.issue}</th>
+                <th className="py-2 pl-3 text-right font-medium"># Demo</th>
+                <th className="py-2 pl-3 text-right font-medium">{METRIC_LABELS.demo}</th>
+                <th className="py-2 pl-3 text-right font-medium"># Sold</th>
+                <th className="py-2 pl-3 text-right font-medium" title={METRIC_LABELS.demoToSale}>STD %</th>
+                <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell">Gross $</th>
+                <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell">Working $</th>
+                <th className="py-2 pl-3 text-right font-medium">{sortable("net", "Net Sales $")}</th>
+                <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell" title={METRIC_LABELS.netPerIssuedAppointment}>Net $ / Issued</th>
+                <th className="py-2 pl-3 text-right font-medium">Invoice Cost</th>
+                <th className="py-2 pl-3 text-right font-medium">Calculated Cost</th>
+                <th className="py-2 pl-3 text-right font-medium">{sortable("total_cost", "Total Cost")}</th>
+                <th className="py-2 pl-3 text-right font-medium">{sortable("cost_per_issued", "Cost / Issued Lead")}</th>
+                <th className="py-2 pl-3 text-right font-medium">{sortable("mkt_pct", "Mkt %")}</th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r) => (
-                <tr key={r.source} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
-                  <td className="py-2 pr-3 text-left font-medium text-slate-700 dark:text-slate-300">
-                    {r.source}
-                    {r.source_system && (
-                      <span className="ml-1.5 align-middle">
-                        <Badge tone="slate">{r.source_system}</Badge>
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 pl-3 text-right font-mono tabular text-slate-600 dark:text-slate-400">{pct(r.close_pct)}</td>
-                  <td className="py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300">{num(r.leads)}</td>
-                  <td className="py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300">{usd(r.net_sales)}</td>
-                  {r.connected ? (
-                    <>
-                      <td className="py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300">{usd(r.spend)}</td>
-                      <td className={`py-2 pl-3 text-right font-mono tabular font-semibold ${costTone(r.cost_pct, targetPct)}`}>{pct(r.cost_pct)}</td>
-                      <td className="py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300">{r.romi != null ? `${r.romi.toFixed(2)}×` : "—"}</td>
-                      <td className="py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300">{usd(r.cost_per_lead)}</td>
-                    </>
-                  ) : (
-                    <td colSpan={4} className="py-2 pl-3 text-right text-xs italic text-slate-400">
-                      Spend not connected
-                    </td>
-                  )}
-                </tr>
-              ))}
+              {sorted.map((r) => renderRow(r))}
+              {view && rows.length > 0 && renderRow(view.totals, true)}
             </tbody>
           </table>
         </div>
+
+        {view?.held && (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            <span className="font-semibold">Held at company level (not in any market): {money2(view.held.total_cost)}.</span>{" "}
+            {view.held.recommended_market ? (
+              <>Recommended: <Badge tone="amber">{view.held.recommended_market}</Badge> — {view.held.recommendation_reason}</>
+            ) : (
+              "No recommendation yet (nightly job matches these leads to a market)."
+            )}
+          </div>
+        )}
+        {rows.some((r) => r.provisional) && (
+          <p className="mt-2 text-[11px] text-slate-400">† provisional: Lead Gurus feed spend, replaced by the invoice at month close.</p>
+        )}
       </CardContent>
     </Card>
   );

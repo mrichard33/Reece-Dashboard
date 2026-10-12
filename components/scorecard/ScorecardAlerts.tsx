@@ -2,7 +2,7 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { usd } from "@/lib/utils";
 import { ScCard } from "./ScCard";
 import type { ScorecardActuals, ScorecardDerived } from "@/lib/queries/scorecard";
-import type { LeadCostView } from "@/lib/queries/leadcost";
+import type { CostView } from "@/lib/queries/marketingCost.core";
 
 type AlertTone = "rose" | "amber" | "emerald" | "slate";
 type Alert = { tone: AlertTone; label: string; text: string };
@@ -28,7 +28,7 @@ export function ScorecardAlerts({
   actuals: ScorecardActuals;
   derived: ScorecardDerived;
   unmappedSources: number;
-  leadCost: LeadCostView | null;
+  leadCost: { view: CostView | null; target_pct: number } | null;
 }) {
   const alerts: Alert[] = [];
 
@@ -65,15 +65,16 @@ export function ScorecardAlerts({
     });
   }
 
-  // Lead cost over target.
-  if (leadCost) {
-    const over = leadCost.rows.filter((r) => r.connected && r.cost_pct != null && r.cost_pct > leadCost.target_pct);
+  // Lead cost over target (marketing cost ledger: Mkt % = total cost ÷ net).
+  if (leadCost?.view) {
+    const target = leadCost.target_pct;
+    const over = leadCost.view.rows.filter((r) => r.mkt_pct != null && r.mkt_pct > target);
     if (over.length > 0) {
-      const worst = over.reduce((a, b) => ((b.cost_pct ?? 0) > (a.cost_pct ?? 0) ? b : a));
+      const worst = over.reduce((a, b) => ((b.mkt_pct ?? 0) > (a.mkt_pct ?? 0) ? b : a));
       alerts.push({
         tone: "rose",
         label: "Lead cost",
-        text: `${over.length} source${over.length === 1 ? "" : "s"} over the ${leadCost.target_pct}% cost target (worst: ${worst.source} at ${worst.cost_pct}%).`,
+        text: `${over.length} campaign${over.length === 1 ? "" : "s"} over the ${target}% cost target (worst: ${worst.campaign} at ${worst.mkt_pct}%).`,
       });
     }
   }
