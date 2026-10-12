@@ -47,7 +47,6 @@ import {
   canSeeRetracted,
   canUndoDismiss,
   resolveLane,
-  formatEt,
   TABS,
   type TabKey,
   type LaneKey,
@@ -59,7 +58,7 @@ import {
   queueIssueChips,
   type TagEvent,
 } from "@/lib/botReview/conversation";
-import { buildLeadStatus, placeLabel } from "@/lib/botReview/leadStatus";
+import { buildLeadStatus } from "@/lib/botReview/leadStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -333,25 +332,15 @@ async function ReviewTab({
     ? buildLeadStatus({ contact: data?.contact ?? null, lead: data?.lead ?? null, office: selected.office, tagEvents })
     : null;
 
-  let why: { text: string; facts: Array<{ label: string; value: string; tone?: "rose" | "amber" }> } | null = null;
+  let why: { text: string } | null = null;
   if (selected) {
     const flagged = selected.must_review_cause ? selected : (conversation.find((r) => r.must_review_cause) ?? selected);
     const optOutTag = tagEvents.find((e) => e.action === "add_tag" && /^(dnc|dnc-sms|stage:dnc|suppress:dnc-reply)$/.test(e.tag));
     const optedOutAt = flagged.opted_out_at ?? conversation.find((r) => r.opted_out_at)?.opted_out_at ?? optOutTag?.at ?? null;
     const firstName =
       data?.contact?.first_name?.trim() || selected.contact_name?.trim().split(/\s+/)[0] || "The lead";
-    const place = placeLabel(data?.contact ?? null) ?? selected.contact_city;
-    const facts: Array<{ label: string; value: string; tone?: "rose" | "amber" }> = [];
-    if (place) facts.push({ label: "Where", value: place });
-    if (leadStatus?.known) {
-      facts.push({
-        label: "Service area",
-        value: leadStatus.serviceArea.label,
-        tone: leadStatus.serviceArea.label === "Out of area" ? "amber" : undefined,
-      });
-    }
-    if (leadStatus?.job.estimateStatus) facts.push({ label: "Estimate", value: leadStatus.job.estimateStatus });
-    if (optedOutAt) facts.push({ label: "Opted out", value: formatEt(optedOutAt), tone: "rose" });
+    // 2026-10-12: no facts chips any more (Where / Service area / Estimate
+    // repeated the Lead status card); the opt-out stays in the why text.
     why = {
       text: buildWhyText({
         firstName,
@@ -361,7 +350,6 @@ async function ReviewTab({
         optedOutAt,
         view,
       }),
-      facts,
     };
   }
 
