@@ -67,7 +67,7 @@ export function ReviewWorkspace({
   selected: QueueRow | null;
   conversation: QueueRow[];
   view: ConversationView;
-  why: { text: string; facts: Array<{ label: string; value: string; tone?: "rose" | "amber" }> } | null;
+  why: { text: string } | null;
   leadStatus: LeadStatus | null;
   /** Issue chips per GHL contact id, for the queue rows. */
   issueChips: Record<string, string[]>;
@@ -433,10 +433,12 @@ export function ReviewWorkspace({
         * the queue, the lead strip and Why card stay at the top, and only the
         * thread scrolls, in its own box. The page no longer grows with a long
         * thread, so the review panel at xl stays in view. Below lg it stacks.
+        * 2026-10-12: the strip is two lines and the Why card one, so the thread
+        * is most of the column.
         */}
       <div
         ref={threadRef}
-        className={`flex min-h-0 scroll-mt-4 flex-col gap-3 lg:h-[calc(100vh-19rem)]${selected ? "" : " xl:col-span-2"}`}
+        className={`flex min-h-0 scroll-mt-4 flex-col gap-2 lg:h-[calc(100vh-19rem)]${selected ? "" : " xl:col-span-2"}`}
       >
         {errorMsg && (
           <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
@@ -458,7 +460,7 @@ export function ReviewWorkspace({
         ) : (
           <>
             <ContextStrip row={selected} canStopBot={canStopBot} onStopBot={() => setStopOpen(true)} />
-            {why && <WhyCard text={why.text} facts={why.facts} issues={view.issues} />}
+            {why && <WhyCard text={why.text} issues={view.issues} />}
             <ThreadScrollBox pending={pending}>
               <ConversationThread
                 view={view}

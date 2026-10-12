@@ -41,7 +41,7 @@ export function ContextStrip({
   const outcome = outcomeLabel(row);
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+    <div className="flex shrink-0 flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-800 dark:bg-slate-900">
       {/* Who this actually is. First line, because a reviewer who finds a bad
           reply has to be able to look this person up in LeadPerfection or GHL —
           and because a market label made four messages to the SAME contact look
@@ -67,21 +67,22 @@ export function ContextStrip({
         </div>
       </div>
 
-      {(row.contact_phone || row.contact_email) && (
-        <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-slate-500 dark:text-slate-400">
-          {row.contact_phone && <span className="font-mono">{formatPhone(row.contact_phone)}</span>}
-          {row.contact_email && <span className="min-w-0 max-w-full truncate">{row.contact_email}</span>}
-        </div>
-      )}
-
-      {/* Everything above the line is the conversation; everything below it is
-          the one message being scored. Saying so matters now that the thread
-          holds several messages to the same lead. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-          This message
-        </span>
+      {/* 2026-10-12 (Revin pattern): the phone/email line and the "this
+          message" chips share ONE row, so the header is two lines and the
+          thread gets the height back. It wraps on a phone. The "Message" label
+          keeps it clear the chips are about the one message being scored. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        {row.contact_phone && (
+          <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">{formatPhone(row.contact_phone)}</span>
+        )}
+        {row.contact_email && (
+          <span className="min-w-0 max-w-full truncate text-[11px] text-slate-500 dark:text-slate-400">{row.contact_email}</span>
+        )}
+        {(row.contact_phone || row.contact_email) && (
+          <span className="text-slate-300 dark:text-slate-600" aria-hidden>|</span>
+        )}
+        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Message</span>
         <Badge tone="navy">
           <span className="font-mono text-[11px]">{row.rule_applied ?? row.workflow_code ?? "no rule"}</span>
         </Badge>

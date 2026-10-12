@@ -219,8 +219,10 @@ export function ConversationThread({
     />
   );
 
+  // 2026-10-12: gap-2 between messages (was gap-3) so a 1080p screen shows
+  // eight or more bubbles with the Why card collapsed.
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <p className="text-center text-[11px] text-slate-600 dark:text-slate-400">{view.notice}</p>
 
       {!hasMessages && (
@@ -234,7 +236,7 @@ export function ConversationThread({
         const open = isOpen(b.header.key);
         const bodyId = `sess-${b.header.key}`;
         return (
-          <div key={b.header.key} className="flex flex-col gap-3">
+          <div key={b.header.key} className="flex flex-col gap-2">
             <button
               type="button"
               aria-expanded={open}
@@ -261,7 +263,7 @@ export function ConversationThread({
               )}
             </button>
             {open && (
-              <div id={bodyId} className="flex flex-col gap-3">
+              <div id={bodyId} className="flex flex-col gap-2">
                 {b.items.map(renderItem)}
               </div>
             )}
@@ -464,7 +466,9 @@ function Item({
           </p>
         )}
 
-        <div className="mt-1 flex flex-wrap items-center justify-end gap-x-1 gap-y-1">
+        {/* 2026-10-12: -mb-1.5 lets the 44 px thumb hit area use the gap below
+            it instead of adding to it; the thumbs themselves are unchanged. */}
+        <div className="-mb-1.5 mt-0.5 flex flex-wrap items-center justify-end gap-x-1 gap-y-1">
           {item.issues.map((x) => (
             <IssueChip key={x.label} issue={x} />
           ))}
