@@ -61,7 +61,7 @@ Every tile has a small `(i)` button → opens a popover with `{ what, where, fix
 │   ├── queries/                    # Server-side data fetchers (health, pipelines, workflows, issues)
 │   ├── auth.ts                     # getSessionUser, getRole (React.cache-deduped)
 │   └── utils.ts                    # cn, relTime, absTime, num, usd
-├── db/migrations/                  # SQL Mark applies manually
+├── db/migrations/                  # HISTORY of hand-applied SQL; new DDL goes to LP-MCP / HL-MCP (see db/migrations/README.md)
 ├── prototype/                      # FROZEN UX reference — not built/served. Don't edit.
 ├── middleware.ts                   # Auth gate + x-pathname forwarder
 ├── postcss.config.mjs
@@ -82,9 +82,9 @@ npm install
 cp .env.example .env.local
 # Fill: LP_SUPABASE_*, HL_SUPABASE_*, LP_MCP_URL, HL_MCP_URL, *_AUTH_TOKEN
 
-# 3. Apply the allowlist migration in LP Supabase SQL editor:
-#    db/migrations/0001_dashboard_users.sql
-#    (Edits the seed email — change to your operator email first.)
+# 3. The dashboard_users allowlist table already exists in the LP project.
+#    (db/migrations/0001_dashboard_users.sql is its history; new schema goes
+#    through LP-MCP/supabase/migrations/ — see db/migrations/README.md.)
 
 # 4. (Optional but recommended) Generate full Supabase types:
 npm run types:generate:lp  # requires LP_SUPABASE_PROJECT_ID env
