@@ -635,10 +635,28 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.leadcost": {
     title: "Lead Cost",
-    what: "Per-source spend efficiency over the snapshot window: spend, cost per lead, cost as % of Net Sale (non-cancelled $), and ROMI (Net Sale ÷ spend). Cost % is green at/under the target, amber up to ~1.3× target, red above. Sources with no spend show 'Spend not connected' instead of a misleading 0% — spend is never invented.",
+    what: "Brad's cost sheet per LP sub-source for the selected market and window: Raw / Set / Issue / % Issue / # Demo / % Demo / # Sold / STD %, Gross / Working / Net $ (report 133), Invoice Cost (approved invoices + the Lead Gurus feed), Calculated Cost (Canvass 15%, MVP 15%, Previous Customer / Referral 1% of net), Total Cost, Cost ÷ Issued leads and Mkt % (Total ÷ Net). † marks provisional Lead Gurus feed spend that the invoice replaces at month close. 'n.a.' is a zero denominator. Held company-level money is shown under the table and is never in a market total. Weekly spreads monthly invoices across weeks by days and has no Net / Working $.",
     where:
-      "`lib/queries/leadcost.ts` joins `lp_source_scorecard_daily` (collapsed to source) to `lp_source_spend_daily` over the MTD window, plus the existing LeadGurus feed (`ft_daily_summary`) attributed to the 'Lead Gurus' source. Target % is `SCORECARD_LEADCOST_TARGET_PCT` (default 15).",
-    fix: "To light up a source, land daily spend in `lp_source_spend_daily` (market, source, sub_source, spend_date, spend). The Lead Gurus row fills automatically from the LeadGurus daily pull. Adjust the target via `SCORECARD_LEADCOST_TARGET_PCT` on the dashboard service.",
+      "`v_market_subsource_cost` in LP Supabase (LP-MCP sql/158), read by `lib/queries/marketingCost.ts`. Costs come from `marketing_expenses` → `marketing_expense_allocations`, split by gross issued leads (`mkt_issued_counts`); dollars from `mkt_sales_dollars`. Target % is `SCORECARD_LEADCOST_TARGET_PCT` (default 15).",
+    fix: "A missing cost: check the invoice in the Invoices tab (waiting in Slack #marketing-invoice-review?) or `GET /n8n/admin/marketing-expenses/status` on LP-MCP (reconciliation failures must be 0). A wrong market split: the vendor's `eligible_markets` in `marketing_vendors`, then `POST /n8n/admin/marketing-expenses/reallocate`. Net/Working missing: no report 133 snapshot for that month yet. Report 136 and LP cost entry are retired — do not type a cost into LP.",
+  },
+  "scorecard.costTrend": {
+    title: "12-month cost trend",
+    what: "Total marketing cost (bars) and cost ÷ issued leads (line) for the selected market over the last 12 months. A missing point on the line means no issued leads that month.",
+    where: "`v_market_subsource_cost` at month grain, summed per month in `lib/queries/marketingCost.core.ts` (`shapeTrend`).",
+    fix: "A month that looks low is usually an invoice not yet approved or a Lead Gurus month still on the provisional feed. Check the Invoices tab for that month.",
+  },
+  "scorecard.invoices": {
+    title: "Invoices",
+    what: "Every marketing invoice the ledger has seen: status (waiting in Slack, approved, rejected, failed), vendor, invoice #, period, total, the flags that sent it to review, the original file and the text that was extracted from it for free (no AI reads the file).",
+    where: "`marketing_invoice_documents` + `marketing_expenses` in LP Supabase, written by LP-MCP `POST /n8n/admin/marketing-invoice-ingest` from n8n I.MCIN (the marketing-invoices@ inbox).",
+    fix: "'waiting in Slack' → decide it in #marketing-invoice-review (Mark or Brad). 'failed' → the error is on the row; a Railway log line `[MktInvoice]` names the step. A missing invoice → was it sent to the marketing-invoices@ address? n8n I.MCIN only reads mail addressed there.",
+  },
+  "scorecard.heldSpend": {
+    title: "Held spend",
+    what: "Lead Gurus 'Unknown' / 'Out Of Area' spend and the daily territory gap sit at company level (REECE_HOLD) with a recommended market: the leads matched to an LP lead's branch, else their zip's service area. The money never moves by itself — this button applies the recommendation.",
+    where: "`marketing_expense_allocations` rows with rule 'hold'; recommendations written nightly by LP-MCP `src/marketing/holds.js`.",
+    fix: "No recommendation → the nightly job could not match those leads; pick the market by hand in LP-MCP (`marketing_expenses.eligible_markets`) and reallocate.",
   },
 
   // ── /scorecard · per-KPI + Phase 4 UX ────────────────────────────────
