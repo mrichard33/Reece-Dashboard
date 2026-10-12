@@ -169,6 +169,36 @@ export const helpContent: Record<string, HelpEntry> = {
     where: "The newest row in `system_events` (LP Supabase). Same reading and the same thresholds as the Decision Engine tile on Overview, so the two can never disagree.",
     fix: "If this is red, automations are not firing. Check the LP MCP service on Railway and the n8n decision-engine workflow.",
   },
+  "modes.shadow": {
+    title: "In test mode",
+    what: "LP-MCP features running in shadow: each one works out what it would do and records it, but does not act yet.",
+    where: "`feature_modes` (LP Supabase), written by LP-MCP every time it starts (src/mode-registry.js).",
+    fix: "Nothing is broken. Review the ones waiting longest; switching one on is Mark's call (or the user's where the row says so), done as a Railway variable.",
+  },
+  "modes.due": {
+    title: "Due for review",
+    what: "Features in test mode for 14 days or more. Due means someone should look at the results, not that the feature is ready.",
+    where: "`feature_modes.state_changed_at`, or the first commit that added the switch when no change has been recorded yet.",
+    fix: "Read each one's 'Goes live when' test and its results, then decide: switch it on, keep testing, or remove it.",
+  },
+  "modes.noRuling": {
+    title: "No go-live test",
+    what: "Features in test mode with no written test for switching them on, so nobody can say when they are ready.",
+    where: "`feature_modes.go_live` = 'not set: needs a ruling' (LP-MCP src/mode-registry.js).",
+    fix: "Write the test (for example 'one week of shadow results with no wrong call') into the flag's entry in LP-MCP src/mode-registry.js.",
+  },
+  "modes.live": {
+    title: "Live",
+    what: "Features acting for real.",
+    where: "`feature_modes.current_state` = 'live'.",
+    fix: "A feature that should not be live is switched back with its Railway variable; the change is recorded below after LP-MCP restarts.",
+  },
+  "modes.changes": {
+    title: "Recent switch changes",
+    what: "Every time a switch's value changed, with the old and new value. Recorded by the database the first time LP-MCP starts with the new value.",
+    where: "`feature_mode_changes` (LP Supabase), written by a trigger on `feature_modes`.",
+    fix: "A change nobody expected means a Railway variable was edited; check Railway's activity log for who and when.",
+  },
   "agent.jobs": {
     title: "Background jobs",
     what: "Every scheduled job on the LP MCP service with its last run. Green ran and worked. Red ran and failed, which includes a job that reported failure without crashing. Amber either could not tell what happened, or has never run at all. Grey is switched off on purpose, or was cut short by a deploy — neither of those is a fault.",
