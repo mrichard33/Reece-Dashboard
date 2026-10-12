@@ -184,6 +184,13 @@ export const NAV_GROUPS: NavGroup[] = [
         audience: "all",
       },
       {
+        href: "/modes",
+        label: "Test-mode features",
+        desc: "Which features are live or still testing",
+        Icon: Gauge,
+        audience: "operator",
+      },
+      {
         href: "/ops/events",
         label: "Ops Logs",
         desc: "Raw operational logs",
