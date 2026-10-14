@@ -57,11 +57,28 @@ export const VDR_MIGRATION = "mrichard33/n8n sql/vdr_vendor_disposition_report.s
 
 const DOW = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-/** "Monday 09:00 America/New_York" from the row's schedule columns. */
+/**
+ * "Mondays, when the LP feed arrives". The workflow runs when the daily LP feed
+ * email lands (one Gmail trigger, no timer, 2026-10-14); send_time is only the
+ * earliest point in the week a vendor counts as due (00:00), so the clock time
+ * is not shown: it read as "sends at midnight" and it does not.
+ */
 export function scheduleLabel(r: Pick<VendorConfigRow, "send_dow" | "send_time" | "timezone">): string {
   const day = DOW[r.send_dow] ?? `day ${r.send_dow}`;
-  const time = String(r.send_time ?? "").slice(0, 5);
-  return `${day} ${time} ${r.timezone}`.trim();
+  return `${day}s, when the LP feed arrives`;
+}
+
+export function formatSubSources(list: string[] | null | undefined): string {
+  return (list ?? []).join(", ");
+}
+
+/** MM-DD-YYYY in Eastern time (Mark, 2026-10-14: every date a person reads). */
+export function formatDateMdy(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "2-digit", day: "2-digit", year: "numeric" }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("month")}-${get("day")}-${get("year")}`;
 }
 
 const EMAIL_RX = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
@@ -144,13 +161,10 @@ export function toItems(config: VendorConfigRow[], log: SendLogRow[]): VendorIte
   return sortVendors(config).map((c) => ({ ...c, lastRun: last.get(c.id) ?? null }));
 }
 
-/** One line a person can read: "Sent (dry run) · 5,438 leads · Oct 19". */
+/** One line a person can read: "Sent (dry run) · 5,438 leads · 10-19-2026". */
 export function lastRunLabel(run: VendorLastRun | null): string {
   if (!run) return "Never run";
-  const when = run.attemptedAt ? new Date(run.attemptedAt) : null;
-  const date = when && !Number.isNaN(when.getTime())
-    ? when.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })
-    : "";
+  const date = formatDateMdy(run.attemptedAt);
   const word = { sent: "Sent", failed: "Failed", blocked: "Blocked", empty: "No leads" }[run.status] ?? run.status;
   const parts = [`${word}${run.status === "sent" && run.dryRun ? " (dry run)" : ""}`];
   if (run.leadCount != null && run.status === "sent") parts.push(`${run.leadCount.toLocaleString("en-US")} leads`);
