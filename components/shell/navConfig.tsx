@@ -15,6 +15,7 @@ import {
   MessageSquareQuote,
   PhoneMissed,
   Wallet,
+  Mail,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -188,6 +189,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Test-mode features",
         desc: "Which features are live or still testing",
         Icon: Gauge,
+        audience: "operator",
+      },
+      {
+        href: "/vendor-reports",
+        label: "Vendor reports",
+        desc: "Weekly lead-status emails to lead vendors",
+        Icon: Mail,
         audience: "operator",
       },
       {
