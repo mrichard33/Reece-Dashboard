@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   deliveryLabel,
+  formatDateMdy,
   formatEmails,
+  formatSubSources,
   lastRunLabel,
   latestRunByVendor,
   parseEmails,
@@ -53,6 +55,17 @@ describe("parseSubSources", () => {
   });
 });
 
+describe("formatSubSources / formatDateMdy", () => {
+  it("joins the list for the textarea and prints dates as MM-DD-YYYY in Eastern time", () => {
+    expect(formatSubSources(["Bing PPC", "Google"])).toBe("Bing PPC, Google");
+    expect(formatSubSources(null)).toBe("");
+    // 03:30 UTC on the 20th is still the 19th in New York.
+    expect(formatDateMdy("2026-10-20T03:30:00Z")).toBe("10-19-2026");
+    expect(formatDateMdy("bad")).toBe("");
+    expect(formatDateMdy(null)).toBe("");
+  });
+});
+
 describe("latestRunByVendor / toItems", () => {
   it("keeps the newest row per vendor whatever the input order", () => {
     const rows = [
@@ -83,9 +96,9 @@ describe("labels", () => {
   it("reads a run back in plain words", () => {
     expect(lastRunLabel(null)).toBe("Never run");
     expect(lastRunLabel({ status: "sent", leadCount: 5438, reason: null, dryRun: true, attemptedAt: "2026-10-19T13:07:00Z" }))
-      .toBe("Sent (dry run) · 5,438 leads · Oct 19");
+      .toBe("Sent (dry run) · 5,438 leads · 10-19-2026");
     expect(lastRunLabel({ status: "blocked", leadCount: null, reason: "feed_stale (30.1h old)", dryRun: true, attemptedAt: "2026-10-13T22:07:05Z" }))
-      .toBe("Blocked · feed_stale · Oct 13");
+      .toBe("Blocked · feed_stale · 10-13-2026");
     expect(lastRunLabel({ status: "empty", leadCount: 0, reason: "no leads", dryRun: true, attemptedAt: "bad" }))
       .toBe("No leads");
   });
@@ -94,6 +107,8 @@ describe("labels", () => {
     expect(deliveryLabel(vendor({}))).toMatch(/Mark only/);
     expect(deliveryLabel(vendor({ dry_run: false }))).toMatch(/no_recipients/);
     expect(deliveryLabel(vendor({ dry_run: false, recipients_to: ["v@x.com"] }))).toBe("Live: sent to v@x.com with Mark in BCC.");
-    expect(scheduleLabel(vendor({}))).toBe("Monday 09:00 America/New_York");
+    // The clock time is not shown: send_time is only "due from", the feed email is what sends (2026-10-14).
+    expect(scheduleLabel(vendor({}))).toBe("Mondays, when the LP feed arrives");
+    expect(scheduleLabel(vendor({ send_time: "00:00:00" }))).toBe("Mondays, when the LP feed arrives");
   });
 });

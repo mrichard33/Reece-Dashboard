@@ -2,15 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { addVendorReport, saveVendorReport } from "@/lib/actions/vendorReports";
+import { addVendorReport, deleteVendorReport, saveVendorReport } from "@/lib/actions/vendorReports";
 import {
   VDR_MIGRATION,
   deliveryLabel,
   formatEmails,
+  formatSubSources,
   lastRunLabel,
   scheduleLabel,
   type VendorItem,
@@ -19,9 +20,10 @@ import {
 
 /**
  * /vendor-reports (2026-10-14): one card per lead vendor with the fields a
- * person actually changes (emails, rev share, on/off) and a Save button.
- * Dry run is shown to everyone and switchable by the admin (Mark) only, since
- * it is the one switch that makes a real vendor receive an email.
+ * person actually changes (emails, LP sub-sources, rev share, on/off), a Save
+ * button and a Delete button (Mark, 2026-10-14). Dry run is shown to everyone
+ * and switchable by the admin (Mark) only, since it is the one switch that
+ * makes a real vendor receive an email.
  * Phone-first: every row wraps, inputs are 16px on phones, no table.
  */
 
@@ -79,12 +81,14 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
   const [pending, startTransition] = useTransition();
   const [to, setTo] = useState(formatEmails(vendor.recipients_to));
   const [cc, setCc] = useState(formatEmails(vendor.recipients_cc));
+  const [subs, setSubs] = useState(formatSubSources(vendor.lp_sub_sources));
   const [revShare, setRevShare] = useState(vendor.rev_share);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const dirty =
     to !== formatEmails(vendor.recipients_to) ||
     cc !== formatEmails(vendor.recipients_cc) ||
+    subs !== formatSubSources(vendor.lp_sub_sources) ||
     revShare !== vendor.rev_share;
 
   function save(over: { is_active?: boolean; dry_run?: boolean } = {}) {
@@ -94,15 +98,27 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
         id: vendor.id,
         recipients_to: to,
         recipients_cc: cc,
+        lp_sub_sources: subs,
         rev_share: revShare,
         is_active: over.is_active ?? vendor.is_active,
         dry_run: over.dry_run ?? vendor.dry_run,
       });
       if (!res.ok) setMsg({ kind: "err", text: res.error ?? "Save failed." });
       else {
-        setMsg({ kind: "ok", text: "Saved. The next hourly run uses these settings." });
+        setMsg({ kind: "ok", text: "Saved. The next feed email uses these settings." });
         router.refresh();
       }
+    });
+  }
+
+  function remove() {
+    const q = `Delete "${vendor.vendor_name}"? Its reports stop and its LP sub-sources (${formatSubSources(vendor.lp_sub_sources) || "none"}) will be listed as "no vendor" in Mark's weekly summary until another vendor takes them. Past send history is kept. This cannot be undone.`;
+    if (!window.confirm(q)) return;
+    setMsg(null);
+    startTransition(async () => {
+      const res = await deleteVendorReport({ id: vendor.id });
+      if (!res.ok) setMsg({ kind: "err", text: res.error ?? "Delete failed." });
+      else router.refresh();
     });
   }
 
@@ -130,7 +146,7 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
         <div className="min-w-0">
           <CardTitle>{vendor.vendor_name}</CardTitle>
           <p className="mt-0.5 break-words text-[11px] text-slate-400">
-            LP sub-sources: {vendor.lp_sub_sources.join(", ")} · {scheduleLabel(vendor)} · last {vendor.lookback_days} days
+            {scheduleLabel(vendor)} · last {vendor.lookback_days} days
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -167,6 +183,18 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
               onChange={(e) => setCc(e.target.value)}
             />
           </div>
+          <div className="sm:col-span-2">
+            <label htmlFor={`subs-${vendor.id}`} className={labelCls}>LP sub-sources (exactly as LP spells them, one per line or comma-separated)</label>
+            <textarea
+              id={`subs-${vendor.id}`}
+              rows={2}
+              autoComplete="off"
+              className={inputCls}
+              placeholder="Google PPC Windows, Bing PPC"
+              value={subs}
+              onChange={(e) => setSubs(e.target.value)}
+            />
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -198,6 +226,9 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
           ) : (
             <span className="text-[11px] text-slate-400">Dry run on/off: Mark only</span>
           )}
+          <Button size="sm" variant="secondary" disabled={pending} onClick={remove} aria-label={`Delete ${vendor.vendor_name}`}>
+            <Trash2 className="h-3.5 w-3.5" /> Delete
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -257,7 +288,7 @@ function AddVendorCard() {
               <input type="checkbox" className={checkCls} checked={revShare} onChange={(e) => setRevShare(e.target.checked)} />
               Rev-share vendor
             </label>
-            <p className="text-xs text-slate-500">New vendors start switched on and in dry run (report to Mark only) on Mondays at 9:00 AM ET.</p>
+            <p className="text-xs text-slate-500">New vendors start switched on and in dry run (report to Mark only). Reports go out on Mondays, when the LP feed email arrives (about 6:30 AM ET).</p>
             {msg && (
               <p className={`text-xs ${msg.kind === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600"}`}>{msg.text}</p>
             )}

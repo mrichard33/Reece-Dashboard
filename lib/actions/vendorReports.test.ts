@@ -8,7 +8,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const getAccessContext = vi.fn();
 const update = vi.fn();
 const insert = vi.fn();
-let current: { id: number; dry_run: boolean; is_active: boolean; notes: string | null } | null = null;
+const del = vi.fn();
+let current: { id: number; vendor_name?: string; dry_run: boolean; is_active: boolean; notes: string | null } | null = null;
 
 vi.mock("@/lib/auth", () => ({ getAccessContext: () => getAccessContext() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -18,6 +19,7 @@ vi.mock("@/lib/supabase/lp", () => ({
       select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: current, error: null }) }) }),
       update: (patch: unknown) => ({ eq: async () => { update(patch); return { error: null }; } }),
       insert: async (row: unknown) => { insert(row); return { error: null }; },
+      delete: () => ({ eq: async (col: string, id: number) => { del(col, id); return { error: null }; } }),
     }),
   }),
 }));
@@ -37,7 +39,8 @@ beforeEach(() => {
   getAccessContext.mockReset();
   update.mockReset();
   insert.mockReset();
-  current = { id: 1, dry_run: true, is_active: true, notes: "seed" };
+  del.mockReset();
+  current = { id: 1, vendor_name: "Modernize", dry_run: true, is_active: true, notes: "seed" };
 });
 
 describe("saveVendorReport", () => {
@@ -90,6 +93,46 @@ describe("saveVendorReport", () => {
     expect(res).toMatchObject({ ok: false, code: "invalid" });
     expect(res.error).toContain("nope");
     expect(update).not.toHaveBeenCalled();
+  });
+  it("leaves the sub-sources alone when the field is not sent", async () => {
+    getAccessContext.mockResolvedValue(ctx());
+    const { saveVendorReport } = await subject();
+    expect(await saveVendorReport(base)).toEqual({ ok: true });
+    expect(update.mock.calls[0]?.[0]).not.toHaveProperty("lp_sub_sources");
+  });
+  it("saves an edited sub-source list, parsed like a new vendor's", async () => {
+    getAccessContext.mockResolvedValue(ctx());
+    const { saveVendorReport } = await subject();
+    expect(await saveVendorReport({ ...base, lp_sub_sources: " Bing PPC,\nGoogle, bing ppc" })).toEqual({ ok: true });
+    expect(update.mock.calls[0]?.[0]).toMatchObject({ lp_sub_sources: ["Bing PPC", "Google"] });
+  });
+  it("refuses to empty the sub-source list: a vendor with none matches no lead", async () => {
+    getAccessContext.mockResolvedValue(ctx());
+    const { saveVendorReport } = await subject();
+    expect(await saveVendorReport({ ...base, lp_sub_sources: " , " })).toMatchObject({ ok: false, code: "invalid" });
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteVendorReport", () => {
+  it("refuses a non-operator and deletes nothing", async () => {
+    getAccessContext.mockResolvedValue(ctx({ role: "team" }));
+    const { deleteVendorReport } = await subject();
+    expect(await deleteVendorReport({ id: 1 })).toMatchObject({ ok: false, code: "not_operator" });
+    expect(del).not.toHaveBeenCalled();
+  });
+  it("lets an operator delete a vendor by id", async () => {
+    getAccessContext.mockResolvedValue(ctx());
+    const { deleteVendorReport } = await subject();
+    expect(await deleteVendorReport({ id: 1 })).toEqual({ ok: true });
+    expect(del).toHaveBeenCalledWith("id", 1);
+  });
+  it("says so when the vendor is already gone", async () => {
+    getAccessContext.mockResolvedValue(ctx());
+    current = null;
+    const { deleteVendorReport } = await subject();
+    expect(await deleteVendorReport({ id: 7 })).toMatchObject({ ok: false, code: "invalid" });
+    expect(del).not.toHaveBeenCalled();
   });
 });
 
