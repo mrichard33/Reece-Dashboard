@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { addVendorReport, deleteVendorReport, saveVendorReport } from "@/lib/actions/vendorReports";
 import {
+  FREQUENCY_OPTIONS,
+  type ReportFrequency,
   VDR_MIGRATION,
   deliveryLabel,
   formatEmails,
@@ -20,10 +22,10 @@ import {
 
 /**
  * /vendor-reports (2026-10-14): one card per lead vendor with the fields a
- * person actually changes (emails, LP sub-sources, rev share, on/off), a Save
- * button and a Delete button (Mark, 2026-10-14). Dry run is shown to everyone
- * and switchable by the admin (Mark) only, since it is the one switch that
- * makes a real vendor receive an email.
+ * person actually changes (emails, LP sub-sources, rev share, frequency,
+ * on/off), a Save button and a Delete button (Mark, 2026-10-14). Dry run is
+ * retired from the page (Mark, 2026-10-14: "we will not use it"): the only
+ * switch is Turn on / Turn off, and no status label sits in the card corner.
  * Phone-first: every row wraps, inputs are 16px on phones, no table.
  */
 
@@ -32,7 +34,7 @@ const inputCls =
 const labelCls = "block text-xs font-medium text-slate-600 dark:text-slate-300";
 const checkCls = "h-4 w-4 rounded border-slate-300 text-navy-700 focus:ring-navy-600 dark:border-slate-600 dark:bg-slate-800";
 
-export function VendorReportsView({ data, isAdmin }: { data: VendorReportsPageData; isAdmin: boolean }) {
+export function VendorReportsView({ data }: { data: VendorReportsPageData }) {
   if (data.needsMigration) {
     return (
       <Card>
@@ -58,7 +60,7 @@ export function VendorReportsView({ data, isAdmin }: { data: VendorReportsPageDa
           Sending ({active.length})
         </h2>
         {active.length === 0 && <p className="text-sm text-slate-500">No vendor is switched on.</p>}
-        {active.map((v) => <VendorCard key={v.id} vendor={v} isAdmin={isAdmin} />)}
+        {active.map((v) => <VendorCard key={v.id} vendor={v} />)}
       </section>
       {inactive.length > 0 && (
         <section className="space-y-3">
@@ -68,7 +70,7 @@ export function VendorReportsView({ data, isAdmin }: { data: VendorReportsPageDa
           <p className="text-xs text-slate-500">
             These rows send nothing. They exist so their LP sub-sources are not listed as &quot;no vendor&quot; in Mark&apos;s weekly summary.
           </p>
-          {inactive.map((v) => <VendorCard key={v.id} vendor={v} isAdmin={isAdmin} />)}
+          {inactive.map((v) => <VendorCard key={v.id} vendor={v} />)}
         </section>
       )}
       <AddVendorCard />
@@ -76,22 +78,24 @@ export function VendorReportsView({ data, isAdmin }: { data: VendorReportsPageDa
   );
 }
 
-function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean }) {
+function VendorCard({ vendor }: { vendor: VendorItem }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [to, setTo] = useState(formatEmails(vendor.recipients_to));
   const [cc, setCc] = useState(formatEmails(vendor.recipients_cc));
   const [subs, setSubs] = useState(formatSubSources(vendor.lp_sub_sources));
   const [revShare, setRevShare] = useState(vendor.rev_share);
+  const [frequency, setFrequency] = useState<ReportFrequency>(vendor.frequency);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const dirty =
     to !== formatEmails(vendor.recipients_to) ||
     cc !== formatEmails(vendor.recipients_cc) ||
     subs !== formatSubSources(vendor.lp_sub_sources) ||
-    revShare !== vendor.rev_share;
+    revShare !== vendor.rev_share ||
+    frequency !== vendor.frequency;
 
-  function save(over: { is_active?: boolean; dry_run?: boolean } = {}) {
+  function save(over: { is_active?: boolean } = {}) {
     setMsg(null);
     startTransition(async () => {
       const res = await saveVendorReport({
@@ -100,12 +104,12 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
         recipients_cc: cc,
         lp_sub_sources: subs,
         rev_share: revShare,
+        frequency,
         is_active: over.is_active ?? vendor.is_active,
-        dry_run: over.dry_run ?? vendor.dry_run,
       });
       if (!res.ok) setMsg({ kind: "err", text: res.error ?? "Save failed." });
       else {
-        setMsg({ kind: "ok", text: "Saved. The next feed email uses these settings." });
+        setMsg({ kind: "ok", text: "Saved. The next LP feed email uses these settings." });
         router.refresh();
       }
     });
@@ -125,19 +129,10 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
   function toggleActive() {
     const next = !vendor.is_active;
     const q = next
-      ? `Turn ON reports for "${vendor.vendor_name}"? ${vendor.dry_run ? "It is in dry run, so the report goes to Mark only." : `It is LIVE: the report goes to ${vendor.recipients_to.join(", ") || "nobody (no email on file)"}.`}`
+      ? `Turn ON reports for "${vendor.vendor_name}"? The report goes to ${to.trim() || "nobody (add a To email first)"} with Mark in BCC, ${frequency === "monthly" ? "on the 1st of each month" : "every Monday"}.`
       : `Turn OFF reports for "${vendor.vendor_name}"? Nothing will be sent until it is turned on again.`;
     if (!window.confirm(q)) return;
     save({ is_active: next });
-  }
-
-  function toggleDryRun() {
-    const next = !vendor.dry_run;
-    const q = next
-      ? `Put "${vendor.vendor_name}" back in dry run? Reports go to Mark only.`
-      : `Take "${vendor.vendor_name}" LIVE? The next report goes to ${to.trim() || "nobody (add a To email first)"} with Mark in BCC. If this vendor already got a dry-run report this week, it WILL get the live one too.`;
-    if (!window.confirm(q)) return;
-    save({ dry_run: next });
   }
 
   return (
@@ -146,14 +141,10 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
         <div className="min-w-0">
           <CardTitle>{vendor.vendor_name}</CardTitle>
           <p className="mt-0.5 break-words text-[11px] text-slate-400">
-            {scheduleLabel(vendor)} · last {vendor.lookback_days} days
+            {scheduleLabel({ ...vendor, frequency })} · last {vendor.lookback_days} days
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={vendor.is_active ? "emerald" : "slate"} dot>{vendor.is_active ? "On" : "Off"}</Badge>
-          <Badge tone={vendor.dry_run ? "amber" : "navy"}>{vendor.dry_run ? "Dry run" : "Live"}</Badge>
-          {vendor.rev_share && <Badge tone="sky">Rev share</Badge>}
-        </div>
+        {vendor.rev_share && <Badge tone="sky">Rev share</Badge>}
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -182,6 +173,15 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
               value={cc}
               onChange={(e) => setCc(e.target.value)}
             />
+          </div>
+          <div>
+            <label htmlFor={`freq-${vendor.id}`} className={labelCls}>Report frequency</label>
+            <select id={`freq-${vendor.id}`} className={inputCls} value={frequency} onChange={(e) => setFrequency(e.target.value as ReportFrequency)}>
+              {FREQUENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Goes out with the first LP feed email on or after {frequency === "monthly" ? "the 1st. Switching to monthly after the 1st sends with the next feed email, unless a report already went out this month." : "Monday."}
+            </p>
           </div>
           <div className="sm:col-span-2">
             <label htmlFor={`subs-${vendor.id}`} className={labelCls}>LP sub-sources (exactly as LP spells them, one per line or comma-separated)</label>
@@ -219,13 +219,6 @@ function VendorCard({ vendor, isAdmin }: { vendor: VendorItem; isAdmin: boolean 
           <Button size="sm" variant={vendor.is_active ? "danger" : "secondary"} disabled={pending} onClick={toggleActive}>
             {vendor.is_active ? "Turn off" : "Turn on"}
           </Button>
-          {isAdmin ? (
-            <Button size="sm" variant="secondary" disabled={pending} onClick={toggleDryRun}>
-              {vendor.dry_run ? "Go live" : "Back to dry run"}
-            </Button>
-          ) : (
-            <span className="text-[11px] text-slate-400">Dry run on/off: Mark only</span>
-          )}
           <Button size="sm" variant="secondary" disabled={pending} onClick={remove} aria-label={`Delete ${vendor.vendor_name}`}>
             <Trash2 className="h-3.5 w-3.5" /> Delete
           </Button>
@@ -243,17 +236,18 @@ function AddVendorCard() {
   const [subs, setSubs] = useState("");
   const [to, setTo] = useState("");
   const [revShare, setRevShare] = useState(false);
+  const [frequency, setFrequency] = useState<ReportFrequency>("weekly");
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
     startTransition(async () => {
-      const res = await addVendorReport({ vendor_name: name, lp_sub_sources: subs, recipients_to: to, rev_share: revShare, is_active: true });
+      const res = await addVendorReport({ vendor_name: name, lp_sub_sources: subs, recipients_to: to, rev_share: revShare, frequency, is_active: false });
       if (!res.ok) setMsg({ kind: "err", text: res.error ?? "Could not add the vendor." });
       else {
-        setMsg({ kind: "ok", text: `Added "${name.trim()}" in dry run.` });
-        setName(""); setSubs(""); setTo(""); setRevShare(false);
+        setMsg({ kind: "ok", text: `Added "${name.trim()}". It is off: press Turn on when the email is right.` });
+        setName(""); setSubs(""); setTo(""); setRevShare(false); setFrequency("weekly");
         router.refresh();
       }
     });
@@ -279,16 +273,22 @@ function AddVendorCard() {
                 <label htmlFor="nv-subs" className={labelCls}>LP sub-source(s), exactly as LP spells them</label>
                 <input id="nv-subs" className={inputCls} placeholder="Porch101, Porch101 Sticky" value={subs} onChange={(e) => setSubs(e.target.value)} required />
               </div>
-              <div className="sm:col-span-2">
+              <div>
                 <label htmlFor="nv-to" className={labelCls}>Send to (vendor email)</label>
                 <input id="nv-to" className={inputCls} inputMode="email" placeholder="name@vendor.com" value={to} onChange={(e) => setTo(e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="nv-freq" className={labelCls}>Report frequency</label>
+                <select id="nv-freq" className={inputCls} value={frequency} onChange={(e) => setFrequency(e.target.value as ReportFrequency)}>
+                  {FREQUENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
               <input type="checkbox" className={checkCls} checked={revShare} onChange={(e) => setRevShare(e.target.checked)} />
               Rev-share vendor
             </label>
-            <p className="text-xs text-slate-500">New vendors start switched on and in dry run (report to Mark only). Reports go out on Mondays, when the LP feed email arrives (about 6:30 AM ET).</p>
+            <p className="text-xs text-slate-500">New vendors start switched off. Check the email, then press Turn on. Reports go out with the LP feed email (about 6:30 AM ET): every Monday, or the 1st of each month.</p>
             {msg && (
               <p className={`text-xs ${msg.kind === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600"}`}>{msg.text}</p>
             )}

@@ -38,7 +38,8 @@ export async function getVendorReportsPageData(): Promise<VendorReportsPageData>
     if (notThere) return { ...empty, needsMigration: true };
     return { ...empty, errors: { config: error.message } };
   }
-  const config = (data ?? []) as VendorConfigRow[];
+  // `frequency` arrived with LP-MCP migration 20261014233000; an older database reads as weekly.
+  const config = ((data ?? []) as VendorConfigRow[]).map((r): VendorConfigRow => ({ ...r, frequency: r.frequency === "monthly" ? "monthly" : "weekly" }));
 
   // The newest rows are enough for "last run" per vendor: one pass writes one
   // row per vendor, at most 3 passes a week, so 200 rows cover weeks.
