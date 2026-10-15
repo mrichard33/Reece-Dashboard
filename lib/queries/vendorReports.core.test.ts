@@ -19,7 +19,7 @@ function vendor(over: Partial<VendorConfigRow>): VendorConfigRow {
   return {
     id: 1, vendor_name: "Modernize", lp_sub_sources: ["Modernize"], recipients_to: [], recipients_cc: [],
     send_dow: 1, send_time: "09:00:00", timezone: "America/New_York", lookback_days: 90,
-    is_active: true, dry_run: true, rev_share: false, notes: null, updated_at: "2026-10-13T00:00:00Z", ...over,
+    is_active: true, dry_run: true, rev_share: false, frequency: "weekly", notes: null, updated_at: "2026-10-13T00:00:00Z", ...over,
   };
 }
 function log(over: Partial<SendLogRow>): SendLogRow {
@@ -104,11 +104,12 @@ describe("labels", () => {
   });
   it("says where the next email goes", () => {
     expect(deliveryLabel(vendor({ is_active: false }))).toMatch(/^Off/);
-    expect(deliveryLabel(vendor({}))).toMatch(/Mark only/);
-    expect(deliveryLabel(vendor({ dry_run: false }))).toMatch(/no_recipients/);
-    expect(deliveryLabel(vendor({ dry_run: false, recipients_to: ["v@x.com"] }))).toBe("Live: sent to v@x.com with Mark in BCC.");
+    // Dry run is retired from the page (Mark, 2026-10-14): a vendor that is on sends to its emails.
+    expect(deliveryLabel(vendor({}))).toMatch(/no_recipients/);
+    expect(deliveryLabel(vendor({ recipients_to: ["v@x.com"] }))).toBe("Sent to v@x.com with Mark in BCC.");
     // The clock time is not shown: send_time is only "due from", the feed email is what sends (2026-10-14).
     expect(scheduleLabel(vendor({}))).toBe("Mondays, when the LP feed arrives");
     expect(scheduleLabel(vendor({ send_time: "00:00:00" }))).toBe("Mondays, when the LP feed arrives");
+    expect(scheduleLabel(vendor({ frequency: "monthly" }))).toBe("1st of each month, when the LP feed arrives");
   });
 });

@@ -20,9 +20,20 @@ export type VendorConfigRow = {
   is_active: boolean;
   dry_run: boolean;
   rev_share: boolean;
+  /** weekly = the first LP feed email on or after Monday; monthly = on or after the 1st (Mark, 2026-10-14). */
+  frequency: ReportFrequency;
   notes: string | null;
   updated_at: string;
 };
+
+export type ReportFrequency = "weekly" | "monthly";
+export const FREQUENCY_OPTIONS: { value: ReportFrequency; label: string }[] = [
+  { value: "weekly", label: "Weekly (every Monday)" },
+  { value: "monthly", label: "Monthly (1st of the month)" },
+];
+export function isFrequency(v: unknown): v is ReportFrequency {
+  return v === "weekly" || v === "monthly";
+}
 
 export type SendLogRow = {
   id: number;
@@ -58,12 +69,14 @@ export const VDR_MIGRATION = "mrichard33/n8n sql/vdr_vendor_disposition_report.s
 const DOW = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 /**
- * "Mondays, when the LP feed arrives". The workflow runs when the daily LP feed
- * email lands (one Gmail trigger, no timer, 2026-10-14); send_time is only the
- * earliest point in the week a vendor counts as due (00:00), so the clock time
- * is not shown: it read as "sends at midnight" and it does not.
+ * "Mondays, when the LP feed arrives" or "1st of each month, when the LP feed
+ * arrives". The workflow runs when the daily LP feed email lands (one Gmail
+ * trigger, no timer, 2026-10-14); send_time is only the earliest point in the
+ * period a vendor counts as due (00:00), so the clock time is not shown: it
+ * read as "sends at midnight" and it does not.
  */
-export function scheduleLabel(r: Pick<VendorConfigRow, "send_dow" | "send_time" | "timezone">): string {
+export function scheduleLabel(r: Pick<VendorConfigRow, "send_dow" | "send_time" | "timezone"> & { frequency?: ReportFrequency }): string {
+  if (r.frequency === "monthly") return "1st of each month, when the LP feed arrives";
   const day = DOW[r.send_dow] ?? `day ${r.send_dow}`;
   return `${day}s, when the LP feed arrives`;
 }
@@ -176,10 +189,13 @@ export function lastRunLabel(run: VendorLastRun | null): string {
   return parts.join(" · ");
 }
 
-/** What a vendor's emails will do on the next run, in plain words. */
-export function deliveryLabel(r: Pick<VendorConfigRow, "is_active" | "dry_run" | "recipients_to">): string {
+/**
+ * What a vendor's emails will do on the next run, in plain words. Dry run is
+ * retired from the page (Mark, 2026-10-14: "we will not use it"): a vendor that
+ * is on sends to its vendor emails.
+ */
+export function deliveryLabel(r: Pick<VendorConfigRow, "is_active" | "recipients_to">): string {
   if (!r.is_active) return "Off: no report is sent.";
-  if (r.dry_run) return "Dry run: the report goes to Mark only, marked [DRY RUN].";
-  if (r.recipients_to.length === 0) return "Live but no email on file: the run will block with no_recipients.";
-  return `Live: sent to ${r.recipients_to.join(", ")} with Mark in BCC.`;
+  if (r.recipients_to.length === 0) return "On but no email on file: the run will block with no_recipients.";
+  return `Sent to ${r.recipients_to.join(", ")} with Mark in BCC.`;
 }

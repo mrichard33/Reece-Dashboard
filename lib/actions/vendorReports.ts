@@ -3,20 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { lpService } from "@/lib/supabase/lp";
 import { getAccessContext } from "@/lib/auth";
-import { parseEmails, parseSubSources } from "@/lib/queries/vendorReports.core";
+import { isFrequency, parseEmails, parseSubSources } from "@/lib/queries/vendorReports.core";
 
 export type ActionResult = { ok: boolean; error?: string; code?: "not_operator" | "not_admin" | "invalid" | "db" };
 
 /**
  * Edits to `vdr_vendor_config` (2026-10-14). The n8n "06 VDR" workflow reads
- * the table every hour, so a save here changes the next run.
+ * the table when the LP feed email lands, so a save here changes the next run.
  *
- * Who may do what (the handoff's rule: only Mark takes a vendor live):
- *   - any operator: emails, CC, rev share, on/off, add a vendor
- *   - admin (Mark) only: switching dry run OFF or ON. Dry run is the one
- *     switch that decides whether a real vendor receives an email, so a
- *     non-admin save that tries to change it is refused as a whole.
- * Hiding the button is a courtesy; this check is the gate.
+ * Any operator may edit emails, CC, sub-sources, rev share, frequency and
+ * on/off, and add or delete a vendor. Dry run is RETIRED from this page (Mark,
+ * 2026-10-14: "we will not use it"): every save writes dry_run=false, so a
+ * vendor that is on sends to its vendor emails. The column stays in the table
+ * for the workflow's history.
  */
 
 type SaveInput = {
@@ -25,9 +24,10 @@ type SaveInput = {
   recipients_cc: string;
   rev_share: boolean;
   is_active: boolean;
-  dry_run: boolean;
   /** LP sub-sources as typed (comma or new line). Omitted = unchanged. Mark, 2026-10-14: editable on the page. */
   lp_sub_sources?: string;
+  /** weekly (Mondays) or monthly (the 1st). Omitted = unchanged. Mark, 2026-10-14. */
+  frequency?: string;
 };
 
 export async function saveVendorReport(input: SaveInput): Promise<ActionResult> {
@@ -43,6 +43,7 @@ export async function saveVendorReport(input: SaveInput): Promise<ActionResult> 
   // A vendor with no sub-source would match no lead: the run would say "no leads" every week and nobody would notice.
   const subs = input.lp_sub_sources === undefined ? null : parseSubSources(input.lp_sub_sources);
   if (subs && subs.length === 0) return { ok: false, code: "invalid", error: "At least one LP sub-source is required (LP's exact Sub-Source name)." };
+  if (input.frequency !== undefined && !isFrequency(input.frequency)) return { ok: false, code: "invalid", error: "Frequency must be weekly or monthly." };
 
   const sb = lpService();
   const { data: cur, error: readErr } = await sb
@@ -53,12 +54,8 @@ export async function saveVendorReport(input: SaveInput): Promise<ActionResult> 
   if (readErr) return { ok: false, code: "db", error: readErr.message };
   if (!cur) return { ok: false, code: "invalid", error: "Vendor not found." };
 
-  const dryRun = Boolean(input.dry_run);
-  if (dryRun !== cur.dry_run && !ctx.isAdmin) {
-    return { ok: false, code: "not_admin", error: "Only Mark can switch dry run on or off." };
-  }
-  if (!dryRun && Boolean(input.is_active) && to.emails.length === 0) {
-    return { ok: false, code: "invalid", error: "A live vendor needs at least one To email, or its run blocks." };
+  if (Boolean(input.is_active) && to.emails.length === 0) {
+    return { ok: false, code: "invalid", error: "A vendor that is on needs at least one To email, or its run blocks. Add the email first." };
   }
 
   const stamp = `${ctx.executive?.name ?? ctx.email} ${new Date().toISOString().slice(0, 10)}`;
@@ -69,10 +66,11 @@ export async function saveVendorReport(input: SaveInput): Promise<ActionResult> 
       recipients_cc: cc.emails,
       rev_share: Boolean(input.rev_share),
       is_active: Boolean(input.is_active),
-      dry_run: dryRun,
+      dry_run: false,
       ...(subs ? { lp_sub_sources: subs } : {}),
-      // A dry-run flip is recorded on the row itself (who, when), after any existing note.
-      ...(dryRun !== cur.dry_run ? { notes: [cur.notes, `dry_run=${dryRun} by ${stamp}`].filter(Boolean).join(" | ") } : {}),
+      ...(input.frequency !== undefined ? { frequency: input.frequency } : {}),
+      // A row that was still in dry run records who retired it, after any existing note.
+      ...(cur.dry_run ? { notes: [cur.notes, `dry_run=false by ${stamp} (dry run retired)`].filter(Boolean).join(" | ") } : {}),
     })
     .eq("id", id);
   if (error) return { ok: false, code: "db", error: error.message };
@@ -116,9 +114,14 @@ type AddInput = {
   recipients_to: string;
   rev_share: boolean;
   is_active: boolean;
+  /** weekly (default) or monthly. */
+  frequency?: string;
 };
 
-/** New vendors always start in dry run (reports go to Mark only). */
+/**
+ * New vendors start switched OFF: a person adds the email, then turns it on.
+ * (They used to start in dry run; dry run is retired, Mark 2026-10-14.)
+ */
 export async function addVendorReport(input: AddInput): Promise<ActionResult> {
   const ctx = await getAccessContext();
   if (!ctx || ctx.role !== "operator") return { ok: false, code: "not_operator", error: "Operators only." };
@@ -129,6 +132,9 @@ export async function addVendorReport(input: AddInput): Promise<ActionResult> {
   if (subs.length === 0) return { ok: false, code: "invalid", error: "At least one LP sub-source is required (LP's exact Sub-Source name)." };
   const to = parseEmails(input.recipients_to);
   if (to.invalid.length) return { ok: false, code: "invalid", error: `Not an email address: ${to.invalid.join(", ")}` };
+  const frequency = input.frequency === undefined ? "weekly" : input.frequency;
+  if (!isFrequency(frequency)) return { ok: false, code: "invalid", error: "Frequency must be weekly or monthly." };
+  if (Boolean(input.is_active) && to.emails.length === 0) return { ok: false, code: "invalid", error: "A vendor that is on needs at least one To email." };
 
   const { error } = await lpService().from("vdr_vendor_config").insert({
     vendor_name: name,
@@ -137,7 +143,8 @@ export async function addVendorReport(input: AddInput): Promise<ActionResult> {
     recipients_cc: [],
     rev_share: Boolean(input.rev_share),
     is_active: Boolean(input.is_active),
-    dry_run: true,
+    dry_run: false,
+    frequency,
     notes: `Added in the dashboard by ${ctx.executive?.name ?? ctx.email} ${new Date().toISOString().slice(0, 10)}`,
   });
   if (error) {
