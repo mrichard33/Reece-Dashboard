@@ -13,6 +13,8 @@ export type VendorConfigRow = {
   lp_sub_sources: string[];
   recipients_to: string[];
   recipients_cc: string[];
+  /** Hidden copies (Mark, 2026-10-15). ALWAYS_BCC is added by the workflow whatever this holds. */
+  recipients_bcc: string[];
   send_dow: number;
   send_time: string;
   timezone: string;
@@ -194,8 +196,19 @@ export function lastRunLabel(run: VendorLastRun | null): string {
  * retired from the page (Mark, 2026-10-14: "we will not use it"): a vendor that
  * is on sends to its vendor emails.
  */
-export function deliveryLabel(r: Pick<VendorConfigRow, "is_active" | "recipients_to">): string {
+export function deliveryLabel(r: Pick<VendorConfigRow, "is_active" | "recipients_to"> & { recipients_bcc?: string[] }): string {
   if (!r.is_active) return "Off: no report is sent.";
   if (r.recipients_to.length === 0) return "On but no email on file: the run will block with no_recipients.";
-  return `Sent to ${r.recipients_to.join(", ")} with Mark in BCC.`;
+  return `Sent to ${r.recipients_to.join(", ")}. Hidden copy: ${effectiveBcc(r.recipients_bcc).join(", ")}.`;
+}
+
+/** The workflow always BCCs Mark; the page shows the real list (Mark, 2026-10-15: "seen who it is being sent to"). */
+export const ALWAYS_BCC = "m.richard@reecewindows.com";
+export function effectiveBcc(list: string[] | null | undefined): string[] {
+  const out = [ALWAYS_BCC];
+  for (const e of list ?? []) {
+    const v = String(e ?? "").trim().toLowerCase();
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out;
 }

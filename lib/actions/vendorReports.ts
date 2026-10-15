@@ -22,6 +22,8 @@ type SaveInput = {
   id: number;
   recipients_to: string; // as typed; parsed here
   recipients_cc: string;
+  /** Hidden copies as typed. Omitted = unchanged. Mark always gets one whatever this holds (the workflow adds him). */
+  recipients_bcc?: string;
   rev_share: boolean;
   is_active: boolean;
   /** LP sub-sources as typed (comma or new line). Omitted = unchanged. Mark, 2026-10-14: editable on the page. */
@@ -38,7 +40,8 @@ export async function saveVendorReport(input: SaveInput): Promise<ActionResult> 
 
   const to = parseEmails(input.recipients_to);
   const cc = parseEmails(input.recipients_cc);
-  const bad = [...to.invalid, ...cc.invalid];
+  const bcc = input.recipients_bcc === undefined ? null : parseEmails(input.recipients_bcc);
+  const bad = [...to.invalid, ...cc.invalid, ...(bcc ? bcc.invalid : [])];
   if (bad.length) return { ok: false, code: "invalid", error: `Not an email address: ${bad.join(", ")}` };
   // A vendor with no sub-source would match no lead: the run would say "no leads" every week and nobody would notice.
   const subs = input.lp_sub_sources === undefined ? null : parseSubSources(input.lp_sub_sources);
@@ -64,6 +67,7 @@ export async function saveVendorReport(input: SaveInput): Promise<ActionResult> 
     .update({
       recipients_to: to.emails,
       recipients_cc: cc.emails,
+      ...(bcc ? { recipients_bcc: bcc.emails } : {}),
       rev_share: Boolean(input.rev_share),
       is_active: Boolean(input.is_active),
       dry_run: false,
@@ -141,6 +145,7 @@ export async function addVendorReport(input: AddInput): Promise<ActionResult> {
     lp_sub_sources: subs,
     recipients_to: to.emails,
     recipients_cc: [],
+    recipients_bcc: [],
     rev_share: Boolean(input.rev_share),
     is_active: Boolean(input.is_active),
     dry_run: false,

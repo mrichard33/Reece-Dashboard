@@ -17,7 +17,7 @@ import {
 
 function vendor(over: Partial<VendorConfigRow>): VendorConfigRow {
   return {
-    id: 1, vendor_name: "Modernize", lp_sub_sources: ["Modernize"], recipients_to: [], recipients_cc: [],
+    id: 1, vendor_name: "Modernize", lp_sub_sources: ["Modernize"], recipients_to: [], recipients_cc: [], recipients_bcc: [],
     send_dow: 1, send_time: "09:00:00", timezone: "America/New_York", lookback_days: 90,
     is_active: true, dry_run: true, rev_share: false, frequency: "weekly", notes: null, updated_at: "2026-10-13T00:00:00Z", ...over,
   };
@@ -106,7 +106,10 @@ describe("labels", () => {
     expect(deliveryLabel(vendor({ is_active: false }))).toMatch(/^Off/);
     // Dry run is retired from the page (Mark, 2026-10-14): a vendor that is on sends to its emails.
     expect(deliveryLabel(vendor({}))).toMatch(/no_recipients/);
-    expect(deliveryLabel(vendor({ recipients_to: ["v@x.com"] }))).toBe("Sent to v@x.com with Mark in BCC.");
+    expect(deliveryLabel(vendor({ recipients_to: ["v@x.com"] }))).toBe("Sent to v@x.com. Hidden copy: m.richard@reecewindows.com.");
+    // Mark is always first and never doubled; the page shows the real hidden-copy list (2026-10-15).
+    expect(deliveryLabel(vendor({ recipients_to: ["v@x.com"], recipients_bcc: ["B.Codman@reecewindows.com", "m.richard@reecewindows.com"] })))
+      .toBe("Sent to v@x.com. Hidden copy: m.richard@reecewindows.com, b.codman@reecewindows.com.");
     // The clock time is not shown: send_time is only "due from", the feed email is what sends (2026-10-14).
     expect(scheduleLabel(vendor({}))).toBe("Mondays, when the LP feed arrives");
     expect(scheduleLabel(vendor({ send_time: "00:00:00" }))).toBe("Mondays, when the LP feed arrives");

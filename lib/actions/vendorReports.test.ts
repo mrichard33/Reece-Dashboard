@@ -85,6 +85,16 @@ describe("saveVendorReport", () => {
     // Off with no email is fine: nothing is sent.
     expect(await saveVendorReport({ ...base, recipients_to: "", is_active: false })).toEqual({ ok: true });
   });
+  it("saves the hidden-copy list and names a bad BCC address", async () => {
+    getAccessContext.mockResolvedValue(ctx());
+    const { saveVendorReport } = await subject();
+    expect(await saveVendorReport({ ...base, recipients_bcc: "B.Codman@reecewindows.com, m.richard@reecewindows.com" })).toEqual({ ok: true });
+    expect(update.mock.calls[0]?.[0]).toMatchObject({ recipients_bcc: ["b.codman@reecewindows.com", "m.richard@reecewindows.com"] });
+    expect(await saveVendorReport({ ...base, recipients_bcc: "nope" })).toMatchObject({ ok: false, code: "invalid" });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(await saveVendorReport(base)).toEqual({ ok: true });
+    expect(update.mock.calls[1]?.[0]).not.toHaveProperty("recipients_bcc");
+  });
   it("saves the report frequency and refuses anything but weekly or monthly", async () => {
     getAccessContext.mockResolvedValue(ctx());
     const { saveVendorReport } = await subject();
