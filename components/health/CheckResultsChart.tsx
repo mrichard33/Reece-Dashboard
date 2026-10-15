@@ -7,8 +7,9 @@ import { etShort } from "@/lib/utils";
 const PRIMARY = "var(--chart-primary)";
 
 /**
- * The last 100 results of one check, with its warn and fail lines from the
- * check's config (thresholds live in the database, not in the page).
+ * The last 100 results of one check, with its "turns yellow" and "turns red"
+ * lines from the check's config (thresholds live in the database, not in the
+ * page). Axis labels are Eastern, 12-hour ("Oct 15, 7:30 PM": etShort).
  */
 export function CheckResultsChart({
   results,
@@ -31,9 +32,9 @@ export function CheckResultsChart({
         <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
         <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} interval="preserveStartEnd" minTickGap={32} />
         <YAxis tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={40} />
-        <Tooltip formatter={(v) => [`${v}${unit && unit !== "count" ? ` ${unit}` : ""}`, "value"]} />
-        {warn !== null && <ReferenceLine y={warn} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "warn", fontSize: 10, fill: "#b45309", position: "insideTopRight" }} />}
-        {fail !== null && <ReferenceLine y={fail} stroke="#e11d48" strokeDasharray="4 4" label={{ value: "fail", fontSize: 10, fill: "#be123c", position: "insideTopRight" }} />}
+        <Tooltip formatter={(v) => [`${v}${unit && unit !== "count" ? ` ${unit}` : ""}`, "Result"]} />
+        {warn !== null && <ReferenceLine y={warn} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "yellow", fontSize: 10, fill: "#b45309", position: "insideTopRight" }} />}
+        {fail !== null && <ReferenceLine y={fail} stroke="#e11d48" strokeDasharray="4 4" label={{ value: "red", fontSize: 10, fill: "#be123c", position: "insideTopRight" }} />}
         <Line type="monotone" dataKey="value" stroke={PRIMARY} strokeWidth={2} dot={false} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>

@@ -17,12 +17,12 @@ describe("shapeSystemStrip", () => {
     expect(five9.color).toBe("grey");
     expect(five9.note).toBe("no checks");
   });
-  it("shadow only → hollow; live wins when present", () => {
+  it("shadow only → hollow (no \"shadow\" in the note); live wins when present", () => {
     const chips = shapeSystemStrip([row("five9", "green", 0, 0, 3)], [row("five9", "red", 1, 0, 2), row("ghl", "yellow", 0, 2, 1)]);
     const five9 = chips.find((c) => c.id === "five9")!;
     const ghl = chips.find((c) => c.id === "ghl")!;
     expect(five9).toMatchObject({ color: "green", hollow: false, note: "all green" });
-    expect(ghl).toMatchObject({ color: "yellow", hollow: true, note: "2 yellow (shadow)" });
+    expect(ghl).toMatchObject({ color: "yellow", hollow: true, note: "2 yellow" });
   });
   it("counts and dot classes", () => {
     expect(countsNote(3, 2, 0)).toBe("3 red, 2 yellow");
