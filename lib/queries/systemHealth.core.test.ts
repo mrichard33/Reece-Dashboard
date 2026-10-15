@@ -4,7 +4,7 @@
  * (grey where nothing reported), thresholds come from the check's config.
  */
 import { describe, expect, it } from "vitest";
-import { buildTimelines, leadLeaksLink, resultColor, shapeSystems, staleNote, thresholdLines, type CheckLatestRaw } from "./systemHealth.core";
+import { buildTimelines, leadLeaksLink, resultColor, shapeSystems, staleNote, thresholdLines, timelineProblems, type CheckLatestRaw } from "./systemHealth.core";
 
 const NOW = Date.parse("2026-10-15T18:00:00Z");
 function check(over: Partial<CheckLatestRaw>): CheckLatestRaw {
@@ -64,6 +64,29 @@ describe("timeline", () => {
     expect(segs[44]?.color).toBe("red");    // P1 fail at 16:10
     expect(segs[42]?.color).toBe("grey");   // skipped only
     expect(resultColor("unknown", "P1")).toBe("yellow");
+  });
+});
+
+describe("timeline: what the bar shows (2026-10-15)", () => {
+  const meta = new Map([
+    ["agent.executor_heartbeat", { system: "ai_agents", severity: "P1", label: "Automation worker running" }],
+    ["syn.chatbot_reply", { system: "ai_agents", severity: "P2", label: "Chatbot test run" }],
+  ]);
+  const results = [
+    { check_id: "syn.chatbot_reply", status: "unknown", observed_at: "2026-10-15T15:54:00Z", summary: "Coming later: test runs are not built yet." },
+    { check_id: "agent.executor_heartbeat", status: "fail", observed_at: "2026-10-15T04:05:00Z", summary: "last executor run 20 min ago with actions pending" },
+    { check_id: "agent.executor_heartbeat", status: "warn", observed_at: "2026-10-15T15:18:00Z", summary: "last executor run 4 min ago with actions pending" },
+    { check_id: "agent.executor_heartbeat", status: "pass", observed_at: "2026-10-15T17:50:00Z", summary: "The automation worker is running." },
+  ];
+  it("a Coming later check never paints the bar yellow", () => {
+    const segs = buildTimelines(results, meta, NOW).ai_agents ?? [];
+    expect(segs.some((s) => s.color === "yellow" && s.startMs <= Date.parse("2026-10-15T15:54:00Z") && s.endMs > Date.parse("2026-10-15T15:54:00Z"))).toBe(false);
+  });
+  it("names each check that was red or yellow, worst first, with when", () => {
+    const p = timelineProblems(results, meta, NOW).ai_agents ?? [];
+    expect(p).toHaveLength(1);
+    expect(p[0]).toMatchObject({ label: "Automation worker running", color: "red", times: 2, lastSummary: "last executor run 4 min ago with actions pending" });
+    expect(p[0]?.firstMs).toBe(Date.parse("2026-10-15T04:05:00Z"));
   });
 });
 

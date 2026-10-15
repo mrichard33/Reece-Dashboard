@@ -1,6 +1,7 @@
 import { AlertCircle } from "lucide-react";
 import { requireRole } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
+import { HealthTabs } from "@/components/health/HealthTabs";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
@@ -24,9 +25,10 @@ export default async function IssuesPage() {
 
   return (
     <>
-      <TopBar email={user.email} role={user.role} title="Issues" />
+      <TopBar email={user.email} role={user.role} title="System health" subtitle="Issues: problems people filed" />
 
       <div className="space-y-6 p-4 sm:p-6">
+        <HealthTabs current="/issues" role={user.role} />
         <SectionHeader
           title="Issues"
           subtitle="Open issues, contamination violations, data drift, and stuck contacts."

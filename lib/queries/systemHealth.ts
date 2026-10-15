@@ -4,6 +4,7 @@ import { isMissingRelation } from "@/lib/queries/pgErrors";
 import {
   buildTimelines,
   shapeSystems,
+  timelineProblems,
   toCheckView,
   type CheckLatestRaw,
   type CheckView,
@@ -11,6 +12,7 @@ import {
   type ResultRaw,
   type Segment,
   type SystemGroup,
+  type TimelineProblem,
 } from "@/lib/queries/systemHealth.core";
 import type { IncidentRaw } from "@/lib/queries/incidents.core";
 
@@ -22,7 +24,7 @@ import type { IncidentRaw } from "@/lib/queries/incidents.core";
  */
 
 export type HealthPage =
-  | { state: "ok"; systems: SystemGroup[]; counts: { red: number; yellow: number; green: number }; lastEvaluatedAt: string | null; timelines: Record<string, Segment[]> }
+  | { state: "ok"; systems: SystemGroup[]; counts: { red: number; yellow: number; green: number }; lastEvaluatedAt: string | null; timelines: Record<string, Segment[]>; problems: Record<string, TimelineProblem[]> }
   | { state: "missing" }
   | { state: "error"; message: string };
 
@@ -37,11 +39,11 @@ export async function getSystemHealthPage(nowMs = Date.now()): Promise<HealthPag
     const rows = (latest.data ?? []) as CheckLatestRaw[];
     const since = new Date(nowMs - 24 * 3_600_000).toISOString();
     const results = await fetchAllPages<ResultRaw & { id: number }>("system-health: health_results 24h", (from, to) =>
-      sb.from("health_results").select("id,check_id,status,observed_at").gte("observed_at", since).order("id", { ascending: true }).range(from, to),
+      sb.from("health_results").select("id,check_id,status,observed_at,summary").gte("observed_at", since).order("id", { ascending: true }).range(from, to),
     );
-    const meta = new Map(rows.map((r) => [r.check_id, { system: r.system, severity: r.severity }]));
+    const meta = new Map(rows.map((r) => [r.check_id, { system: r.system, severity: r.severity, label: r.label }]));
     const shaped = shapeSystems(rows);
-    return { state: "ok", ...shaped, timelines: buildTimelines(results, meta, nowMs) };
+    return { state: "ok", ...shaped, timelines: buildTimelines(results, meta, nowMs), problems: timelineProblems(results, meta, nowMs) };
   } catch (e) {
     return { state: "error", message: e instanceof Error ? e.message : String(e) };
   }

@@ -8,7 +8,7 @@ import { Search, X } from "lucide-react";
 import { NotificationBell } from "@/components/approvals/NotificationBell";
 import { useMobileNav } from "@/components/shell/MobileNav";
 import { useAttention } from "@/components/shell/useAttention";
-import { NAV_GROUPS, type NavItem } from "@/components/shell/navConfig";
+import { NAV_GROUPS, itemOwnsPath, type NavItem } from "@/components/shell/navConfig";
 import { cn } from "@/lib/utils";
 
 export function Sidebar({
@@ -59,6 +59,8 @@ export function Sidebar({
   // Resolve a nav item's badge count from the shared attention poll.
   const badgeFor = (i: NavItem): number | null => {
     if (!i.badge || !attention) return null;
+    // Only operators can open the Issues tab, so only they get its count.
+    if (i.badge === "issues" && role !== "operator") return null;
     const n =
       i.badge === "issues"
         ? attention.openIssues
@@ -163,8 +165,7 @@ export function Sidebar({
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const { href, label, desc, Icon, phase } = item;
-                  const active =
-                    currentPath === href || currentPath.startsWith(href + "/");
+                  const active = itemOwnsPath(item, currentPath);
                   const stub = phase !== undefined;
                   const badge = badgeFor(item);
 

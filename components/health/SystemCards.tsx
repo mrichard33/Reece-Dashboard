@@ -6,7 +6,7 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import { StatusTimeline } from "@/components/health/StatusTimeline";
 import { dotClass } from "@/lib/queries/systemStatus.core";
 import { SEVERITY_TONE } from "@/lib/queries/incidents.core";
-import type { CheckView, Segment, SystemGroup } from "@/lib/queries/systemHealth.core";
+import type { CheckView, Segment, SystemGroup, TimelineProblem } from "@/lib/queries/systemHealth.core";
 import { attentionLine, familyWord, plainTimes, severityWord, showSeverity } from "@/lib/health/words";
 import { cn, relTime } from "@/lib/utils";
 
@@ -20,7 +20,17 @@ import { cn, relTime } from "@/lib/utils";
  * Medium / Low) shows only on a red or yellow row, never the check id or the
  * word "shadow", and a check that is not built yet says "Coming later".
  */
-export function SystemCards({ systems, timelines, only }: { systems: SystemGroup[]; timelines: Record<string, Segment[]>; only: string | null }) {
+export function SystemCards({
+  systems,
+  timelines,
+  problems = {},
+  only,
+}: {
+  systems: SystemGroup[];
+  timelines: Record<string, Segment[]>;
+  problems?: Record<string, TimelineProblem[]>;
+  only: string | null;
+}) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {systems.filter((s) => !only || s.id === only).map((s) => (
@@ -36,7 +46,7 @@ export function SystemCards({ systems, timelines, only }: { systems: SystemGroup
             <InfoPopover helpKey={`systemHealth.system.${s.id}`} />
           </CardHeader>
           <CardContent>
-            <StatusTimeline segments={timelines[s.id] ?? []} label={s.label} />
+            <StatusTimeline segments={timelines[s.id] ?? []} label={s.label} problems={problems[s.id] ?? []} greenNow={s.color === "green"} />
             {s.families.length === 0 ? (
               <p className="mt-3 text-sm text-slate-500">No checks for this system.</p>
             ) : (

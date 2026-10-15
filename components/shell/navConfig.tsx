@@ -6,7 +6,6 @@ import {
   Users,
   Calendar,
   CalendarRange,
-  AlertTriangle,
   Cog,
   ShieldCheck,
   Gauge,
@@ -17,7 +16,6 @@ import {
   Wallet,
   Mail,
   Activity,
-  Siren,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -35,7 +33,14 @@ export type NavItem = {
   /** Phase 2+ — link renders as a disabled stub. */
   phase?: 2 | 3;
   badge?: NavBadge;
+  /** Other pages this item owns (its tabs): the item reads active on them. */
+  also?: string[];
 };
+
+/** Is `pathname` this item's page, one of its sub-pages, or one of its tabs? */
+export function itemOwnsPath(item: Pick<NavItem, "href" | "also">, pathname: string): boolean {
+  return [item.href, ...(item.also ?? [])].some((h) => pathname === h || pathname.startsWith(h + "/"));
+}
 
 export type NavGroup = { label: string; items: NavItem[] };
 
@@ -88,28 +93,16 @@ export const NAV_GROUPS: NavGroup[] = [
         badge: "approvals",
       },
       {
-        href: "/issues",
-        label: "Issues",
-        desc: "Problems to fix",
-        Icon: AlertTriangle,
-        audience: "operator",
-        badge: "issues",
-      },
-      {
-        // 2026-10-15 — LP-MCP System Health: one open problem per incident,
-        // P1 first. Operators: the incident page names affected leads.
-        href: "/incidents",
-        label: "Incidents",
-        desc: "What is broken right now",
-        Icon: Siren,
-        audience: "operator",
-      },
-      {
+        // 2026-10-15 (the user): System health, Incidents and Issues overlapped
+        // as three menu items. One item; Overview / Incidents / Issues are tabs
+        // on its pages (components/health/HealthTabs.tsx). The URLs are unchanged.
         href: "/system-health",
         label: "System health",
-        desc: "Every check, every system",
+        desc: "Checks, incidents and issues",
         Icon: Activity,
         audience: "all",
+        badge: "issues",
+        also: ["/incidents", "/issues"],
       },
     ],
   },
@@ -246,7 +239,7 @@ export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 export function findNavItem(pathname: string): NavItem | null {
   let best: NavItem | null = null;
   for (const item of NAV_ITEMS) {
-    if (pathname === item.href || pathname.startsWith(item.href + "/")) {
+    if (itemOwnsPath(item, pathname)) {
       if (!best || item.href.length > best.href.length) best = item;
     }
   }

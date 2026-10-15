@@ -157,8 +157,19 @@ export function shapeSystems(rows: CheckLatestRaw[]): { systems: SystemGroup[]; 
 
 /* ── 24-hour timeline ─────────────────────────────────────────────────── */
 
-export type ResultRaw = { check_id: string; status: string; observed_at: string };
+export type ResultRaw = { check_id: string; status: string; observed_at: string; summary?: string | null };
 export type Segment = { startMs: number; endMs: number; color: HealthColor };
+export type TimelineMeta = Map<string, { system: string; severity: string; label?: string }>;
+
+/**
+ * A result that colors the 24-hour bar. A "Coming later" check (not built yet)
+ * writes "unknown" every hour; counted, it painted the AI Agents bar yellow all
+ * day while every real check was green (the user, 2026-10-15). Pure.
+ */
+function barColor(r: ResultRaw, severity: string): HealthColor | null {
+  if (isComingLater(r.summary)) return null;
+  return resultColor(r.status, severity);
+}
 
 /** One result's color, by the view's rule. Skipped results do not color a bucket. Pure. */
 export function resultColor(status: string, severity: string): HealthColor | null {
@@ -175,7 +186,7 @@ export function resultColor(status: string, severity: string): HealthColor | nul
  */
 export function buildTimelines(
   results: ResultRaw[],
-  meta: Map<string, { system: string; severity: string }>,
+  meta: TimelineMeta,
   nowMs: number,
   bucketMin = 30,
 ): Record<string, Segment[]> {
@@ -191,12 +202,56 @@ export function buildTimelines(
     if (!m || !out[m.system]) continue;
     const t = Date.parse(r.observed_at);
     if (!Number.isFinite(t) || t < start || t > nowMs) continue;
-    const c = resultColor(r.status, m.severity);
+    const c = barColor(r, m.severity);
     if (!c) continue;
     const i = Math.min(n - 1, Math.floor((t - start) / bucketMs));
     const seg = out[m.system]?.[i];
     if (seg) seg.color = seg.color === "grey" ? c : worst(seg.color, c);
   }
+  return out;
+}
+
+/** What turned a system's bar red or yellow: one line per check. */
+export type TimelineProblem = {
+  checkId: string;
+  label: string;
+  color: HealthColor;
+  /** Bad results in the window, and the first and last of them (ms). */
+  times: number;
+  firstMs: number;
+  lastMs: number;
+  lastSummary: string | null;
+};
+
+/**
+ * Per system: the checks that were red or yellow in the last 24h, worst and
+ * then most recent first, so a person can see WHAT the bar's red block was
+ * (the user, 2026-10-15: "the bar shows red while every agent check is green").
+ * Same results and rules as buildTimelines. Pure.
+ */
+export function timelineProblems(results: ResultRaw[], meta: TimelineMeta, nowMs: number): Record<string, TimelineProblem[]> {
+  const start = nowMs - 24 * 3_600_000;
+  const byCheck = new Map<string, TimelineProblem & { system: string }>();
+  for (const r of results) {
+    const m = meta.get(r.check_id);
+    if (!m) continue;
+    const t = Date.parse(r.observed_at);
+    if (!Number.isFinite(t) || t < start || t > nowMs) continue;
+    const c = barColor(r, m.severity);
+    if (c !== "red" && c !== "yellow") continue;
+    const p = byCheck.get(r.check_id);
+    if (!p) {
+      byCheck.set(r.check_id, { system: m.system, checkId: r.check_id, label: m.label || r.check_id, color: c, times: 1, firstMs: t, lastMs: t, lastSummary: r.summary ?? null });
+      continue;
+    }
+    p.times += 1;
+    p.color = worst(p.color, c);
+    if (t < p.firstMs) p.firstMs = t;
+    if (t >= p.lastMs) { p.lastMs = t; p.lastSummary = r.summary ?? p.lastSummary; }
+  }
+  const out: Record<string, TimelineProblem[]> = {};
+  for (const { system, ...p } of byCheck.values()) (out[system] ??= []).push(p);
+  for (const list of Object.values(out)) list.sort((a, b) => RANK[b.color] - RANK[a.color] || b.lastMs - a.lastMs);
   return out;
 }
 
