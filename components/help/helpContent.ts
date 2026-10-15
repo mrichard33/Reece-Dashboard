@@ -914,7 +914,7 @@ export const helpContent: Record<string, HelpEntry> = {
     title: "Leads we haven't called",
     what: "Every lead that should have been worked and has no Five9 call since it arrived, longest-waiting first. Under each reason is a sentence saying why it isn't being called: which Five9 list it is on and how many times it was dialled, which LP call queue it sits in, and whether the phone was ever do-not-call. Filter by reason or source with the chips.",
     where: "`lead_leak_daily` (latest run), leak reasons only. The sentence is `detail.why`, written by LP-MCP's Lead Leak Monitor from live LP and Five9 reads; anything it couldn't read says \"couldn't check\". Runs before 2026-09-30 have no sentence.",
-    fix: "Call them. \"Not issued\" and \"no rep covered it\" are call-center or dispatch misses; \"rep hold over\" means a rep's 7-day hold ran out; \"never dialled\" means the lead never reached a dialling list.",
+    fix: "Call them. \"Not issued\" and \"no rep covered it\" are call-center or dispatch misses; \"rep hold over\" means a rep's 7-day hold ran out; \"never dialled\" means the lead never reached a dialling list; \"in LP inbound queue\" means nobody checked the inquiry out in LP, so LP never sent it to a dial list.",
   },
   "leadLeaks.intakeTable": {
     title: "Never reached our system",
@@ -927,6 +927,128 @@ export const helpContent: Record<string, HelpEntry> = {
     what: "Leads with no Five9 call that were never owed one: do-not-call, on a rep's hold, already booked or sold, no phone, duplicates of a called lead, dead statuses. Open a reason to see each lead and why — for do-not-call, where the block comes from (LP's code or the Five9 list) and whether LP still codes the lead \"Data\".",
     where: "`lead_leak_daily` (latest run), the non-leak reasons, with `detail.why` per lead.",
     fix: "\"Booked/sold, no Five9 call on record\" is a gap in LP's call data rather than a missed lead. A do-not-call lead that LP still codes \"Data\" means LP and Five9 disagree — fix the record in whichever system is wrong. \"Data\" leads count as leaks since 2026-09-28.",
+  },
+
+  // ─── System health + incidents (LP-MCP System Health, 2026-10-15) ───────────
+  "overview.systemStrip": {
+    title: "Systems",
+    what: "One chip per system LP-MCP checks: Lead Perfection, Five9, GoHighLevel, Supabase, n8n, Railway, the AI agents, and webhooks and Slack. The dot is the worst check in that system: red, yellow or green. A ring instead of a solid dot means those checks are still in shadow (recorded, but nobody is paged yet). Grey means the system has no checks.",
+    where: "LP-MCP's `v_system_status` (live checks) and `v_system_status_shadow` (every check), built from `health_results`, which the health jobs write every few minutes.",
+    fix: "Tap a chip to see that system's checks. A check with no result for longer than its window turns yellow (red for a P1): that usually means the job behind it stopped, not that everything is fine.",
+  },
+  "systemHealth.system.lead_perfection": {
+    title: "Lead Perfection",
+    what: "Leads reaching LP, the LP inbound queue, LP's API, LP reports arriving, and tomorrow's appointments the night before (issued, a rep assigned, capacity).",
+    where: "Checks owned by LP-MCP's health-checks, lead-leak, chat/canvass intake, LP report watchdog and appointment-pipeline jobs.",
+    fix: "Open the red check. Inbound queue and \"not issued by 20:15\" are people work (check the lead out, issue it); API and sync checks are a system problem for whoever is on call.",
+  },
+  "systemHealth.system.five9": {
+    title: "Five9",
+    what: "Is the dialer working: campaigns running, leads on the list their routing says, first dial in time, no list going undialed, no phone dialed more than 3 times a day, and no ND / No Demo / DNC lead dialed again.",
+    where: "Five9's own call events (`five9_events_raw`) are the only truth for calls, plus live Five9 reads. LP call counts are never used.",
+    fix: "A stopped campaign or a stalled list is a dialer admin task. Leads off their list link through to Lead Leaks.",
+  },
+  "systemHealth.system.ghl": {
+    title: "GoHighLevel",
+    what: "The GHL rate limiter, the GHL cache in HL Supabase, LP / GHL appointment parity and links, and agent rules pointing at published workflows.",
+    where: "LP-MCP's health-checks, link-leak and rule-target-check jobs, and HL Supabase's sync log.",
+    fix: "A stale cache entity names which sync stopped; parity and link gaps list the contacts.",
+  },
+  "systemHealth.system.supabase": {
+    title: "Supabase",
+    what: "Can LP-MCP read both databases, and is the LP lead mirror current.",
+    where: "A one-row read of each database every 5 minutes, and `lp_sync_log` for the lead sync.",
+    fix: "A failed read is an outage (check Supabase's status). A stale lead mirror means the LP sync is failing: every other check is then reading old data.",
+  },
+  "systemHealth.system.n8n": {
+    title: "n8n",
+    what: "Does n8n answer, and (later) are its scheduled workflows running without errors.",
+    where: "n8n's /healthz, every 5 minutes. The execution checks are Phase 2 and read \"unknown\" until then.",
+    fix: "If /healthz fails twice, n8n is down: every workflow it runs (report ingest, the onboarding buttons) stops with it.",
+  },
+  "systemHealth.system.railway": {
+    title: "Railway",
+    what: "Are LP MCP, HL MCP and the dashboard up, is any service restarting over and over, and are LP-MCP's scheduled jobs running and passing.",
+    where: "Railway deploy status, the services' health endpoints, and LP-MCP's `job_runs`.",
+    fix: "A job failing 3 times in a row is named in the check; open it to see which. A crash loop shows as many deploys in an hour.",
+  },
+  "systemHealth.system.ai_agents": {
+    title: "AI agents",
+    what: "The bot's reply time, the action executor's heartbeat, the queue of pending actions, failed actions, approvals waiting, guardrail blocks and daily AI spend.",
+    where: "LP-MCP's executor heartbeat, reply-SLA watchdog and health-checks job.",
+    fix: "An executor heartbeat in red means no automated action is running: page whoever is on call.",
+  },
+  "systemHealth.system.webhooks": {
+    title: "Webhooks and Slack",
+    what: "Are GHL's webhooks still arriving at their usual volume, and does Slack accept a post.",
+    where: "LP-MCP's intake journal (every GHL webhook it receives) and Slack's auth test.",
+    fix: "No GHL webhooks for 2 hours in the day is an intake outage. A Slack failure means alerts are silently not arriving.",
+  },
+  "systemHealth.check.chart": {
+    title: "Last 100 results",
+    what: "Each result this check recorded, oldest to newest, with its yellow (warn) and red (fail) lines drawn from the check's own thresholds.",
+    where: "`health_results` for this check; the lines come from `health_checks.config`.",
+    fix: "A value hugging a line is about to change color. A gap means the check did not run.",
+  },
+  "systemHealth.check.incidents": {
+    title: "Incidents for this check",
+    what: "Every incident this check has opened, newest first.",
+    where: "`incidents` where check_id is this check.",
+    fix: "Open one to see its timeline, who acknowledged it and how it ended.",
+  },
+  "systemHealth.check.config": {
+    title: "Rules and thresholds",
+    what: "In plain words when this check goes yellow and red, and the exact numbers it uses.",
+    where: "`health_checks` (the registry). Thresholds live in the database: changing a number there changes the check without a deploy.",
+    fix: "If a check cries wolf, raise its threshold in `health_checks.config` (and say why), rather than muting it.",
+  },
+  "incidents.board": {
+    title: "Open incidents",
+    what: "Every problem LP-MCP has found and not yet closed, P1 first, then the oldest. One incident per problem, however many times the check fails, and one Slack card for it, edited in place.",
+    where: "LP-MCP's `v_incident_board`. An incident opens when a LIVE check fails (shadow checks never open one) or when a mapped legacy alert fires.",
+    fix: "Open it, acknowledge it so the team knows someone has it, and fix the cause. It resolves on its own after the check passes twice in a row.",
+  },
+  "incidents.closed": {
+    title: "Closed incidents",
+    what: "Incidents resolved or closed with no action in the last 30 days, with how long each took to be acknowledged and to be resolved, and the typical (median) times.",
+    where: "`incidents`, status resolved or closed_no_action.",
+    fix: "A long time to acknowledge means the card was missed: check who gets it. Repeats of the same problem point at a cause nobody fixed.",
+  },
+  "incidents.impact": {
+    title: "Impact",
+    what: "What is wrong in one line, why it matters for the business, and the estimated revenue at risk where the check can price it (close rate times average job value for the affected leads).",
+    where: "The incident row LP-MCP keeps up to date each time the check fails again.",
+    fix: "Acknowledge to take it; Snooze if it is known and being handled elsewhere (needs a reason); Close (no action) if it needs nothing (needs a reason, and quiets this problem for 7 days).",
+  },
+  "incidents.affected": {
+    title: "Affected leads",
+    what: "The leads behind the incident: name, phone, source, how long they have waited and their estimated value.",
+    where: "The check's latest detail, carried on the incident.",
+    fix: "Work the leads first, then the cause.",
+  },
+  "incidents.timeline": {
+    title: "Timeline",
+    what: "Everything that happened to this incident, oldest first: opened, posted to Slack, acknowledged, snoozed, came back, resolved, and who did it.",
+    where: "`incident_events`. Every action from the dashboard, Slack or LP-MCP writes one row naming the person (or System).",
+    fix: "Nothing to fix here: it is the record.",
+  },
+  "incidents.finding": {
+    title: "Finding",
+    what: "What an investigation found about the cause.",
+    where: "`investigation_runs`. Automatic investigation is a later phase, so this is empty for now.",
+    fix: "Until then, write what you found in Slack on the card's thread.",
+  },
+  "incidents.actions": {
+    title: "Proposed actions",
+    what: "Fixes proposed for this incident, waiting for a person to approve them.",
+    where: "`agent_actions` linked to the incident. Proposed fixes are a later phase, so this is empty for now.",
+    fix: "Nothing to do yet.",
+  },
+  "incidents.links": {
+    title: "Links",
+    what: "The check behind the incident, its Slack card, and any known issue it matches.",
+    where: "The incident's check_id, its Slack channel and message, and `claude_known_issues`.",
+    fix: "No Slack card means it is still inside its 10-minute wait, or the check is in shadow and only recorded.",
   },
 };
 

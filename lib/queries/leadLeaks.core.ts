@@ -27,6 +27,8 @@ export const LEAK_REASONS = [
   "not_on_dial_list",
   // On a Five9 list, but no call for it in Five9's history (LP-MCP, 2026-09-29).
   "on_list_not_dialed",
+  // Still waiting in LP's inbound queue — nobody checked it out (LP-MCP, 2026-10-15).
+  "in_inbound_queue",
   "not_in_five9",
   "unverified",
 ] as const;
@@ -42,6 +44,7 @@ export const REASON_LABELS: Record<string, string> = {
   on_list_not_dialed: "On a Five9 list but no call recorded",
   // Shown on the hourly Slack card only; the daily table does not store it.
   called_no_retry: "Called, no retry since",
+  in_inbound_queue: "In LP inbound queue (not checked out)",
   not_in_five9: "Not in Five9 at all",
   unverified: "Not verified — Five9 lookup failed or skipped",
   // Not leaks — shown in the collapsed breakdown.

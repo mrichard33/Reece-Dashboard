@@ -127,7 +127,18 @@ export const lpMcp = {
     client.call<PayrollToolResult>("payroll_file_dispute", { args, timeoutMs: 20_000 }),
   payrollDecideDispute: (args: Record<string, unknown>) =>
     client.call<PayrollToolResult>("payroll_decide_dispute", { args, timeoutMs: 20_000 }),
+  /**
+   * System health (LP-MCP, 2026-10-15): act on an incident (ack / snooze /
+   * close / run) and run checks now. LP MCP writes the incident_events row with
+   * the actor; the dashboard never writes those tables itself.
+   */
+  incidentAction: (args: { action: "ack" | "snooze" | "close" | "run"; incident_id: number; actor: string; reason?: string; minutes?: number }) =>
+    client.call<HealthToolResult>("incident_action", { args, timeoutMs: 30_000 }),
+  healthRunCheck: (args: { check_id: string; actor?: string }) =>
+    client.call<HealthToolResult>("health_run_check", { args, timeoutMs: 60_000 }),
 };
+
+export type HealthToolResult = { ok: boolean; error?: string; status?: number; [k: string]: unknown };
 
 export type PayrollToolResult = { ok: boolean; error?: string; [k: string]: unknown };
 
