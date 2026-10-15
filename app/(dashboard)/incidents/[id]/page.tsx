@@ -12,6 +12,7 @@ import { getIncident } from "@/lib/queries/incidents";
 import {
   affectedLeads, formatDuration, SEVERITY_TONE, shapeTimeline, slackLink, STATUS_LABEL, statusTone, toIncidentRow,
 } from "@/lib/queries/incidents.core";
+import { plainTimes, severityWord } from "@/lib/health/words";
 import { etDateTime, usd } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -38,21 +39,21 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
           const slack = slackLink(incident.slack_channel, incident.slack_ts);
           return (
             <>
-              <SectionHeader title={incident.title} subtitle={`${checkLabel ?? incident.check_id} · opened ${etDateTime(incident.opened_at)} ET · open ${formatDuration(row.ageMin)}`} />
+              <SectionHeader title={plainTimes(incident.title)} subtitle={`${checkLabel ?? incident.check_id} · opened ${etDateTime(incident.opened_at)} · open ${formatDuration(row.ageMin)}`} />
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={SEVERITY_TONE[incident.severity] ?? "slate"}>{incident.severity}</Badge>
+                <Badge tone={SEVERITY_TONE[incident.severity] ?? "slate"}>{severityWord(incident.severity)}</Badge>
                 <Badge tone={statusTone(incident.status)}>{STATUS_LABEL[incident.status] ?? incident.status}</Badge>
-                {row.flapping && <Badge tone="brick">flapping</Badge>}
+                {row.flapping && <Badge tone="brick">comes and goes</Badge>}
                 {row.occurrences > 1 && <span className="text-xs text-slate-500">came back {row.occurrences - 1}x</span>}
                 {incident.acknowledged_by && <span className="text-xs text-slate-500">acknowledged by {incident.acknowledged_by}</span>}
-                {incident.snooze_until && incident.status === "snoozed" && <span className="text-xs text-slate-500">snoozed until {etDateTime(incident.snooze_until)} ET</span>}
+                {incident.snooze_until && incident.status === "snoozed" && <span className="text-xs text-slate-500">snoozed until {etDateTime(incident.snooze_until)}</span>}
               </div>
 
               <Card>
                 <CardHeader><CardTitle>Impact</CardTitle><InfoPopover helpKey="incidents.impact" /></CardHeader>
                 <CardContent>
-                  <p className="break-words text-sm text-navy-900 dark:text-slate-100">{incident.summary ?? "—"}</p>
-                  {incident.business_impact && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Why it matters: {incident.business_impact}{row.valueAtRisk !== null ? ` (est ${usd(row.valueAtRisk)} at risk)` : ""}</p>}
+                  <p className="break-words text-sm text-navy-900 dark:text-slate-100">{plainTimes(incident.summary ?? "—")}</p>
+                  {incident.business_impact && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Why it matters: {plainTimes(incident.business_impact)}{row.valueAtRisk !== null ? ` (est ${usd(row.valueAtRisk)} at risk)` : ""}</p>}
                   <div className="mt-4"><IncidentActions id={incident.id} status={incident.status} acknowledged={!!incident.acknowledged_at} /></div>
                 </CardContent>
               </Card>
@@ -88,8 +89,8 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
                     <ol className="space-y-2">
                       {shapeTimeline(events).map((e) => (
                         <li key={e.id} className="text-sm">
-                          <span className="text-xs text-slate-500">{etDateTime(e.at)} ET · {e.who}</span>
-                          <span className="block break-words text-navy-900 dark:text-slate-100">{e.what}{e.body ? ` — ${e.body}` : ""}</span>
+                          <span className="text-xs text-slate-500">{etDateTime(e.at)} · {e.who}</span>
+                          <span className="block break-words text-navy-900 dark:text-slate-100">{e.what}{e.body ? ` — ${plainTimes(e.body)}` : ""}</span>
                         </li>
                       ))}
                     </ol>
@@ -108,7 +109,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
                     <CardHeader><CardTitle>Links</CardTitle><InfoPopover helpKey="incidents.links" /></CardHeader>
                     <CardContent className="space-y-1 text-sm">
                       <p><Link href={`/system-health/${encodeURIComponent(incident.check_id)}` as Route} className="underline">The check: {checkLabel ?? incident.check_id}</Link></p>
-                      {slack ? <p><a href={slack} target="_blank" rel="noreferrer" className="underline">The Slack card</a></p> : <p className="text-slate-500">No Slack card (still inside its 10-minute wait, or the check is in shadow).</p>}
+                      {slack ? <p><a href={slack} target="_blank" rel="noreferrer" className="underline">The Slack card</a></p> : <p className="text-slate-500">No Slack card (it is still inside its 10-minute wait, or the check is in test mode).</p>}
                       {knownIssue && <p className="break-words text-slate-600 dark:text-slate-300">Known issue #{knownIssue.id} ({knownIssue.status}): {knownIssue.description}</p>}
                     </CardContent>
                   </Card>

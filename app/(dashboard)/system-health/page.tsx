@@ -8,6 +8,7 @@ import { SystemCards } from "@/components/health/SystemCards";
 import { RunChecksButton } from "@/components/health/HealthActions";
 import { getSystemHealthPage } from "@/lib/queries/systemHealth";
 import { SYSTEMS } from "@/lib/queries/systemStatus.core";
+import { allInTestMode, attentionLine } from "@/lib/health/words";
 import { relTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -15,14 +16,17 @@ export const dynamic = "force-dynamic";
 /**
  * System health — every check LP-MCP runs, grouped by system (2026-10-15).
  * Colors come from `v_health_check_latest`: no result (or one past its stale
- * window) is red for a P1 and yellow otherwise; a check still in shadow is
- * drawn hollow. Everyone can see the board; running checks is operators only.
+ * window) is red for an Urgent check and yellow otherwise; a check still in
+ * test mode (LP-MCP mode "shadow") is drawn as a ring. Everyone can see the
+ * board; running checks is operators only. The words are plain English
+ * (the user, 2026-10-15): lib/health/words.ts.
  */
 export default async function SystemHealthPage({ searchParams }: { searchParams: Promise<{ system?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
   const page = await getSystemHealthPage();
   const only = SYSTEMS.some((s) => s.id === params.system) ? params.system! : null;
+  const testMode = page.state === "ok" && allInTestMode(page.systems.flatMap((s) => s.families.flatMap((f) => f.checks)));
 
   return (
     <>
@@ -31,8 +35,8 @@ export default async function SystemHealthPage({ searchParams }: { searchParams:
         <SectionHeader
           title="System health"
           subtitle={page.state === "ok"
-            ? `${page.counts.red} red, ${page.counts.yellow} yellow, ${page.counts.green} green · last evaluated ${page.lastEvaluatedAt ? relTime(page.lastEvaluatedAt) : "never"}`
-            : "Checks written by LP-MCP every few minutes"}
+            ? `${attentionLine(page.counts)} · last checked ${page.lastEvaluatedAt ? relTime(page.lastEvaluatedAt) : "never"}`
+            : "Checks run every few minutes"}
           action={user.role === "operator" ? <RunChecksButton /> : undefined}
         />
 
@@ -46,6 +50,11 @@ export default async function SystemHealthPage({ searchParams }: { searchParams:
           </Card>
         ) : (
           <>
+            {testMode && (
+              <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                These checks are in test mode: they record results but don&apos;t send alerts yet.
+              </p>
+            )}
             {only && (
               <p className="text-sm text-slate-600 dark:text-slate-300">
                 Showing {SYSTEMS.find((s) => s.id === only)?.label}.{" "}

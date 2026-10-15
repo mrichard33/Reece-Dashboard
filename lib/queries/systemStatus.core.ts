@@ -88,7 +88,9 @@ export function shapeSystemStrip(live: SystemStatusRaw[], shadow: SystemStatusRa
       yellow,
       green,
       lastObservedAt: row.last_observed_at,
-      note: `${countsNote(red, yellow, green)}${l ? "" : " (shadow)"}`,
+      // No " (shadow)" suffix (the user, 2026-10-15): the ring already says
+      // "test mode", and the word read as jargon on the overview.
+      note: countsNote(red, yellow, green),
     };
   });
 }

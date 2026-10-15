@@ -11,6 +11,7 @@
  */
 
 import { SYSTEMS, type HealthColor, type SystemId } from "@/lib/queries/systemStatus.core";
+import { isComingLater } from "@/lib/health/words";
 
 export type CheckLatestRaw = {
   check_id: string;
@@ -59,6 +60,8 @@ export type CheckView = {
   observedAt: string | null;
   /** "no result for 23 min (expected every 5 min)" when stale or never run. */
   staleNote: string | null;
+  /** The check says it is not built yet: drawn grey, "Coming later", never counted as needing a look. */
+  comingLater: boolean;
 };
 
 export type SystemGroup = {
@@ -89,6 +92,10 @@ export function formatMin(m: number): string {
 }
 
 export function toCheckView(r: CheckLatestRaw): CheckView {
+  // A check that is not built yet reports "unknown" (yellow in the view). It
+  // needs nobody, so it is grey here and never adds to "needs a look"
+  // (the user, 2026-10-15).
+  const comingLater = isComingLater(r.last_summary);
   const value = r.last_value === null || r.last_value === undefined ? null : Number(r.last_value);
   return {
     id: r.check_id,
@@ -103,13 +110,14 @@ export function toCheckView(r: CheckLatestRaw): CheckView {
     businessImpact: r.business_impact,
     owner: r.owner_job_id,
     mode: r.mode,
-    color: asColor(r.color),
+    color: comingLater ? "grey" : asColor(r.color),
     hollow: r.mode !== "live",
     status: r.last_status,
     summary: r.last_summary,
     value: Number.isFinite(value) ? value : null,
     observedAt: r.last_observed_at,
-    staleNote: staleNote(r),
+    staleNote: comingLater ? null : staleNote(r),
+    comingLater,
   };
 }
 

@@ -11,6 +11,7 @@ import {
   formatDuration, OPEN_STATUSES, shapeBoard, shapeClosed, STATUS_LABEL,
 } from "@/lib/queries/incidents.core";
 import { SYSTEMS } from "@/lib/queries/systemStatus.core";
+import { plainTimes, severityWord } from "@/lib/health/words";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,10 @@ export const dynamic = "force-dynamic";
 type Params = { tab?: string; status?: string; system?: string; severity?: string; mine?: string };
 
 /**
- * Incidents — one row per open problem LP-MCP has found (2026-10-15), P1 first
- * then oldest. The Closed tab shows the last 30 days with how long each took
+ * Incidents — one row per open problem LP-MCP has found (2026-10-15), most
+ * urgent first, then oldest. Severity shows as a word (Urgent / High / Medium /
+ * Low); the URL keeps the P1..P4 code (?severity=P1). The Closed tab shows
+ * the last 30 days with how long each took
  * to be acknowledged and resolved. Acting on one happens on its own page.
  */
 export default async function IncidentsPage({ searchParams }: { searchParams: Promise<Params> }) {
@@ -45,14 +48,14 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
     <>
       <TopBar email={user.email} role={user.role} title="Incidents" subtitle="What is broken right now" />
       <div className="space-y-6 p-4 sm:p-6">
-        <SectionHeader title="Incidents" subtitle="One row per problem, P1 first. Each has one Slack card, edited in place." />
+        <SectionHeader title="Incidents" subtitle="One row per problem, most urgent first. Each one has a single Slack message that is updated as things change." />
 
         <div className="flex flex-wrap gap-2">
           <Chip href={href({ tab: undefined })} active={!closedTab}>Open</Chip>
           <Chip href={href({ tab: "closed", status: undefined })} active={closedTab}>Closed (30 days)</Chip>
           <span className="mx-1 hidden w-px bg-slate-200 sm:block dark:bg-slate-700" />
           {["P1", "P2", "P3"].map((s) => (
-            <Chip key={s} href={href({ severity: filters.severity === s ? undefined : s })} active={filters.severity === s}>{s}</Chip>
+            <Chip key={s} href={href({ severity: filters.severity === s ? undefined : s })} active={filters.severity === s}>{severityWord(s)}</Chip>
           ))}
           <Chip href={href({ mine: filters.mine ? undefined : "1" })} active={!!filters.mine}>Acknowledged by me</Chip>
         </div>
@@ -109,7 +112,7 @@ function ClosedList({ rows, filters }: { rows: ReturnType<typeof shapeClosed>; f
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {list.map((r) => (
                 <tr key={r.id}>
-                  <td className="py-2 pr-3"><Link href={`/incidents/${r.id}` as Route} className="break-words underline">{r.severity} · {r.title}</Link></td>
+                  <td className="py-2 pr-3"><Link href={`/incidents/${r.id}` as Route} className="break-words underline">{severityWord(r.severity)} · {plainTimes(r.title)}</Link></td>
                   <td className="py-2 pr-3 text-xs">{r.statusLabel}</td>
                   <td className="hidden py-2 pr-3 text-xs md:table-cell">{formatDuration(r.ttaMin)}</td>
                   <td className="py-2 text-xs">{formatDuration(r.ttrMin)}</td>

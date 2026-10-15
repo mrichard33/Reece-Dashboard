@@ -31,6 +31,17 @@ describe("shapeSystems", () => {
     expect(out.systems.find((s) => s.id === "n8n")!.color).toBe("grey");
     expect(five9.hollow).toBe(true);
   });
+  it("a check that is not built yet is grey, 'coming later', and never needs a look", () => {
+    const out = shapeSystems([
+      check({ check_id: "n8n.exec", system: "n8n", family: "workflow", color: "yellow", last_status: "unknown", last_summary: "Not built yet (Phase 2)", last_observed_at: null }),
+      check({ check_id: "n8n.up", system: "n8n", family: "service", color: "green" }),
+    ]);
+    const n8n = out.systems.find((s) => s.id === "n8n")!;
+    const later = n8n.families.flatMap((f) => f.checks).find((c) => c.id === "n8n.exec")!;
+    expect(later).toMatchObject({ comingLater: true, color: "grey", staleNote: null });
+    expect(n8n.color).toBe("green");
+    expect(out.counts).toEqual({ red: 0, yellow: 0, green: 1 });
+  });
   it("stale note says how long and the expected cadence", () => {
     expect(staleNote({ last_observed_at: null, minutes_since: null, stale_after_min: 12, cadence: "every 5 min" })).toBe("no result yet (expected every 5 min)");
     expect(staleNote({ last_observed_at: "x", minutes_since: 23, stale_after_min: 12, cadence: "every 5 min" })).toBe("no result for 23 min (expected every 5 min)");

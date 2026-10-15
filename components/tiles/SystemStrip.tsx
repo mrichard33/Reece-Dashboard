@@ -7,8 +7,9 @@ import { cn, relTime } from "@/lib/utils";
 
 /**
  * Eight system chips above the health tiles on /overview (LP-MCP System
- * Health, 2026-10-15). Solid dot = live checks; ring = still in shadow (what
- * the platform WOULD report); grey = no checks. Each chip opens
+ * Health, 2026-10-15). Solid dot = live checks; ring = still in test mode
+ * (what the platform WOULD report; the note never says "shadow"); grey = no
+ * checks. Each chip opens
  * /system-health filtered to that system.
  */
 export function SystemStrip({ strip }: { strip: StripResult }) {
