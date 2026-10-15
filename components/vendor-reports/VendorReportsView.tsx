@@ -8,13 +8,16 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { addVendorReport, deleteVendorReport, saveVendorReport } from "@/lib/actions/vendorReports";
 import {
+  ALWAYS_BCC,
   FREQUENCY_OPTIONS,
   type ReportFrequency,
   VDR_MIGRATION,
   deliveryLabel,
+  effectiveBcc,
   formatEmails,
   formatSubSources,
   lastRunLabel,
+  parseEmails,
   scheduleLabel,
   type VendorItem,
   type VendorReportsPageData,
@@ -83,6 +86,7 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
   const [pending, startTransition] = useTransition();
   const [to, setTo] = useState(formatEmails(vendor.recipients_to));
   const [cc, setCc] = useState(formatEmails(vendor.recipients_cc));
+  const [bcc, setBcc] = useState(formatEmails(vendor.recipients_bcc));
   const [subs, setSubs] = useState(formatSubSources(vendor.lp_sub_sources));
   const [revShare, setRevShare] = useState(vendor.rev_share);
   const [frequency, setFrequency] = useState<ReportFrequency>(vendor.frequency);
@@ -91,6 +95,7 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
   const dirty =
     to !== formatEmails(vendor.recipients_to) ||
     cc !== formatEmails(vendor.recipients_cc) ||
+    bcc !== formatEmails(vendor.recipients_bcc) ||
     subs !== formatSubSources(vendor.lp_sub_sources) ||
     revShare !== vendor.rev_share ||
     frequency !== vendor.frequency;
@@ -102,6 +107,7 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
         id: vendor.id,
         recipients_to: to,
         recipients_cc: cc,
+        recipients_bcc: bcc,
         lp_sub_sources: subs,
         rev_share: revShare,
         frequency,
@@ -129,7 +135,7 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
   function toggleActive() {
     const next = !vendor.is_active;
     const q = next
-      ? `Turn ON reports for "${vendor.vendor_name}"? The report goes to ${to.trim() || "nobody (add a To email first)"} with Mark in BCC, ${frequency === "monthly" ? "on the 1st of each month" : "every Monday"}.`
+      ? `Turn ON reports for "${vendor.vendor_name}"? The report goes to ${to.trim() || "nobody (add a To email first)"} (hidden copy: ${effectiveBcc(parseEmails(bcc).emails).join(", ")}), ${frequency === "monthly" ? "on the 1st of each month" : "every Monday"}.`
       : `Turn OFF reports for "${vendor.vendor_name}"? Nothing will be sent until it is turned on again.`;
     if (!window.confirm(q)) return;
     save({ is_active: next });
@@ -144,7 +150,11 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
             {scheduleLabel({ ...vendor, frequency })} · last {vendor.lookback_days} days
           </p>
         </div>
-        {vendor.rev_share && <Badge tone="sky">Rev share</Badge>}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Mark, 2026-10-15: "If it is turned on and running, the live label should appear in the top-right corner." */}
+          <Badge tone={vendor.is_active ? "emerald" : "slate"} dot>{vendor.is_active ? "Live" : "Off"}</Badge>
+          {vendor.rev_share && <Badge tone="sky">Rev share</Badge>}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -173,6 +183,20 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
               value={cc}
               onChange={(e) => setCc(e.target.value)}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor={`bcc-${vendor.id}`} className={labelCls}>BCC (hidden copies)</label>
+            <input
+              id={`bcc-${vendor.id}`}
+              type="text"
+              inputMode="email"
+              autoComplete="off"
+              className={inputCls}
+              placeholder="optional"
+              value={bcc}
+              onChange={(e) => setBcc(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">{ALWAYS_BCC} is always included, even if you remove it here. The vendor does not see these addresses.</p>
           </div>
           <div>
             <label htmlFor={`freq-${vendor.id}`} className={labelCls}>Report frequency</label>
