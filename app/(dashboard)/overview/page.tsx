@@ -6,6 +6,8 @@ import { McpStatusTile } from "@/components/tiles/McpStatusTile";
 import { LiveAlertsCard } from "@/components/tiles/LiveAlertsCard";
 import { AiUsageSection } from "@/components/tiles/AiUsageSection";
 import { SyncFreshnessBanner } from "@/components/tiles/SyncFreshnessBanner";
+import { SystemStrip } from "@/components/tiles/SystemStrip";
+import { getSystemStrip } from "@/lib/queries/systemStatus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { ActivityList } from "@/components/activity/ActivityList";
@@ -28,13 +30,14 @@ export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
   const user = await requireUser();
-  const [health, stats, activity, alerts, leadsNotCalled, usage] = await Promise.all([
+  const [health, stats, activity, alerts, leadsNotCalled, usage, strip] = await Promise.all([
     getHealthSnapshot(),
     getHeadlineStats(),
     getRecentActivity(20),
     getLiveAlerts(),
     getLeadsNotCalledCount(),
     getLlmUsageSummary(),
+    getSystemStrip(),
   ]);
 
   const lpSyncLast = "error" in health.lpSync ? null : health.lpSync.last_sync_at;
@@ -54,6 +57,9 @@ export default async function OverviewPage() {
 
       <div className="space-y-6 p-4 sm:p-6">
         <SyncFreshnessBanner lpLastSync={lpSyncLast} hlLastSync={hlSyncLast} />
+
+        {/* 2026-10-15 — the eight systems LP-MCP's health checks cover. */}
+        <SystemStrip strip={strip} />
 
         {/* Row 1 — Service health */}
         <section>

@@ -16,6 +16,8 @@ import {
   PhoneMissed,
   Wallet,
   Mail,
+  Activity,
+  Siren,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -92,6 +94,22 @@ export const NAV_GROUPS: NavGroup[] = [
         Icon: AlertTriangle,
         audience: "operator",
         badge: "issues",
+      },
+      {
+        // 2026-10-15 — LP-MCP System Health: one open problem per incident,
+        // P1 first. Operators: the incident page names affected leads.
+        href: "/incidents",
+        label: "Incidents",
+        desc: "What is broken right now",
+        Icon: Siren,
+        audience: "operator",
+      },
+      {
+        href: "/system-health",
+        label: "System health",
+        desc: "Every check, every system",
+        Icon: Activity,
+        audience: "all",
       },
     ],
   },
