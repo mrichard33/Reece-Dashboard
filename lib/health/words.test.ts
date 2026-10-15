@@ -54,6 +54,8 @@ describe("attentionLine / isComingLater / allInTestMode", () => {
   it("spots a check that is not built yet", () => {
     expect(isComingLater("Not built yet (Phase 2)")).toBe(true);
     expect(isComingLater("execution check not built yet")).toBe(true);
+    expect(isComingLater("Coming later: Five9 tells us the campaign of each call but not which list.")).toBe(true);
+    expect(isComingLater("Calls are coming later than usual")).toBe(false);
     expect(isComingLater("3 leads waiting")).toBe(false);
     expect(isComingLater(null)).toBe(false);
   });

@@ -60,9 +60,12 @@ export function showSeverity(color: HealthColor | string): boolean {
   return color === "red" || color === "yellow";
 }
 
-/** A check whose last summary says it is not built yet ("Coming later"). */
+/**
+ * A check that cannot run yet: its summary starts "Coming later" (LP-MCP's
+ * wording since 2026-10-15) or, from older rows, says "not built yet".
+ */
 export function isComingLater(summary: string | null | undefined): boolean {
-  return !!summary && /not built yet/i.test(summary);
+  return !!summary && /^\s*coming later\b|not built yet/i.test(summary);
 }
 
 /** The red/yellow count line: "All good", or "2 need attention · 1 needs a look". */
