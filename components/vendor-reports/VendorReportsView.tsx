@@ -184,7 +184,8 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
               onChange={(e) => setCc(e.target.value)}
             />
           </div>
-          <div className="sm:col-span-2">
+          {/* Mark, 2026-10-15: BCC is half width, right below CC. On a phone the fields stack To, CC, BCC, Frequency. */}
+          <div className="sm:col-start-2 sm:row-start-2">
             <label htmlFor={`bcc-${vendor.id}`} className={labelCls}>BCC (hidden copies)</label>
             <input
               id={`bcc-${vendor.id}`}
@@ -198,7 +199,7 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
             />
             <p className="mt-1 text-[11px] text-slate-400">{ALWAYS_BCC} is always included, even if you remove it here. The vendor does not see these addresses.</p>
           </div>
-          <div>
+          <div className="sm:col-start-1 sm:row-start-2">
             <label htmlFor={`freq-${vendor.id}`} className={labelCls}>Report frequency</label>
             <select id={`freq-${vendor.id}`} className={inputCls} value={frequency} onChange={(e) => setFrequency(e.target.value as ReportFrequency)}>
               {FREQUENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
