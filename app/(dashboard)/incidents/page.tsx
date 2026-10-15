@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { requireRole } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
+import { HealthTabs } from "@/components/health/HealthTabs";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
@@ -46,8 +47,9 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <TopBar email={user.email} role={user.role} title="Incidents" subtitle="What is broken right now" />
+      <TopBar email={user.email} role={user.role} title="System health" subtitle="Incidents: what is broken right now" />
       <div className="space-y-6 p-4 sm:p-6">
+        <HealthTabs current="/incidents" role={user.role} />
         <SectionHeader title="Incidents" subtitle="One row per problem, most urgent first. Each one has a single Slack message that is updated as things change." />
 
         <div className="flex flex-wrap gap-2">

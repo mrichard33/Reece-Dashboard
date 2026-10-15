@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { requireUser } from "@/components/shell/RoleGate";
 import { TopBar } from "@/components/shell/TopBar";
+import { HealthTabs } from "@/components/health/HealthTabs";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Card, CardContent } from "@/components/ui/Card";
 import { SystemCards } from "@/components/health/SystemCards";
@@ -32,6 +33,7 @@ export default async function SystemHealthPage({ searchParams }: { searchParams:
     <>
       <TopBar email={user.email} role={user.role} title="System health" subtitle="Every check, every system" />
       <div className="space-y-6 p-4 sm:p-6">
+        <HealthTabs current="/system-health" role={user.role} />
         <SectionHeader
           title="System health"
           subtitle={page.state === "ok"
@@ -61,7 +63,7 @@ export default async function SystemHealthPage({ searchParams }: { searchParams:
                 <Link href={"/system-health" as Route} className="underline">Show every system</Link>
               </p>
             )}
-            <SystemCards systems={page.systems} timelines={page.timelines} only={only} />
+            <SystemCards systems={page.systems} timelines={page.timelines} problems={page.problems} only={only} />
           </>
         )}
       </div>
