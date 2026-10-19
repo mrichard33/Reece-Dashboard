@@ -13,7 +13,8 @@ import { CATEGORY_COLOR } from "./colors";
  * table scrolls sideways inside itself on a phone, with the name column pinned.
  */
 const HOLD = "REECE_HOLD";
-const colLabel = (c: string) => (c === HOLD ? "Held" : marketLabel(c));
+const DISPUTED = "DISPUTED";
+const colLabel = (c: string) => (c === HOLD ? "Held" : c === DISPUTED ? "Disputed" : marketLabel(c));
 const money = (v: number) => (v ? usdExact(v) : "—");
 const cell = "py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300";
 

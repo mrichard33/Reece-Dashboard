@@ -7,7 +7,9 @@
  *   - `Software` / `Call Center` — split evenly across the six offices
  *     (Hatch, Unbounce), carried as the line's sub-source label;
  *   - `Company-wide` — an even split with no category;
- *   - `REECE_HOLD` — held at company level, never split.
+ *   - `REECE_HOLD` — held at company level, never split;
+ *   - `DISPUTED` — billed but not found (a call-center invoice billed 12 demos,
+ *     we found 9): accepted as received, parked until settled (2026-10-19).
  *
  * Unbounce invoice 400 ($149, Software, $97.78 in Oct 2026) sat inside the
  * Lead Cost table as a "campaign" with no leads. Lead Cost now shows lead
@@ -30,15 +32,16 @@ import {
   n,
   sourceLabel,
   HOLD_MARKET,
+  DISPUTED_MARKET,
   type CostRowRaw,
   type CostView,
   type TrendPoint,
 } from "./marketingCost.core";
 
-export type CostCategory = "lead_source" | "software" | "call_center" | "company_wide" | "held";
+export type CostCategory = "lead_source" | "software" | "call_center" | "company_wide" | "held" | "disputed";
 
 /** Fixed order: tiles, table groups, chart stack and legend all follow it. */
-export const CATEGORY_ORDER: readonly CostCategory[] = ["lead_source", "software", "call_center", "company_wide", "held"];
+export const CATEGORY_ORDER: readonly CostCategory[] = ["lead_source", "software", "call_center", "company_wide", "held", "disputed"];
 
 export const CATEGORY_LABEL: Record<CostCategory, string> = {
   lead_source: "Lead sources",
@@ -46,10 +49,15 @@ export const CATEGORY_LABEL: Record<CostCategory, string> = {
   call_center: "Call center",
   company_wide: "Company-wide",
   held: "Held at company level",
+  disputed: "Disputed (not charged to an office)",
 };
 
 /** The categories Lead Cost no longer shows; they sum into its "Other marketing costs" line. */
-export const OTHER_CATEGORIES: readonly CostCategory[] = ["software", "call_center", "company_wide", "held"];
+export const OTHER_CATEGORIES: readonly CostCategory[] = ["software", "call_center", "company_wide", "held", "disputed"];
+
+/** Company-level money that is no office's cost: held, and disputed. */
+export const PARKED_MARKETS: readonly string[] = [HOLD_MARKET, DISPUTED_MARKET];
+const parked = (m: string) => PARKED_MARKETS.includes(m);
 
 export type CategoryInput = {
   market: string;
@@ -67,6 +75,7 @@ const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
  */
 export function costCategory(row: CategoryInput, part: "invoice" | "calculated" = "invoice"): CostCategory {
   if (row.market === HOLD_MARKET) return "held";
+  if (row.market === DISPUTED_MARKET) return "disputed";
   if (part === "calculated") return "lead_source";
   const ss = norm(row.lp_sub_source);
   if (ss === "software") return "software";
@@ -112,7 +121,7 @@ export function markEvenSplit<T extends CostRowRaw>(rows: T[], keys: Set<string>
  */
 export function leadOnlyRows<T extends CostRowRaw & { even_split?: boolean | null }>(rows: T[]): T[] {
   return rows.map((r) => {
-    if (r.market === HOLD_MARKET) return r;
+    if (parked(r.market)) return r;
     const lead = costCategory(r, "invoice") === "lead_source";
     const invoice = lead ? n(r.invoice_cost) : 0;
     const calculated = n(r.calculated_cost);
@@ -132,7 +141,7 @@ export type OtherCosts = { total: number; by: Record<CostCategory, number> };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 function zeroBy(): Record<CostCategory, number> {
-  return { lead_source: 0, software: 0, call_center: 0, company_wide: 0, held: 0 };
+  return { lead_source: 0, software: 0, call_center: 0, company_wide: 0, held: 0, disputed: 0 };
 }
 
 /**
@@ -149,8 +158,8 @@ export function otherCosts(rows: (CostRowRaw & { even_split?: boolean | null })[
   if (!w.market || w.market === "REECE") {
     const g = w.grain === "week" ? "iso_week" : "month";
     for (const r of rows) {
-      if (r.market === HOLD_MARKET && r.grain === g && r.period_start >= w.periodStart && r.period_start <= w.periodEnd) {
-        by.held += n(r.invoice_cost) + n(r.calculated_cost);
+      if (parked(r.market) && r.grain === g && r.period_start >= w.periodStart && r.period_start <= w.periodEnd) {
+        by[r.market === HOLD_MARKET ? "held" : "disputed"] += n(r.invoice_cost) + n(r.calculated_cost);
       }
     }
   }
@@ -290,7 +299,7 @@ export function shapeSpend(
   for (const a of allocs) {
     const e = a.marketing_expenses;
     if (!e || e.status !== "approved") continue;
-    const inScope = company ? (a.market === HOLD_MARKET || inMarket(a, "REECE")) : a.market === market;
+    const inScope = company ? (parked(a.market) || inMarket(a, "REECE")) : a.market === market;
     if (!inScope) continue;
     const amount = allocationInWindow(a, grain, periodStart, periodEnd);
     if (!amount) continue;
@@ -298,7 +307,7 @@ export function shapeSpend(
       { market: a.market, lp_sub_source: a.lp_sub_source, even_split: a.rule === "equal" },
       e.cost_type === "calculated" ? "calculated" : "invoice",
     );
-    if (a.market !== HOLD_MARKET) seen.add(a.market);
+    if (!parked(a.market)) seen.add(a.market);
     parts.push({
       col: a.market, category, amount, estimate: isEstimate(a),
       vendor: (e.vendor_id && vendorNames[e.vendor_id]) || "Unknown vendor",
@@ -306,8 +315,10 @@ export function shapeSpend(
     });
   }
 
+  // Disputed gets a column only when there is some: it is the exception.
+  const anyDisputed = parts.some((p) => p.col === DISPUTED_MARKET);
   const columns = company
-    ? [...markets, ...[...seen].filter((m) => !markets.includes(m)).sort(), HOLD_MARKET]
+    ? [...markets, ...[...seen].filter((m) => !markets.includes(m)).sort(), HOLD_MARKET, ...(anyDisputed ? [DISPUTED_MARKET] : [])]
     : [market];
 
   const groups = new Map<CostCategory, SpendGroup>();
@@ -349,7 +360,7 @@ export function shapeSpendTrend(rows: (CostRowRaw & { even_split?: boolean | nul
   const by = new Map<string, Record<CostCategory, number>>();
   for (const r of rows) {
     if (r.grain !== "month") continue;
-    if (!(company ? r.market === HOLD_MARKET || inMarket(r, "REECE") : r.market === market)) continue;
+    if (!(company ? parked(r.market) || inMarket(r, "REECE") : r.market === market)) continue;
     const k = r.period_start.slice(0, 7);
     const acc = by.get(k) ?? zeroBy();
     for (const p of costParts(r)) acc[p.category] += p.amount;

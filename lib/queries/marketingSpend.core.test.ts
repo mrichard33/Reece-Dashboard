@@ -257,3 +257,28 @@ describe("held spend in plain words", () => {
     expect(plainHoldReason(null, "no match — needs manual pick", label)).toMatch(/person has to pick/);
   });
 });
+
+// 2026-10-19 (the user): an invoice accepted as received parks what was billed
+// but not found (12 demos billed, 9 found) as Disputed: company level, its own
+// column and tile, never in an office's cost.
+describe("disputed money", () => {
+  const lf = { vendor_id: "lf", cost_type: "invoice" as const, period_start: "2026-10-01", period_end: "2026-10-08" };
+  const allocs = [
+    alloc({ market: "SAR_MKT", lp_sub_source: "Call Center", amount: "2250", rule: "proportional", e: lf }),
+    alloc({ market: "DISPUTED", lp_sub_source: "Call Center", amount: "750", rule: "hold", e: lf }),
+  ];
+  it("is its own category, column and tile in the company view; tiles still sum to the total", () => {
+    const v = shapeSpend(allocs, { lf: "LightFire Partners" }, { ...OCT, markets: OFFICES });
+    expect(v.columns.at(-1)).toBe("DISPUTED");
+    expect(v.tiles.disputed).toBe(750);
+    expect(v.tiles.call_center).toBe(2250);
+    expect(v.tiles.total).toBe(3000);
+    expect(costCategory({ market: "DISPUTED", lp_sub_source: "Call Center" })).toBe("disputed");
+  });
+  it("is never in an office's view, and there is no Disputed column when nothing is disputed", () => {
+    const sar = shapeSpend(allocs, { lf: "LightFire Partners" }, { ...OCT, market: "SAR_MKT", markets: OFFICES });
+    expect(sar.tiles.total).toBe(2250);
+    const clean = shapeSpend(allocs.slice(0, 1), { lf: "LightFire Partners" }, { ...OCT, markets: OFFICES });
+    expect(clean.columns).not.toContain("DISPUTED");
+  });
+});

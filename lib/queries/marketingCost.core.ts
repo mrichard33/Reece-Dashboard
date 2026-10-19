@@ -89,6 +89,13 @@ export function sourceLabel(v: string | null | undefined): string {
   return !s || s.toLowerCase() === "(none)" ? UNKNOWN_SOURCE : s;
 }
 export const HOLD_MARKET = "REECE_HOLD";
+/**
+ * Billed but not found (LP-MCP allocation.js DISPUTED_MARKET, 2026-10-19): the
+ * part of a call-center invoice line we could not match to its leads, parked
+ * until a revised invoice, a confirmed charge or a credit settles it. Not an
+ * office's cost, so never in a market's numbers.
+ */
+export const DISPUTED_MARKET = "DISPUTED";
 const MARKET_RX = /_MKT$/;
 
 export function n(v: unknown): number {

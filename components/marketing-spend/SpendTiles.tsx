@@ -12,11 +12,13 @@ export function SpendTiles({ view }: { view: SpendView }) {
   const cats: CostCategory[] = ["lead_source", "software", "call_center"];
   if (view.tiles.company_wide) cats.push("company_wide");
   if (company) cats.push("held");
+  // Disputed (billed but not found) shows only when something is in dispute.
+  if (company && view.tiles.disputed) cats.push("disputed");
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
       <Tile label="Total spend" value={view.tiles.total} strong />
       {cats.map((c) => (
-        <Tile key={c} label={c === "held" ? "Held (company)" : CATEGORY_LABEL[c]} value={view.tiles[c]} color={CATEGORY_COLOR[c]} />
+        <Tile key={c} label={c === "held" ? "Held (company)" : c === "disputed" ? "Disputed" : CATEGORY_LABEL[c]} value={view.tiles[c]} color={CATEGORY_COLOR[c]} />
       ))}
     </div>
   );

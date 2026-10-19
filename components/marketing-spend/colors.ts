@@ -7,4 +7,6 @@ export const CATEGORY_COLOR: Record<CostCategory, string> = {
   call_center: "var(--chart-cat-3)",
   company_wide: "var(--chart-cat-4)",
   held: "var(--chart-cat-5)",
+  // Disputed money is the exception, not a seventh category: the brand red.
+  disputed: "var(--chart-accent)",
 };
