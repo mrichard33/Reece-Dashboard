@@ -665,28 +665,40 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.leadcost": {
     title: "Lead Cost",
-    what: "Brad's cost sheet per LP sub-source for the selected market and window: Raw / Set / Issue / % Issue / # Demo / % Demo / # Sold / STD %, Gross / Working / Net $ (report 133), Invoice Cost (approved invoices + the Lead Gurus feed), Calculated Cost (Canvass 15%, MVP 15%, Previous Customer / Referral 1% of net), Total Cost, Cost ÷ Issued leads and Mkt % (Total ÷ Net). † marks provisional Lead Gurus feed spend that the invoice replaces at month close. 'n.a.' is a zero denominator. Held company-level money is shown under the table and is never in a market total. Weekly spreads monthly invoices across weeks by days and has no Net / Working $.",
+    what: "LEAD-SOURCE cost only (since 2026-10-19), per LP sub-source for the selected market and window: Raw / Set / Issue / % Issue / # Demo / % Demo / # Sold / STD %, Gross / Working / Net $ (report 133), Invoice Cost (approved invoices + the Lead Gurus feed), Total Cost, Cost ÷ Issued leads and Mkt % (Total ÷ Net). Software, call center, company-wide costs, commissions (Canvass, MVP, Previous Customer / Referral) and money held at company level are NOT in this table, its totals or cost per issued lead: they are summed in the 'Other marketing costs' line above it and itemised on Marketing Spend. † marks provisional Lead Gurus feed spend that the invoice replaces at month close. 'n.a.' is a zero denominator. 'Unknown' is leads with no sub-source in LP. Weekly spreads monthly invoices across weeks by days and has no Net / Working $.",
     where:
-      "`v_market_subsource_cost` in LP Supabase (LP-MCP sql/158), read by `lib/queries/marketingCost.ts`. Costs come from `marketing_expenses` → `marketing_expense_allocations`, split by gross issued leads (`mkt_issued_counts`); dollars from `mkt_sales_dollars`. Target % is `SCORECARD_LEADCOST_TARGET_PCT` (default 15).",
-    fix: "A missing cost: check the invoice in the Invoices tab (waiting in Slack #marketing-invoice-review?) or `GET /n8n/admin/marketing-expenses/status` on LP-MCP (reconciliation failures must be 0). A wrong market split: the vendor's `eligible_markets` in `marketing_vendors`, then `POST /n8n/admin/marketing-expenses/reallocate`. Net/Working missing: no report 133 snapshot for that month yet. Report 136 and LP cost entry are retired — do not type a cost into LP.",
+      "`v_market_subsource_cost` in LP Supabase, read by `lib/queries/marketingCost.ts` and filtered to lead sources by `shapeLeadCostView` in `lib/queries/marketingSpend.core.ts`. Costs come from `marketing_expenses` → `marketing_expense_allocations`, split by gross issued leads; dollars from `mkt_sales_dollars`. Target % is `SCORECARD_LEADCOST_TARGET_PCT` (default 15).",
+    fix: "A missing cost: check the invoice on Marketing Spend › Invoices (still in review in Slack #marketing-invoice-review?). A cost in the wrong category: the vendor's sub-source in the invoice's Edit form (Software / Call Center count as non-lead costs). A wrong market split: the vendor's markets in `marketing_vendors`, then reallocate in LP-MCP. Report 136 and LP cost entry are retired; do not type a cost into LP.",
   },
   "scorecard.costTrend": {
     title: "12-month cost trend",
-    what: "Total marketing cost (bars) and cost ÷ issued leads (line) for the selected market over the last 12 months. A missing point on the line means no issued leads that month.",
-    where: "`v_market_subsource_cost` at month grain, summed per month in `lib/queries/marketingCost.core.ts` (`shapeTrend`).",
-    fix: "A month that looks low is usually an invoice not yet approved or a Lead Gurus month still on the provisional feed. Check the Invoices tab for that month.",
+    what: "Lead-source cost (bars) and lead-source cost ÷ issued leads (line) for the selected market over the last 12 months. Software, call center, commissions and held money are on Marketing Spend's trend. A missing point on the line means no issued leads that month.",
+    where: "`v_market_subsource_cost` at month grain, lead-source rows only (`shapeLeadTrend` in `lib/queries/marketingSpend.core.ts`).",
+    fix: "A month that looks low is usually an invoice not yet approved or a Lead Gurus month still on the provisional feed. Check Marketing Spend › Invoices for that month.",
   },
   "scorecard.invoices": {
     title: "Invoices",
-    what: "Every marketing invoice the ledger has seen: status (waiting in Slack, approved, rejected, failed), vendor, invoice #, period, total, the flags that sent it to review, the original file and the text that was extracted from it for free (no AI reads the file).",
-    where: "`marketing_invoice_documents` + `marketing_expenses` in LP Supabase, written by LP-MCP `POST /n8n/admin/marketing-invoice-ingest` from n8n I.MCIN (the marketing-invoices@ inbox).",
-    fix: "'waiting in Slack' → decide it in #marketing-invoice-review (Mark or Brad). 'failed' → the error is on the row; a Railway log line `[MktInvoice]` names the step. A missing invoice → was it sent to the marketing-invoices@ address? n8n I.MCIN only reads mail addressed there.",
+    what: "Every marketing invoice the ledger has seen: status (In review, Posted, Rejected, Failed), vendor, invoice #, period, total, the flags that sent it to review, the original file and the text extracted from it (no AI reads the file). Rejected invoices (a duplicate or a mistake) are hidden until 'Show rejected'.",
+    where: "`marketing_invoice_documents` + `marketing_expenses` in LP Supabase, written by LP-MCP from n8n I.MCIN (the marketing-invoices@ inbox). The vendor is the analysis's vendor, else the vendor on the invoice's expense rows (set on Edit), else the name printed on the invoice.",
+    fix: "'In review' → decide it in #marketing-invoice-review (Mark or Brad). 'Failed' → the error is on the row; a Railway log line `[MktInvoice]` names the step. A missing invoice → was it sent to the marketing-invoices@ address? n8n I.MCIN only reads mail addressed there.",
   },
   "scorecard.heldSpend": {
-    title: "Held spend",
-    what: "Lead Gurus 'Unknown' / 'Out Of Area' spend and the daily territory gap sit at company level (REECE_HOLD) with a recommended market: the leads matched to an LP lead's branch, else their zip's service area. The money never moves by itself — this button applies the recommendation.",
-    where: "`marketing_expense_allocations` rows with rule 'hold'; recommendations written nightly by LP-MCP `src/marketing/holds.js`.",
-    fix: "No recommendation → the nightly job could not match those leads; pick the market by hand in LP-MCP (`marketing_expenses.eligible_markets`) and reallocate.",
+    title: "Held at company level",
+    what: "Lead Gurus spend their daily report did not tag to an office (the day's total minus the per-office numbers, or their 'Unknown' territory) sits at company level, never inside an office. The system suggests an office from that day's Lead Gurus leads it matched in LP. The money never moves by itself: an admin clicks 'Apply recommendation'. Rounding under $5 and today's still-filling-in day are never held, and $0 rows are not listed.",
+    where: "`marketing_expense_allocations` rows with market REECE_HOLD and rule 'hold'; suggestions written nightly by LP-MCP `src/marketing/holds.js`.",
+    fix: "'No office could be matched' → pick the office by hand in LP-MCP (`marketing_expenses.eligible_markets`) and reallocate.",
+  },
+  "marketingSpend.table": {
+    title: "Spend by category",
+    what: "Every approved marketing cost in the window, in six kinds: Lead sources (invoices and the Lead Gurus feed for a lead source), Commissions (Canvass and MVP Marketing 15% of net, Previous Customer / Referral 1% of net, from report 133), Software and Call center (split evenly over the six offices), Company-wide (an even split with no kind), and Held at company level. Tap a kind to see its vendors, and a vendor to see its sub-sources. One column per office, plus Held and Total for the whole company. The tiles above add up to Total spend.",
+    where: "`marketing_expense_allocations` → `marketing_expenses` (approved) → `marketing_vendors`, in the same month / ISO-week window as `v_market_subsource_cost`. Shaped by `shapeSpend` in `lib/queries/marketingSpend.core.ts`.",
+    fix: "A cost under the wrong kind: its sub-source (Software / Call Center) on the invoice's Edit form. A commission that looks a day old: it recomputes when LP report 133 lands and again at 02:30 ET.",
+  },
+  "marketingSpend.trend": {
+    title: "12-month spend",
+    what: "Total marketing spend per month for the selected market, stacked by kind (lead sources, commissions, software, call center, company-wide, held). Held money shows only for the whole company.",
+    where: "`v_market_subsource_cost` at month grain (`shapeSpendTrend` in `lib/queries/marketingSpend.core.ts`).",
+    fix: "A month that looks low is usually an invoice still in review on the Invoices tab.",
   },
 
   // ── /scorecard · per-KPI + Phase 4 UX ────────────────────────────────

@@ -57,6 +57,16 @@
     --chart-primary: #122739;
     --chart-accent: #ED1E24;
     --chart-positive: #16a34a;
+    /* Categorical slots 1–6 (dataviz reference order, validated 2026-10-19:
+       adjacent CVD ΔE ≥ 9.1 light / 8.4 dark). Marketing Spend categories use
+       them in CATEGORY_ORDER; slots 3–5 sit under 3:1 on white, so every chart
+       using them carries a legend and a table view. */
+    --chart-cat-1: #2a78d6;
+    --chart-cat-2: #eb6834;
+    --chart-cat-3: #1baf7a;
+    --chart-cat-4: #eda100;
+    --chart-cat-5: #e87ba4;
+    --chart-cat-6: #008300;
   }
 
   .dark {
@@ -74,6 +84,12 @@
     --chart-primary: #7d9bbf;
     --chart-accent: #ED1E24;
     --chart-positive: #4ade80;
+    --chart-cat-1: #3987e5;
+    --chart-cat-2: #d95926;
+    --chart-cat-3: #199e70;
+    --chart-cat-4: #c98500;
+    --chart-cat-5: #d55181;
+    --chart-cat-6: #008300;
   }
 
   * {

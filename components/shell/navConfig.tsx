@@ -16,6 +16,7 @@ import {
   Wallet,
   Mail,
   Activity,
+  Receipt,
 } from "lucide-react";
 
 /** Which attention count (if any) drives this item's nav badge. */
@@ -121,6 +122,16 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Scorecard",
         desc: "Goal & variance vs plan",
         Icon: Gauge,
+        audience: "all",
+      },
+      {
+        // 2026-10-19: every marketing cost (software, call center, commissions,
+        // held money) and the invoices. Its own item, not under /scorecard,
+        // which is for sales; Sources & lead cost keeps lead sources only.
+        href: "/marketing-spend",
+        label: "Marketing Spend",
+        desc: "Every marketing cost & invoice",
+        Icon: Receipt,
         audience: "all",
       },
       {

@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { num, usd } from "@/lib/utils";
 import { pct } from "./format";
@@ -16,8 +15,13 @@ import { METRIC_LABELS } from "@/lib/scorecard/labels";
  * Issue / % Issue / # Demo / % Demo / # Sold / STD % / Gross $ / Working $ /
  * Net Sales $ / Net per Issued Appointment / Invoice Cost / Calculated Cost /
  * Total Cost / Cost ÷ Issued leads / Mkt %. † = provisional (Lead Gurus feed,
- * no invoice yet). Held company-level money shows under the table with its
- * recommendation; it is never inside a market total.
+ * no invoice yet). No Calculated Cost column since 2026-10-19: commissions are
+ * not lead cost any more, so it was always $0.
+ *
+ * 2026-10-19: lead sources only. Software, call center, commissions and held
+ * company-level money are in the page's "Other marketing costs" line and on
+ * /marketing-spend, where held spend and its recommendation now live (the
+ * user: the scorecard is for sales).
  */
 
 type SortKey = "total_cost" | "cost_per_issued" | "issued" | "net" | "raw" | "mkt_pct";
@@ -83,7 +87,6 @@ export function LeadCostTable({
       <td className={cell}>{usd(r.net)}</td>
       <td className={`${cell} hidden xl:table-cell`}>{na(r.nsli, usd)}</td>
       <td className={cell}>{money2(r.invoice_cost)}</td>
-      <td className={cell}>{money2(r.calculated_cost)}</td>
       <td className={`${cell} font-semibold`}>{money2(r.total_cost)}</td>
       <td className={`${cell} font-semibold`}>{na(r.cost_per_issued, money2)}</td>
       <td className={`${cell} ${costTone(r.mkt_pct, targetPct)}`}>{na(r.mkt_pct, pct)}</td>
@@ -182,7 +185,6 @@ export function LeadCostTable({
                 <th className="py-2 pl-3 text-right font-medium">{sortable("net", "Net Sales $")}</th>
                 <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell" title={METRIC_LABELS.netPerIssuedAppointment}>Net $ / Issued</th>
                 <th className="py-2 pl-3 text-right font-medium">Invoice Cost</th>
-                <th className="py-2 pl-3 text-right font-medium">Calculated Cost</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("total_cost", "Total Cost")}</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("cost_per_issued", "Cost / Issued Lead")}</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("mkt_pct", "Mkt %")}</th>
@@ -195,16 +197,6 @@ export function LeadCostTable({
           </table>
         </div>
 
-        {view?.held && (
-          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            <span className="font-semibold">Held at company level (not in any market): {money2(view.held.total_cost)}.</span>{" "}
-            {view.held.recommended_market ? (
-              <>Recommended: <Badge tone="amber">{view.held.recommended_market}</Badge> — {view.held.recommendation_reason}</>
-            ) : (
-              "No recommendation yet (nightly job matches these leads to a market)."
-            )}
-          </div>
-        )}
         {rows.some((r) => r.provisional) && (
           <p className="mt-2 text-[11px] text-slate-400">† provisional: Lead Gurus feed spend, replaced by the invoice at month close.</p>
         )}

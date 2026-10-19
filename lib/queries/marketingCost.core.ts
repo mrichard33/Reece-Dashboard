@@ -82,6 +82,12 @@ export type CostView = {
 export type TrendPoint = { month: string; label: string; total_cost: number; cost_per_issued: number | null; issued: number };
 
 export const COMPANY_MARKET = "REECE";
+/** A campaign / source with no name reads "Unknown", never "(none)" (the user, 2026-10-19). */
+export const UNKNOWN_SOURCE = "Unknown";
+export function sourceLabel(v: string | null | undefined): string {
+  const s = (v ?? "").trim();
+  return !s || s.toLowerCase() === "(none)" ? UNKNOWN_SOURCE : s;
+}
 export const HOLD_MARKET = "REECE_HOLD";
 const MARKET_RX = /_MKT$/;
 
@@ -165,7 +171,7 @@ export function shapeCostView(
       continue;
     }
     if (!inMarket(r, market)) continue;
-    const key = r.lp_sub_source || "(none)";
+    const key = sourceLabel(r.lp_sub_source);
     const a = by.get(key) ?? emptyAgg(key);
     add(a, r);
     by.set(key, a);
@@ -220,7 +226,7 @@ export type InvoiceDocRaw = {
   received_at: string | null;
   file_name: string | null;
   analyzer: string | null;
-  analysis: { facts?: { total?: number | string | null; invoice_number?: string | null; period_start?: string | null; period_end?: string | null }; vendor_id?: string | null; flags?: string[] } | null;
+  analysis: { facts?: { total?: number | string | null; invoice_number?: string | null; period_start?: string | null; period_end?: string | null; vendor_name_hint?: string | null }; vendor_id?: string | null; flags?: string[] } | null;
   extracted_text: string | null;
   storage_path: string | null;
   created_at: string;
@@ -229,6 +235,8 @@ export type InvoiceDocRaw = {
 export type InvoiceDoc = {
   id: string;
   status: string;
+  /** In review / Posted / Rejected / Failed — what a person reads. */
+  status_label: string;
   from: string;
   subject: string;
   received_at: string | null;
@@ -243,16 +251,41 @@ export type InvoiceDoc = {
   has_file: boolean;
 };
 
-export function shapeInvoices(docs: InvoiceDocRaw[], vendorNames: Record<string, string> = {}): InvoiceDoc[] {
+/** Plain status label (2026-10-19): posted, rejected and failed say so; every other step is still in review. */
+export function invoiceStatusLabel(status: string): string {
+  if (status === "posted") return "Posted";
+  if (status === "rejected") return "Rejected";
+  if (status === "failed") return "Failed";
+  return "In review";
+}
+
+/**
+ * Vendor name, in order (2026-10-19): the analysis's vendor → the vendor on
+ * the document's expense rows (LP-MCP writes that on Edit; the analysis kept
+ * the model's guess, so Unbounce read "unknown") → the name printed on the
+ * invoice → "Unknown".
+ */
+export function shapeInvoices(
+  docs: InvoiceDocRaw[],
+  vendorNames: Record<string, string> = {},
+  expenseVendorByDoc: Record<string, string> = {},
+): InvoiceDoc[] {
   return docs.map((d) => {
     const f = d.analysis?.facts ?? {};
+    const byId = (id: string | null | undefined) => (id ? vendorNames[id] : undefined);
+    const vendor = byId(d.analysis?.vendor_id) || byId(expenseVendorByDoc[d.id]) || f.vendor_name_hint?.trim() || "Unknown";
     return {
-      id: d.id, status: d.status, from: d.from_address ?? "—", subject: d.subject ?? "", received_at: d.received_at,
-      file_name: d.file_name ?? "(email body)", vendor: (d.analysis?.vendor_id && vendorNames[d.analysis.vendor_id]) || "unknown",
+      id: d.id, status: d.status, status_label: invoiceStatusLabel(d.status), from: d.from_address ?? "—", subject: d.subject ?? "", received_at: d.received_at,
+      file_name: d.file_name ?? "(email body)", vendor,
       invoice_number: f.invoice_number ?? "—",
       period: f.period_start && f.period_end ? `${f.period_start} → ${f.period_end}` : "—",
       total: nn(f.total), flags: d.analysis?.flags ?? [], analyzer: d.analyzer ?? "—",
       extracted_text: (d.extracted_text ?? "").slice(0, 4000), has_file: !!d.storage_path,
     };
   });
+}
+
+/** Rejected invoices are hidden unless asked for (a rejected duplicate is not news). */
+export function visibleInvoices(docs: InvoiceDoc[], showRejected: boolean): InvoiceDoc[] {
+  return showRejected ? docs : docs.filter((d) => d.status !== "rejected");
 }

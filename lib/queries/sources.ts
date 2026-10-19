@@ -1,6 +1,7 @@
 import { lpServer } from "@/lib/supabase/lp";
 import type { ResolvedPeriod } from "@/lib/date/resolvePeriod";
 import { fetchScorecardPreview } from "@/lib/queries/scorecard";
+import { sourceLabel } from "@/lib/queries/marketingCost.core";
 
 /**
  * Source Performance read layer (Phase 2).
@@ -65,7 +66,7 @@ function i(v: unknown): number {
 function mapRow(r: Record<string, unknown>): SourceScorecardRow {
   const raw = (r.raw_inputs as Record<string, unknown> | null) ?? {};
   return {
-    source: String(r.source ?? "(none)"),
+    source: sourceLabel(r.source == null ? null : String(r.source)),
     sub_source: String(r.sub_source ?? "(none)"),
     bucket: raw.bucket != null ? String(raw.bucket) : null,
     unmapped: raw.unmapped === true,
@@ -178,7 +179,7 @@ function aggregateSourceRows(raw: Record<string, unknown>[]): SourceScorecardRow
     const gross_sales = sum("gross_sales");
     const released_dollars = sum("released_dollars");
     out.push({
-      source: String(first.source ?? "(none)"),
+      source: sourceLabel(first.source == null ? null : String(first.source)),
       sub_source: String(first.sub_source ?? "(none)"),
       bucket: fraw.bucket != null ? String(fraw.bucket) : null,
       unmapped: fraw.unmapped === true,
