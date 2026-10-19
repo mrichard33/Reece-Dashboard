@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { CostRowRaw } from "./marketingCost.core";
-import { allMarketing,
+import { shapeSpendTrendByMarket, allMarketing,
   costCategory,
   costParts,
   markEvenSplit,
@@ -296,5 +296,17 @@ describe("allMarketing (2026-10-19: lead sources + call center + software, both 
   it("no net, no Mkt %; no other costs, no extra lines", () => {
     const a = allMarketing({ total_cost: 100, issued: 0, net: null }, null);
     expect([a.lines.length, a.mkt_pct, a.cost_per_issued, a.total_cost]).toEqual([0, null, null, 100]);
+  });
+});
+
+describe("shapeSpendTrendByMarket (12-month chart, one color per office)", () => {
+  const r = (market: string, month: string, invoice_cost: number) => ({ grain: "month", market, lp_sub_source: "X", period_start: month, invoice_cost, calculated_cost: 0 } as unknown as CostRowRaw);
+  it("one series per office, other markets folded, held and disputed kept apart; totals add up", () => {
+    const pts = shapeSpendTrendByMarket([
+      r("ORL_MKT", "2026-09-01", 100), r("SAR_MKT", "2026-09-01", 50), r("HOU_MKT", "2026-09-01", 7),
+      r("REECE_HOLD", "2026-09-01", 3), r("DISPUTED", "2026-09-01", 9), r("ORL_MKT", "2026-10-01", 20),
+    ], ["STPET_MKT", "ORL_MKT", "SAR_MKT"]);
+    expect(pts.map((p) => p.month)).toEqual(["2026-09", "2026-10"]);
+    expect(pts[0]).toMatchObject({ ORL_MKT: 100, SAR_MKT: 50, STPET_MKT: 0, OTHER: 7, REECE_HOLD: 3, DISPUTED: 9, total: 169 });
   });
 });

@@ -6,8 +6,9 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Badge } from "@/components/ui/Badge";
 import { usdExact } from "@/lib/utils";
 import { marketLabel } from "@/lib/scorecard/markets";
-import { loadInvoiceDetail, settleInvoiceDispute } from "@/lib/actions/marketingCost";
-import type { InvoiceDetail, InvoiceDoc } from "@/lib/queries/marketingCost.core";
+import { loadInvoiceDetail, settleInvoiceDispute, type InvoiceStage } from "@/lib/actions/marketingCost";
+import type { InvoiceDetail, InvoiceDoc, InvoiceEditForm } from "@/lib/queries/marketingCost.core";
+import { InvoiceDecide } from "./InvoiceDecide";
 
 const STATE_TEXT: Record<InvoiceDetail["state"], string> = {
   none: "No dispute on this invoice.",
@@ -15,6 +16,8 @@ const STATE_TEXT: Record<InvoiceDetail["state"], string> = {
   confirmed: "The disputed part was confirmed and is charged to the offices.",
   credited: "The vendor's credit was taken off this invoice.",
 };
+
+const defaultCredit = (d: InvoiceDetail) => (d.credited > 0 ? d.credited.toFixed(2) : d.disputed > 0 ? d.disputed.toFixed(2) : "");
 
 const btn =
   "inline-flex h-9 items-center justify-center rounded-md px-3 text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 sm:h-8";
@@ -24,7 +27,8 @@ const btn =
  * the invoice and lets me update the credit received, confirm the charge, or
  * reopen a disputed amount"). Opens a side panel with the lines, the offices
  * each was charged to, what is disputed and what was credited, the original
- * file, and the three dispute actions. Only an admin (Mark, Brad) can change
+ * file, Approve / Reject / Edit details / Reopen (InvoiceDecide), and the
+ * three dispute actions. Only an admin (Mark, Brad) can change
  * it, the same people who decide invoices in Slack; LP-MCP does the work and
  * redraws the Slack card so both say the same thing.
  */
@@ -34,7 +38,8 @@ export function InvoiceDrawer({ doc, canEdit, initial = null }: { doc: InvoiceDo
   const [detail, setDetail] = useState<InvoiceDetail | null>(initial);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-  const [credit, setCredit] = useState("");
+  const [credit, setCredit] = useState(() => (initial ? defaultCredit(initial) : ""));
+  const [edit, setEdit] = useState<{ form: InvoiceEditForm; vendors: { id: string; name: string }[]; stage: InvoiceStage; key: number } | null>(null);
   const [pending, start] = useTransition();
 
   const load = useCallback(async () => {
@@ -42,7 +47,8 @@ export function InvoiceDrawer({ doc, canEdit, initial = null }: { doc: InvoiceDo
     const r = await loadInvoiceDetail(doc.id);
     if (r.ok) {
       setDetail(r.detail);
-      setCredit(r.detail.credited > 0 ? r.detail.credited.toFixed(2) : r.detail.disputed > 0 ? r.detail.disputed.toFixed(2) : "");
+      setCredit(defaultCredit(r.detail));
+      setEdit((e) => ({ form: r.form, vendors: r.vendors, stage: r.stage, key: (e?.key ?? 0) + 1 }));
     } else setError(r.error);
   }, [doc.id]);
 
@@ -148,6 +154,21 @@ export function InvoiceDrawer({ doc, canEdit, initial = null }: { doc: InvoiceDo
                   </div>
                 ))}
               </div>
+
+              {edit && (
+                <InvoiceDecide
+                  key={edit.key}
+                  documentId={doc.id}
+                  stage={edit.stage}
+                  form={edit.form}
+                  vendors={edit.vendors}
+                  canEdit={canEdit}
+                  onDone={async () => {
+                    await load();
+                    router.refresh();
+                  }}
+                />
+              )}
 
               {(d.canConfirm || d.canCredit || d.canReopen) && (
                 <div className="space-y-3 rounded-md border border-slate-200 p-3 dark:border-slate-800">

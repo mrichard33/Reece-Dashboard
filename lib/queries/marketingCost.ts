@@ -15,12 +15,14 @@ import {
   shapeLeadTrend,
   shapeSpend,
   shapeSpendTrend,
+  shapeSpendTrendByMarket,
   markEvenSplit,
   isoWeekStart,
   type OtherCosts,
   type AllocationRaw,
   type SpendView,
   type SpendTrendPoint,
+  type MarketTrendPoint,
 } from "./marketingSpend.core";
 import { SCORECARD_MARKETS } from "@/lib/scorecard/markets";
 
@@ -143,11 +145,15 @@ export async function getMarketingSpend({
 }
 
 /** 12-month spend by category (the view at month grain). */
-export async function getMarketingSpendTrend(market = COMPANY_MARKET, through: string): Promise<SpendTrendPoint[]> {
+export async function getMarketingSpendTrend(market = COMPANY_MARKET, through: string): Promise<{ byCategory: SpendTrendPoint[]; byMarket: MarketTrendPoint[] }> {
   const start = trendStart(through);
   const end = `${through.slice(0, 7)}-01`;
   const [r, keys] = await Promise.all([readView({ grain: "month", from: start, to: end }), readEvenSplitKeys(start, end)]);
-  return r.rows.length ? shapeSpendTrend(markEvenSplit(r.rows, keys), market) : [];
+  if (!r.rows.length) return { byCategory: [], byMarket: [] };
+  const rows = markEvenSplit(r.rows, keys);
+  // By office only for the company view: one market's chart has one office.
+  const company = !market || market === COMPANY_MARKET;
+  return { byCategory: shapeSpendTrend(rows, market), byMarket: company ? shapeSpendTrendByMarket(rows, SCORECARD_MARKETS.map((m) => m.code)) : [] };
 }
 
 export async function getRecentInvoices(limit = 40): Promise<{ docs: InvoiceDoc[]; needsMigration: boolean }> {
