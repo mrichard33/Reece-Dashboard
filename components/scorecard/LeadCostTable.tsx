@@ -101,7 +101,7 @@ export function LeadCostTable({
           <h3 className="font-display text-base font-semibold text-navy-900 dark:text-white">Lead Cost</h3>
           <InfoPopover helpKey="scorecard.leadcost" />
           <span className="text-xs text-slate-400">
-            Cost ÷ issued leads · target ≤ {targetPct}% of net · Net = RTP'd + completed jobs
+            Cost ÷ issued leads · target ≤ {targetPct}% of net · Net = RTP&apos;d + completed jobs
             {view?.as_of_snapshot ? ` · Net/Working as of ${view.as_of_snapshot}` : ""}
             {view?.grain === "week" ? " · weekly (no Net/Working at week grain)" : ""}
           </span>
