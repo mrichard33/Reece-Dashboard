@@ -296,3 +296,110 @@ export function shapeInvoices(
 export function visibleInvoices(docs: InvoiceDoc[], showRejected: boolean): InvoiceDoc[] {
   return showRejected ? docs : docs.filter((d) => d.status !== "rejected");
 }
+
+/**
+ * The invoice view's detail (2026-10-19, the user: "a button that displays the
+ * invoice and lets me update the credit received, confirm the charge, or reopen
+ * a disputed amount"). Pure: the rows come from marketing_expenses,
+ * marketing_expense_allocations and the document's analysis. LP-MCP keeps
+ * `analysis.credits` as the credits in force (`was` = what was billed) and
+ * `analysis.dispute_log` as every confirm / credit / reopen.
+ */
+export type InvoiceLineRaw = {
+  id: string;
+  line_no: number | null;
+  description: string | null;
+  amount: number | string | null;
+  status: string;
+  flags: string[] | null;
+  period_start: string | null;
+  period_end: string | null;
+};
+export type InvoiceAllocationRaw = { expense_id: string; month: string; market: string; amount: number | string | null };
+export type DisputeCredit = { expense_id: string; line_no?: number | null; was: number; credited: number; by?: string; at?: string };
+export type DisputeLogEntry = { action: "accept" | "credit" | "reopen"; amount: number; by?: string; at?: string };
+
+export type InvoiceLine = {
+  id: string;
+  line_no: number;
+  description: string;
+  status: string;
+  /** What the vendor billed (before any credit). */
+  billed: number;
+  /** What is charged now (billed − credit). */
+  amount: number;
+  credited: number;
+  disputed: number;
+  confirmed: boolean;
+  period: string;
+  offices: { market: string; amount: number }[];
+};
+
+export type DisputeState = "none" | "open" | "confirmed" | "credited";
+
+export type InvoiceDetail = {
+  lines: InvoiceLine[];
+  billed: number;
+  charged: number;
+  disputed: number;
+  credited: number;
+  state: DisputeState;
+  /** The most a credit can be: what is disputed now plus what a confirm or credit settled (null: a confirm made before the log existed; LP-MCP checks). */
+  creditMax: number | null;
+  canConfirm: boolean;
+  canCredit: boolean;
+  canReopen: boolean;
+  log: DisputeLogEntry[];
+};
+
+const c2 = (n: number) => Math.round(n * 100) / 100;
+
+export function shapeInvoiceDetail(
+  rows: InvoiceLineRaw[],
+  allocations: InvoiceAllocationRaw[],
+  analysis: { credits?: DisputeCredit[] | null; dispute_log?: DisputeLogEntry[] | null } | null,
+): InvoiceDetail {
+  const credits = Array.isArray(analysis?.credits) ? analysis!.credits! : [];
+  const log = Array.isArray(analysis?.dispute_log) ? analysis!.dispute_log! : [];
+  const lines: InvoiceLine[] = rows
+    .filter((r) => r.status !== "superseded")
+    .sort((a, b) => (a.line_no ?? 0) - (b.line_no ?? 0))
+    .map((r) => {
+      const amount = nn(r.amount) ?? 0;
+      const mine = credits.filter((c) => c.expense_id === r.id);
+      const credited = c2(mine.reduce((t, c) => t + (Number(c.credited) || 0), 0));
+      const billed = mine.length ? Number(mine[0]!.was) || amount : amount;
+      const byMarket = new Map<string, number>();
+      let disputed = 0;
+      for (const a of allocations) {
+        if (a.expense_id !== r.id) continue;
+        const v = nn(a.amount) ?? 0;
+        if (a.market === DISPUTED_MARKET) disputed += v;
+        else byMarket.set(a.market, (byMarket.get(a.market) ?? 0) + v);
+      }
+      return {
+        id: r.id, line_no: r.line_no ?? 0, description: (r.description ?? "").trim() || "Invoice line", status: r.status,
+        billed: c2(billed), amount: c2(amount), credited, disputed: c2(disputed),
+        confirmed: (r.flags ?? []).includes("dispute_accepted"),
+        period: r.period_start && r.period_end ? (r.period_start === r.period_end ? r.period_start : `${r.period_start} → ${r.period_end}`) : "—",
+        offices: [...byMarket.entries()].map(([market, v]) => ({ market, amount: c2(v) })).filter((o) => o.amount !== 0).sort((a, b) => b.amount - a.amount),
+      };
+    });
+  const sum = (k: "billed" | "amount" | "credited" | "disputed") => c2(lines.reduce((t, l) => t + l[k], 0));
+  const disputed = sum("disputed");
+  const credited = sum("credited");
+  const confirmed = lines.some((l) => l.confirmed);
+  const approved = lines.some((l) => l.status === "approved");
+  const state: DisputeState = disputed > 0 ? "open" : credited > 0 ? "credited" : confirmed ? "confirmed" : "none";
+  // A confirm keeps no amount on the lines; its log entry says what it settled.
+  const lastAccept = [...log].reverse().find((e) => e.action === "accept");
+  const confirmedAmount = confirmed ? Number(lastAccept?.amount) || 0 : 0;
+  const creditMax = confirmed && !lastAccept ? null : c2(disputed + credited + confirmedAmount);
+  return {
+    lines, billed: sum("billed"), charged: sum("amount"), disputed, credited, state, creditMax,
+    canConfirm: approved && disputed > 0,
+    canCredit: approved && (creditMax == null || creditMax > 0),
+    canReopen: approved && (credited > 0 || confirmed),
+    log,
+  };
+}
