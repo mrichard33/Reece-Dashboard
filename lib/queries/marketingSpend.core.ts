@@ -405,3 +405,45 @@ export function plainHoldReason(recommended: string | null, reason: string | nul
   const parts = shares.map((s) => `${label(s[1]!)} (${s[2]} of ${total})`);
   return `Suggested: ${parts.join(", ")}, by the Lead Gurus leads from that day we matched in LP.`;
 }
+
+/**
+ * "All marketing" (the user, 2026-10-19: a line item that adds software and
+ * call-center cost to the overall marketing cost, with both targets): the
+ * Lead Cost total (lead sources, commissions included) plus call center,
+ * software and company-wide money for the same market and window, as % of the
+ * same net sales. Held and Disputed money is not in it: Disputed is not
+ * charged, held money is placed on its own (and listed as a note).
+ */
+export type AllMarketingLine = { category: CostCategory; label: string; cost: number };
+export type AllMarketing = {
+  lead_cost: number;
+  lines: AllMarketingLine[];
+  total_cost: number;
+  issued: number;
+  net: number | null;
+  cost_per_issued: number | null;
+  mkt_pct: number | null;
+  /** Held + Disputed money left out of the total. */
+  parked: number;
+};
+
+const ALL_IN: readonly CostCategory[] = ["call_center", "software", "company_wide"];
+
+export function allMarketing(
+  totals: { total_cost: number; issued: number; net: number | null },
+  other: OtherCosts | null,
+): AllMarketing {
+  const lines = ALL_IN.map((c) => ({ category: c, label: CATEGORY_LABEL[c], cost: r2(other?.by[c] ?? 0) })).filter((l) => l.cost !== 0);
+  const total = r2(totals.total_cost + lines.reduce((t, l) => t + l.cost, 0));
+  const net = totals.net;
+  return {
+    lead_cost: r2(totals.total_cost),
+    lines,
+    total_cost: total,
+    issued: totals.issued,
+    net,
+    cost_per_issued: totals.issued > 0 ? r2(total / totals.issued) : null,
+    mkt_pct: net != null && net > 0 ? Math.round((total / net) * 1000) / 10 : null,
+    parked: r2((other?.by.held ?? 0) + (other?.by.disputed ?? 0)),
+  };
+}
