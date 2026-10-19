@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getAccessContext, getSessionUser } from "@/lib/auth";
 import { lpService } from "@/lib/supabase/lp";
 
 export const dynamic = "force-dynamic";
 
-/** Open the original invoice file: a short signed URL minted per click, never stored. */
+/**
+ * Open the original invoice file: a short signed URL minted per click, never stored.
+ * Admins only (the user, 2026-10-19): invoices can carry bank routing and account
+ * numbers, which cannot be erased from inside a PDF, so only Mark and Brad open it.
+ */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const access = await getAccessContext().catch(() => null);
+  if (!access?.isAdmin) return NextResponse.json({ error: "admins only" }, { status: 403 });
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
   const sb = lpService();

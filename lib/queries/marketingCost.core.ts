@@ -292,6 +292,16 @@ export function shapeInvoices(
   });
 }
 
+/**
+ * What a viewer may see of an invoice (the user, 2026-10-19): invoices can carry
+ * bank details, so the original file and the extracted text are for admins
+ * only. Anyone else gets the facts (vendor, total, period, status) and nothing
+ * the file said: the text never reaches their browser, and the file link is not drawn.
+ */
+export function invoicesForViewer(docs: InvoiceDoc[], isAdmin: boolean): InvoiceDoc[] {
+  return isAdmin ? docs : docs.map((d) => ({ ...d, extracted_text: "", has_file: false }));
+}
+
 /** Rejected invoices are hidden unless asked for (a rejected duplicate is not news). */
 export function visibleInvoices(docs: InvoiceDoc[], showRejected: boolean): InvoiceDoc[] {
   return showRejected ? docs : docs.filter((d) => d.status !== "rejected");
