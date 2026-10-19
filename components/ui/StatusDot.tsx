@@ -5,7 +5,7 @@ export type DotStatus = "healthy" | "warning" | "critical" | "neutral";
 const colorMap: Record<DotStatus, { base: string; ping: string }> = {
   healthy: { base: "bg-emerald-500", ping: "bg-emerald-400" },
   warning: { base: "bg-amber-500", ping: "bg-amber-400" },
-  critical: { base: "bg-rose-500", ping: "bg-rose-400" },
+  critical: { base: "bg-brick-500", ping: "bg-brick-400" },
   neutral: { base: "bg-slate-400", ping: "bg-slate-300" },
 };
 

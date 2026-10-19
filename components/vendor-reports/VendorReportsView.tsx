@@ -234,7 +234,7 @@ function VendorCard({ vendor }: { vendor: VendorItem }) {
           <span className="font-medium text-slate-600 dark:text-slate-300">Last run:</span> {lastRunLabel(vendor.lastRun)}
         </p>
         {msg && (
-          <p className={`mt-2 text-xs ${msg.kind === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600"}`}>{msg.text}</p>
+          <p className={`mt-2 text-xs ${msg.kind === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-brick-600"}`}>{msg.text}</p>
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -315,7 +315,7 @@ function AddVendorCard() {
             </label>
             <p className="text-xs text-slate-500">New vendors start switched off. Check the email, then press Turn on. Reports go out with the LP feed email (about 6:30 AM ET): every Monday, or the 1st of each month.</p>
             {msg && (
-              <p className={`text-xs ${msg.kind === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600"}`}>{msg.text}</p>
+              <p className={`text-xs ${msg.kind === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-brick-600"}`}>{msg.text}</p>
             )}
             <Button type="submit" size="sm" disabled={pending}>
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Add vendor"}

@@ -203,7 +203,7 @@ export default async function IssuesPage() {
                     <span
                       className={`font-mono ${
                         c.daysStuck > 30
-                          ? "text-rose-600 font-semibold"
+                          ? "text-brick-600 font-semibold"
                           : c.daysStuck > 14
                             ? "text-amber-600"
                             : "text-slate-600"

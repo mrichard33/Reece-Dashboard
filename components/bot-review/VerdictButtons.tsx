@@ -35,8 +35,8 @@ const OPTIONS: Array<{ value: Verdict; label: string; key: string; icon: string;
     label: "Unsafe",
     key: "U",
     icon: "⚠️",
-    on: "bg-rose-600 text-white ring-rose-600 hover:bg-rose-700",
-    ring: "hover:ring-rose-400 hover:text-rose-700 dark:hover:text-rose-300",
+    on: "bg-brick-600 text-white ring-brick-600 hover:bg-brick-700",
+    ring: "hover:ring-brick-400 hover:text-brick-700 dark:hover:text-brick-300",
   },
 ];
 

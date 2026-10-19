@@ -71,7 +71,7 @@ export default async function LeadsPageRoute({ searchParams }: { searchParams: P
               </p>
             )}
             {!page ? (
-              <p className="py-8 text-center text-sm text-rose-600 dark:text-rose-400">
+              <p className="py-8 text-center text-sm text-brick-600 dark:text-brick-400">
                 Could not read leads from the GHL cache. Try again in a minute.
               </p>
             ) : (

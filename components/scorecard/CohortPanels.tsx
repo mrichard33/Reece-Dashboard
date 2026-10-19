@@ -258,7 +258,7 @@ export function CohortQualityPanel({
                   <td className="px-2 py-2 text-right font-mono font-semibold tabular text-slate-900 dark:text-slate-50">
                     {money(d.netSalesCents)}
                   </td>
-                  <td className="px-2 py-2 text-right font-mono tabular text-rose-600 dark:text-rose-400">
+                  <td className="px-2 py-2 text-right font-mono tabular text-brick-600 dark:text-brick-400">
                     {money(d.lostCents)}
                     <span className="ml-1 text-[10px] text-slate-400">{pctOf(lostRate(c))}</span>
                   </td>

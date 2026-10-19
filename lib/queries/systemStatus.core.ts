@@ -98,7 +98,7 @@ export function shapeSystemStrip(live: SystemStatusRaw[], shadow: SystemStatusRa
 /** Tailwind classes for a chip's dot: solid when live, a ring when shadow. */
 export function dotClass(color: HealthColor, hollow: boolean): string {
   const tone: Record<HealthColor, [string, string]> = {
-    red: ["bg-rose-500", "ring-rose-500"],
+    red: ["bg-brick-500", "ring-brick-500"],
     yellow: ["bg-amber-500", "ring-amber-500"],
     green: ["bg-emerald-500", "ring-emerald-500"],
     grey: ["bg-slate-400", "ring-slate-400"],

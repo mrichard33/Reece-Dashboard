@@ -183,7 +183,7 @@ export function Scoreboard({
                       <span
                         className={cn(
                           "w-12 shrink-0 text-right text-xs",
-                          i.delta > 0 ? "text-rose-600" : i.delta < 0 ? "text-emerald-600" : "text-slate-400",
+                          i.delta > 0 ? "text-brick-600" : i.delta < 0 ? "text-emerald-600" : "text-slate-400",
                         )}
                       >
                         {i.delta > 0 ? `▲ ${i.delta}` : i.delta < 0 ? `▼ ${Math.abs(i.delta)}` : "— 0"}
@@ -225,7 +225,7 @@ export function Scoreboard({
                         <div
                           className={cn(
                             "h-full rounded-full",
-                            !ok ? "bg-slate-300 dark:bg-slate-700" : pct < 60 ? "bg-rose-500" : pct < 75 ? "bg-amber-500" : "bg-emerald-500",
+                            !ok ? "bg-slate-300 dark:bg-slate-700" : pct < 60 ? "bg-brick-500" : pct < 75 ? "bg-amber-500" : "bg-emerald-500",
                           )}
                           style={{ width: `${ok ? pct : 100}%` }}
                         />

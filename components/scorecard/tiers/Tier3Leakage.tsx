@@ -29,7 +29,7 @@ function Trend({ m }: { m: Measured }) {
   }
   const up = v > 0;
   return (
-    <span className={up ? "text-brick dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
+    <span className={up ? "text-brick dark:text-brick-400" : "text-emerald-600 dark:text-emerald-400"}>
       {up ? <ArrowUp size={12} className="inline" /> : <ArrowDown size={12} className="inline" />}{" "}
       {v > 0 ? "+" : ""}
       {v.toFixed(1)} pts
@@ -55,7 +55,7 @@ export function Tier3Leakage({ data }: { data: Tier3 }) {
             </div>
             <div
               className={`font-mono text-[19px] font-bold tabular ${
-                t.brick ? "text-brick dark:text-rose-400" : "text-slate-900 dark:text-slate-100"
+                t.brick ? "text-brick dark:text-brick-400" : "text-slate-900 dark:text-slate-100"
               }`}
             >
               <Val m={t.m} kind="usd" />
@@ -130,7 +130,7 @@ export function Tier3Leakage({ data }: { data: Tier3 }) {
         className={`border-t px-5 py-2 text-[11.5px] ${
           data.reconciles
             ? "border-slate-100 text-slate-500 dark:border-slate-800 dark:text-slate-400"
-            : "border-brick/30 bg-brick/5 text-brick dark:text-rose-400"
+            : "border-brick/30 bg-brick/5 text-brick dark:text-brick-400"
         }`}
       >
         {data.reconciles

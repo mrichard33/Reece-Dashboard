@@ -62,7 +62,7 @@ export default async function WorkflowDetailPage({
     return (
       <>
         <TopBar email={user.email} role={user.role} title="Workflow" />
-        <p className="p-4 text-sm text-rose-600 dark:text-rose-400 sm:p-6">Could not read this workflow from the GHL cache. Try again in a minute.</p>
+        <p className="p-4 text-sm text-brick-600 dark:text-brick-400 sm:p-6">Could not read this workflow from the GHL cache. Try again in a minute.</p>
       </>
     );
   }
@@ -144,7 +144,7 @@ export default async function WorkflowDetailPage({
         </section>
 
         {detail.sending?.verdict === "turned_off" && (
-          <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-inset ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-900">
+          <p className="rounded-md bg-brick-50 px-3 py-2 text-sm text-brick-800 ring-1 ring-inset ring-brick-200 dark:bg-brick-950 dark:text-brick-200 dark:ring-brick-900">
             <strong>Messages turned off in GHL:</strong> every SMS and email step in this workflow is switched off, so leads move through it without receiving anything
             ({num(detail.sending.entries30d)} entered in the last {detail.sending.days} days). Any &ldquo;sent:&rdquo; tags it adds are not real sends.
           </p>
@@ -155,7 +155,7 @@ export default async function WorkflowDetailPage({
           </p>
         )}
         {detail.sending?.verdict === "no_sends_seen" && (
-          <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-inset ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-900">
+          <p className="rounded-md bg-brick-50 px-3 py-2 text-sm text-brick-800 ring-1 ring-inset ring-brick-200 dark:bg-brick-950 dark:text-brick-200 dark:ring-brick-900">
             <strong>No sends seen:</strong> {num(detail.sending.entries30d)} leads entered in the last {detail.sending.days} days and none of this workflow&apos;s messages went out.
             The flowchart marks each step as &ldquo;no one reached this step&rdquo; or &ldquo;reached, no sends seen&rdquo; — the second is the place to look.
           </p>
@@ -189,7 +189,7 @@ export default async function WorkflowDetailPage({
               className={cn(
                 "-mb-px border-b-2 px-3 py-2 text-sm",
                 tab === t.key
-                  ? "border-navy-700 font-medium text-navy-900 dark:border-sky-400 dark:text-white"
+                  ? "border-navy-700 font-medium text-navy-900 dark:border-steel-400 dark:text-white"
                   : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300",
               )}
             >

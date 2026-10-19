@@ -129,7 +129,7 @@ export default async function MarketingSpendPage({
               </p>
             )}
             {spend?.error && (
-              <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+              <p className="rounded-md border border-brick-200 bg-brick-50 px-3 py-2 text-xs text-brick-700 dark:border-brick-900 dark:bg-brick-950/40 dark:text-brick-300">
                 Marketing spend could not be read: {spend.error}
               </p>
             )}

@@ -15,7 +15,7 @@ export function Working({ label }: { label: string }) {
     return () => clearInterval(t);
   }, []);
   return (
-    <span className="inline-flex items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
+    <span className="inline-flex items-center gap-2 text-xs text-steel-700 dark:text-steel-300">
       <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
       <span>{label}</span>
       <span className="tabular-nums text-slate-400">{secs}s</span>

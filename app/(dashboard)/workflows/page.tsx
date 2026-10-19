@@ -44,7 +44,7 @@ export default async function WorkflowsPage() {
           <CardHeader className="flex-wrap sm:flex-nowrap">
             <CardTitle>Workflows by funnel route</CardTitle>
             <InfoPopover helpKey="workflows.routeMap" />
-            <Link href={"/workflows/review" as Route} className="ml-auto text-sm text-sky-700 hover:underline dark:text-sky-400">
+            <Link href={"/workflows/review" as Route} className="ml-auto text-sm text-steel-700 hover:underline dark:text-steel-400">
               Funnel review →
             </Link>
           </CardHeader>

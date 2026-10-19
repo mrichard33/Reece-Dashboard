@@ -74,7 +74,7 @@ function WorkflowRow({ workflow }: { workflow: FbWorkflowRow }) {
           {workflow.nodeCount !== null ? `${workflow.nodeCount} nodes · ` : ""}
           {workflow.active ? "Active" : "Inactive"}
         </p>
-        {err && <p className="mt-0.5 text-[11px] text-rose-600">{err}</p>}
+        {err && <p className="mt-0.5 text-[11px] text-brick-600">{err}</p>}
       </div>
       <div className="flex items-center gap-2">
         <Badge tone={workflow.active ? "emerald" : "slate"} dot>

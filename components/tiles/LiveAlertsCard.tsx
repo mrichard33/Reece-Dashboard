@@ -28,7 +28,7 @@ export function LiveAlertsCard({ alerts }: { alerts: LiveAlert[] }) {
         );
       })}
       <li className="pt-1 text-right">
-        <Link href="/issues" className="text-xs font-medium text-navy-700 hover:underline dark:text-sky-400">
+        <Link href="/issues" className="text-xs font-medium text-navy-700 hover:underline dark:text-steel-400">
           Logged issues backlog →
         </Link>
       </li>

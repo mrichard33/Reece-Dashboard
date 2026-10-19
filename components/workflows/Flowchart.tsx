@@ -12,11 +12,11 @@ import { EmailPreviewButton } from "./EmailPreviewButton";
 
 const KIND_STYLE: Record<FlowKind, string> = {
   start: "bg-navy-800 text-white border-navy-800",
-  condition: "bg-sky-50 border-sky-400 text-sky-950 dark:bg-sky-950 dark:text-sky-100 dark:border-sky-700",
+  condition: "bg-steel-50 border-steel-400 text-steel-950 dark:bg-steel-950 dark:text-steel-100 dark:border-steel-700",
   message: "bg-emerald-50 border-emerald-400 text-emerald-950 dark:bg-emerald-950 dark:text-emerald-100 dark:border-emerald-700",
   wait: "bg-amber-50 border-amber-400 text-amber-950 dark:bg-amber-950 dark:text-amber-100 dark:border-amber-700",
   update: "bg-slate-50 border-slate-300 text-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700",
-  workflow: "bg-violet-50 border-violet-400 text-violet-950 dark:bg-violet-950 dark:text-violet-100 dark:border-violet-700",
+  workflow: "bg-navy-50 border-navy-400 text-navy-950 dark:bg-navy-950 dark:text-navy-100 dark:border-navy-700",
   webhook: "bg-slate-100 border-slate-400 text-slate-800 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600",
   jump: "bg-white border-dashed border-slate-400 text-slate-600 dark:bg-slate-900 dark:text-slate-300",
   end: "bg-slate-700 border-slate-700 text-white",
@@ -42,7 +42,7 @@ export type FlowAnnotation = { sends?: StepSends; badge?: { label: string; tone:
 export const sendsLine = stepSendsWords;
 
 const BADGE_TONE: Record<"rose" | "emerald" | "amber" | "slate", string> = {
-  rose: "bg-rose-100 text-rose-700",
+  rose: "bg-brick-100 text-brick-700",
   emerald: "bg-emerald-100 text-emerald-700",
   amber: "bg-amber-100 text-amber-800",
   slate: "bg-slate-200 text-slate-700",
@@ -151,7 +151,7 @@ export function Flowchart({ flow, draft, annotations = {} }: { flow: Flow; draft
                     key={`l${i}`}
                     title={e.label}
                     style={{ left: b.x, top: b.y - 40, width: b.w }}
-                    className="absolute line-clamp-2 rounded bg-white/90 px-1.5 py-0.5 text-center text-[10px] leading-tight text-sky-900 ring-1 ring-sky-200 dark:bg-slate-900/90 dark:text-sky-200 dark:ring-sky-800"
+                    className="absolute line-clamp-2 rounded bg-white/90 px-1.5 py-0.5 text-center text-[10px] leading-tight text-steel-900 ring-1 ring-steel-200 dark:bg-slate-900/90 dark:text-steel-200 dark:ring-steel-800"
                   >
                     {e.label}
                   </div>
@@ -173,7 +173,7 @@ export function Flowchart({ flow, draft, annotations = {} }: { flow: Flow; draft
                 >
                   <div className="flex items-center gap-1 truncate text-[11px] font-semibold">
                     {n.title}
-                    {n.skipped && <span className="rounded bg-rose-100 px-1 text-[9px] font-medium text-rose-700">turned off in GHL</span>}
+                    {n.skipped && <span className="rounded bg-brick-100 px-1 text-[9px] font-medium text-brick-700">turned off in GHL</span>}
                     {n.stepId && annotations[n.stepId]?.badge && (
                       <span className={cn("rounded px-1 text-[9px] font-medium", BADGE_TONE[annotations[n.stepId]!.badge!.tone])}>{annotations[n.stepId]!.badge!.label}</span>
                     )}
@@ -187,7 +187,7 @@ export function Flowchart({ flow, draft, annotations = {} }: { flow: Flow; draft
                     <div
                       className={cn(
                         "truncate text-[10px] font-medium",
-                        sendsLine(annotations[n.stepId]?.sends)!.tone === "none" ? "text-rose-600" : sendsLine(annotations[n.stepId]?.sends)!.tone === "unknown" ? "text-slate-400" : "text-emerald-700",
+                        sendsLine(annotations[n.stepId]?.sends)!.tone === "none" ? "text-brick-600" : sendsLine(annotations[n.stepId]?.sends)!.tone === "unknown" ? "text-slate-400" : "text-emerald-700",
                       )}
                     >
                       {sendsLine(annotations[n.stepId]?.sends)!.text}
@@ -240,7 +240,7 @@ export function Flowchart({ flow, draft, annotations = {} }: { flow: Flow; draft
               />
             )}
             {selected.workflowIds?.map((id) => (
-              <Link key={id} href={`/workflows/${id}` as Route} className="mt-1 block text-sky-700 hover:underline dark:text-sky-400">
+              <Link key={id} href={`/workflows/${id}` as Route} className="mt-1 block text-steel-700 hover:underline dark:text-steel-400">
                 Open workflow {id.slice(0, 8)} ↗
               </Link>
             ))}

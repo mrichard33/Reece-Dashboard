@@ -118,7 +118,7 @@ function ServiceRow({ service }: { service: ServiceConfig }) {
       </div>
 
       {syncMsg && (
-        <p className={syncMsg.tone === "error" ? "text-[11px] text-rose-600" : "text-[11px] text-emerald-600"}>
+        <p className={syncMsg.tone === "error" ? "text-[11px] text-brick-600" : "text-[11px] text-emerald-600"}>
           {syncMsg.text}
         </p>
       )}
@@ -175,7 +175,7 @@ function ReloadEngineRow() {
         </Button>
       </div>
       {msg && (
-        <p className={msg.tone === "error" ? "mt-2 break-words text-[11px] text-rose-600" : "mt-2 break-words text-[11px] text-emerald-600"}>
+        <p className={msg.tone === "error" ? "mt-2 break-words text-[11px] text-brick-600" : "mt-2 break-words text-[11px] text-emerald-600"}>
           {msg.text}
         </p>
       )}

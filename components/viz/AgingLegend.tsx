@@ -3,7 +3,7 @@ export function AgingLegend() {
   const items = [
     { label: "< 7d", cls: "bg-emerald-500" },
     { label: "7–14d", cls: "bg-amber-500" },
-    { label: "> 14d", cls: "bg-rose-500" },
+    { label: "> 14d", cls: "bg-brick-500" },
   ];
   return (
     <div className="flex shrink-0 items-center gap-3 text-xs text-slate-500 dark:text-slate-400">

@@ -45,7 +45,7 @@ export function RefreshWorkflowButton({ workflowId, shownVersion }: { workflowId
         {working ? "Refreshing…" : "Refresh from GHL"}
       </Button>
       {msg && (
-        <span role="status" className={`break-words text-xs ${msg.bad ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+        <span role="status" className={`break-words text-xs ${msg.bad ? "text-brick-600 dark:text-brick-400" : "text-emerald-700 dark:text-emerald-400"}`}>
           {msg.text}
         </span>
       )}

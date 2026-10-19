@@ -58,7 +58,7 @@ export function BatchUndoButton({
       </button>
 
       {error ? (
-        <span className="ml-2 text-xs text-rose-700 dark:text-rose-300">{error}</span>
+        <span className="ml-2 text-xs text-brick-700 dark:text-brick-300">{error}</span>
       ) : null}
 
       <ReasonDialog

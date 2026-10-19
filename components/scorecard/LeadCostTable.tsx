@@ -30,7 +30,7 @@ function costTone(mktPct: number | null, target: number): string {
   if (mktPct == null) return "text-slate-400";
   if (mktPct <= target) return "text-emerald-600 dark:text-emerald-400";
   if (mktPct <= target * 1.33) return "text-amber-600 dark:text-amber-400";
-  return "text-rose-600 dark:text-rose-400";
+  return "text-brick-600 dark:text-brick-400";
 }
 const money2 = (v: number | null) => (v == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v));
 const cell = "py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300";
@@ -114,7 +114,7 @@ export function LeadCostTable({
           </p>
         )}
         {error && !needsMigration && (
-          <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+          <p className="mb-3 rounded-md border border-brick-200 bg-brick-50 px-3 py-2 text-xs text-brick-700 dark:border-brick-900 dark:bg-brick-950/40 dark:text-brick-300">
             Lead cost could not be read: {error}
           </p>
         )}

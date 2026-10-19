@@ -107,7 +107,7 @@ export function Tier5Backlog({ data }: { data: Tier5 }) {
         className={`border-t px-5 py-2 text-[11.5px] ${
           data.foots
             ? "border-slate-100 text-slate-500 dark:border-slate-800 dark:text-slate-400"
-            : "border-brick/30 bg-brick/5 text-brick dark:text-rose-400"
+            : "border-brick/30 bg-brick/5 text-brick dark:text-brick-400"
         }`}
       >
         {data.foots

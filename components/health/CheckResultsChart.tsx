@@ -34,7 +34,7 @@ export function CheckResultsChart({
         <YAxis tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={40} />
         <Tooltip formatter={(v) => [`${v}${unit && unit !== "count" ? ` ${unit}` : ""}`, "Result"]} />
         {warn !== null && <ReferenceLine y={warn} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "yellow", fontSize: 10, fill: "#b45309", position: "insideTopRight" }} />}
-        {fail !== null && <ReferenceLine y={fail} stroke="#e11d48" strokeDasharray="4 4" label={{ value: "red", fontSize: 10, fill: "#be123c", position: "insideTopRight" }} />}
+        {fail !== null && <ReferenceLine y={fail} stroke="#ED1E24" strokeDasharray="4 4" label={{ value: "red", fontSize: 10, fill: "#C5141A", position: "insideTopRight" }} />}
         <Line type="monotone" dataKey="value" stroke={PRIMARY} strokeWidth={2} dot={false} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>

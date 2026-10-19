@@ -57,7 +57,7 @@ export function StrategyTab({ insight, schedule, sends }: { insight: WorkflowIns
                 {row?.subject && <span className="text-slate-600 dark:text-slate-300">— {row.subject}</span>}
                 <Badge tone={VERDICT_TONE[m.verdict]}>{VERDICT_LABEL[m.verdict]}</Badge>
                 {s?.basis === "off" ? (
-                  <span className="text-xs text-rose-600 dark:text-rose-300">turned off in GHL</span>
+                  <span className="text-xs text-brick-600 dark:text-brick-300">turned off in GHL</span>
                 ) : s && s.sends !== null && (
                   <span className="text-xs text-slate-400">
                     {s.sends.toLocaleString()} sent · 30 d{s.basis === "stamp" ? "" : " ≈"}
@@ -66,7 +66,7 @@ export function StrategyTab({ insight, schedule, sends }: { insight: WorkflowIns
               </div>
               <div className="mt-1 grid sm:ml-[8.75rem] gap-x-4 gap-y-1 text-xs sm:grid-cols-[7.5rem_1fr]">
                 <span className="text-slate-500">Speaks to</span>
-                <span className={mismatch ? "text-rose-700 dark:text-rose-300" : "text-slate-700 dark:text-slate-200"}>
+                <span className={mismatch ? "text-brick-700 dark:text-brick-300" : "text-slate-700 dark:text-slate-200"}>
                   {short(m.stage_actual)}
                   {mismatch ? ` — but this reader is at ${short(m.stage_intended)}` : " (right stage)"} · lever: {LEVER_WORDS[m.lever]}
                 </span>
@@ -95,7 +95,7 @@ export function StrategyTab({ insight, schedule, sends }: { insight: WorkflowIns
                 {complianceFails(m.compliance).length > 0 && (
                   <>
                     <span className="text-slate-500">Brand rules</span>
-                    <span className="text-rose-700 dark:text-rose-300">{complianceFails(m.compliance).map((k) => COMPLIANCE_LABEL[k]).join(" · ")}</span>
+                    <span className="text-brick-700 dark:text-brick-300">{complianceFails(m.compliance).map((k) => COMPLIANCE_LABEL[k]).join(" · ")}</span>
                   </>
                 )}
                 {(m.checks.banned_phrases.length > 0 || !m.checks.booking_path || m.checks.sms_standalone === false) && (

@@ -216,7 +216,7 @@ export function ChangeCard({ change, canEdit }: { change: ChangeRow; canEdit: bo
             </div>
 
             {rejecting ? (
-              <div className="rounded-md border border-rose-200 bg-rose-50 p-3 dark:border-rose-900 dark:bg-rose-950/30">
+              <div className="rounded-md border border-brick-200 bg-brick-50 p-3 dark:border-brick-900 dark:bg-brick-950/30">
                 <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Why are you turning this down?
                 </label>
@@ -274,7 +274,7 @@ export function ChangeCard({ change, canEdit }: { change: ChangeRow; canEdit: bo
 
         {note ? <p className="text-xs text-slate-500 dark:text-slate-400">{note}</p> : null}
         {error ? (
-          <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+          <p className="rounded-md bg-brick-50 px-3 py-2 text-sm text-brick-700 dark:bg-brick-950/50 dark:text-brick-300">
             {error}
           </p>
         ) : null}

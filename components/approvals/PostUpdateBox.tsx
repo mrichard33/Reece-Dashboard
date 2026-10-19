@@ -58,7 +58,7 @@ export function PostUpdateBox() {
         <Button size="sm" onClick={submit} disabled={pending}>
           <Send className="h-3.5 w-3.5" /> Post
         </Button>
-        {error && <span className="text-xs text-rose-600">{error}</span>}
+        {error && <span className="text-xs text-brick-600">{error}</span>}
       </div>
     </div>
   );

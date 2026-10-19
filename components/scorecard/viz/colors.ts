@@ -5,9 +5,9 @@ export const SC_COLOR = {
   navy600: "#274560",
   emerald: "#059669",
   amber: "#D97706",
-  rose: "#E11D48",
+  rose: "#ED1E24",
   brick: "#ED1E24",
-  sky: "#0284C7",
+  sky: "#2B5E99",
   slate: "#94A3B8",
   slate300: "#CBD5E1",
 } as const;

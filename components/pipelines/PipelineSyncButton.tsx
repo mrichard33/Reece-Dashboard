@@ -35,7 +35,7 @@ export function PipelineSyncButton() {
   return (
     <div className="flex items-center gap-2">
       {err ? (
-        <span className="max-w-[10rem] truncate sm:max-w-[12rem] text-xs text-rose-600 dark:text-rose-400" title={err}>
+        <span className="max-w-[10rem] truncate sm:max-w-[12rem] text-xs text-brick-600 dark:text-brick-400" title={err}>
           {err}
         </span>
       ) : null}

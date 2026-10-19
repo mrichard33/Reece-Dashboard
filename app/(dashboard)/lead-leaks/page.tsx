@@ -328,7 +328,7 @@ function SectionBody<T>({ section, children }: { section: Section<T>; children: 
     return <Empty>No results yet. The Lead Leak Monitor fills this in every morning at 7:00 AM ET.</Empty>;
   }
   return (
-    <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+    <div className="rounded-md border border-brick-200 bg-brick-50 px-3 py-2 text-xs text-brick-800 dark:border-brick-800 dark:bg-brick-950/40 dark:text-brick-200">
       Could not load this section: {section.message}
     </div>
   );

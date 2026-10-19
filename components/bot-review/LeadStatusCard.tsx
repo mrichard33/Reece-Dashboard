@@ -28,7 +28,7 @@ function Pill({ ok, children }: { ok: boolean; children: React.ReactNode }) {
         "rounded-full px-2 py-0.5 text-[11px] font-semibold",
         ok
           ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-900"
-          : "bg-rose-700 text-white dark:bg-rose-600",
+          : "bg-brick-700 text-white dark:bg-brick-600",
       )}
     >
       {children}

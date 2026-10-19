@@ -20,7 +20,7 @@ export function RunChecksButton({ checkId = "all", label }: { checkId?: string; 
 
 function ResultLine({ res }: { res: ActionResult }) {
   return (
-    <p className={res.ok ? "text-xs text-emerald-700 dark:text-emerald-400" : "break-words text-xs text-rose-600 dark:text-rose-400"}>
+    <p className={res.ok ? "text-xs text-emerald-700 dark:text-emerald-400" : "break-words text-xs text-brick-600 dark:text-brick-400"}>
       {res.ok ? res.message : res.error}
     </p>
   );

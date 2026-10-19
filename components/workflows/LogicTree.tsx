@@ -15,7 +15,7 @@ export function LogicTree({ lines }: { lines: LogicLine[] }) {
           style={{ paddingLeft: `min(${Math.min(l.depth, 14) * 14}px, 40%)` }}
           className={cn(
             "break-words py-0.5",
-            l.branch ? "font-semibold text-navy-800 dark:text-sky-300" : "text-slate-700 dark:text-slate-300",
+            l.branch ? "font-semibold text-navy-800 dark:text-steel-300" : "text-slate-700 dark:text-slate-300",
             l.type === "if_else" && !l.branch && "text-amber-800 dark:text-amber-300",
             (l.type === "email" || l.type === "sms") && "text-emerald-800 dark:text-emerald-300",
           )}

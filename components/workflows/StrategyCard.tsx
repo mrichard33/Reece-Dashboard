@@ -36,7 +36,7 @@ export function StrategyCard({ insight, currentVersion, ghlWorkflowId }: { insig
             </Badge>
           </span>
         )}
-        <Link href={`/workflows/${ghlWorkflowId}?tab=strategy` as Route} className="ml-auto text-xs text-sky-700 hover:underline dark:text-sky-400">
+        <Link href={`/workflows/${ghlWorkflowId}?tab=strategy` as Route} className="ml-auto text-xs text-steel-700 hover:underline dark:text-steel-400">
           Message by message →
         </Link>
       </div>

@@ -97,7 +97,7 @@ function CheckRow({ c }: { c: CheckView }) {
           <p><span className="font-semibold">Turns red when:</span> {plainTimes(c.failRule)}</p>
           {c.businessImpact && <p><span className="font-semibold">Why it matters:</span> {plainTimes(c.businessImpact)}</p>}
           <p className="text-slate-400">How often: {plainTimes(c.cadence)}</p>
-          <Link href={`/system-health/${encodeURIComponent(c.id)}` as Route} className="inline-block pt-1 font-medium text-navy-700 underline dark:text-sky-300">
+          <Link href={`/system-health/${encodeURIComponent(c.id)}` as Route} className="inline-block pt-1 font-medium text-navy-700 underline dark:text-steel-300">
             Open check
           </Link>
         </div>

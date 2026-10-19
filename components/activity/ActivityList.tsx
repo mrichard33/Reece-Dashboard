@@ -199,7 +199,7 @@ function ActivityDetail({
         {leadId && (
           <Link
             href={`/leads/${leadId}` as never}
-            className="inline-flex items-center gap-1 text-sm font-medium text-sky-600 hover:underline dark:text-sky-400"
+            className="inline-flex items-center gap-1 text-sm font-medium text-steel-600 hover:underline dark:text-steel-400"
           >
             View full lead timeline <ChevronRight className="h-4 w-4" />
           </Link>

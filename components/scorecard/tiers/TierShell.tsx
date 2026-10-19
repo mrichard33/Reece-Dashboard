@@ -116,7 +116,7 @@ export function Val({
 export function varianceTone(v: number | null, lowerIsBetter = false): string {
   if (v === null) return "text-slate-400 dark:text-slate-500";
   const good = lowerIsBetter ? v <= 0 : v >= 0;
-  return good ? "text-emerald-600 dark:text-emerald-400" : "text-brick dark:text-rose-400";
+  return good ? "text-emerald-600 dark:text-emerald-400" : "text-brick dark:text-brick-400";
 }
 
 /** Volume rendered deliberately quiet — present, never the visual anchor. */

@@ -156,7 +156,7 @@ export function WhyCard({ text, issues }: { text: string; issues: Issue[] }) {
                       className={cn(
                         "min-w-0 truncate rounded-full px-2 py-0.5 text-[11px] font-semibold",
                         g.tone === "rose"
-                          ? "bg-rose-700 text-white dark:bg-rose-600"
+                          ? "bg-brick-700 text-white dark:bg-brick-600"
                           : "bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
                       )}
                     >

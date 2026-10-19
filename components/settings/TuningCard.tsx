@@ -166,7 +166,7 @@ export function TuningCard({
           )}
 
           {msg && (
-            <p className={msg.tone === "error" ? "text-xs text-rose-600" : "text-xs text-emerald-600"}>
+            <p className={msg.tone === "error" ? "text-xs text-brick-600" : "text-xs text-emerald-600"}>
               {msg.text}
             </p>
           )}

@@ -42,7 +42,7 @@ export function HealthTile({
           {detail ?? "—"}
         </p>
         {hasError && (
-          <p className="mt-1 break-words text-[11px] text-rose-600 dark:text-rose-400">
+          <p className="mt-1 break-words text-[11px] text-brick-600 dark:text-brick-400">
             {lastError}
           </p>
         )}

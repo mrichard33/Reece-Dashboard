@@ -91,7 +91,7 @@ export default async function ScorecardDetailPage({
             <CardContent>
               <p className="py-8 text-center text-sm text-slate-500">
                 You don&apos;t have access to this page. The meeting scorecard is at{" "}
-                <Link href="/scorecard" className="text-navy-700 hover:underline dark:text-sky-300">
+                <Link href="/scorecard" className="text-navy-700 hover:underline dark:text-steel-300">
                   /scorecard
                 </Link>
                 .

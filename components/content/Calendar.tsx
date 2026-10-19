@@ -241,7 +241,7 @@ export function Calendar({
                   >
                     <span className={cn("h-2 w-2 flex-shrink-0 rounded-full", dotFor(p))} />
                     {p.media_type === "video" && (
-                      <Video className="h-3 w-3 flex-shrink-0 text-sky-500" />
+                      <Video className="h-3 w-3 flex-shrink-0 text-steel-500" />
                     )}
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
                     <span className="ml-auto flex-shrink-0 text-[10px] text-slate-400">
@@ -253,12 +253,12 @@ export function Calendar({
                   <button
                     type="button"
                     onClick={() => setSel({ kind: "plan", id: planSlot.id })}
-                    className="flex w-full items-center gap-1 truncate rounded border border-dashed border-sky-300 px-1 py-0.5 text-left text-[11px] text-slate-500 hover:ring-1 hover:ring-sky-300 dark:border-sky-800"
+                    className="flex w-full items-center gap-1 truncate rounded border border-dashed border-steel-300 px-1 py-0.5 text-left text-[11px] text-slate-500 hover:ring-1 hover:ring-steel-300 dark:border-steel-800"
                     title={`Planned · ${pillarLabel(planSlot.pillar)}${
                       planSlot.brief_status !== "none" ? ` · brief ${planSlot.brief_status}` : ""
                     }`}
                   >
-                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-sky-400" />
+                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-steel-400" />
                     <span className="truncate">{pillarLabel(planSlot.pillar)}</span>
                     {planBriefDot && (
                       <span
@@ -322,7 +322,7 @@ export function Calendar({
                   >
                     <span className={cn("h-2.5 w-2.5 flex-shrink-0 rounded-full", dotFor(p))} />
                     {p.media_type === "video" && (
-                      <Video className="h-3.5 w-3.5 flex-shrink-0 text-sky-500" />
+                      <Video className="h-3.5 w-3.5 flex-shrink-0 text-steel-500" />
                     )}
                     <span className="truncate">{p.pillar ? pillarLabel(p.pillar) : "Post"}</span>
                     <span className="ml-auto flex-shrink-0 whitespace-nowrap text-xs text-slate-400">
@@ -335,9 +335,9 @@ export function Calendar({
                   <button
                     type="button"
                     onClick={() => setSel({ kind: "plan", id: planSlot.id })}
-                    className="flex w-full items-center gap-2 rounded border border-dashed border-sky-300 px-2 py-2 text-left text-sm text-slate-500 hover:ring-1 hover:ring-sky-300 dark:border-sky-800"
+                    className="flex w-full items-center gap-2 rounded border border-dashed border-steel-300 px-2 py-2 text-left text-sm text-slate-500 hover:ring-1 hover:ring-steel-300 dark:border-steel-800"
                   >
-                    <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-sky-400" />
+                    <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-steel-400" />
                     <span className="truncate">{pillarLabel(planSlot.pillar)}</span>
                     <span className="ml-auto text-xs text-slate-400">
                       {planSlot.brief_status !== "none" ? `brief ${planSlot.brief_status}` : "planned"}
@@ -384,7 +384,7 @@ function Legend() {
         </span>
       ))}
       <span className="flex items-center gap-1">
-        <span className="h-2 w-2 rounded-full bg-sky-400" /> planned
+        <span className="h-2 w-2 rounded-full bg-steel-400" /> planned
       </span>
     </div>
   );

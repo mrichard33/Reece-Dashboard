@@ -243,7 +243,7 @@ export function PlanControls({
           {!pending && msg && (
             <p
               className={`mt-2.5 border-t border-slate-100 pt-2 text-[11px] dark:border-slate-800 ${
-                msg.tone === "error" ? "text-rose-600" : "text-slate-500"
+                msg.tone === "error" ? "text-brick-600" : "text-slate-500"
               }`}
             >
               {msg.text}

@@ -89,7 +89,7 @@ function Chip({ href, active, children }: { href: Route; active: boolean; childr
   return (
     <Link href={href} className={cn(
       "inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-xs",
-      active ? "border-navy-700 bg-navy-800 text-white dark:border-sky-400 dark:bg-sky-900" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
+      active ? "border-navy-700 bg-navy-800 text-white dark:border-steel-400 dark:bg-steel-900" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
     )}>
       {children}
     </Link>

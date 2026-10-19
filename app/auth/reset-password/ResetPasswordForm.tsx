@@ -97,7 +97,7 @@ export function ResetPasswordForm() {
       </div>
 
       {(state.error || hydrationError) && (
-        <p className="text-sm text-rose-600 dark:text-rose-300">
+        <p className="text-sm text-brick-600 dark:text-brick-300">
           {state.error ?? hydrationError}
         </p>
       )}

@@ -165,7 +165,7 @@ export function UsersCard({
             </div>
           )}
 
-          {err && <p className="text-xs text-rose-600 dark:text-rose-300">{err}</p>}
+          {err && <p className="text-xs text-brick-600 dark:text-brick-300">{err}</p>}
           {notice && <p className="text-xs text-emerald-600 dark:text-emerald-300">{notice}</p>}
 
           <Button type="submit" size="sm" disabled={pending}>

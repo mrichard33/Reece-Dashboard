@@ -69,7 +69,7 @@ export function LoginForm() {
         </div>
 
         {resetState.error && (
-          <p className="text-sm text-rose-600 dark:text-rose-300">
+          <p className="text-sm text-brick-600 dark:text-brick-300">
             {resetState.error}
           </p>
         )}
@@ -148,7 +148,7 @@ export function LoginForm() {
       </div>
 
       {(signInState.error || errParam) && (
-        <p className="text-sm text-rose-600 dark:text-rose-300">
+        <p className="text-sm text-brick-600 dark:text-brick-300">
           {signInState.error ?? errParam}
         </p>
       )}

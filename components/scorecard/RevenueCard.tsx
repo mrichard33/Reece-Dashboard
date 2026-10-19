@@ -449,7 +449,7 @@ export function RevenueCard({
             where: `Basis: point-in-time · report 133 · as of ${f.pendingAsOf ? usDate(f.pendingAsOf) : usDate(vm.snapshot.asOfDate)}`,
             fix: NO_CROSSING,
           }}
-          accent="border-t-2 border-t-sky-400"
+          accent="border-t-2 border-t-steel-400"
           lines={backlogLines}
         />
         )}

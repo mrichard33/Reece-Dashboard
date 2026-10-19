@@ -107,7 +107,7 @@ export function MessageBankEditor({
       </Card>
 
       {msg && (
-        <p className={msg.tone === "error" ? "text-xs text-rose-600" : "text-xs text-slate-500"}>
+        <p className={msg.tone === "error" ? "text-xs text-brick-600" : "text-xs text-slate-500"}>
           {msg.text}
         </p>
       )}

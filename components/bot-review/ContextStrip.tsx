@@ -100,7 +100,7 @@ export function ContextStrip({
           <button
             type="button"
             onClick={() => setLearnedOpen((v) => !v)}
-            className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-200 hover:ring-sky-400 dark:bg-sky-950 dark:text-sky-300 dark:ring-sky-900"
+            className="rounded-full bg-steel-50 px-2 py-0.5 text-[11px] font-medium text-steel-700 ring-1 ring-steel-200 hover:ring-steel-400 dark:bg-steel-950 dark:text-steel-300 dark:ring-steel-900"
           >
             Used {row.learned_items_count} learned item{row.learned_items_count === 1 ? "" : "s"}
           </button>
@@ -158,8 +158,8 @@ export function ContextStrip({
                     onStopBot();
                   }}
                   className={cn(
-                    "w-full rounded-md px-2 py-2.5 text-left text-xs font-medium text-rose-700 hover:bg-rose-50 sm:py-1.5",
-                    "dark:text-rose-300 dark:hover:bg-rose-950",
+                    "w-full rounded-md px-2 py-2.5 text-left text-xs font-medium text-brick-700 hover:bg-brick-50 sm:py-1.5",
+                    "dark:text-brick-300 dark:hover:bg-brick-950",
                   )}
                 >
                   Stop the bot for this lead

@@ -26,7 +26,7 @@ export function ApproverMatrix({ approvals }: { approvals: ApprovalWithExec[] })
               a.decision === "approved" &&
                 "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-900",
               a.decision === "rejected" &&
-                "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-900",
+                "bg-brick-50 text-brick-700 ring-brick-200 dark:bg-brick-950 dark:text-brick-300 dark:ring-brick-900",
               a.decision === "pending" &&
                 "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700",
             )}

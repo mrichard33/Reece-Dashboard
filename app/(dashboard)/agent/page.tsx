@@ -154,7 +154,7 @@ function HeartbeatCard({
           <span className="text-slate-500">({word})</span>
         </p>
         {minutesAgo !== null && minutesAgo > 15 && (
-          <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+          <p className="mt-1 text-[11px] text-brick-600 dark:text-brick-400">
             Nothing has been written to system_events for {minutesAgo} minutes. Automations are
             probably not firing.
           </p>
@@ -349,9 +349,9 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 function ErrBanner({ label, msg }: { label: string; msg: string }) {
   return (
-    <div className="mb-3 flex items-start gap-2 rounded border border-rose-200 bg-rose-50 p-2 dark:border-rose-900 dark:bg-rose-950">
+    <div className="mb-3 flex items-start gap-2 rounded border border-brick-200 bg-brick-50 p-2 dark:border-brick-900 dark:bg-brick-950">
       <StatusDot status="critical" animate={false} />
-      <p className="break-words text-[11px] text-rose-700 dark:text-rose-300">
+      <p className="break-words text-[11px] text-brick-700 dark:text-brick-300">
         <span className="font-semibold">{label} check failed:</span> {msg}
       </p>
     </div>

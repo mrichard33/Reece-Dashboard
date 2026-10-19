@@ -496,7 +496,7 @@ export default async function ScorecardPage({
                 {clock.problems.length > 0 && (
                   <div
                     role="status"
-                    className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-700/60 dark:bg-rose-900/20 dark:text-rose-200"
+                    className="rounded-lg border border-brick-300 bg-brick-50 px-4 py-3 text-sm text-brick-900 dark:border-brick-700/60 dark:bg-brick-900/20 dark:text-brick-200"
                   >
                     {/* A registry violation is a bug in this page, not in the
                         data. Surfaced rather than thrown so the scorecard still

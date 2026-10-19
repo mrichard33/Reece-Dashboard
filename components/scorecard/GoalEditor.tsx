@@ -412,7 +412,7 @@ export function GoalEditor({
             </span>
           )}
           {msg && (
-            <span className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{msg.text}</span>
+            <span className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-brick-600 dark:text-brick-400"}`}>{msg.text}</span>
           )}
         </div>
       </form>

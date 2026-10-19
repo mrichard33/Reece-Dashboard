@@ -14,7 +14,7 @@ import { cn, etShort, relTime } from "@/lib/utils";
 const BOT_DOT: Record<LeadRow["bot"], { cls: string; label: string }> = {
   active: { cls: "bg-emerald-500", label: "Bot active" },
   stopped: { cls: "bg-slate-400", label: "Bot stopped" },
-  dnc: { cls: "bg-rose-500", label: "Do not contact" },
+  dnc: { cls: "bg-brick-500", label: "Do not contact" },
   none: { cls: "bg-transparent ring-1 ring-slate-300 dark:ring-slate-600", label: "No bot" },
 };
 

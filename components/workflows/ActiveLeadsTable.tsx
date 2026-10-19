@@ -58,7 +58,7 @@ export function ActiveLeadsTable({ ghlWorkflowId }: { ghlWorkflowId: string }) {
     }
   }
 
-  if (error) return <p className="py-4 text-sm text-rose-600 dark:text-rose-400">{error}</p>;
+  if (error) return <p className="py-4 text-sm text-brick-600 dark:text-brick-400">{error}</p>;
   if (!rows)
     return (
       <div className="space-y-2">

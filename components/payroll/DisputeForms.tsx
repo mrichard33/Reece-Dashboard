@@ -13,7 +13,7 @@ const inputClass =
 const labelClass = "mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400";
 
 function Notice({ error, message }: { error: string | null; message: string | null }) {
-  if (error) return <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950 dark:text-rose-300">{error}</p>;
+  if (error) return <p className="rounded-md bg-brick-50 px-3 py-2 text-sm text-brick-700 dark:bg-brick-950 dark:text-brick-300">{error}</p>;
   if (message) return <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{message}</p>;
   return null;
 }

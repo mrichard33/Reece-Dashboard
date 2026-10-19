@@ -273,7 +273,7 @@ export function LeadFilters({
           <button
             type="button"
             onClick={() => nav((sp) => [...sp.keys()].filter((k) => k !== "q").forEach((k) => sp.delete(k)))}
-            className="py-2 text-xs text-sky-700 hover:underline dark:text-sky-400 sm:py-0"
+            className="py-2 text-xs text-steel-700 hover:underline dark:text-steel-400 sm:py-0"
           >
             Clear all
           </button>

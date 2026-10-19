@@ -30,7 +30,7 @@ function ChannelIcon({ channel }: { channel: string | null }) {
 const TONE: Record<string, string> = {
   emerald: "text-emerald-700 dark:text-emerald-400",
   amber: "text-amber-700 dark:text-amber-400",
-  rose: "text-rose-700 dark:text-rose-400",
+  rose: "text-brick-700 dark:text-brick-400",
   slate: "text-slate-500 dark:text-slate-400",
 };
 
@@ -147,7 +147,7 @@ export function QueueList({
                     {(cause || setAside || chips.length > 0) && (
                       <p className="mt-1 flex flex-wrap items-center gap-1">
                         {cause && (
-                          <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-900">
+                          <span className="rounded-full bg-brick-50 px-1.5 py-0.5 text-[10px] font-medium text-brick-700 ring-1 ring-brick-200 dark:bg-brick-950/50 dark:text-brick-300 dark:ring-brick-900">
                             {cause}
                           </span>
                         )}
@@ -157,7 +157,7 @@ export function QueueList({
                             className={cn(
                               "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
                               c === "Sent after opt-out"
-                                ? "bg-rose-700 text-white dark:bg-rose-600"
+                                ? "bg-brick-700 text-white dark:bg-brick-600"
                                 : "bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
                             )}
                           >

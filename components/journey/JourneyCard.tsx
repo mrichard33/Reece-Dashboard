@@ -84,12 +84,12 @@ export function JourneyCard({ initial, variant = "full" }: { initial: Journey; v
             href={ghlContactUrl(h.ghlContactId)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-400"
+            className="inline-flex items-center gap-1 text-xs text-steel-700 hover:underline dark:text-steel-400"
           >
             GHL <ExternalLink className="h-3 w-3" />
           </a>
           {variant === "inline" && (
-            <Link href={`/leads/${h.ghlContactId}` as Route} className="text-xs text-sky-700 hover:underline dark:text-sky-400">
+            <Link href={`/leads/${h.ghlContactId}` as Route} className="text-xs text-steel-700 hover:underline dark:text-steel-400">
               Full page ↗
             </Link>
           )}
@@ -240,7 +240,7 @@ export function JourneyLoader({ ghlContactId }: { ghlContactId: string }) {
     };
   }, [ghlContactId]);
 
-  if (state.error) return <p className="py-4 text-sm text-rose-600 dark:text-rose-400">{state.error}</p>;
+  if (state.error) return <p className="py-4 text-sm text-brick-600 dark:text-brick-400">{state.error}</p>;
   if (!state.j)
     return (
       <div className="space-y-2 py-2">

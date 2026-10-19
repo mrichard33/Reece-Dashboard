@@ -156,7 +156,7 @@ function DecidedItem({ row, canRule }: { row: DecidedRow; canRule: boolean }) {
         ) : null}
 
         {error ? (
-          <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+          <p className="rounded-md bg-brick-50 px-3 py-2 text-sm text-brick-700 dark:bg-brick-950/50 dark:text-brick-300">
             {error}
           </p>
         ) : null}

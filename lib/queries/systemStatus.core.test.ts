@@ -26,7 +26,7 @@ describe("shapeSystemStrip", () => {
   });
   it("counts and dot classes", () => {
     expect(countsNote(3, 2, 0)).toBe("3 red, 2 yellow");
-    expect(dotClass("red", false)).toContain("bg-rose-500");
-    expect(dotClass("red", true)).toContain("ring-rose-500");
+    expect(dotClass("red", false)).toContain("bg-brick-500");
+    expect(dotClass("red", true)).toContain("ring-brick-500");
   });
 });

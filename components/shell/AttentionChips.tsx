@@ -33,7 +33,7 @@ export function AttentionChips() {
       {a.openIssues > 0 && (
         <Link
           href="/issues"
-          className={`${baseChip} bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-900`}
+          className={`${baseChip} bg-brick-50 text-brick-700 ring-brick-200 hover:bg-brick-100 dark:bg-brick-950 dark:text-brick-300 dark:ring-brick-900`}
         >
           <AlertTriangle className="h-3.5 w-3.5" />
           {a.openIssues} open issue{a.openIssues === 1 ? "" : "s"}

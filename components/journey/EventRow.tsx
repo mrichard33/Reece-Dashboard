@@ -129,7 +129,7 @@ function EventDetail({ event }: { event: JourneyEvent }) {
             </span>
           ))}
           {removed?.map((t) => (
-            <span key={`-${t}`} className="rounded bg-rose-100 px-1.5 py-0.5 font-mono text-[11px] text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+            <span key={`-${t}`} className="rounded bg-brick-100 px-1.5 py-0.5 font-mono text-[11px] text-brick-800 dark:bg-brick-950 dark:text-brick-300">
               −{t}
             </span>
           ))}
@@ -157,7 +157,7 @@ function EventDetail({ event }: { event: JourneyEvent }) {
 function renderValue(key: string, v: unknown): React.ReactNode {
   if (typeof v === "string" && /^https?:\/\//.test(v)) {
     return (
-      <a href={v} target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">
+      <a href={v} target="_blank" rel="noopener noreferrer" className="text-steel-600 hover:underline dark:text-steel-400">
         open
       </a>
     );

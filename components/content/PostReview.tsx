@@ -182,7 +182,7 @@ export function PostReview({
       )}
 
       {regenInFlight && (
-        <div className="rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
+        <div className="rounded-md border border-steel-300 bg-steel-50 p-3 text-sm text-steel-800 dark:border-steel-900 dark:bg-steel-950 dark:text-steel-200">
           <Working label="Regenerating in the background — the new draft appears here automatically (~10s for copy, ~1–2 min when an image is rendering)" />
         </div>
       )}
@@ -392,7 +392,7 @@ export function PostReview({
         {isExecutive &&
           (confirmingDelete ? (
             <span className="inline-flex flex-wrap items-center gap-2">
-              <span className="text-xs text-rose-600">Delete this draft permanently?</span>
+              <span className="text-xs text-brick-600">Delete this draft permanently?</span>
               <Button
                 size="sm"
                 variant="danger"
@@ -524,7 +524,7 @@ export function PostReview({
       )}
       {pending && activeKey === "make-text" && <Working label="Removing image — converting to a text-only post" />}
       {!pending && msg && (
-        <p className={msg.tone === "error" ? "text-xs text-rose-600" : "text-xs text-slate-500"}>
+        <p className={msg.tone === "error" ? "text-xs text-brick-600" : "text-xs text-slate-500"}>
           {msg.text}
         </p>
       )}
@@ -603,7 +603,7 @@ function ComponentBlock({
           </div>
 
           {rejecting && (
-            <div className="space-y-2 rounded-md border border-rose-200 bg-rose-50 p-2 dark:border-rose-900 dark:bg-rose-950">
+            <div className="space-y-2 rounded-md border border-brick-200 bg-brick-50 p-2 dark:border-brick-900 dark:bg-brick-950">
               <select
                 value={code}
                 onChange={(e) => setCode(e.target.value as FbReasonCode)}

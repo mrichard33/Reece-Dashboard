@@ -7,7 +7,7 @@ import type { MarketingRow } from "@/lib/scorecard/viewModel";
 
 const TONE: Record<MarketingRow["tone"], string> = {
   pos: "text-emerald-600 dark:text-emerald-400",
-  neg: "text-rose-600 dark:text-rose-400",
+  neg: "text-brick-600 dark:text-brick-400",
   plain: "text-slate-900 dark:text-slate-100",
 };
 

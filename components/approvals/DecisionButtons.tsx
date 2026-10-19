@@ -61,8 +61,8 @@ export function DecisionButtons({ assetId }: { assetId: string }) {
       </div>
 
       {rejecting && (
-        <div className="space-y-2 rounded-md border border-rose-200 bg-rose-50 p-3 dark:border-rose-900 dark:bg-rose-950">
-          <label className="block text-xs font-medium text-rose-800 dark:text-rose-200">
+        <div className="space-y-2 rounded-md border border-brick-200 bg-brick-50 p-3 dark:border-brick-900 dark:bg-brick-950">
+          <label className="block text-xs font-medium text-brick-800 dark:text-brick-200">
             Reason (required)
           </label>
           <textarea
@@ -78,7 +78,7 @@ export function DecisionButtons({ assetId }: { assetId: string }) {
         </div>
       )}
 
-      {error && <p className="text-xs text-rose-600">{error}</p>}
+      {error && <p className="text-xs text-brick-600">{error}</p>}
     </div>
   );
 }

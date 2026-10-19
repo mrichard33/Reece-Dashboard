@@ -109,7 +109,7 @@ export function AiUsageSection({ usage }: { usage: LlmUsageSummary }) {
                         <tr key={`${r.fn}|${r.model}`}>
                           <td className="break-all py-1.5 pr-2 font-mono text-[12px] text-navy-900 dark:text-slate-100">{r.fn}</td>
                           <td className="hidden max-w-[12rem] truncate py-1.5 pr-2 text-[12px] text-slate-500 sm:table-cell dark:text-slate-400">{r.model}</td>
-                          <td className="tabular py-1.5 pl-3 text-right">{num(r.calls)}{r.errors > 0 && <span className="block whitespace-nowrap text-[11px] text-rose-600 sm:ml-1 sm:inline sm:text-sm dark:text-rose-400">({r.errors} failed)</span>}</td>
+                          <td className="tabular py-1.5 pl-3 text-right">{num(r.calls)}{r.errors > 0 && <span className="block whitespace-nowrap text-[11px] text-brick-600 sm:ml-1 sm:inline sm:text-sm dark:text-brick-400">({r.errors} failed)</span>}</td>
                           <td className="tabular py-1.5 pl-3 text-right">{compactTokens(r.tokens)}</td>
                           <td className="tabular hidden py-1.5 pl-3 text-right sm:table-cell">{latencyLabel(avgLatencyMs(r))}</td>
                           <td className="tabular py-1.5 pl-3 text-right">{aiUsd(r.costUsd)}</td>

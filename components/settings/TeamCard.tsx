@@ -32,7 +32,7 @@ export function TeamCard({
           executive may approve.
         </p>
 
-        {err && <p className="mb-2 text-xs text-rose-600">{err}</p>}
+        {err && <p className="mb-2 text-xs text-brick-600">{err}</p>}
 
         <ul className="divide-y divide-slate-100 dark:divide-slate-800">
           {executives.map((e) => (

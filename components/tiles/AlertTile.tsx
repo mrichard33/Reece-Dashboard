@@ -22,7 +22,7 @@ export function AlertTile({ issue }: { issue: ClaudeKnownIssue }) {
         onClick={() => setOpen(true)}
         className="group flex w-full items-start gap-3 rounded-md border border-slate-200 bg-white p-3 text-left transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/50"
       >
-        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-rose-500" />
+        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-brick-500" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Badge tone={sev.tone} dot>
@@ -88,7 +88,7 @@ export function AlertTile({ issue }: { issue: ClaudeKnownIssue }) {
             </ul>
             <Link
               href="/issues"
-              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-navy-700 hover:underline dark:text-sky-400"
+              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-navy-700 hover:underline dark:text-steel-400"
             >
               Open Issues page <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>

@@ -31,7 +31,7 @@ import type { CompletedRow, CompletedSummary, DismissalRow } from "@/lib/queries
 const VERDICT_TONE: Record<string, string> = {
   good: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-900",
   needs_work: "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-900",
-  unsafe: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-900",
+  unsafe: "bg-brick-50 text-brick-700 ring-brick-200 dark:bg-brick-950/50 dark:text-brick-300 dark:ring-brick-900",
 };
 
 const VERDICT_LABEL: Record<string, string> = {
@@ -120,7 +120,7 @@ export function CompletedTable({
   return (
     <div className="flex flex-col gap-4">
       {errorMsg && (
-        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+        <p role="alert" className="rounded-lg border border-brick-200 bg-brick-50 px-3 py-2 text-xs font-medium text-brick-700 dark:border-brick-900 dark:bg-brick-950/40 dark:text-brick-300">
           {errorMsg}
         </p>
       )}
@@ -316,7 +316,7 @@ export function CompletedTable({
                                 <button
                                   type="button"
                                   onClick={() => setRetracting(row)}
-                                  className="text-xs font-medium text-rose-700 hover:underline dark:text-rose-400"
+                                  className="text-xs font-medium text-brick-700 hover:underline dark:text-brick-400"
                                 >
                                   Remove review
                                 </button>

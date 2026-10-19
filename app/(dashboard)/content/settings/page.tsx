@@ -37,7 +37,7 @@ export default async function ContentSettingsPage() {
           <p className="mb-3 text-xs text-slate-500">
             Approve / reject / mark-posted is limited to the people flagged as approvers.
             Manage <strong>Admin</strong> and <strong>Approver</strong> roles in{" "}
-            <Link href="/settings" className="text-navy-700 hover:underline dark:text-sky-300">
+            <Link href="/settings" className="text-navy-700 hover:underline dark:text-steel-300">
               General Settings → Team &amp; Approvers
             </Link>
             .
@@ -78,7 +78,7 @@ export default async function ContentSettingsPage() {
             </Row>
             <Row label="Facebook Group URL">
               {groupUrl ? (
-                <a href={groupUrl} className="block truncate text-navy-700 hover:underline dark:text-sky-300">
+                <a href={groupUrl} className="block truncate text-navy-700 hover:underline dark:text-steel-300">
                   {groupUrl}
                 </a>
               ) : (

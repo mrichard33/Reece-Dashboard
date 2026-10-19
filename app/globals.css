@@ -22,14 +22,43 @@
   --color-navy-900: #0C2340;
   --color-navy-950: #060f1c;
 
-  /* Reece brand — brick accent */
+  /* Reece brand — red (GTD 2.2.1: Red 1 #ED1E24 for CTAs and alerts, Red 2
+     #FF0011 for hover/urgent). The full ramp replaces Tailwind's generic rose
+     everywhere (2026-10-19, the user: "use our company colors and follow the
+     color style guide"); 200/300/400/800/900/950 were used and never defined. */
   --color-brick: #ED1E24;
   --color-brick-dark: #C5141A;
   --color-brick-50: #fef2f2;
   --color-brick-100: #fde6e7;
+  --color-brick-200: #fbc9cb;
+  --color-brick-300: #f89ea1;
+  --color-brick-400: #f3656a;
   --color-brick-500: #ED1E24;
   --color-brick-600: #C5141A;
   --color-brick-700: #9c1015;
+  --color-brick-800: #7d1014;
+  --color-brick-900: #641215;
+  --color-brick-950: #3a0607;
+  --color-brand-red-2: #FF0011;
+
+  /* Reece brand — blue gray (GTD 2.2.2: Blue Gray #6588A0 at 500, Light Gray
+     #C1D5DB at 200). Replaces Tailwind's sky for informational accents. */
+  --color-steel-50: #f2f6f8;
+  --color-steel-100: #e3ebf0;
+  --color-steel-200: #C1D5DB;
+  --color-steel-300: #a1b9c7;
+  --color-steel-400: #819fb3;
+  --color-steel-500: #6588A0;
+  --color-steel-600: #4f6f86;
+  --color-steel-700: #3f596c;
+  --color-steel-800: #324656;
+  --color-steel-900: #283846;
+  --color-steel-950: #18232c;
+
+  /* Reece brand — neutrals and warm (GTD 2.2.2). */
+  --color-brand-dark-gray: #626060;
+  --color-brand-light-gray: #C1D5DB;
+  --color-cream: #FAF0C9;
 
   --font-sans: "Inter", system-ui, sans-serif;
   --font-display: "Montserrat", "Inter", sans-serif;
@@ -57,16 +86,19 @@
     --chart-primary: #122739;
     --chart-accent: #ED1E24;
     --chart-positive: #16a34a;
-    /* Categorical slots 1–6 (dataviz reference order, validated 2026-10-19:
-       adjacent CVD ΔE ≥ 9.1 light / 8.4 dark). Marketing Spend categories use
-       them in CATEGORY_ORDER; slots 3–5 sit under 3:1 on white, so every chart
-       using them carries a legend and a table view. */
-    --chart-cat-1: #2a78d6;
-    --chart-cat-2: #eb6834;
-    --chart-cat-3: #1baf7a;
-    --chart-cat-4: #eda100;
-    --chart-cat-5: #e87ba4;
-    --chart-cat-6: #008300;
+    /* Categorical slots 1–6, brand-led (2026-10-19, the user: company colors).
+       The style guide has two strong hues, navy and red, and red stays the
+       alert / Disputed accent, so slot 1 is the navy family, slot 2 the warm
+       gold of the brand cream, and 3–6 are extension tones. Validated with the
+       dataviz checker: adjacent CVD ΔE ≥ 8.2, normal-vision ≥ 18.0, light and
+       dark. Slots 2 and 6 sit under 3:1 on white, so every chart using them
+       carries a legend and a table view. */
+    --chart-cat-1: #2b5e99;
+    --chart-cat-2: #d99a1e;
+    --chart-cat-3: #1f8f7a;
+    --chart-cat-4: #8a6fb0;
+    --chart-cat-5: #c4603a;
+    --chart-cat-6: #4f9fd8;
   }
 
   .dark {
@@ -84,12 +116,12 @@
     --chart-primary: #7d9bbf;
     --chart-accent: #ED1E24;
     --chart-positive: #4ade80;
-    --chart-cat-1: #3987e5;
-    --chart-cat-2: #d95926;
-    --chart-cat-3: #199e70;
-    --chart-cat-4: #c98500;
-    --chart-cat-5: #d55181;
-    --chart-cat-6: #008300;
+    --chart-cat-1: #3f78bf;
+    --chart-cat-2: #c08515;
+    --chart-cat-3: #1f8f7a;
+    --chart-cat-4: #8a6fb0;
+    --chart-cat-5: #c4603a;
+    --chart-cat-6: #3a8dc6;
   }
 
   * {

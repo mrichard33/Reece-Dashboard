@@ -19,7 +19,7 @@ export function StatTile({
 }) {
   const deltaColor = {
     emerald: "text-emerald-600 dark:text-emerald-400",
-    rose: "text-rose-600 dark:text-rose-400",
+    rose: "text-brick-600 dark:text-brick-400",
     amber: "text-amber-600 dark:text-amber-400",
     slate: "text-slate-500 dark:text-slate-400",
   }[deltaTone];

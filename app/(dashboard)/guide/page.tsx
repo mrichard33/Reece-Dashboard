@@ -43,7 +43,7 @@ function BarRow({
       <span className="w-20 shrink-0 text-xs text-slate-500 dark:text-slate-400 sm:w-24">{label}</span>
       <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
         <div
-          className="h-full rounded-full bg-sky-600 dark:bg-sky-500"
+          className="h-full rounded-full bg-steel-600 dark:bg-steel-500"
           style={{ width: `${width}%` }}
         />
       </div>
@@ -79,12 +79,12 @@ function DailyBars({
             title={`${d.day}: ${d.views} views · ${d.ctaClicks} ${accentLabel}`}
           >
             <div
-              className="w-full rounded-t bg-sky-600/80 dark:bg-sky-500/80"
+              className="w-full rounded-t bg-steel-600/80 dark:bg-steel-500/80"
               style={{ height: `${Math.max(2, (d.views / maxDaily) * 100)}%` }}
             />
             {d.ctaClicks > 0 ? (
               <div
-                className="absolute bottom-0 w-full rounded-t bg-rose-600"
+                className="absolute bottom-0 w-full rounded-t bg-brick-600"
                 style={{ height: `${Math.max(2, (d.ctaClicks / maxDaily) * 100)}%` }}
               />
             ) : null}
@@ -125,7 +125,7 @@ export default async function PageMetricsPage() {
 
       <div className="space-y-6 p-4 sm:p-6">
         {m.error ? (
-          <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+          <div className="rounded-xl border border-brick-300 bg-brick-50 p-4 text-sm text-brick-700 dark:border-brick-800 dark:bg-brick-950 dark:text-brick-300">
             HL Supabase query failed: {m.error}. Confirm HL_SUPABASE_URL and
             HL_SUPABASE_ANON_KEY (or HL_SUPABASE_SERVICE_KEY) are set on this
             service and that wp_page_events exists (HL migration 010).

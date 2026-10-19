@@ -18,7 +18,7 @@ function ageTone(days: number): {
     return { bg: "bg-emerald-500", dot: "bg-emerald-500", text: "text-emerald-50", label: "healthy" };
   if (days < 14)
     return { bg: "bg-amber-500", dot: "bg-amber-500", text: "text-amber-50", label: "watch" };
-  return { bg: "bg-rose-500", dot: "bg-rose-500", text: "text-rose-50", label: "stalled" };
+  return { bg: "bg-brick-500", dot: "bg-brick-500", text: "text-brick-50", label: "stalled" };
 }
 
 export function StageBars({ stages }: { stages: StageDatum[] }) {

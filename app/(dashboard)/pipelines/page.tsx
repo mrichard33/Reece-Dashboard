@@ -91,7 +91,7 @@ export default async function PipelinesPage() {
                   <span>
                     Stuck (&gt;14d){" "}
                     <span
-                      className={`font-mono tabular ${p.stuckCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-slate-200"}`}
+                      className={`font-mono tabular ${p.stuckCount > 0 ? "text-brick-600 dark:text-brick-400" : "text-slate-800 dark:text-slate-200"}`}
                     >
                       {num(p.stuckCount)}
                     </span>

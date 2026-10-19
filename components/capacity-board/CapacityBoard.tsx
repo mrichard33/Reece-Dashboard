@@ -309,7 +309,7 @@ export default function CapacityBoard({
   const relax = Math.max(0, offset - 1) * 8;
   const thOk = Math.max(45, onTrackAt - relax);
   const thCrit = Math.max(25, criticalBelow - relax);
-  const col = (p: number) => (p >= thOk ? "#34d399" : p >= thCrit ? "#fbbf24" : "#fb7185");
+  const col = (p: number) => (p >= thOk ? "#34d399" : p >= thCrit ? "#fbbf24" : "#f3656a");
   const word = (p: number) => (p >= thOk ? "ON TRACK" : p >= thCrit ? "NEEDS WORK" : "CRITICAL");
 
   const orderedOffices = mergeBoardOffices(data?.offices ?? []).sort((a, b) => {
@@ -336,7 +336,7 @@ export default function CapacityBoard({
       barW: Math.min(100, pct) + "%", // bar render caps at 100 — the number never does
       // 100%+ = green outline (Mark, 2026-07-22) — full counts as done, not
       // just overbooked.
-      border: pct >= 100 ? OVERBOOK : pct < thCrit ? "#be123c" : "#1e293b",
+      border: pct >= 100 ? OVERBOOK : pct < thCrit ? "#C5141A" : "#1e293b",
       tileOpacity: 1, empty: false, rank,
     };
   };
@@ -371,7 +371,7 @@ export default function CapacityBoard({
   const dateRel = offset === 0 ? "TODAY" : offset === 1 ? "TOMORROW" : `IN ${offset} DAYS`;
 
   const { updatedTime, updatedAgo } = freshness;
-  const freshColor = stale ? "#fb7185" : "#34d399";
+  const freshColor = stale ? "#f3656a" : "#34d399";
 
   // Small screens get a native responsive layout instead of a shrunken
   // 1920×1080 canvas (unreadable on a phone). ?scale=native still forces the
@@ -413,7 +413,7 @@ export default function CapacityBoard({
         </div>
 
         {stale && (
-          <div style={{ background: "#e11d48", color: "#fff", padding: "8px 14px", fontFamily: DISPLAY, fontSize: 13, fontWeight: 700, letterSpacing: ".05em", textAlign: "center" }}>
+          <div style={{ background: "#ED1E24", color: "#fff", padding: "8px 14px", fontFamily: DISPLAY, fontSize: 13, fontWeight: 700, letterSpacing: ".05em", textAlign: "center" }}>
             {staleLine}
           </div>
         )}
@@ -591,7 +591,7 @@ export default function CapacityBoard({
 
         {/* ── Stale banner ── */}
         {stale && (
-          <div style={{ flex: "none", background: "#e11d48", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", gap: u(16), height: u(64), fontFamily: DISPLAY, fontSize: u(24), fontWeight: 700, letterSpacing: ".06em" }}>
+          <div style={{ flex: "none", background: "#ED1E24", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", gap: u(16), height: u(64), fontFamily: DISPLAY, fontSize: u(24), fontWeight: 700, letterSpacing: ".06em" }}>
             {staleHeadline}<span style={{ fontWeight: 500, fontSize: u(20), letterSpacing: 0, opacity: 0.85 }}>{staleDetail}</span>
           </div>
         )}
@@ -747,7 +747,7 @@ export default function CapacityBoard({
                   <span style={{ fontFamily: MONO, fontSize: u(20), color: "#94a3b8" }}>{thCrit}&#8211;{thOk - 1}%</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: u(12) }}>
-                  <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: "#fb7185", flex: "none" }} />
+                  <span style={{ width: u(16), height: u(16), borderRadius: 9999, background: "#f3656a", flex: "none" }} />
                   <span style={{ fontSize: u(20), fontWeight: 600, color: "#e2e8f0", width: u(140) }}>Critical</span>
                   <span style={{ fontFamily: MONO, fontSize: u(20), color: "#94a3b8" }}>&lt; {thCrit}%</span>
                 </div>
@@ -768,7 +768,7 @@ export default function CapacityBoard({
               the red banner above and nothing more. */}
           {hardStale && (
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: u(18), background: "rgba(2,6,23,.55)" }}>
-              <div style={{ fontFamily: DISPLAY, fontSize: u(96), fontWeight: 700, letterSpacing: ".08em", color: "#fb7185", lineHeight: 1 }}>DATA STALE</div>
+              <div style={{ fontFamily: DISPLAY, fontSize: u(96), fontWeight: 700, letterSpacing: ".08em", color: "#f3656a", lineHeight: 1 }}>DATA STALE</div>
               <div style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(44), fontWeight: 600, color: "#f8fafc" }}>
                 Last update {updatedTime} — {updatedAgo}
               </div>

@@ -8,7 +8,7 @@ type AlertTone = "rose" | "amber" | "emerald" | "slate";
 type Alert = { tone: AlertTone; label: string; text: string };
 
 const WRAP: Record<AlertTone, string> = {
-  rose: "border-rose-200 bg-rose-50/60 dark:border-rose-500/30 dark:bg-rose-500/10",
+  rose: "border-brick-200 bg-brick-50/60 dark:border-brick-500/30 dark:bg-brick-500/10",
   amber: "border-amber-300/70 bg-[#FAF0C9]/50 dark:border-amber-500/30 dark:bg-amber-500/10",
   emerald: "border-emerald-200 bg-emerald-50/60 dark:border-emerald-500/30 dark:bg-emerald-500/10",
   slate: "border-slate-200 bg-slate-50/80 dark:border-slate-700 dark:bg-slate-800/40",

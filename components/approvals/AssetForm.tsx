@@ -250,7 +250,7 @@ export function AssetForm({
                   key={a.id}
                   className={`flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 text-sm ${
                     removed
-                      ? "border-rose-200 bg-rose-50 line-through opacity-60 dark:border-rose-900 dark:bg-rose-950"
+                      ? "border-brick-200 bg-brick-50 line-through opacity-60 dark:border-brick-900 dark:bg-brick-950"
                       : "border-slate-200 dark:border-slate-700"
                   }`}
                 >
@@ -264,7 +264,7 @@ export function AssetForm({
                         removed ? cur.filter((x) => x !== a.id) : [...cur, a.id],
                       )
                     }
-                    className="text-xs text-rose-600 hover:underline"
+                    className="text-xs text-brick-600 hover:underline"
                   >
                     {removed ? "Undo" : "Remove"}
                   </button>
@@ -286,7 +286,7 @@ export function AssetForm({
               <button
                 type="button"
                 onClick={() => removeDraft(d.tempId)}
-                className="text-rose-600"
+                className="text-brick-600"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -318,7 +318,7 @@ export function AssetForm({
                   <option value="other">Other</option>
                 </select>
                 {d.oversize && (
-                  <p className="text-xs text-rose-600">
+                  <p className="text-xs text-brick-600">
                     Over {MAX_UPLOAD_MB}MB — use a link instead.
                   </p>
                 )}
@@ -382,7 +382,7 @@ export function AssetForm({
         </div>
       )}
 
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p className="text-sm text-brick-600">{error}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" disabled={pending} onClick={() => submit("draft")}>

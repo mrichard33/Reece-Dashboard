@@ -47,7 +47,7 @@ export default async function CheckPage({ params }: { params: Promise<{ check_id
               <span className="break-words text-slate-700 dark:text-slate-200">{page.check.comingLater ? "Coming later" : plainTimes(page.check.staleNote ?? page.check.summary ?? "No result yet")}</span>
               {page.check.observedAt && <span className="text-xs text-slate-500">{relTime(page.check.observedAt)}</span>}
               {leadLeaksLink(page.check.id) && (
-                <Link href={leadLeaksLink(page.check.id) as Route} className="text-sm font-medium text-navy-700 underline dark:text-sky-300">See the leads on Lead Leaks</Link>
+                <Link href={leadLeaksLink(page.check.id) as Route} className="text-sm font-medium text-navy-700 underline dark:text-steel-300">See the leads on Lead Leaks</Link>
               )}
             </div>
 

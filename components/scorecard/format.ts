@@ -16,5 +16,5 @@ export function goalTone(
   const meets = lowerIsBetter ? actual <= goal : actual >= goal;
   return meets
     ? "text-emerald-600 dark:text-emerald-400"
-    : "text-rose-600 dark:text-rose-400";
+    : "text-brick-600 dark:text-brick-400";
 }

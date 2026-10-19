@@ -67,7 +67,7 @@ export function Funnel({ stages }: { stages: FunnelStage[] }) {
               <div className="w-24 shrink-0 text-right">
                 {s.goal != null ? (
                   <span
-                    className={`font-mono text-[11px] tabular ${behind ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
+                    className={`font-mono text-[11px] tabular ${behind ? "text-brick-600 dark:text-brick-400" : "text-emerald-600 dark:text-emerald-400"}`}
                   >
                     {behind ? "−" : "+"}
                     {num(Math.abs(s.actual - s.goal))} vs goal

@@ -176,7 +176,7 @@ export function FeedbackPanel({
             <p className="mt-1 flex items-center gap-2 text-sm font-semibold text-navy-900 dark:text-white">
               {existingVerdict?.verdict === "good" && <span className="text-emerald-600">Good</span>}
               {existingVerdict?.verdict === "needs_work" && <span className="text-amber-600">Needs work</span>}
-              {existingVerdict?.verdict === "unsafe" && <span className="text-rose-600">Unsafe</span>}
+              {existingVerdict?.verdict === "unsafe" && <span className="text-brick-600">Unsafe</span>}
               {existingVerdict?.gold && (
                 <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
                   ⭐ Teaching example
@@ -201,7 +201,7 @@ export function FeedbackPanel({
               <button
                 type="button"
                 onClick={onRetract}
-                className="text-sm font-medium text-rose-700 hover:underline dark:text-rose-400"
+                className="text-sm font-medium text-brick-700 hover:underline dark:text-brick-400"
               >
                 Remove review
               </button>
@@ -283,7 +283,7 @@ export function FeedbackPanel({
         {showDiff && originalText ? (
           <div className="rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-950">
             <p className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Bot said</p>
-            <p className="whitespace-pre-wrap break-words text-rose-700 line-through dark:text-rose-300">{originalText}</p>
+            <p className="whitespace-pre-wrap break-words text-brick-700 line-through dark:text-brick-300">{originalText}</p>
             <p className="mb-1 mt-2 text-[11px] uppercase tracking-wide text-slate-500">Better</p>
             <p className="whitespace-pre-wrap break-words text-emerald-700 dark:text-emerald-300">{draft.betterText}</p>
           </div>
@@ -310,7 +310,7 @@ export function FeedbackPanel({
           <span
             className={cn(
               "font-normal",
-              draft.verdict === "unsafe" ? "text-rose-600 dark:text-rose-400" : "text-slate-500 dark:text-slate-400",
+              draft.verdict === "unsafe" ? "text-brick-600 dark:text-brick-400" : "text-slate-500 dark:text-slate-400",
             )}
           >
             {draft.verdict === "unsafe" ? "required" : "optional"}
@@ -326,7 +326,7 @@ export function FeedbackPanel({
           className={cn(
             "w-full rounded-lg border bg-white px-2.5 py-2 text-base text-slate-800 sm:text-sm focus:outline-none focus:ring-1 disabled:opacity-60 dark:bg-slate-950 dark:text-slate-100",
             error?.field === "note"
-              ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500"
+              ? "border-brick-400 focus:border-brick-500 focus:ring-brick-500"
               : "border-slate-300 focus:border-navy-500 focus:ring-navy-500 dark:border-slate-700",
           )}
         />
@@ -472,7 +472,7 @@ function DismissMenu({
 
 function FieldError({ children }: { children: React.ReactNode }) {
   return (
-    <p role="alert" className="mt-1.5 text-xs font-medium text-rose-600 dark:text-rose-400">
+    <p role="alert" className="mt-1.5 text-xs font-medium text-brick-600 dark:text-brick-400">
       {children}
     </p>
   );

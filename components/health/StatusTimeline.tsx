@@ -15,14 +15,14 @@ import { cn } from "@/lib/utils";
  * tap-to-open list names every check that was red or yellow and when.
  */
 const FILL: Record<string, string> = {
-  red: "fill-rose-500",
+  red: "fill-brick-500",
   yellow: "fill-amber-400",
   green: "fill-emerald-500",
   grey: "fill-slate-200 dark:fill-slate-700",
 };
 
 const DOT: Record<HealthColor, string> = {
-  red: "bg-rose-500",
+  red: "bg-brick-500",
   yellow: "bg-amber-400",
   green: "bg-emerald-500",
   grey: "bg-slate-300",

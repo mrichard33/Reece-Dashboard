@@ -160,7 +160,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
               className={cn(
                 "rounded-l-full border px-2.5 py-1.5 text-xs font-medium sm:py-0.5",
                 activePreset === p.id
-                  ? "border-navy-700 bg-navy-800 text-white dark:border-sky-400 dark:bg-navy-600"
+                  ? "border-navy-700 bg-navy-800 text-white dark:border-steel-400 dark:bg-navy-600"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
               )}
             >
@@ -171,7 +171,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
               onClick={() => removePreset(p)}
               aria-label={`Delete saved filter ${p.name}`}
               title="Delete this saved filter"
-              className="rounded-r-full border border-l-0 border-slate-200 px-2 py-2 text-slate-400 sm:px-1.5 sm:py-0.5 hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700"
+              className="rounded-r-full border border-l-0 border-slate-200 px-2 py-2 text-slate-400 sm:px-1.5 sm:py-0.5 hover:bg-brick-50 hover:text-brick-600 dark:border-slate-700"
             >
               <Trash2 className="h-3 w-3" />
             </button>
@@ -199,12 +199,12 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
             </button>
           </span>
         ) : (
-          <button type="button" onClick={() => setSaving(true)} className="py-1.5 text-xs text-sky-700 hover:underline dark:text-sky-400 sm:py-0">
+          <button type="button" onClick={() => setSaving(true)} className="py-1.5 text-xs text-steel-700 hover:underline dark:text-steel-400 sm:py-0">
             + Save current filters
           </button>
         )}
         {error && (
-          <span className="text-xs text-rose-600">
+          <span className="text-xs text-brick-600">
             {error}{" "}
             <button type="button" onClick={() => setError(null)} className="underline">
               dismiss
@@ -272,7 +272,7 @@ export function WorkflowsIndex({ rows, favorites: initialFavorites, presets: ini
           <InfoPopover helpKey="workflows.chainOrder" align="left" />
         </label>
         {(f.routes.length > 0 || f.q || f.status !== DEFAULT_FILTERS.status || f.hasMessages !== null || f.favoritesOnly) && (
-          <button type="button" onClick={() => update(DEFAULT_FILTERS)} className="py-1.5 text-xs text-sky-700 hover:underline dark:text-sky-400 sm:py-0">
+          <button type="button" onClick={() => update(DEFAULT_FILTERS)} className="py-1.5 text-xs text-steel-700 hover:underline dark:text-steel-400 sm:py-0">
             Reset
           </button>
         )}
@@ -426,15 +426,15 @@ function RouteBox({
         "rounded-lg border text-left transition",
         compact ? "px-2.5 py-1.5" : "min-w-[8.5rem] px-3 py-2",
         active
-          ? "border-navy-700 bg-navy-50 ring-2 ring-navy-600 dark:border-sky-400 dark:bg-navy-900"
+          ? "border-navy-700 bg-navy-50 ring-2 ring-navy-600 dark:border-steel-400 dark:bg-navy-900"
           : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900",
       )}
     >
       <div className="text-xs font-semibold text-navy-900 dark:text-white">{def.label}</div>
       <div className="text-[11px] text-slate-500">
         {stats.published} live{stats.drafts ? ` · ${stats.drafts} draft` : ""}
-        {stats.turnedOff > 0 && <span className="text-rose-600"> · {stats.turnedOff} turned off</span>}
-        {stats.noSends > 0 && <span className="text-rose-600"> · {stats.noSends} no sends seen</span>}
+        {stats.turnedOff > 0 && <span className="text-brick-600"> · {stats.turnedOff} turned off</span>}
+        {stats.noSends > 0 && <span className="text-brick-600"> · {stats.noSends} no sends seen</span>}
         {!compact && (
           <>
             <br />

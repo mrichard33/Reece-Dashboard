@@ -41,7 +41,7 @@ export function HeldSpend({ held, canApply }: { held: HeldItem[]; canApply: bool
                 const r = await applyHoldRecommendation(h.id, (h.recommended_market ?? "").split(","));
                 setResult((s) => ({ ...s, [h.id]: r.ok ? "Applied, moved to the office" : `Not applied: ${r.error}` }));
               })}
-              className="inline-flex h-8 shrink-0 items-center rounded-md bg-[#0C2340] px-3 text-[12px] font-medium text-white hover:bg-[#143560] disabled:opacity-50 sm:h-7"
+              className="inline-flex h-8 shrink-0 items-center rounded-md bg-[#0C2340] px-3 text-[12px] font-medium text-white hover:bg-[#122739] disabled:opacity-50 sm:h-7"
             >
               Apply recommendation
             </button>

@@ -48,7 +48,7 @@ export function AttachmentRenderer({ att }: { att: RenderableAttachment }) {
   if (att.kind === "file") {
     if (!att.url) {
       return wrap(
-        <p className="text-xs text-rose-600">Media unavailable (signed URL failed).</p>,
+        <p className="text-xs text-brick-600">Media unavailable (signed URL failed).</p>,
       );
     }
     if (att.media_type === "audio") {
@@ -71,7 +71,7 @@ export function AttachmentRenderer({ att }: { att: RenderableAttachment }) {
           type="application/pdf"
           className="h-[32rem] w-full rounded-md border border-slate-200 dark:border-slate-800"
         >
-          <a href={att.url} className="text-sm text-sky-600 underline">
+          <a href={att.url} className="text-sm text-steel-600 underline">
             Open PDF
           </a>
         </object>,

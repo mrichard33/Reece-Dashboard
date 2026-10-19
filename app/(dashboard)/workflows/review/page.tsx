@@ -134,7 +134,7 @@ export default async function FunnelReviewPage() {
                         <span className="text-slate-500">Should feel like: </span>
                         {guide.shouldFeelLike}
                       </p>
-                      <p className="text-rose-700 dark:text-rose-300">
+                      <p className="text-brick-700 dark:text-brick-300">
                         <span className="text-slate-500">Must not: </span>
                         {guide.mustNot}
                       </p>

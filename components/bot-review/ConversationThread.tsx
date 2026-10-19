@@ -67,7 +67,7 @@ function IssueChip({ issue }: { issue: Issue }) {
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
         issue.tone === "rose"
-          ? "bg-rose-700 text-white dark:bg-rose-600"
+          ? "bg-brick-700 text-white dark:bg-brick-600"
           : "bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800",
       )}
     >
@@ -329,7 +329,7 @@ function Item({
     );
     const cls = cn(
       "max-w-[92%] text-center text-xs",
-      item.tone === "rose" ? "font-semibold text-rose-800 dark:text-rose-300" : "text-slate-600 dark:text-slate-300",
+      item.tone === "rose" ? "font-semibold text-brick-800 dark:text-brick-300" : "text-slate-600 dark:text-slate-300",
     );
     if (item.contextId == null) {
       return (

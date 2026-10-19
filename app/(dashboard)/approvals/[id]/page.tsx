@@ -110,7 +110,7 @@ export default async function AssetDetailPage({
                             <Check className="h-4 w-4 text-emerald-600" />
                           )}
                           {a.decision === "rejected" && (
-                            <X className="h-4 w-4 text-rose-600" />
+                            <X className="h-4 w-4 text-brick-600" />
                           )}
                           {a.decision === "pending" && (
                             <Clock className="h-4 w-4 text-slate-400" />
@@ -123,7 +123,7 @@ export default async function AssetDetailPage({
                           )}
                         </div>
                         {a.decision === "rejected" && a.reason && (
-                          <p className="ml-6 mt-0.5 text-xs text-rose-600">{a.reason}</p>
+                          <p className="ml-6 mt-0.5 text-xs text-brick-600">{a.reason}</p>
                         )}
                       </li>
                     ))}

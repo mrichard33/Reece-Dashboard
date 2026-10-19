@@ -441,7 +441,7 @@ export function ReviewWorkspace({
         className={`flex min-h-0 scroll-mt-4 flex-col gap-2 lg:h-[calc(100vh-19rem)]${selected ? "" : " xl:col-span-2"}`}
       >
         {errorMsg && (
-          <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+          <p role="alert" className="rounded-lg border border-brick-200 bg-brick-50 px-3 py-2 text-xs font-medium text-brick-700 dark:border-brick-900 dark:bg-brick-950/40 dark:text-brick-300">
             {errorMsg}
           </p>
         )}
