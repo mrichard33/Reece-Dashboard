@@ -1,8 +1,11 @@
 /**
  * Marketing Spend view-model (2026-10-19). What these guard:
- *   - every category branch, case-insensitive, held before commission,
+ *   - every category branch, case-insensitive, held before anything else,
  *   - Lead Cost keeps lead-source money only, and "Other marketing costs" is
  *     exactly the money it dropped,
+ *   - commissions are lead-source cost (the user, 2026-10-19, reversing the
+ *     same morning's separate Commissions category), and the Canvass
+ *     estimate is marked,
  *   - the Spend tiles add up to the total,
  *   - Unbounce invoice 400 ($97.78 in Oct 2026, six offices) is Software and
  *     never inside Lead Cost.
@@ -53,14 +56,15 @@ describe("costCategory", () => {
     expect(costCategory({ market: "SAR_MKT", lp_sub_source: "(none)", even_split: true })).toBe("company_wide");
     expect(costCategory({ market: "SAR_MKT", lp_sub_source: null, even_split: true })).toBe("company_wide");
     expect(costCategory({ market: "SAR_MKT", lp_sub_source: "(none)" })).toBe("lead_source");
-    expect(costCategory({ market: "SAR_MKT", lp_sub_source: "Canvass" }, "calculated")).toBe("commission");
+    // 2026-10-19 (the user): a commission is its lead source's cost, not a category of its own.
+    expect(costCategory({ market: "SAR_MKT", lp_sub_source: "Canvass" }, "calculated")).toBe("lead_source");
     expect(costCategory({ market: "SAR_MKT", lp_sub_source: "Lead Gurus" })).toBe("lead_source");
   });
 
-  it("splits a row's invoice and calculated cost into their own categories", () => {
+  it("keeps a row's invoice and calculated (commission) cost as two lead-source parts", () => {
     expect(costParts(row({ lp_sub_source: "MVP Marketing", invoice_cost: "100", calculated_cost: "2237.4" }))).toEqual([
       { category: "lead_source", amount: 100 },
-      { category: "commission", amount: 2237.4 },
+      { category: "lead_source", amount: 2237.4 },
     ]);
     expect(costParts(row({ invoice_cost: "0", calculated_cost: "0" }))).toEqual([]);
   });
@@ -87,16 +91,17 @@ describe("Lead Cost = lead sources only", () => {
     ...UNBOUNCE_NOV.map(([m, a]) => software(m, a, "2026-11-01")),
   ];
 
-  it("drops non-lead rows from the table, the totals and cost per issued lead", () => {
+  it("drops non-lead rows from the table, the totals and cost per issued lead; commissions stay", () => {
     const { view } = shapeLeadCostView(rows, OCT);
-    expect(view.rows.map((r) => r.campaign)).toEqual(["Lead Gurus", "Canvass"]);
+    expect(view.rows.map((r) => r.campaign)).toEqual(["Canvass", "Lead Gurus"]);
     expect(view.rows.find((r) => r.campaign === "Software")).toBeUndefined();
     const canvass = view.rows.find((r) => r.campaign === "Canvass")!;
-    expect(canvass.total_cost).toBe(0);
-    expect(canvass.issued).toBe(207); // the leads still count
-    expect(view.totals.total_cost).toBe(44829.38); // 30016.19 + 14813.19, nothing else
+    expect(canvass.calculated_cost).toBe(48358.5); // the commission is Canvass's cost (2026-10-19)
+    expect(canvass.total_cost).toBe(48358.5);
+    expect(canvass.issued).toBe(207);
+    expect(view.totals.total_cost).toBe(93187.88); // 30016.19 + 14813.19 + 48358.5
     expect(view.totals.total_cost).toBe(view.rows.reduce((s, r) => s + r.total_cost, 0));
-    expect(view.totals.cost_per_issued).toBe(Math.round((44829.38 / 242) * 100) / 100);
+    expect(view.totals.cost_per_issued).toBe(Math.round((93187.88 / 242) * 100) / 100);
     expect(view.held?.total_cost).toBe(62.67); // held keeps its own line
   });
 
@@ -104,9 +109,9 @@ describe("Lead Cost = lead sources only", () => {
     const { view, other } = shapeLeadCostView(rows, OCT);
     expect(other.by.software).toBe(97.78);
     expect(other.by.call_center).toBe(500);
-    expect(other.by.commission).toBe(48358.5);
+    expect(other.by.lead_source).toBe(0); // commissions are not "other" any more
     expect(other.by.held).toBe(62.67); // held moved off the scorecard, so it sums in here (company view)
-    expect(other.total).toBe(49018.95);
+    expect(other.total).toBe(660.45);
     const everything = shapeLeadCostView(rows.map((r) => r), OCT); // same input, unchanged
     expect(everything.view.totals.total_cost).toBe(view.totals.total_cost);
     // Full ledger for REECE = lead total + other.
@@ -124,7 +129,7 @@ describe("Lead Cost = lead sources only", () => {
   it("Unbounce never reaches the Lead Cost trend", () => {
     const t = shapeLeadTrend(rows, "REECE");
     expect(t.find((p) => p.month === "2026-11")!.total_cost).toBe(0);
-    expect(t.find((p) => p.month === "2026-10")!.total_cost).toBe(44829.38);
+    expect(t.find((p) => p.month === "2026-10")!.total_cost).toBe(93187.88);
   });
 
   it("leaves held rows and lead counts untouched", () => {
@@ -153,7 +158,7 @@ describe("shapeSpend", () => {
     alloc({ amount: "30016.19" }),
     alloc({ market: "SAR_MKT", amount: "14813.19" }),
     alloc({ market: "SAR_MKT", lp_sub_source: "Modernize", amount: "192.45", e: { vendor_id: "mod", cost_type: "invoice" } }),
-    alloc({ lp_sub_source: "Canvass", amount: "48358.5", rule: "direct", e: { vendor_id: "cv", cost_type: "calculated" } }),
+    alloc({ lp_sub_source: "Canvass", amount: "48358.5", rule: "direct", e: { vendor_id: "cv", cost_type: "calculated", provisional: true, flags: ["estimate"] } }),
     alloc({ market: "REECE_HOLD", amount: "62.67", rule: "hold" }),
     alloc({ market: "SAR_MKT", amount: "999", e: { status: "rejected" } }),
     alloc({ month: "2026-09-01", amount: "5000" }),
@@ -178,13 +183,15 @@ describe("shapeSpend", () => {
     const sum = CATEGORY_ORDER.reduce((s, k) => s + v.tiles[k], 0);
     expect(Math.round(sum * 100) / 100).toBe(v.tiles.total);
     expect(v.tiles.total).toBe(93540.78); // 30016.19 + 14813.19 + 192.45 + 48358.5 + 62.67 + 97.78
-    expect(v.tiles.lead_source).toBe(45021.83);
-    expect(v.tiles.commission).toBe(48358.5);
+    expect(v.tiles.lead_source).toBe(93380.33); // lead invoices + feed + the Canvass commission
     expect(v.tiles.held).toBe(62.67);
     expect(v.columns).toEqual([...OFFICES, "REECE_HOLD"]);
-    expect(v.groups.map((g) => g.category)).toEqual(["commission", "lead_source", "software", "held"]);
+    expect(v.groups.map((g) => g.category)).toEqual(["lead_source", "software", "held"]);
     const lead = v.groups.find((g) => g.category === "lead_source")!;
-    expect(lead.vendors.map((x) => x.vendor)).toEqual(["Lead Gurus", "Modernize"]);
+    expect(lead.vendors.map((x) => x.vendor)).toEqual(["Canvass (commission)", "Lead Gurus", "Modernize"]);
+    // The Canvass commission is a 15% estimate until canvasser payroll: marked, nothing else is.
+    expect(lead.vendors.map((x) => x.estimate)).toEqual([true, false, false]);
+    expect(lead.vendors[0]!.subSources[0]!.estimate).toBe(true);
     expect(lead.byMarket.SAR_MKT).toBe(15005.64);
     // Every row's cells add up to its total.
     for (const g of v.groups) expect(Math.round(Object.values(g.byMarket).reduce((s, x) => s + x, 0) * 100) / 100).toBe(g.total);
@@ -229,7 +236,7 @@ describe("shapeSpendTrend", () => {
     ];
     const t = shapeSpendTrend(rows, "REECE");
     expect(t.map((p) => p.month)).toEqual(["2026-10", "2026-11"]);
-    expect(t[0]).toMatchObject({ lead_source: 30016.19, commission: 48358.5, software: 97.78, held: 62.67, total: 78535.14 });
+    expect(t[0]).toMatchObject({ lead_source: 78374.69, software: 97.78, held: 62.67, total: 78535.14 }); // commission folded into lead sources (2026-10-19)
     expect(t[1]).toMatchObject({ software: 51.22, total: 51.22 });
     expect(shapeSpendTrend(rows, "FTMYR_MKT")[0]).toMatchObject({ held: 0, software: 16.29 });
   });

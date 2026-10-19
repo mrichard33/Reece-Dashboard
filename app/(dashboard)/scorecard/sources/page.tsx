@@ -35,7 +35,7 @@ const SELLING_CAL = resolveSellingCalendar();
  * or ISO week, with the 12-month trend and the report download.
  *
  * 2026-10-19: Lead Cost is lead sources only. Software, Call Center,
- * Company-wide and commissions are one "Other marketing costs" line linking
+ * Company-wide and held money are one "Other marketing costs" line linking
  * to /marketing-spend, which also took the Invoices tab (an old
  * `?tab=invoices` link redirects there) and the held spend with its
  * "Apply recommendation" (the user: this page is for sales).

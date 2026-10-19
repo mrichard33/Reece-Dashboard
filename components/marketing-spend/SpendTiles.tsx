@@ -9,11 +9,11 @@ import { CATEGORY_COLOR } from "./colors";
  */
 export function SpendTiles({ view }: { view: SpendView }) {
   const company = view.market === "REECE";
-  const cats: CostCategory[] = ["lead_source", "software", "call_center", "commission"];
+  const cats: CostCategory[] = ["lead_source", "software", "call_center"];
   if (view.tiles.company_wide) cats.push("company_wide");
   if (company) cats.push("held");
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
       <Tile label="Total spend" value={view.tiles.total} strong />
       {cats.map((c) => (
         <Tile key={c} label={c === "held" ? "Held (company)" : CATEGORY_LABEL[c]} value={view.tiles[c]} color={CATEGORY_COLOR[c]} />

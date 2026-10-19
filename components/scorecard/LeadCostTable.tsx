@@ -15,11 +15,11 @@ import { METRIC_LABELS } from "@/lib/scorecard/labels";
  * Issue / % Issue / # Demo / % Demo / # Sold / STD % / Gross $ / Working $ /
  * Net Sales $ / Net per Issued Appointment / Invoice Cost / Calculated Cost /
  * Total Cost / Cost ÷ Issued leads / Mkt %. † = provisional (Lead Gurus feed,
- * no invoice yet). No Calculated Cost column since 2026-10-19: commissions are
- * not lead cost any more, so it was always $0.
+ * no invoice yet, or the Canvass commission estimate). Calculated Cost is the
+ * commissions, which count as lead-source cost (the user, 2026-10-19).
  *
- * 2026-10-19: lead sources only. Software, call center, commissions and held
- * company-level money are in the page's "Other marketing costs" line and on
+ * 2026-10-19: lead sources only. Software, call center and held company-level
+ * money are in the page's "Other marketing costs" line and on
  * /marketing-spend, where held spend and its recommendation now live (the
  * user: the scorecard is for sales).
  */
@@ -72,7 +72,7 @@ export function LeadCostTable({
   const renderRow = (r: CostRow, bold = false) => (
     <tr key={r.campaign} className={`border-b border-slate-100 last:border-0 dark:border-slate-800/60 ${bold ? "bg-slate-50 font-semibold dark:bg-slate-900/60" : ""}`}>
       <td className="sticky left-0 bg-white py-2 pr-3 text-left font-medium text-slate-700 dark:bg-slate-900 dark:text-slate-300">
-        {r.campaign}{r.provisional ? <span title="Provisional: Lead Gurus feed, no invoice yet"> †</span> : null}
+        {r.campaign}{r.provisional ? <span title="Provisional: Lead Gurus feed until the invoice, or the Canvass commission estimate"> †</span> : null}
       </td>
       <td className={cell}>{num(r.raw)}</td>
       <td className={cell}>{num(r.set)}</td>
@@ -87,6 +87,7 @@ export function LeadCostTable({
       <td className={cell}>{usd(r.net)}</td>
       <td className={`${cell} hidden xl:table-cell`}>{na(r.nsli, usd)}</td>
       <td className={cell}>{money2(r.invoice_cost)}</td>
+      <td className={cell}>{money2(r.calculated_cost)}</td>
       <td className={`${cell} font-semibold`}>{money2(r.total_cost)}</td>
       <td className={`${cell} font-semibold`}>{na(r.cost_per_issued, money2)}</td>
       <td className={`${cell} ${costTone(r.mkt_pct, targetPct)}`}>{na(r.mkt_pct, pct)}</td>
@@ -100,7 +101,7 @@ export function LeadCostTable({
           <h3 className="font-display text-base font-semibold text-navy-900 dark:text-white">Lead Cost</h3>
           <InfoPopover helpKey="scorecard.leadcost" />
           <span className="text-xs text-slate-400">
-            Cost ÷ issued leads · target ≤ {targetPct}% of net
+            Cost ÷ issued leads · target ≤ {targetPct}% of net · Net = RTP'd + completed jobs
             {view?.as_of_snapshot ? ` · Net/Working as of ${view.as_of_snapshot}` : ""}
             {view?.grain === "week" ? " · weekly (no Net/Working at week grain)" : ""}
           </span>
@@ -185,6 +186,7 @@ export function LeadCostTable({
                 <th className="py-2 pl-3 text-right font-medium">{sortable("net", "Net Sales $")}</th>
                 <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell" title={METRIC_LABELS.netPerIssuedAppointment}>Net $ / Issued</th>
                 <th className="py-2 pl-3 text-right font-medium">Invoice Cost</th>
+                <th className="py-2 pl-3 text-right font-medium" title="Commissions: Canvass 15% (estimate until canvasser payroll), MVP Marketing 15%, LeadPilotData 15%, Previous Customer / Referral 1% of net">Calculated Cost</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("total_cost", "Total Cost")}</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("cost_per_issued", "Cost / Issued Lead")}</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("mkt_pct", "Mkt %")}</th>
@@ -198,7 +200,7 @@ export function LeadCostTable({
         </div>
 
         {rows.some((r) => r.provisional) && (
-          <p className="mt-2 text-[11px] text-slate-400">† provisional: Lead Gurus feed spend, replaced by the invoice at month close.</p>
+          <p className="mt-2 text-[11px] text-slate-400">† provisional: Lead Gurus feed spend until the invoice replaces it at month close, or the Canvass commission, a 15%-of-net estimate until canvasser payroll is uploaded.</p>
         )}
       </CardContent>
     </Card>

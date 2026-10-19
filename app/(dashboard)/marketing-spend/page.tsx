@@ -31,7 +31,7 @@ const TABS = [
 /**
  * Marketing Spend (2026-10-19): EVERY marketing cost in the ledger, not only
  * lead sources. Scorecard › Sources & lead cost shows lead-source cost only;
- * software, call center, company-wide costs, commissions and held money live
+ * software, call center, company-wide costs and held money live
  * here, by category → vendor → sub-source, one column per market. Also home
  * to held spend with its recommendation and to the Invoices tab (both moved
  * off the scorecard: the user, "the scorecard page is primarily for sales").
@@ -80,7 +80,7 @@ export default async function MarketingSpendPage({
       <div className="space-y-4 p-4 sm:p-6">
         <SectionHeader
           title="Marketing spend"
-          subtitle="Lead sources, software, call center, commissions and held money, by vendor and market."
+          subtitle="Lead sources (commissions included), software, call center and held money, by vendor and market."
           action={
             <div className="flex flex-wrap items-center gap-3">
               <MarketPicker />

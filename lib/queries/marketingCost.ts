@@ -68,7 +68,8 @@ async function readEvenSplitKeys(from: string, to: string): Promise<Set<string>>
 
 /**
  * Lead Cost — lead sources only since 2026-10-19 (Software, Call Center,
- * Company-wide and commissions moved to /marketing-spend; `other` is what was
+ * Company-wide and held money moved to /marketing-spend (commissions stay:
+ * lead-source cost since 2026-10-19); `other` is what was
  * left out, for the one line above the table).
  */
 export async function getMarketingCost({
@@ -123,7 +124,7 @@ export async function getMarketingSpend({
     const [allocs, names] = await Promise.all([
       fetchAllPages<AllocationRaw>("marketing_expense_allocations", (f, t) =>
         sb.from("marketing_expense_allocations")
-          .select("id, month, market, lp_sub_source, amount, rule, marketing_expenses!inner(vendor_id, cost_type, status, period_start, period_end)")
+          .select("id, month, market, lp_sub_source, amount, rule, marketing_expenses!inner(vendor_id, cost_type, status, period_start, period_end, provisional, flags)")
           .eq("marketing_expenses.status", "approved")
           .gte("month", `${from.slice(0, 7)}-01`).lte("month", periodEnd)
           .order("id").range(f, t) as unknown as PromiseLike<{ data: AllocationRaw[] | null; error: { message: string } | null }>,

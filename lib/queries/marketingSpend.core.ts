@@ -7,15 +7,19 @@
  *   - `Software` / `Call Center` — split evenly across the six offices
  *     (Hatch, Unbounce), carried as the line's sub-source label;
  *   - `Company-wide` — an even split with no category;
- *   - the `calculated_cost` part of any row — commissions (Canvass, MVP,
- *     Previous Customer / Referral);
  *   - `REECE_HOLD` — held at company level, never split.
  *
  * Unbounce invoice 400 ($149, Software, $97.78 in Oct 2026) sat inside the
- * Lead Cost table as a "campaign" with no leads, and every commission dollar
- * was inside cost per issued lead. Lead Cost now shows lead sources only
- * (`shapeLeadCostView`); everything else is one "Other marketing costs" line
- * and the whole picture lives on /marketing-spend (`shapeSpend`).
+ * Lead Cost table as a "campaign" with no leads. Lead Cost now shows lead
+ * sources only (`shapeLeadCostView`); everything else is one "Other marketing
+ * costs" line and the whole picture lives on /marketing-spend (`shapeSpend`).
+ *
+ * Commissions (the `calculated_cost` part: Canvass, MVP Marketing,
+ * LeadPilotData, Previous Customer / Referral) ARE lead-source cost (the user,
+ * 2026-10-19, reversing the same morning's split): they count in Lead Cost and
+ * in "Lead sources" on Marketing Spend. Canvass at 15% is an estimate until
+ * canvasser payroll is uploaded; LP-MCP marks those rows provisional with
+ * flags {estimate}, shown as † / "Estimate".
  */
 
 import {
@@ -31,14 +35,13 @@ import {
   type TrendPoint,
 } from "./marketingCost.core";
 
-export type CostCategory = "lead_source" | "software" | "call_center" | "company_wide" | "commission" | "held";
+export type CostCategory = "lead_source" | "software" | "call_center" | "company_wide" | "held";
 
 /** Fixed order: tiles, table groups, chart stack and legend all follow it. */
-export const CATEGORY_ORDER: readonly CostCategory[] = ["lead_source", "commission", "software", "call_center", "company_wide", "held"];
+export const CATEGORY_ORDER: readonly CostCategory[] = ["lead_source", "software", "call_center", "company_wide", "held"];
 
 export const CATEGORY_LABEL: Record<CostCategory, string> = {
   lead_source: "Lead sources",
-  commission: "Commissions",
   software: "Software",
   call_center: "Call center",
   company_wide: "Company-wide",
@@ -46,7 +49,7 @@ export const CATEGORY_LABEL: Record<CostCategory, string> = {
 };
 
 /** The categories Lead Cost no longer shows; they sum into its "Other marketing costs" line. */
-export const OTHER_CATEGORIES: readonly CostCategory[] = ["software", "call_center", "company_wide", "commission", "held"];
+export const OTHER_CATEGORIES: readonly CostCategory[] = ["software", "call_center", "company_wide", "held"];
 
 export type CategoryInput = {
   market: string;
@@ -59,12 +62,12 @@ const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
 /**
  * Which kind of marketing cost a row (or one part of it) is. `part` is the
- * column the money came from: the calculated part of any row is a commission,
- * unless it is held — held money stays held whatever it is.
+ * column the money came from: the calculated part (a commission) belongs to
+ * its lead source, unless it is held — held money stays held whatever it is.
  */
 export function costCategory(row: CategoryInput, part: "invoice" | "calculated" = "invoice"): CostCategory {
   if (row.market === HOLD_MARKET) return "held";
-  if (part === "calculated") return "commission";
+  if (part === "calculated") return "lead_source";
   const ss = norm(row.lp_sub_source);
   if (ss === "software") return "software";
   if (ss === "call center") return "call_center";
@@ -102,16 +105,18 @@ export function markEvenSplit<T extends CostRowRaw>(rows: T[], keys: Set<string>
 
 /**
  * The rows Lead Cost reads: lead-source money only. Counts and Net $ stay on
- * every row (a lead is a lead); non-lead invoice cost and every commission
- * are zeroed, so shapeCostView drops a row that is left with nothing
- * (Software, Call Center). Held rows pass through for the held line.
+ * every row (a lead is a lead); non-lead invoice cost is zeroed, so
+ * shapeCostView drops a row that is left with nothing (Software, Call
+ * Center). Commissions stay (lead-source cost since 2026-10-19). Held rows
+ * pass through.
  */
 export function leadOnlyRows<T extends CostRowRaw & { even_split?: boolean | null }>(rows: T[]): T[] {
   return rows.map((r) => {
     if (r.market === HOLD_MARKET) return r;
     const lead = costCategory(r, "invoice") === "lead_source";
     const invoice = lead ? n(r.invoice_cost) : 0;
-    return { ...r, invoice_cost: invoice, calculated_cost: 0, total_cost: invoice };
+    const calculated = n(r.calculated_cost);
+    return { ...r, invoice_cost: invoice, calculated_cost: calculated, total_cost: invoice + calculated };
   });
 }
 
@@ -127,7 +132,7 @@ export type OtherCosts = { total: number; by: Record<CostCategory, number> };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 function zeroBy(): Record<CostCategory, number> {
-  return { lead_source: 0, commission: 0, software: 0, call_center: 0, company_wide: 0, held: 0 };
+  return { lead_source: 0, software: 0, call_center: 0, company_wide: 0, held: 0 };
 }
 
 /**
@@ -181,8 +186,16 @@ export type AllocationRaw = {
     status: string | null;
     period_start: string | null;
     period_end: string | null;
+    /** LP-MCP: true on a feed day or an estimated commission (Canvass until payroll). */
+    provisional?: boolean | null;
+    flags?: string[] | null;
   } | null;
 };
+
+/** An allocation whose expense is an estimate, not the real cost (Canvass commission until payroll). */
+export function isEstimate(a: AllocationRaw): boolean {
+  return (a.marketing_expenses?.flags ?? []).includes("estimate");
+}
 
 export function addDays(ymd: string, days: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);
@@ -234,8 +247,8 @@ export function allocationInWindow(a: AllocationRaw, grain: "month" | "week", pe
 }
 
 export type SpendCells = { total: number; byMarket: Record<string, number> };
-export type SpendSubSource = SpendCells & { sub_source: string };
-export type SpendVendor = SpendCells & { vendor: string; subSources: SpendSubSource[] };
+export type SpendSubSource = SpendCells & { sub_source: string; estimate: boolean };
+export type SpendVendor = SpendCells & { vendor: string; estimate: boolean; subSources: SpendSubSource[] };
 export type SpendGroup = SpendCells & { category: CostCategory; label: string; vendors: SpendVendor[] };
 
 export type SpendView = {
@@ -273,7 +286,7 @@ export function shapeSpend(
 ): SpendView {
   const company = !market || market === "REECE";
   const seen = new Set<string>();
-  const parts: { col: string; category: CostCategory; vendor: string; sub: string; amount: number }[] = [];
+  const parts: { col: string; category: CostCategory; vendor: string; sub: string; amount: number; estimate: boolean }[] = [];
   for (const a of allocs) {
     const e = a.marketing_expenses;
     if (!e || e.status !== "approved") continue;
@@ -287,7 +300,7 @@ export function shapeSpend(
     );
     if (a.market !== HOLD_MARKET) seen.add(a.market);
     parts.push({
-      col: a.market, category, amount,
+      col: a.market, category, amount, estimate: isEstimate(a),
       vendor: (e.vendor_id && vendorNames[e.vendor_id]) || "Unknown vendor",
       sub: sourceLabel(a.lp_sub_source),
     });
@@ -305,10 +318,11 @@ export function shapeSpend(
     groups.set(p.category, g);
     const vk = `${p.category}|${p.vendor}`;
     let v = vendors.get(vk);
-    if (!v) { v = { ...cells(columns), vendor: p.vendor, subSources: [] }; vendors.set(vk, v); g.vendors.push(v); }
+    if (!v) { v = { ...cells(columns), vendor: p.vendor, estimate: false, subSources: [] }; vendors.set(vk, v); g.vendors.push(v); }
     const sk = `${vk}|${p.sub}`;
     let s = subs.get(sk);
-    if (!s) { s = { ...cells(columns), sub_source: p.sub }; subs.set(sk, s); v.subSources.push(s); }
+    if (!s) { s = { ...cells(columns), sub_source: p.sub, estimate: false }; subs.set(sk, s); v.subSources.push(s); }
+    if (p.estimate) { v.estimate = true; s.estimate = true; }
     bump(g, p.col, p.amount); bump(v, p.col, p.amount); bump(s, p.col, p.amount);
   }
 

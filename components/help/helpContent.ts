@@ -665,14 +665,14 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "scorecard.leadcost": {
     title: "Lead Cost",
-    what: "LEAD-SOURCE cost only (since 2026-10-19), per LP sub-source for the selected market and window: Raw / Set / Issue / % Issue / # Demo / % Demo / # Sold / STD %, Gross / Working / Net $ (report 133), Invoice Cost (approved invoices + the Lead Gurus feed), Total Cost, Cost ÷ Issued leads and Mkt % (Total ÷ Net). Software, call center, company-wide costs, commissions (Canvass, MVP, Previous Customer / Referral) and money held at company level are NOT in this table, its totals or cost per issued lead: they are summed in the 'Other marketing costs' line above it and itemised on Marketing Spend. † marks provisional Lead Gurus feed spend that the invoice replaces at month close. 'n.a.' is a zero denominator. 'Unknown' is leads with no sub-source in LP. Weekly spreads monthly invoices across weeks by days and has no Net / Working $.",
+    what: "LEAD-SOURCE cost only (since 2026-10-19), per LP sub-source for the selected market and window: Raw / Set / Issue / % Issue / # Demo / % Demo / # Sold / STD %, Gross / Working / Net $ (report 133; Net = jobs released to production (RTP) or completed, Working = sold but not yet RTP), Invoice Cost (approved invoices + the Lead Gurus feed), Calculated Cost (commissions: Canvass 15% of net, an ESTIMATE until canvasser payroll is uploaded; MVP Marketing 15%; LeadPilotData 15%; Previous Customer / Referral 1%), Total Cost, Cost ÷ Issued leads and Mkt % (Total ÷ Net). Software, call center, company-wide costs and money held at company level are NOT in this table: they are summed in the 'Other marketing costs' line above it and itemised on Marketing Spend. † marks a provisional cost: Lead Gurus feed spend until the invoice replaces it, or the Canvass commission estimate. 'n.a.' is a zero denominator. 'Unknown' is leads with no sub-source in LP. Weekly spreads monthly invoices across weeks by days and has no Net / Working $.",
     where:
       "`v_market_subsource_cost` in LP Supabase, read by `lib/queries/marketingCost.ts` and filtered to lead sources by `shapeLeadCostView` in `lib/queries/marketingSpend.core.ts`. Costs come from `marketing_expenses` → `marketing_expense_allocations`, split by gross issued leads; dollars from `mkt_sales_dollars`. Target % is `SCORECARD_LEADCOST_TARGET_PCT` (default 15).",
     fix: "A missing cost: check the invoice on Marketing Spend › Invoices (still in review in Slack #marketing-invoice-review?). A cost in the wrong category: the vendor's sub-source in the invoice's Edit form (Software / Call Center count as non-lead costs). A wrong market split: the vendor's markets in `marketing_vendors`, then reallocate in LP-MCP. Report 136 and LP cost entry are retired; do not type a cost into LP.",
   },
   "scorecard.costTrend": {
     title: "12-month cost trend",
-    what: "Lead-source cost (bars) and lead-source cost ÷ issued leads (line) for the selected market over the last 12 months. Software, call center, commissions and held money are on Marketing Spend's trend. A missing point on the line means no issued leads that month.",
+    what: "Lead-source cost, commissions included (bars), and that cost ÷ issued leads (line) for the selected market over the last 12 months. Software, call center and held money are on Marketing Spend's trend. A missing point on the line means no issued leads that month.",
     where: "`v_market_subsource_cost` at month grain, lead-source rows only (`shapeLeadTrend` in `lib/queries/marketingSpend.core.ts`).",
     fix: "A month that looks low is usually an invoice not yet approved or a Lead Gurus month still on the provisional feed. Check Marketing Spend › Invoices for that month.",
   },
@@ -690,13 +690,13 @@ export const helpContent: Record<string, HelpEntry> = {
   },
   "marketingSpend.table": {
     title: "Spend by category",
-    what: "Every approved marketing cost in the window, in six kinds: Lead sources (invoices and the Lead Gurus feed for a lead source), Commissions (Canvass and MVP Marketing 15% of net, Previous Customer / Referral 1% of net, from report 133), Software and Call center (split evenly over the six offices), Company-wide (an even split with no kind), and Held at company level. Tap a kind to see its vendors, and a vendor to see its sub-sources. One column per office, plus Held and Total for the whole company. The tiles above add up to Total spend.",
+    what: "Every approved marketing cost in the window, in five kinds: Lead sources (invoices, the Lead Gurus feed and the commissions: Canvass 15% of net, an ESTIMATE until canvasser payroll is uploaded and marked so; MVP Marketing and LeadPilotData 15%; Previous Customer / Referral 1%; net = jobs released to production (RTP) or completed, from report 133), Software and Call center (split evenly over the six offices), Company-wide (an even split with no kind), and Held at company level. Tap a kind to see its vendors, and a vendor to see its sub-sources. One column per office, plus Held and Total for the whole company. The tiles above add up to Total spend.",
     where: "`marketing_expense_allocations` → `marketing_expenses` (approved) → `marketing_vendors`, in the same month / ISO-week window as `v_market_subsource_cost`. Shaped by `shapeSpend` in `lib/queries/marketingSpend.core.ts`.",
     fix: "A cost under the wrong kind: its sub-source (Software / Call Center) on the invoice's Edit form. A commission that looks a day old: it recomputes when LP report 133 lands and again at 02:30 ET.",
   },
   "marketingSpend.trend": {
     title: "12-month spend",
-    what: "Total marketing spend per month for the selected market, stacked by kind (lead sources, commissions, software, call center, company-wide, held). Held money shows only for the whole company.",
+    what: "Total marketing spend per month for the selected market, stacked by kind (lead sources including commissions, software, call center, company-wide, held). Held money shows only for the whole company.",
     where: "`v_market_subsource_cost` at month grain (`shapeSpendTrend` in `lib/queries/marketingSpend.core.ts`).",
     fix: "A month that looks low is usually an invoice still in review on the Invoices tab.",
   },

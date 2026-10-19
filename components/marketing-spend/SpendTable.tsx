@@ -17,6 +17,18 @@ const colLabel = (c: string) => (c === HOLD ? "Held" : marketLabel(c));
 const money = (v: number) => (v ? usdExact(v) : "—");
 const cell = "py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300";
 
+/** Canvass commission is 15% of net until canvasser payroll is uploaded (the user, 2026-10-19). */
+function EstimateBadge() {
+  return (
+    <span
+      title="15% of net until the canvasser payroll reports are uploaded"
+      className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+    >
+      Estimate
+    </span>
+  );
+}
+
 export function SpendTable({ view }: { view: SpendView }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
@@ -70,17 +82,17 @@ export function SpendTable({ view }: { view: SpendView }) {
                           {many ? (
                             <button type="button" onClick={() => toggle(vk)} aria-expanded={!!open[vk]} className="flex min-h-8 items-center gap-1.5 text-left font-medium text-slate-700 dark:text-slate-200">
                               <ChevronRight size={13} className={`shrink-0 text-slate-400 transition ${open[vk] ? "rotate-90" : ""}`} />
-                              {v.vendor}
+                              {v.vendor}{v.estimate && <EstimateBadge />}
                             </button>
                           ) : (
-                            <span className="flex min-h-8 items-center pl-5 font-medium text-slate-700 dark:text-slate-200">{v.vendor}</span>
+                            <span className="flex min-h-8 items-center pl-5 font-medium text-slate-700 dark:text-slate-200">{v.vendor}{v.estimate && <EstimateBadge />}</span>
                           )}
                         </td>
                         {cells(v)}
                       </tr>
                       {many && open[vk] && v.subSources.map((s) => (
                         <tr key={`${vk}|${s.sub_source}`} className="border-b border-slate-100 text-[13px] dark:border-slate-800/60">
-                          <td className="sticky left-0 z-10 bg-white py-1.5 pl-12 pr-3 text-slate-500 dark:bg-slate-900 dark:text-slate-400">{s.sub_source}</td>
+                          <td className="sticky left-0 z-10 bg-white py-1.5 pl-12 pr-3 text-slate-500 dark:bg-slate-900 dark:text-slate-400">{s.sub_source}{s.estimate && <EstimateBadge />}</td>
                           {cells(s)}
                         </tr>
                       ))}
