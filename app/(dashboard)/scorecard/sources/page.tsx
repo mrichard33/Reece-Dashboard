@@ -12,6 +12,7 @@ import { MarketPicker } from "@/components/scorecard/MarketPicker";
 import { CostGrainToggle } from "@/components/scorecard/CostGrainToggle";
 import { SourcePerformanceTable } from "@/components/scorecard/SourcePerformanceTable";
 import { LeadCostTable } from "@/components/scorecard/LeadCostTable";
+import { MarketingTabs } from "@/components/marketing-spend/MarketingTabs";
 import { CostTrend } from "@/components/scorecard/CostTrend";
 import { getScorecardForPeriod } from "@/lib/queries/scorecard";
 import { getSourceScorecardForPeriod } from "@/lib/queries/sources";
@@ -104,6 +105,8 @@ export default async function ScorecardSourcesPage({
             </div>
           }
         />
+
+        <MarketingTabs active="sources" carry={{ period, start, end, market, grain }} />
 
         <LeadCostTable
           view={leadCost?.view ?? null}

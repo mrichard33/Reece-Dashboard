@@ -403,3 +403,46 @@ export function shapeInvoiceDetail(
     log,
   };
 }
+
+/**
+ * The invoice view's edit form, filled from the invoice's lines (2026-10-19, the
+ * user: "View and Edit … doesn't allow any edits"). The split mirrors the Slack
+ * Edit form: by the sub-source's issued leads ([] markets), evenly as software or
+ * call center ([ALL_OFFICES] + that label), evenly (other ALL_OFFICES), or only
+ * the markets picked. Amount is editable only on a one-line invoice, as in Slack.
+ */
+export type InvoiceSplit = "by_source" | "software" | "call_center" | "even" | "markets";
+export type InvoiceEditForm = {
+  vendor_id: string;
+  invoice_number: string;
+  period_start: string;
+  period_end: string;
+  amount: string;
+  one_line: boolean;
+  lp_sub_sources: string;
+  split: InvoiceSplit;
+  eligible_markets: string[];
+};
+export type InvoiceEditRow = InvoiceLineRaw & { vendor_id?: string | null; invoice_number?: string | null; lp_sub_sources?: string[] | null; eligible_markets?: string[] | null };
+
+export function invoiceEditDefaults(rows: InvoiceEditRow[]): InvoiceEditForm {
+  const live = rows.filter((r) => r.status !== "superseded");
+  const first = live.find((r) => r.status === "pending_review") ?? live[0];
+  const subs = (first?.lp_sub_sources ?? []).filter(Boolean);
+  const markets = (first?.eligible_markets ?? []).filter(Boolean);
+  const label = subs[0]?.trim().toLowerCase();
+  const split: InvoiceSplit = markets.includes("ALL_OFFICES")
+    ? label === "software" ? "software" : label === "call center" ? "call_center" : "even"
+    : markets.length ? "markets" : "by_source";
+  return {
+    vendor_id: live.find((r) => r.vendor_id)?.vendor_id ?? "",
+    invoice_number: first?.invoice_number ?? "",
+    period_start: first?.period_start ?? "",
+    period_end: first?.period_end ?? "",
+    amount: live.length === 1 && first?.amount != null ? String(nn(first.amount) ?? "") : "",
+    one_line: live.length === 1,
+    lp_sub_sources: split === "software" || split === "call_center" ? "" : subs.join(", "),
+    split,
+    eligible_markets: split === "markets" ? markets : [],
+  };
+}

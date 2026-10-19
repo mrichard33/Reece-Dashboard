@@ -447,3 +447,47 @@ export function allMarketing(
     parked: r2((other?.by.held ?? 0) + (other?.by.disputed ?? 0)),
   };
 }
+
+/**
+ * 12-month spend by OFFICE for the company view (the user, 2026-10-19: the
+ * chart "doesn't display all colors for every market"). One series per office in
+ * SCORECARD_MARKETS order (a fixed color each, --chart-cat-1..6), any other
+ * market money (Houston, Winston-Salem) as "Other markets", then Held and
+ * Disputed. Same money as shapeSpendTrend, split the other way.
+ */
+export type MarketSeries = { key: string; label: string };
+export type MarketTrendPoint = { month: string; label: string; total: number } & Record<string, number | string>;
+
+export function trendMarketSeries(officeCodes: readonly string[], officeLabel: (c: string) => string): MarketSeries[] {
+  return [
+    ...officeCodes.map((c) => ({ key: c, label: officeLabel(c) })),
+    { key: "OTHER", label: "Other markets" },
+    { key: HOLD_MARKET, label: "Held" },
+    { key: DISPUTED_MARKET, label: "Disputed" },
+  ];
+}
+
+export function shapeSpendTrendByMarket(
+  rows: (CostRowRaw & { even_split?: boolean | null })[],
+  officeCodes: readonly string[],
+  months = 12,
+): MarketTrendPoint[] {
+  const by = new Map<string, Record<string, number>>();
+  for (const r of rows) {
+    if (r.grain !== "month") continue;
+    if (!(parked(r.market) || inMarket(r, "REECE"))) continue;
+    const key = parked(r.market) ? r.market : officeCodes.includes(r.market) ? r.market : "OTHER";
+    const k = r.period_start.slice(0, 7);
+    const acc = by.get(k) ?? {};
+    acc[key] = (acc[key] ?? 0) + n(r.invoice_cost) + n(r.calculated_cost);
+    by.set(k, acc);
+  }
+  const keys = [...officeCodes, "OTHER", HOLD_MARKET, DISPUTED_MARKET];
+  return [...by.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-months).map(([month, acc]) => {
+    const point: MarketTrendPoint = { month, label: monthShort(month), total: 0 };
+    let total = 0;
+    for (const k of keys) { const v = r2(acc[k] ?? 0); point[k] = v; total += v; }
+    point.total = r2(total);
+    return point;
+  });
+}

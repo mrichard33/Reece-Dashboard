@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { Route } from "next";
-import { BarChart3, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { requireUser } from "@/components/shell/RoleGate";
 import { getAccessContext } from "@/lib/auth";
 import { TopBar } from "@/components/shell/TopBar";
@@ -15,6 +14,7 @@ import { SpendTable } from "@/components/marketing-spend/SpendTable";
 import { SpendTrend } from "@/components/marketing-spend/SpendTrend";
 import { HeldSpend } from "@/components/marketing-spend/HeldSpend";
 import { InvoicesPanel } from "@/components/marketing-spend/InvoicesPanel";
+import { MarketingTabs } from "@/components/marketing-spend/MarketingTabs";
 import { getMarketingSpend, getMarketingSpendTrend, getRecentInvoices, getHeldExpenses, visibleInvoices } from "@/lib/queries/marketingCost";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
@@ -23,10 +23,6 @@ import { normalizeMarketCode, marketLabel } from "@/lib/scorecard/markets";
 export const dynamic = "force-dynamic";
 
 const SELLING_CAL = resolveSellingCalendar();
-const TABS = [
-  { key: "spend", label: "Spend" },
-  { key: "invoices", label: "Invoices" },
-] as const;
 
 /**
  * Marketing Spend (2026-10-19): EVERY marketing cost in the ledger, not only
@@ -53,7 +49,7 @@ export default async function MarketingSpendPage({
   const [spend, trend, held, invoices] = await Promise.all([
     TAB === "spend" ? getMarketingSpend({ market: MARKET, grain: GRAIN, periodStart: resolved.periodStart, periodEnd: resolved.periodEnd })
       .catch((err) => ({ view: null, needsMigration: false, error: (err as Error)?.message ?? String(err) })) : Promise.resolve(null),
-    TAB === "spend" ? getMarketingSpendTrend(MARKET, resolved.periodEnd).catch(() => []) : Promise.resolve([]),
+    TAB === "spend" ? getMarketingSpendTrend(MARKET, resolved.periodEnd).catch(() => ({ byCategory: [], byMarket: [] })) : Promise.resolve({ byCategory: [], byMarket: [] }),
     TAB === "spend" && MARKET === "REECE" ? getHeldExpenses(resolved.periodStart, resolved.periodEnd).catch(() => []) : Promise.resolve([]),
     TAB === "invoices" ? getRecentInvoices().catch(() => ({ docs: [], needsMigration: false })) : Promise.resolve(null),
   ]);
@@ -65,12 +61,6 @@ export default async function MarketingSpendPage({
     const qs = p.toString();
     return `/marketing-spend${qs ? `?${qs}` : ""}` as Route;
   };
-  // Back to the per-source view with the same market, period and grain (the user, 2026-10-19).
-  const sourcesHref = (() => {
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries({ period, start, end, market, grain })) if (v) p.set(k, v);
-    return `/scorecard/sources${p.size ? `?${p.toString()}` : ""}` as Route;
-  })();
   const allDocs = invoices?.docs ?? [];
   const shownDocs = visibleInvoices(allDocs, SHOW_REJECTED);
 
@@ -89,13 +79,6 @@ export default async function MarketingSpendPage({
           subtitle="Lead sources (commissions included), software, call center and held money, by vendor and market."
           action={
             <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href={sourcesHref}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 sm:h-7"
-                title="Every lead source: leads, sales and lead cost, plus the All marketing total"
-              >
-                <BarChart3 size={13} /> Sources &amp; lead cost
-              </Link>
               <MarketPicker />
               <PeriodPicker currentMonth={todayET().slice(0, 7)} />
               <CostGrainToggle active={GRAIN} />
@@ -110,21 +93,7 @@ export default async function MarketingSpendPage({
           }
         />
 
-        <nav className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800">
-          {TABS.map((t) => (
-            <Link
-              key={t.key}
-              href={href({ tab: t.key === "invoices" ? "invoices" : null, rejected: null })}
-              className={
-                TAB === t.key
-                  ? "border-b-2 border-navy-700 px-3 py-2 text-sm font-medium text-navy-900 dark:border-slate-200 dark:text-slate-100"
-                  : "border-b-2 border-transparent px-3 py-2 text-sm text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-              }
-            >
-              {t.label}
-            </Link>
-          ))}
-        </nav>
+        <MarketingTabs active={TAB} carry={{ period, start, end, market, grain }} />
 
         {TAB === "invoices" ? (
           <InvoicesPanel
@@ -184,7 +153,7 @@ export default async function MarketingSpendPage({
                 </div>
               </CardHeader>
               <CardContent>
-                <SpendTrend data={trend} />
+                <SpendTrend byCategory={trend.byCategory} byMarket={trend.byMarket} />
               </CardContent>
             </Card>
           </>

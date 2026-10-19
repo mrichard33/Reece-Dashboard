@@ -7,7 +7,7 @@
  *   - the 12-month trend keeps the last 12 months in order.
  */
 import { describe, expect, it } from "vitest";
-import { shapeCostView, shapeTrend, shapeInvoices, shapeInvoiceDetail, na, type CostRowRaw } from "./marketingCost.core";
+import { shapeCostView, shapeTrend, shapeInvoices, shapeInvoiceDetail, invoiceEditDefaults, na, type CostRowRaw } from "./marketingCost.core";
 
 const row = (over: Partial<CostRowRaw> = {}): CostRowRaw => ({
   grain: "month", period_start: "2026-09-01", market: "FTMYR_MKT", lp_sub_source: "Lead Gurus",
@@ -136,5 +136,19 @@ describe("shapeInvoiceDetail (invoice view, 2026-10-19)", () => {
   it("an invoice still in review offers nothing to settle", () => {
     const d = shapeInvoiceDetail([{ ...line, status: "pending_review" }], [], null);
     expect([d.canConfirm, d.canCredit, d.canReopen, d.state]).toEqual([false, false, false, "none"]);
+  });
+});
+
+describe("invoiceEditDefaults (the invoice view's edit form)", () => {
+  const base = { id: "e1", line_no: 1, description: "x", amount: 1200, status: "pending_review", flags: [], period_start: "2026-10-01", period_end: "2026-10-31", vendor_id: "v1", invoice_number: "400" };
+  it("reads the split the way the Slack Edit form does", () => {
+    expect(invoiceEditDefaults([{ ...base, lp_sub_sources: ["Vis PPC"], eligible_markets: [] }])).toMatchObject({ split: "by_source", lp_sub_sources: "Vis PPC", amount: "1200", one_line: true, vendor_id: "v1" });
+    expect(invoiceEditDefaults([{ ...base, lp_sub_sources: ["Software"], eligible_markets: ["ALL_OFFICES"] }]).split).toBe("software");
+    expect(invoiceEditDefaults([{ ...base, lp_sub_sources: ["Call Center"], eligible_markets: ["ALL_OFFICES"] }]).split).toBe("call_center");
+    expect(invoiceEditDefaults([{ ...base, lp_sub_sources: ["Hatch"], eligible_markets: ["ORL_MKT", "SAR_MKT"] }])).toMatchObject({ split: "markets", eligible_markets: ["ORL_MKT", "SAR_MKT"] });
+  });
+  it("a several-line invoice edits no single amount", () => {
+    const f = invoiceEditDefaults([{ ...base, lp_sub_sources: [], eligible_markets: [] }, { ...base, id: "e2", line_no: 2 }]);
+    expect([f.one_line, f.amount]).toEqual([false, ""]);
   });
 });
