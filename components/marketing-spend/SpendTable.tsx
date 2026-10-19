@@ -8,8 +8,9 @@ import type { SpendCells, SpendView } from "@/lib/queries/marketingSpend.core";
 import { CATEGORY_COLOR } from "./colors";
 
 /**
- * Spend by category → vendor → sub-source, one column per market (+ Held for
- * the company) and a Total, rows sorted by total. Tap a row to open it. The
+ * Spend by category → vendor (→ sub-source when a vendor has several), one
+ * column per market (+ Held for the company) and a Total, rows sorted by total.
+ * Tap a row to open it. The
  * table scrolls sideways inside itself on a phone, with the name column pinned.
  */
 const HOLD = "REECE_HOLD";
@@ -75,7 +76,10 @@ export function SpendTable({ view }: { view: SpendView }) {
                 </tr>
                 {open[gk] && g.vendors.map((v) => {
                   const vk = `${gk}|${v.vendor}`;
-                  const many = v.subSources.length > 1 || (v.subSources[0] && v.subSources[0].sub_source !== v.vendor);
+                  // A vendor opens only when it has two or more sub-sources (the user,
+                  // 2026-10-19): "JMJ Digital Marketing" then "Vis PPC", or "LightFire
+                  // Partners" then "Call Center", repeated the same dollars on a second row.
+                  const many = v.subSources.length > 1;
                   return (
                     <Fragment key={vk}>
                       <tr className="border-b border-slate-100 dark:border-slate-800/60">

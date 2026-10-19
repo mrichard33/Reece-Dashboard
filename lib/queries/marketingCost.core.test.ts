@@ -7,7 +7,7 @@
  *   - the 12-month trend keeps the last 12 months in order.
  */
 import { describe, expect, it } from "vitest";
-import { shapeCostView, shapeTrend, shapeInvoices, na, type CostRowRaw } from "./marketingCost.core";
+import { shapeCostView, shapeTrend, shapeInvoices, shapeInvoiceDetail, na, type CostRowRaw } from "./marketingCost.core";
 
 const row = (over: Partial<CostRowRaw> = {}): CostRowRaw => ({
   grain: "month", period_start: "2026-09-01", market: "FTMYR_MKT", lp_sub_source: "Lead Gurus",
@@ -101,5 +101,40 @@ describe("shapeInvoices", () => {
     expect(d.period).toBe("2026-09-01 → 2026-09-30");
     expect(d.flags).toEqual(["low_confidence"]);
     expect(d.has_file).toBe(true);
+  });
+});
+
+describe("shapeInvoiceDetail (invoice view, 2026-10-19)", () => {
+  const line = { id: "e1", line_no: 1, description: "Demos - AGED", amount: 3000, status: "approved", flags: [] as string[], period_start: "2026-08-01", period_end: "2026-08-31" };
+  const allocs = [
+    { expense_id: "e1", month: "2026-08-01", market: "FTLAU_MKT", amount: 1500 },
+    { expense_id: "e1", month: "2026-08-01", market: "ORL_MKT", amount: 750 },
+    { expense_id: "e1", month: "2026-08-01", market: "DISPUTED", amount: 750 },
+  ];
+  it("an open dispute: offices, the disputed part, and confirm + credit offered", () => {
+    const d = shapeInvoiceDetail([line], allocs, null);
+    expect(d.state).toBe("open");
+    expect([d.billed, d.charged, d.disputed, d.credited, d.creditMax]).toEqual([3000, 3000, 750, 0, 750]);
+    expect(d.lines[0]?.offices).toEqual([{ market: "FTLAU_MKT", amount: 1500 }, { market: "ORL_MKT", amount: 750 }]);
+    expect([d.canConfirm, d.canCredit, d.canReopen]).toEqual([true, true, false]);
+  });
+  it("a credit in force: billed from `was`, the credit can be changed or reopened", () => {
+    const d = shapeInvoiceDetail([{ ...line, amount: 2500, flags: ["dispute_credited"] }], allocs.slice(0, 2).concat([{ expense_id: "e1", month: "2026-08-01", market: "DISPUTED", amount: 250 }]), {
+      credits: [{ expense_id: "e1", was: 3000, credited: 500 }], dispute_log: [{ action: "credit", amount: 500 }],
+    });
+    expect([d.billed, d.charged, d.credited, d.disputed, d.creditMax]).toEqual([3000, 2500, 500, 250, 750]);
+    expect(d.state).toBe("open");
+    expect(d.canReopen).toBe(true);
+  });
+  it("a confirmed charge: the log says how much a credit may be; an old confirm with no log leaves it to LP-MCP", () => {
+    const confirmed = { ...line, flags: ["dispute_accepted"] };
+    const offices = [{ expense_id: "e1", month: "2026-08-01", market: "FTLAU_MKT", amount: 3000 }];
+    const d = shapeInvoiceDetail([confirmed], offices, { dispute_log: [{ action: "accept", amount: 750 }] });
+    expect([d.state, d.creditMax, d.canConfirm, d.canCredit, d.canReopen]).toEqual(["confirmed", 750, false, true, true]);
+    expect(shapeInvoiceDetail([confirmed], offices, null).creditMax).toBeNull();
+  });
+  it("an invoice still in review offers nothing to settle", () => {
+    const d = shapeInvoiceDetail([{ ...line, status: "pending_review" }], [], null);
+    expect([d.canConfirm, d.canCredit, d.canReopen, d.state]).toEqual([false, false, false, "none"]);
   });
 });

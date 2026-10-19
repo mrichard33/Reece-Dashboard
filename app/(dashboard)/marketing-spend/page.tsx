@@ -120,6 +120,7 @@ export default async function MarketingSpendPage({
             showRejected={SHOW_REJECTED}
             hiddenRejected={allDocs.length - shownDocs.length}
             toggleHref={href({ rejected: SHOW_REJECTED ? null : "1" })}
+            canEdit={!!access?.isAdmin}
           />
         ) : (
           <>
