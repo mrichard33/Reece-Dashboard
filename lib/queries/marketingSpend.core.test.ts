@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { CostRowRaw } from "./marketingCost.core";
-import {
+import { allMarketing,
   costCategory,
   costParts,
   markEvenSplit,
@@ -280,5 +280,21 @@ describe("disputed money", () => {
     expect(sar.tiles.total).toBe(2250);
     const clean = shapeSpend(allocs.slice(0, 1), { lf: "LightFire Partners" }, { ...OCT, markets: OFFICES });
     expect(clean.columns).not.toContain("DISPUTED");
+  });
+});
+
+describe("allMarketing (2026-10-19: lead sources + call center + software, both targets)", () => {
+  const by = { lead_source: 0, software: 809, call_center: 33153, company_wide: 0, held: 120, disputed: 750 };
+  it("adds call center and software to the lead-source total; held and disputed stay out", () => {
+    const a = allMarketing({ total_cost: 692496, issued: 1000, net: 3668298 }, { total: 34832, by });
+    expect(a.lines.map((l) => [l.category, l.cost])).toEqual([["call_center", 33153], ["software", 809]]);
+    expect(a.total_cost).toBe(726458);
+    expect(a.mkt_pct).toBe(19.8);
+    expect(a.cost_per_issued).toBe(726.46);
+    expect(a.parked).toBe(870);
+  });
+  it("no net, no Mkt %; no other costs, no extra lines", () => {
+    const a = allMarketing({ total_cost: 100, issued: 0, net: null }, null);
+    expect([a.lines.length, a.mkt_pct, a.cost_per_issued, a.total_cost]).toEqual([0, null, null, 100]);
   });
 });

@@ -162,7 +162,7 @@ export function shapeCostView(
   const g = grain === "week" ? "iso_week" : "month";
   const inWindow = rows.filter((r) => r.grain === g && r.period_start >= periodStart && r.period_start <= periodEnd);
   const by = new Map<string, Agg>();
-  const totals = emptyAgg("All campaigns");
+  const totals = emptyAgg("All lead sources");
   let asOf: string | null = null;
   let held: HeldRow | null = null;
   const heldReasons = new Set<string>();

@@ -6,6 +6,7 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import { num, usd } from "@/lib/utils";
 import { pct } from "./format";
 import { na, type CostRow, type CostView } from "@/lib/queries/marketingCost.core";
+import { allMarketing, type OtherCosts } from "@/lib/queries/marketingSpend.core";
 import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
 /**
@@ -19,9 +20,13 @@ import { METRIC_LABELS } from "@/lib/scorecard/labels";
  * commissions, which count as lead-source cost (the user, 2026-10-19).
  *
  * 2026-10-19: lead sources only. Software, call center and held company-level
- * money are in the page's "Other marketing costs" line and on
- * /marketing-spend, where held spend and its recommendation now live (the
- * user: the scorecard is for sales).
+ * money are on /marketing-spend, where held spend and its recommendation now
+ * live (the user: the scorecard is for sales).
+ *
+ * Under "All lead sources", the call center, software and company-wide lines
+ * and an "All marketing" total, with its own Mkt % against the same target
+ * (the user, 2026-10-19: "use both targets"): each source is judged on its
+ * own cost, and the company on everything marketing costs.
  */
 
 type SortKey = "total_cost" | "cost_per_issued" | "issued" | "net" | "raw" | "mkt_pct";
@@ -40,15 +45,20 @@ export function LeadCostTable({
   targetPct,
   needsMigration,
   error,
+  other = null,
+  spendHref = null,
 }: {
   view: CostView | null;
   targetPct: number;
   needsMigration: boolean;
   error: string | null;
+  other?: OtherCosts | null;
+  spendHref?: string | null;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("total_cost");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const rows = useMemo(() => view?.rows ?? [], [view]);
+  const all = view && rows.length > 0 ? allMarketing(view.totals, other) : null;
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -94,6 +104,24 @@ export function LeadCostTable({
     </tr>
   );
 
+  // A cost-only row under the lead sources (call center, software, …) and the
+  // "All marketing" total: only Net, Total Cost, Cost / Issued and Mkt % apply.
+  const renderExtra = (key: string, label: string, v: { net?: number | null; total: number; perIssued?: number | null; mkt?: number | null }, bold = false) => (
+    <tr key={key} className={`border-b border-slate-100 last:border-0 dark:border-slate-800/60 ${bold ? "border-t-2 border-t-slate-300 bg-slate-100 font-semibold dark:border-t-slate-600 dark:bg-slate-800/60" : ""}`}>
+      <td className={`sticky left-0 py-2 pr-3 text-left font-medium text-slate-700 dark:text-slate-300 ${bold ? "bg-slate-100 dark:bg-slate-800" : "bg-white pl-3 dark:bg-slate-900"}`}>{label}</td>
+      {Array.from({ length: 8 }, (_, i) => <td key={i} className={cell} />)}
+      <td className={`${cell} hidden xl:table-cell`} />
+      <td className={`${cell} hidden xl:table-cell`} />
+      <td className={cell}>{v.net === undefined ? "" : usd(v.net)}</td>
+      <td className={`${cell} hidden xl:table-cell`} />
+      <td className={cell} />
+      <td className={cell} />
+      <td className={`${cell} font-semibold`}>{money2(v.total)}</td>
+      <td className={`${cell} font-semibold`}>{v.perIssued === undefined ? "" : na(v.perIssued, money2)}</td>
+      <td className={`${cell} ${v.mkt === undefined ? "" : costTone(v.mkt, targetPct)}`}>{v.mkt === undefined ? "" : na(v.mkt, pct)}</td>
+    </tr>
+  );
+
   return (
     <Card>
       <CardHeader>
@@ -122,6 +150,26 @@ export function LeadCostTable({
           <p className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/40">
             No marketing cost in the ledger for this window yet. Costs arrive from invoices approved in #marketing-invoice-review, the Lead Gurus feed and the monthly commission rules.
           </p>
+        )}
+
+        {/* Both targets at a glance (the user, 2026-10-19): each source on its own, and the company all-in. */}
+        {all && (
+          <div className="mb-3 flex flex-wrap gap-2 text-[12.5px]">
+            {(() => {
+              const judged = rows.filter((r) => r.mkt_pct != null);
+              const over = judged.filter((r) => (r.mkt_pct as number) > targetPct);
+              return (
+                <span className={`rounded-md border px-2.5 py-1 ${over.length ? "border-brick-200 bg-brick-50 text-brick-700 dark:border-brick-900 dark:bg-brick-950/40 dark:text-brick-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"}`}>
+                  Sources: {over.length ? `${over.length} of ${judged.length} over ${targetPct}%` : `all ${judged.length} within ${targetPct}%`}
+                </span>
+              );
+            })()}
+            {all.mkt_pct != null && (
+              <span className={`rounded-md border px-2.5 py-1 ${all.mkt_pct > targetPct ? "border-brick-200 bg-brick-50 text-brick-700 dark:border-brick-900 dark:bg-brick-950/40 dark:text-brick-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"}`}>
+                All marketing: {pct(all.mkt_pct)} of net ({all.mkt_pct > targetPct ? "over" : "within"} {targetPct}%)
+              </span>
+            )}
+          </div>
         )}
 
         {/* Phone + tablet: stacked cards */}
@@ -158,11 +206,32 @@ export function LeadCostTable({
           {view && rows.length > 0 && (
             <div className="rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-3 text-[13px] dark:border-slate-700 dark:bg-slate-900/60">
               <div className="flex justify-between font-semibold text-slate-800 dark:text-slate-100">
-                <span>All campaigns</span><span className="font-mono tabular">{money2(view.totals.total_cost)}</span>
+                <span>All lead sources</span><span className="font-mono tabular">{money2(view.totals.total_cost)}</span>
               </div>
               <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
                 <span>Cost ÷ issued ({num(view.totals.issued)} issued)</span><span className="font-mono tabular">{na(view.totals.cost_per_issued, money2)}</span>
               </div>
+              <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
+                <span>Mkt %</span><span className={`font-mono tabular ${costTone(view.totals.mkt_pct, targetPct)}`}>{na(view.totals.mkt_pct, pct)}</span>
+              </div>
+              {all && all.lines.length > 0 && (
+                <>
+                  {all.lines.map((l) => (
+                    <div key={l.category} className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
+                      <span>+ {l.label}</span><span className="font-mono tabular">{money2(l.cost)}</span>
+                    </div>
+                  ))}
+                  <div className="mt-2 flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-800 dark:border-slate-600 dark:text-slate-100">
+                    <span>All marketing</span><span className="font-mono tabular">{money2(all.total_cost)}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
+                    <span>Cost ÷ issued</span><span className="font-mono tabular">{na(all.cost_per_issued, money2)}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
+                    <span>Mkt %</span><span className={`font-mono tabular ${costTone(all.mkt_pct, targetPct)}`}>{na(all.mkt_pct, pct)}</span>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -195,10 +264,19 @@ export function LeadCostTable({
             <tbody>
               {sorted.map((r) => renderRow(r))}
               {view && rows.length > 0 && renderRow(view.totals, true)}
+              {all && all.lines.length > 0 && all.lines.map((l) => renderExtra(l.category, `+ ${l.label}`, { total: l.cost }))}
+              {all && all.lines.length > 0 && renderExtra("all", "All marketing", { net: all.net, total: all.total_cost, perIssued: all.cost_per_issued, mkt: all.mkt_pct }, true)}
             </tbody>
           </table>
         </div>
 
+        {all && (all.lines.length > 0 || all.parked > 0) && (
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+            All marketing = lead sources + call center + software{all.lines.some((l) => l.category === "company_wide") ? " + company-wide" : ""}, judged against the same {targetPct}% target.
+            {all.parked > 0 ? ` Held or disputed money (${money2(all.parked)}) is not included.` : ""}
+            {spendHref ? <> <a href={spendHref} className="font-medium text-navy-700 underline-offset-2 hover:underline dark:text-slate-200">Every vendor and invoice: Marketing Spend →</a></> : null}
+          </p>
+        )}
         {rows.some((r) => r.provisional) && (
           <p className="mt-2 text-[11px] text-slate-400">† provisional: Lead Gurus feed spend until the invoice replaces it at month close, or the Canvass commission, a 15%-of-net estimate until canvasser payroll is uploaded.</p>
         )}

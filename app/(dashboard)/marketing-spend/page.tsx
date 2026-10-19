@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { Download } from "lucide-react";
+import { BarChart3, Download } from "lucide-react";
 import { requireUser } from "@/components/shell/RoleGate";
 import { getAccessContext } from "@/lib/auth";
 import { TopBar } from "@/components/shell/TopBar";
@@ -65,6 +65,12 @@ export default async function MarketingSpendPage({
     const qs = p.toString();
     return `/marketing-spend${qs ? `?${qs}` : ""}` as Route;
   };
+  // Back to the per-source view with the same market, period and grain (the user, 2026-10-19).
+  const sourcesHref = (() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ period, start, end, market, grain })) if (v) p.set(k, v);
+    return `/scorecard/sources${p.size ? `?${p.toString()}` : ""}` as Route;
+  })();
   const allDocs = invoices?.docs ?? [];
   const shownDocs = visibleInvoices(allDocs, SHOW_REJECTED);
 
@@ -83,6 +89,13 @@ export default async function MarketingSpendPage({
           subtitle="Lead sources (commissions included), software, call center and held money, by vendor and market."
           action={
             <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href={sourcesHref}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 sm:h-7"
+                title="Every lead source: leads, sales and lead cost, plus the All marketing total"
+              >
+                <BarChart3 size={13} /> Sources &amp; lead cost
+              </Link>
               <MarketPicker />
               <PeriodPicker currentMonth={todayET().slice(0, 7)} />
               <CostGrainToggle active={GRAIN} />
