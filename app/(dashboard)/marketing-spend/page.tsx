@@ -15,7 +15,7 @@ import { SpendTrend } from "@/components/marketing-spend/SpendTrend";
 import { HeldSpend } from "@/components/marketing-spend/HeldSpend";
 import { InvoicesPanel } from "@/components/marketing-spend/InvoicesPanel";
 import { MarketingTabs } from "@/components/marketing-spend/MarketingTabs";
-import { getMarketingSpend, getMarketingSpendTrend, getRecentInvoices, getHeldExpenses, visibleInvoices } from "@/lib/queries/marketingCost";
+import { getMarketingSpend, getMarketingSpendTrend, getRecentInvoices, getHeldExpenses, visibleInvoices, invoicesForViewer } from "@/lib/queries/marketingCost";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
 import { normalizeMarketCode, marketLabel } from "@/lib/scorecard/markets";
@@ -62,7 +62,8 @@ export default async function MarketingSpendPage({
     return `/marketing-spend${qs ? `?${qs}` : ""}` as Route;
   };
   const allDocs = invoices?.docs ?? [];
-  const shownDocs = visibleInvoices(allDocs, SHOW_REJECTED);
+  // Admins only see the invoice text and open the file (bank details, 2026-10-19).
+  const shownDocs = invoicesForViewer(visibleInvoices(allDocs, SHOW_REJECTED), !!access?.isAdmin);
 
   return (
     <>

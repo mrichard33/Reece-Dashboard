@@ -17,7 +17,8 @@ const TONE: Record<string, BadgeTone> = { Posted: "emerald", "In review": "amber
  * extracted text. Rejected ones (a duplicate, a
  * mistake) are hidden until "Show rejected". Server component; the file link
  * goes through /api/marketing-invoice/[id] so the signed URL is minted per
- * click, never stored.
+ * click, never stored. The text and the file are for admins only (invoices can
+ * carry bank details, 2026-10-19); the page strips both for anyone else.
  */
 export function InvoicesPanel({
   docs,
@@ -77,7 +78,11 @@ export function InvoicesPanel({
                 <div className="mt-2 space-y-1 text-xs text-slate-500 dark:text-slate-400">
                   <div className="break-words">From {d.from} · {d.received_at ? shortDate(d.received_at) : "—"} · {d.file_name} · analyzer {d.analyzer}</div>
                   {d.flags.length > 0 && <div>Flags: {d.flags.join(", ")}</div>}
-                  <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-50 p-2 text-[11px] text-slate-700 dark:bg-slate-950 dark:text-slate-300">{d.extracted_text || "(empty)"}</pre>
+                  {canEdit ? (
+                    <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-50 p-2 text-[11px] text-slate-700 dark:bg-slate-950 dark:text-slate-300">{d.extracted_text || "(empty)"}</pre>
+                  ) : (
+                    <p className="text-[11px] italic">The invoice text and file are visible to admins only.</p>
+                  )}
                 </div>
               </details>
             </div>

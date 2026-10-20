@@ -7,7 +7,7 @@
  *   - the 12-month trend keeps the last 12 months in order.
  */
 import { describe, expect, it } from "vitest";
-import { shapeCostView, shapeTrend, shapeInvoices, shapeInvoiceDetail, invoiceEditDefaults, na, type CostRowRaw } from "./marketingCost.core";
+import { shapeCostView, shapeTrend, shapeInvoices, shapeInvoiceDetail, invoiceEditDefaults, invoicesForViewer, na, type CostRowRaw } from "./marketingCost.core";
 
 const row = (over: Partial<CostRowRaw> = {}): CostRowRaw => ({
   grain: "month", period_start: "2026-09-01", market: "FTMYR_MKT", lp_sub_source: "Lead Gurus",
@@ -101,6 +101,15 @@ describe("shapeInvoices", () => {
     expect(d.period).toBe("2026-09-01 → 2026-09-30");
     expect(d.flags).toEqual(["low_confidence"]);
     expect(d.has_file).toBe(true);
+  });
+
+  it("gives the text and the file to admins only (bank details, 2026-10-19)", () => {
+    const docs = shapeInvoices([{
+      id: "d1", status: "in_review", from_address: "x", subject: "", received_at: null, file_name: "x.pdf",
+      analyzer: "rules", analysis: { facts: { total: "5" } }, extracted_text: "Remit to …", storage_path: "2026/10/a.pdf", created_at: "2026-10-03T12:00:01Z",
+    }]);
+    expect(invoicesForViewer(docs, true)[0]).toMatchObject({ extracted_text: "Remit to …", has_file: true });
+    expect(invoicesForViewer(docs, false)[0]).toMatchObject({ extracted_text: "", has_file: false, total: 5 });
   });
 });
 
