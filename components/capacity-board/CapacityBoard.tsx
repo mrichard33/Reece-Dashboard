@@ -21,6 +21,14 @@
  * "Just Scan"/"Fit to screen", or pass ?inset=N to shrink the board N% on
  * every side as a software margin.
  *
+ * Tile typography (2026-10-21): the in-tile sizes were authored for the
+ * 4-column grid. Once the NC markets joined the board the grid went to 5
+ * columns and every tile lost ~20% of its width, so office names and the
+ * overbooked hero row were being cut off. Everything INSIDE a tile now goes
+ * through tu(), which scales the design px by 4/tvCols (1.0 at 4 columns,
+ * 0.8 at 5), and the office name sits on its own line above the state word
+ * so the longest label (FORT LAUDERDALE) fits without an ellipsis.
+ *
  * Additions over the export, per the binding business rules:
  *  - UNRESOLVED renders as a full-width bottom safety strip whenever any of
  *    its counts are > 0 (rule 2 — it may never be hidden).
@@ -531,6 +539,13 @@ export default function CapacityBoard({
       ? `${n}px`
       : `min(${+(n * k / 19.2).toFixed(4)}vw, ${+(n * k / 10.8).toFixed(4)}vh)`;
 
+  // tu(n) — tile unit. The in-tile sizes below were authored for a 4-column
+  // grid (tile ≈ 302px). Every extra column narrows each tile, so everything
+  // inside a tile shrinks by 4/tvCols (5 columns → 0.8). Grid gaps, padding
+  // and the rest of the board stay on u().
+  const tileScale = Math.min(1, 4 / tvCols);
+  const tu = (n: number): string => u(n * tileScale);
+
   return (
     <div
       style={{
@@ -664,53 +679,64 @@ export default function CapacityBoard({
                 2026-09-28 Lakeland → Orlando merge, so the legend stretches
                 across the spare cells (see legendSpan) instead of leaving a
                 dead gap. An unknown extra market widens the grid rather than
-                spilling into a third row the fixed-height canvas would clip. */}
+                spilling into a third row the fixed-height canvas would clip —
+                and tu() shrinks the tile contents to match (see above). */}
             <div style={{ flex: 1, display: "grid", gridTemplateColumns: `repeat(${tvCols}, minmax(0, 1fr))`, gridTemplateRows: "repeat(2, minmax(0, 1fr))", gap: u(24), minHeight: 0, minWidth: 0 }}>
               {tiles.map((t) => (
-                <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: u(8), padding: `${u(24)} ${u(28)} ${u(22)}`, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, overflow: "hidden", opacity: t.tileOpacity }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: u(8) }}>
-                    <div style={{ fontFamily: DISPLAY, fontSize: u(18), fontWeight: 700, letterSpacing: ".08em", color: "#cbd5e1", whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
-                    <div style={{ fontFamily: DISPLAY, fontSize: u(14), fontWeight: 700, letterSpacing: ".08em", color: t.color, whiteSpace: "nowrap" }}>{t.stateWord}</div>
+                <div key={t.key} style={{ background: "#0f172a", border: `1px solid ${t.border}`, borderRadius: u(8), padding: `${u(24)} ${u(26)} ${u(22)}`, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, overflow: "hidden", opacity: t.tileOpacity }}>
+                  {/* Office name on its own line, state word under it. Side by
+                      side they could not both fit once tiles narrowed to five
+                      columns ("FORT L…  CRITICAL"). The ellipsis stays only as
+                      a last resort for a label longer than any current market. */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: tu(5), minWidth: 0 }}>
+                    <div style={{ fontFamily: DISPLAY, fontSize: tu(18), fontWeight: 700, letterSpacing: ".06em", color: "#cbd5e1", whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                    <div style={{ fontFamily: DISPLAY, fontSize: tu(14), fontWeight: 700, letterSpacing: ".08em", color: t.color, whiteSpace: "nowrap" }}>{t.stateWord}</div>
                   </div>
                   {/* Confirmed is the hero number (design v2 + Mark, 2026-07-22);
-                      requested rides beside it smaller; the fill % sits below. */}
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      requested rides beside it smaller; the fill % sits below.
+                      The "+N OVER" callout lives on the fill-% row now — three
+                      items on this row ("17 /16 +1 OVER") overflowed the tile. */}
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
                     {t.empty ? (
-                      <div style={{ fontSize: u(22), color: "#64748b" }}>No slots requested today</div>
+                      <div style={{ fontSize: tu(22), color: "#64748b", textAlign: "center", textWrap: "balance" }}>No slots requested today</div>
                     ) : (
-                      <div style={{ display: "flex", alignItems: "flex-end", gap: u(10) }}>
-                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(112), fontWeight: 700, lineHeight: 0.85, color: t.color }}>
+                      <div style={{ display: "flex", alignItems: "flex-end", gap: tu(10), maxWidth: "100%" }}>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: tu(112), fontWeight: 700, lineHeight: 0.85, color: t.color }}>
                           {t.conf}
                         </span>
-                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(34), fontWeight: 600, color: "#64748b", whiteSpace: "nowrap", lineHeight: 1 }}>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: tu(34), fontWeight: 600, color: "#64748b", whiteSpace: "nowrap", lineHeight: 1 }}>
                           /&#8202;{t.req}
                         </span>
-                        {t.overbooked && (
-                          <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(22), fontWeight: 700, color: OVERBOOK, whiteSpace: "nowrap", lineHeight: 1 }}>
-                            +{t.conf - t.req} OVER
-                          </span>
-                        )}
                       </div>
                     )}
                   </div>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: u(8), marginBottom: u(10), minHeight: u(30) }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: tu(8), marginBottom: tu(10), minHeight: tu(30), whiteSpace: "nowrap" }}>
                     {!t.empty && (
                       <>
-                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(26), fontWeight: 700, color: t.color }}>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: tu(26), fontWeight: 700, color: t.color }}>
                           {t.pct}{t.unitTxt}
                         </span>
-                        <span style={{ fontSize: u(20), color: "#94a3b8" }}>filled</span>
+                        {t.overbooked ? (
+                          <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: tu(20), fontWeight: 700, color: OVERBOOK }}>
+                            +{t.conf - t.req} OVER
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: tu(20), color: "#94a3b8" }}>filled</span>
+                        )}
                       </>
                     )}
                   </div>
-                  <div style={{ height: u(10), borderRadius: 9999, background: "#1e293b", overflow: "hidden", marginBottom: u(16) }}>
+                  <div style={{ height: tu(10), borderRadius: 9999, background: "#1e293b", overflow: "hidden", marginBottom: tu(16) }}>
                     <div style={{ height: "100%", borderRadius: 9999, background: t.color, width: t.barW }} />
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", minHeight: u(48) }}>
+                  {/* Bottom row: hopper pill (left) and Five9 dial-rank badge
+                      (right). The gap keeps them from touching on narrow tiles
+                      (Mark, 2026-10-21). */}
+                  <div style={{ display: "flex", alignItems: "center", gap: tu(12), minHeight: tu(48), minWidth: 0 }}>
                     {t.risk > 0 && (
-                      <div style={{ display: "flex", alignItems: "baseline", gap: u(9), padding: `${u(8)} ${u(16)}`, borderRadius: 9999, background: "rgba(148,163,184,.06)", border: "1px solid #334155", whiteSpace: "nowrap" }}>
-                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: u(28), fontWeight: 700, color: HOPPER }}>{t.risk}</span>
-                        <span style={{ fontSize: u(20), fontWeight: 600, color: "#94a3b8" }}>in hopper</span>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: tu(8), padding: `${tu(8)} ${tu(14)}`, borderRadius: 9999, background: "rgba(148,163,184,.06)", border: "1px solid #334155", whiteSpace: "nowrap", minWidth: 0, overflow: "hidden" }}>
+                        <span style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", fontSize: tu(28), fontWeight: 700, color: HOPPER }}>{t.risk}</span>
+                        <span style={{ fontSize: tu(20), fontWeight: 600, color: "#94a3b8" }}>in hopper</span>
                       </div>
                     )}
                     {t.rank !== null && (
@@ -718,11 +744,11 @@ export default function CapacityBoard({
                         title="Five9 dial priority — 1 dials first"
                         style={{
                           marginLeft: "auto", flex: "none",
-                          width: u(46), height: u(46), borderRadius: 9999,
+                          width: tu(46), height: tu(46), borderRadius: 9999,
                           border: "1px solid #334155", background: "rgba(148,163,184,.08)",
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontFamily: MONO, fontVariantNumeric: "tabular-nums",
-                          fontSize: u(24), fontWeight: 700, lineHeight: 1, color: "#94a3b8",
+                          fontSize: tu(24), fontWeight: 700, lineHeight: 1, color: "#94a3b8",
                         }}
                       >
                         {t.rank}
