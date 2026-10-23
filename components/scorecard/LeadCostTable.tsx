@@ -233,7 +233,7 @@ export function LeadCostTable({
                 <th className="py-2 pl-3 text-right font-medium">{sortable("net", "Net Sales $")}</th>
                 <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell" title={METRIC_LABELS.netPerIssuedAppointment}>Net $ / Issued</th>
                 <th className="py-2 pl-3 text-right font-medium">Invoice Cost</th>
-                <th className="py-2 pl-3 text-right font-medium" title="Commissions: Canvass 15% (estimate until canvasser payroll), MVP Marketing 15%, LeadPilotData 15%, Previous Customer / Referral 1% of net">Calculated Cost</th>
+                <th className="py-2 pl-3 text-right font-medium" title="Commissions: Canvass 15% (estimate until canvasser payroll), MVP Marketing 15%, LeadPilotData 15% of net. Previous Customer and Customer Referral carry no cost">Calculated Cost</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("total_cost", "Total Cost")}</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("cost_per_issued", "Cost / Issued Lead")}</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("mkt_pct", "Mkt %")}</th>
