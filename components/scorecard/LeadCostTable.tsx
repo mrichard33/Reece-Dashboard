@@ -6,7 +6,7 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import { num, usd } from "@/lib/utils";
 import { pct } from "./format";
 import { na, type CostRow, type CostView } from "@/lib/queries/marketingCost.core";
-import { allMarketing, splitPrimaryRows, type CallCenterSpread, type OtherCosts } from "@/lib/queries/marketingSpend.core";
+import { splitPrimaryRows } from "@/lib/queries/marketingSpend.core";
 import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
 /**
@@ -23,19 +23,15 @@ import { METRIC_LABELS } from "@/lib/scorecard/labels";
  * money are on /marketing-spend, where held spend and its recommendation now
  * live (the user: the scorecard is for sales).
  *
- * Under "All lead sources", the call center, software and company-wide lines
- * and an "All marketing" total, with its own Mkt % against the same target
- * (the user, 2026-10-19: "use both targets"): each source is judged on its
- * own cost, and the company on everything marketing costs.
- *
  * 2026-10-23 (handoff "Fix Sources & Lead Cost"):
  *   - dollars are sales on leads CREATED in the period, as LP 136 counts them
  *     (LP-MCP migration 20261023120000), so the default sort is Gross $;
  *   - sources with no sales and no cost sit in a collapsed "Other sources"
  *     section under the rest (the total still sums every row);
- *   - the "+ Call Center" line always shows, $0 included, and the toggle
- *     "Spread call center cost into sources" moves it onto the sources by
- *     LightFire-set issued leads (allocateCallCenter; display only).
+ *   - lead sources ONLY (the user, same day): no call center (it "should
+ *     never merge with them" and "doesn't make sense there"), no software or
+ *     company-wide line and no "All marketing" total. Those "belong only on
+ *     the Marketing Spend tab" (Spend), which this table links to.
  */
 
 type SortKey = "gross" | "total_cost" | "cost_per_issued" | "issued" | "net" | "raw" | "mkt_pct";
@@ -48,8 +44,6 @@ function costTone(mktPct: number | null, target: number): string {
 }
 const money2 = (v: number | null) => (v == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v));
 const cell = "py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300";
-const ccTag = "mr-1.5 rounded bg-slate-100 px-1 py-px align-middle font-sans text-[10px] font-normal text-slate-500 dark:bg-slate-800 dark:text-slate-400";
-const CC_NOTE = "LightFire Partners invoices only. In-house call center payroll not included yet.";
 const otherToggle = "flex min-h-8 w-full items-center rounded-lg border border-dashed border-slate-300 px-3.5 py-2 text-left text-[13px] font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300";
 /** Columns in the desktop table (Campaign + 17). */
 const COLS = 18;
@@ -59,44 +53,19 @@ export function LeadCostTable({
   targetPct,
   needsMigration,
   error,
-  other = null,
   spendHref = null,
-  viewWithCc = null,
-  cc = null,
-  initialSpread = false,
 }: {
   view: CostView | null;
   targetPct: number;
   needsMigration: boolean;
   error: string | null;
-  other?: OtherCosts | null;
   spendHref?: string | null;
-  viewWithCc?: CostView | null;
-  cc?: CallCenterSpread | null;
-  initialSpread?: boolean;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("gross");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
-  const [spread, setSpread] = useState(initialSpread);
   const [showOther, setShowOther] = useState(false);
-  const spreading = spread && !!viewWithCc;
-  const active = spreading ? viewWithCc : view;
+  const active = view;
   const rows = useMemo(() => active?.rows ?? [], [active]);
-  // With the spread on, the Call Center line keeps only what no source took.
-  const otherForAll: OtherCosts | null = spreading && cc && other ? { ...other, by: { ...other.by, call_center: cc.remaining } } : other;
-  const all = active && rows.length > 0 ? allMarketing(active.totals, otherForAll) : null;
-  const ccLine = otherForAll?.by.call_center ?? 0;
-  const ccNone = (other?.by.call_center ?? 0) === 0;
-
-  const onSpread = (on: boolean) => {
-    setSpread(on);
-    // Shareable: ?cc=1 opens the page with the spread on.
-    try {
-      const url = new URL(window.location.href);
-      if (on) url.searchParams.set("cc", "1"); else url.searchParams.delete("cc");
-      window.history.replaceState(window.history.state, "", url.toString());
-    } catch { /* the toggle still works without the URL */ }
-  };
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -137,46 +106,18 @@ export function LeadCostTable({
       <td className={`${cell} hidden xl:table-cell`}>{na(r.nsli, usd)}</td>
       <td className={cell}>{money2(r.invoice_cost)}</td>
       <td className={cell}>{money2(r.calculated_cost)}</td>
-      <td className={`${cell} font-semibold`}>
-        {r.cc_allocated > 0 ? <span className={ccTag} title={`Includes ${money2(r.cc_allocated)} of call center cost`}>incl. CC</span> : null}
-        {money2(r.total_cost)}
-      </td>
+      <td className={`${cell} font-semibold`}>{money2(r.total_cost)}</td>
       <td className={`${cell} font-semibold`}>{na(r.cost_per_issued, money2)}</td>
       <td className={`${cell} ${costTone(r.mkt_pct, targetPct)}`}>{na(r.mkt_pct, pct)}</td>
     </tr>
   );
 
-  // A cost-only row under the lead sources (call center, software, …) and the
-  // "All marketing" total: only Net, Total Cost, Cost / Issued and Mkt % apply.
-  const renderExtra = (key: string, label: string, v: { net?: number | null; total: number; perIssued?: number | null; mkt?: number | null }, bold = false, muted: string | null = null) => (
-    <tr key={key} className={`border-b border-slate-100 last:border-0 dark:border-slate-800/60 ${bold ? "border-t-2 border-t-slate-300 bg-slate-100 font-semibold dark:border-t-slate-600 dark:bg-slate-800/60" : ""}`}>
-      <td className={`sticky left-0 py-2 pr-3 text-left font-medium text-slate-700 dark:text-slate-300 ${bold ? "bg-slate-100 dark:bg-slate-800" : "bg-white pl-3 dark:bg-slate-900"}`}>
-        {label}{muted ? <span className="ml-1 font-normal text-slate-400"> {muted}</span> : null}
-      </td>
-      {Array.from({ length: 8 }, (_, i) => <td key={i} className={cell} />)}
-      <td className={`${cell} hidden lg:table-cell`} />
-      <td className={`${cell} hidden lg:table-cell`} />
-      <td className={cell}>{v.net === undefined ? "" : usd(v.net)}</td>
-      <td className={`${cell} hidden xl:table-cell`} />
-      <td className={cell} />
-      <td className={cell} />
-      <td className={`${cell} font-semibold`}>{money2(v.total)}</td>
-      <td className={`${cell} font-semibold`}>{v.perIssued === undefined ? "" : na(v.perIssued, money2)}</td>
-      <td className={`${cell} ${v.mkt === undefined ? "" : costTone(v.mkt, targetPct)}`}>{v.mkt === undefined ? "" : na(v.mkt, pct)}</td>
-    </tr>
-  );
-
-  // Under "All lead sources": the Call Center line always (the handoff, 2026-10-23), then software / company-wide.
-  const extraLines = all ? all.lines.filter((l) => l.category !== "call_center") : [];
-  const ccNotes = [CC_NOTE];
-  if (spreading && cc && cc.allocated > 0) ccNotes.push(`${money2(cc.allocated)} spread into sources by LightFire-set issued appointments; the line shows the rest.`);
-  if (cc && cc.parked > 0) ccNotes.push(`+ ${money2(cc.parked)} disputed or held, not charged.`);
 
   const renderCard = (r: CostRow) => {
     const metrics: { label: string; value: string; tone?: string }[] = [
       { label: "Issued", value: num(r.issued) },
       { label: "Cost / Issued", value: na(r.cost_per_issued, money2) },
-      { label: r.cc_allocated > 0 ? "Total (incl. CC)" : "Total cost", value: money2(r.total_cost) },
+      { label: "Total cost", value: money2(r.total_cost) },
       { label: "Gross $", value: usd(r.gross) },
       { label: "Net sales", value: usd(r.net) },
       { label: "Mkt %", value: na(r.mkt_pct, pct), tone: costTone(r.mkt_pct, targetPct) },
@@ -231,8 +172,8 @@ export function LeadCostTable({
           </p>
         )}
 
-        {/* Both targets at a glance (the user, 2026-10-19): each source on its own, and the company all-in. */}
-        {all && (
+        {/* How many sources are over the target. */}
+        {active && rows.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2 text-[12.5px]">
             {(() => {
               const judged = rows.filter((r) => r.mkt_pct != null);
@@ -243,26 +184,7 @@ export function LeadCostTable({
                 </span>
               );
             })()}
-            {all.mkt_pct != null && (
-              <span className={`rounded-md border px-2.5 py-1 ${all.mkt_pct > targetPct ? "border-brick-200 bg-brick-50 text-brick-700 dark:border-brick-900 dark:bg-brick-950/40 dark:text-brick-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"}`}>
-                All marketing: {pct(all.mkt_pct)} of net ({all.mkt_pct > targetPct ? "over" : "within"} {targetPct}%)
-              </span>
-            )}
           </div>
-        )}
-
-        {view && rows.length > 0 && (
-          <label className="mb-3 inline-flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-slate-700 dark:text-slate-200">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 accent-navy-700"
-              checked={spreading}
-              disabled={!viewWithCc}
-              onChange={(e) => onSpread(e.target.checked)}
-            />
-            Spread call center cost into sources
-            <span className="text-[11px] text-slate-400">(by issued appointments LightFire set)</span>
-          </label>
         )}
 
         {/* Phone + tablet: stacked cards */}
@@ -288,29 +210,6 @@ export function LeadCostTable({
               <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
                 <span>Mkt %</span><span className={`font-mono tabular ${costTone(active.totals.mkt_pct, targetPct)}`}>{na(active.totals.mkt_pct, pct)}</span>
               </div>
-              {all && (
-                <>
-                  <div className="mt-1 flex justify-between gap-3 text-slate-600 dark:text-slate-300">
-                    <span>+ Call Center{ccNone ? <span className="text-slate-400"> — no invoice approved yet</span> : null}</span>
-                    <span className="font-mono tabular">{money2(ccLine)}</span>
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-slate-400">{ccNotes.join(" ")}</p>
-                  {extraLines.map((l) => (
-                    <div key={l.category} className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
-                      <span>+ {l.label}</span><span className="font-mono tabular">{money2(l.cost)}</span>
-                    </div>
-                  ))}
-                  <div className="mt-2 flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-800 dark:border-slate-600 dark:text-slate-100">
-                    <span>All marketing</span><span className="font-mono tabular">{money2(all.total_cost)}</span>
-                  </div>
-                  <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
-                    <span>Cost ÷ issued</span><span className="font-mono tabular">{na(all.cost_per_issued, money2)}</span>
-                  </div>
-                  <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
-                    <span>Mkt %</span><span className={`font-mono tabular ${costTone(all.mkt_pct, targetPct)}`}>{na(all.mkt_pct, pct)}</span>
-                  </div>
-                </>
-              )}
             </div>
           )}
         </div>
@@ -353,23 +252,14 @@ export function LeadCostTable({
               )}
               {showOther && quiet.map((r) => renderRow(r))}
               {active && rows.length > 0 && renderRow(active.totals, true)}
-              {all && renderExtra("call_center", "+ Call Center", { total: ccLine }, false, ccNone ? "— no invoice approved yet" : null)}
-              {all && (
-                <tr className="border-b border-slate-100 dark:border-slate-800/60">
-                  <td colSpan={COLS} className="pb-2 pl-6 text-left text-[11px] text-slate-400">{ccNotes.join(" ")}</td>
-                </tr>
-              )}
-              {all && extraLines.map((l) => renderExtra(l.category, `+ ${l.label}`, { total: l.cost }))}
-              {all && renderExtra("all", "All marketing", { net: all.net, total: all.total_cost, perIssued: all.cost_per_issued, mkt: all.mkt_pct }, true)}
             </tbody>
           </table>
         </div>
 
-        {all && (
+        {spendHref && (
           <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-            All marketing = lead sources + call center + software{all.lines.some((l) => l.category === "company_wide") ? " + company-wide" : ""}, judged against the same {targetPct}% target.{spreading ? " Call center cost is shown inside the sources it was spread to." : ""}
-            {all.parked > 0 ? ` Held or disputed money (${money2(all.parked)}) is not included.` : ""}
-            {spendHref ? <> <a href={spendHref} className="font-medium text-navy-700 underline-offset-2 hover:underline dark:text-slate-200">Every vendor and invoice: Marketing Spend →</a></> : null}
+            Lead sources only. Call center, software and company-wide costs are on the Spend tab.{" "}
+            <a href={spendHref} className="font-medium text-navy-700 underline-offset-2 hover:underline dark:text-slate-200">Every cost and vendor: Spend →</a>
           </p>
         )}
         {rows.some((r) => r.provisional) && (

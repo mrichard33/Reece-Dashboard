@@ -19,7 +19,6 @@ import {
   markEvenSplit,
   isoWeekStart,
   type OtherCosts,
-  type CallCenterSpread,
   type AllocationRaw,
   type SpendView,
   type SpendTrendPoint,
@@ -38,19 +37,7 @@ export * from "./marketingCost.core";
  * applied), so the tab says so instead of showing an empty table as "$0".
  */
 
-/**
- * `viewWithCc` / `cc` (2026-10-23): the same table with the Call Center cost
- * spread into the sources, for Lead Cost's toggle, computed here so the
- * toggle flips on the client with no reload.
- */
-export type MarketingCostResult = {
-  view: CostView | null;
-  other: OtherCosts | null;
-  viewWithCc?: CostView | null;
-  cc?: CallCenterSpread | null;
-  needsMigration: boolean;
-  error: string | null;
-};
+export type MarketingCostResult = { view: CostView | null; other: OtherCosts | null; needsMigration: boolean; error: string | null };
 
 async function readView(filter: { grain: "month" | "iso_week"; from: string; to: string }): Promise<{ rows: CostRowRaw[]; needsMigration: boolean; error: string | null }> {
   const sb = lpService();
@@ -95,9 +82,9 @@ export async function getMarketingCost({
     readView({ grain: grain === "week" ? "iso_week" : "month", from, to: periodEnd }),
     readEvenSplitKeys(from, periodEnd),
   ]);
-  if (r.needsMigration || r.error) return { view: null, other: null, viewWithCc: null, cc: null, needsMigration: r.needsMigration, error: r.error };
+  if (r.needsMigration || r.error) return { view: null, other: null, needsMigration: r.needsMigration, error: r.error };
   const shaped = shapeLeadCostView(markEvenSplit(r.rows, keys), { market, grain, periodStart: from, periodEnd });
-  return { view: shaped.view, other: shaped.other, viewWithCc: shaped.viewWithCc, cc: shaped.cc, needsMigration: false, error: null };
+  return { view: shaped.view, other: shaped.other, needsMigration: false, error: null };
 }
 
 function trendStart(through: string): string {

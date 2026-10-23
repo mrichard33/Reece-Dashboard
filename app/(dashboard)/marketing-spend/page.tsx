@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { InfoPopover } from "@/components/help/InfoPopover";
 import { PeriodPicker } from "@/components/scorecard/PeriodPicker";
 import { MarketPicker } from "@/components/scorecard/MarketPicker";
-import { CostGrainToggle } from "@/components/scorecard/CostGrainToggle";
 import { SpendTiles } from "@/components/marketing-spend/SpendTiles";
 import { SpendTable } from "@/components/marketing-spend/SpendTable";
 import { SpendTrend } from "@/components/marketing-spend/SpendTrend";
@@ -42,12 +41,14 @@ const SELLING_CAL = resolveSellingCalendar();
 export default async function MarketingSpendPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; start?: string; end?: string; market?: string; grain?: string; tab?: string; rejected?: string; cc?: string }>;
+  searchParams: Promise<{ period?: string; start?: string; end?: string; market?: string; tab?: string; rejected?: string }>;
 }) {
-  const [user, { period, start, end, market, grain, tab, rejected, cc }] = await Promise.all([requireUser(), searchParams]);
+  const [user, { period, start, end, market, tab, rejected }] = await Promise.all([requireUser(), searchParams]);
   const resolved = resolvePeriod(period, { start, end }, SELLING_CAL);
   const MARKET = market ? normalizeMarketCode(market) || "REECE" : "REECE";
-  const GRAIN: "month" | "week" = grain === "week" ? "week" : "month";
+  // Monthly only (the user, 2026-10-23: the weekly view "is not working"; the
+  // Monthly / Weekly toggle is gone and an old ?grain=week link reads monthly).
+  const GRAIN = "month" as const;
   const TAB: "sources" | "spend" | "invoices" = tab === "invoices" ? "invoices" : tab === "spend" ? "spend" : "sources";
   const SHOW_REJECTED = rejected === "1";
   const access = await getAccessContext().catch(() => null);
@@ -62,7 +63,7 @@ export default async function MarketingSpendPage({
 
   const href = (over: Record<string, string | null>) => {
     const p = new URLSearchParams();
-    const cur: Record<string, string | undefined> = { period, start, end, market, grain, tab: TAB === "sources" ? undefined : TAB, rejected };
+    const cur: Record<string, string | undefined> = { period, start, end, market, tab: TAB === "sources" ? undefined : TAB, rejected };
     for (const [k, v] of Object.entries({ ...cur, ...over })) if (v) p.set(k, v);
     const qs = p.toString();
     return `/marketing-spend${qs ? `?${qs}` : ""}` as Route;
@@ -90,7 +91,6 @@ export default async function MarketingSpendPage({
             <div className="flex flex-wrap items-center gap-3">
               <MarketPicker />
               <PeriodPicker currentMonth={todayET().slice(0, 7)} />
-              <CostGrainToggle active={GRAIN} />
               <a
                 href={`/api/marketing-report?market=${encodeURIComponent(MARKET)}`}
                 className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 sm:h-7"
@@ -102,10 +102,10 @@ export default async function MarketingSpendPage({
           }
         />
 
-        <MarketingTabs active={TAB} carry={{ period, start, end, market, grain }} />
+        <MarketingTabs active={TAB} carry={{ period, start, end, market }} />
 
         {TAB === "sources" ? (
-          <SourcesTab market={MARKET} resolved={resolved} grain={GRAIN} initialSpread={cc === "1"} spendHref={href({ tab: "spend", rejected: null })} />
+          <SourcesTab market={MARKET} resolved={resolved} spendHref={href({ tab: "spend", rejected: null })} />
         ) : TAB === "invoices" ? (
           <InvoicesPanel
             docs={shownDocs}

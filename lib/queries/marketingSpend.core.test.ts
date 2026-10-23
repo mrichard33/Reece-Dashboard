@@ -20,7 +20,6 @@ import { shapeSpendTrendByMarket, allMarketing,
   otherCosts,
   shapeLeadCostView,
   shapeLeadTrend,
-  allocateCallCenter,
   splitPrimaryRows,
   allocationInWindow,
   shapeSpend,
@@ -313,90 +312,12 @@ describe("shapeSpendTrendByMarket (12-month chart, one color per office)", () =>
   });
 });
 
-// 2026-10-23 (handoff "Fix Sources & Lead Cost"): the Call Center spread and the two lists.
-describe("allocateCallCenter", () => {
-  const cc = (market: string, amt: string, over: Partial<CostRowRaw> = {}): CostRowRaw =>
-    row({ market, lp_sub_source: "Call Center", raw: "0", set_count: "0", issued: "0", sat: "0", sold: "0", invoice_cost: amt, cc_issued: 0, ...over });
-  const lead = (market: string, src: string, ccIssued: number, over: Partial<CostRowRaw> = {}): CostRowRaw =>
-    row({ market, lp_sub_source: src, invoice_cost: "1000", cc_issued: ccIssued, ...over });
-  // A September-like month: two offices with LightFire-set leads, one with none, and disputed money.
-  const SEP = { market: "REECE", grain: "month" as const, periodStart: "2026-09-01", periodEnd: "2026-09-30" };
-  const m = (r: CostRowRaw) => ({ ...r, period_start: "2026-09-01" });
-  const rows = [
-    m(cc("FTMYR_MKT", "7230.93")), m(lead("FTMYR_MKT", "Lead Gurus", 2)), m(lead("FTMYR_MKT", "Modernize", 1)),
-    m(cc("SAR_MKT", "4844.10")), m(lead("SAR_MKT", "Lead Gurus", 3)), m(lead("SAR_MKT", "Canvass", 0)),
-    m(cc("JAX_MKT", "2855.02")), m(lead("JAX_MKT", "Lead Gurus", 0)),
-    m(cc("DISPUTED", "2750")),
-  ];
-
-  it("splits each market's cost by its LightFire-set issued leads, to the cent", () => {
-    const { rows: out, spread } = allocateCallCenter(rows, SEP);
-    const at = (mkt: string, src: string) => out.find((r) => r.market === mkt && r.lp_sub_source === src)!.cc_allocated;
-    // FTMYR: 7230.93 × 2/3 and × 1/3, the odd cent to the larger remainder.
-    expect(at("FTMYR_MKT", "Lead Gurus") + at("FTMYR_MKT", "Modernize")).toBeCloseTo(7230.93, 2);
-    expect(at("FTMYR_MKT", "Lead Gurus")).toBe(4820.62);
-    expect(at("FTMYR_MKT", "Modernize")).toBe(2410.31);
-    expect(at("SAR_MKT", "Lead Gurus")).toBe(4844.1);
-    expect(at("SAR_MKT", "Canvass")).toBe(0);
-    expect(at("JAX_MKT", "Lead Gurus")).toBe(0); // no LightFire-set issued leads: stays on the line
-    expect(spread).toEqual({ total: 14930.05, allocated: 12075.03, remaining: 2855.02, parked: 2750 });
-  });
-
-  it("no money is lost or doubled: sources + remaining = the Call Center line", () => {
-    const { view, viewWithCc, other, cc: spread } = shapeLeadCostView(rows, SEP);
-    expect(other.by.call_center).toBe(spread.total);
-    const spreadIn = viewWithCc.rows.reduce((t, r) => t + r.cc_allocated, 0);
-    expect(Math.round((spreadIn + spread.remaining) * 100) / 100).toBe(spread.total);
-    expect(Math.round((viewWithCc.totals.total_cost - view.totals.total_cost) * 100) / 100).toBe(spread.allocated);
-    // the cost per issued lead and Mkt % follow the new total
-    const lg = viewWithCc.rows.find((r) => r.campaign === "Lead Gurus")!;
-    expect(lg.cc_allocated).toBe(9664.72);
-    expect(lg.total_cost).toBe(3000 + 9664.72);
-    expect(lg.cost_per_issued).toBe(Math.round(((3000 + 9664.72) / 60) * 100) / 100);
-  });
-
-  it("toggle off is the old table, untouched", () => {
-    const { view } = shapeLeadCostView(rows, SEP);
-    expect(view.rows.every((r) => r.cc_allocated === 0)).toBe(true);
-    const before = shapeLeadCostView(rows.map((r) => ({ ...r, cc_issued: null })), SEP).view;
-    expect(view.totals.total_cost).toBe(before.totals.total_cost);
-  });
-
-  it("one market: only its own call center cost, nothing parked", () => {
-    const { spread } = allocateCallCenter(rows, { ...SEP, market: "SAR_MKT" });
-    expect(spread).toEqual({ total: 4844.1, allocated: 4844.1, remaining: 0, parked: 0 });
-  });
-
-  it("week grain spreads each week's cost by that week's leads", () => {
-    const W = { market: "REECE", grain: "week" as const, periodStart: "2026-09-07", periodEnd: "2026-09-14" };
-    const wk = (r: CostRowRaw, start: string) => ({ ...r, grain: "iso_week", period_start: start });
-    const { rows: out, spread } = allocateCallCenter([
-      wk(cc("ORL_MKT", "100"), "2026-09-07"), wk(lead("ORL_MKT", "Lead Gurus", 1), "2026-09-07"),
-      wk(cc("ORL_MKT", "50"), "2026-09-14"), wk(lead("ORL_MKT", "Modernize", 1), "2026-09-14"),
-    ], W);
-    expect(out.map((r) => r.cc_allocated)).toEqual([0, 100, 0, 50]);
-    expect(spread.remaining).toBe(0);
-  });
-
-  it("$0 call center (October so far): the line is still there at $0", () => {
-    const oct = shapeLeadCostView([lead("FTMYR_MKT", "Lead Gurus", 4)], OCT);
-    expect(oct.other.by.call_center).toBe(0);
-    expect(oct.cc).toEqual({ total: 0, allocated: 0, remaining: 0, parked: 0 });
-    expect(allMarketing(oct.viewWithCc.totals, oct.other).total_cost).toBe(oct.view.totals.total_cost);
-  });
-});
-
+// 2026-10-23: Lead Cost's two lists.
 describe("splitPrimaryRows", () => {
   it("sources with sales or cost first; the rest go to Other sources", () => {
     const r = (campaign: string, gross: number | null, total_cost: number) => ({ campaign, gross, total_cost });
     const { primary, other } = splitPrimaryRows([r("A", 5, 0), r("B", null, 0), r("C", 0, 12), r("D", 0, 0)]);
     expect(primary.map((x) => x.campaign)).toEqual(["A", "C"]);
     expect(other.map((x) => x.campaign)).toEqual(["B", "D"]);
-  });
-
-  it("spread call center cost alone does not lift a source into the top list", () => {
-    const { primary, other } = splitPrimaryRows([{ campaign: "Facebook", gross: 0, total_cost: 241.03, cc_allocated: 241.03 }]);
-    expect(primary).toHaveLength(0);
-    expect(other).toHaveLength(1);
   });
 });
