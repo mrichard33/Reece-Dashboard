@@ -127,10 +127,10 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         // 2026-10-19: every marketing cost (software, call center, commissions,
         // held money) and the invoices. Its own item, not under /scorecard,
-        // which is for sales; Sources & lead cost keeps lead sources only.
+        // which is for sales. 2026-10-23: Sources & lead cost is its first tab.
         href: "/marketing-spend",
         label: "Marketing Spend",
-        desc: "Every marketing cost & invoice",
+        desc: "Lead cost by source, every cost & invoice",
         Icon: Receipt,
         audience: "all",
       },
