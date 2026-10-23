@@ -168,11 +168,98 @@ export function otherCosts(rows: (CostRowRaw & { even_split?: boolean | null })[
   return { total: r2(total), by };
 }
 
-export type LeadCostShape = { view: CostView; other: OtherCosts };
+/**
+ * Call Center cost spread across lead sources (Mark, 2026-10-23), for the
+ * Lead Cost toggle "Spread call center cost into sources". Display only:
+ * nothing is written back to the ledger.
+ *
+ * Basis: issued appointments set by the call center, which is LightFire only
+ * (the user, 2026-10-23: the line holds LightFire Partners invoices only), the
+ * view's `cc_issued` (LP-MCP migration 20261023120000). Per period row and
+ * market, each source gets that market's Call Center cost × its share of the
+ * market's LightFire-set issued leads. Cents are split by largest remainder,
+ * so the sources plus what is left always equal the Call Center total.
+ *   - a market with no LightFire-set issued leads keeps its cost on the line;
+ *   - held and disputed money is never spread (it is no office's cost): it is
+ *     `parked`, named under the line in the company view.
+ */
+export type CallCenterSpread = { total: number; allocated: number; remaining: number; parked: number };
 
-/** Lead Cost for one market and window: lead sources only, plus what was left out. */
+export function allocateCallCenter<T extends CostRowRaw & { even_split?: boolean | null }>(
+  rows: T[],
+  w: Window,
+): { rows: (T & { cc_allocated: number })[]; spread: CallCenterSpread } {
+  const inWin = new Set(rowsInWindow(rows, w));
+  type Group = { cents: number; basis: number; members: { i: number; k: number }[] };
+  const groups = new Map<string, Group>();
+  rows.forEach((r, i) => {
+    if (!inWin.has(r)) return;
+    const key = `${r.period_start}|${r.market}`;
+    const g = groups.get(key) ?? { cents: 0, basis: 0, members: [] };
+    for (const p of costParts(r)) if (p.category === "call_center") g.cents += Math.round(p.amount * 100);
+    const k = n(r.cc_issued);
+    if (k > 0) { g.basis += k; g.members.push({ i, k }); }
+    groups.set(key, g);
+  });
+
+  const cents = new Array<number>(rows.length).fill(0);
+  let totalCents = 0;
+  let allocatedCents = 0;
+  for (const g of groups.values()) {
+    totalCents += g.cents;
+    if (!g.cents || !g.basis) continue;
+    const shares = g.members.map((m) => {
+      const exact = (g.cents * m.k) / g.basis;
+      return { i: m.i, floor: Math.floor(exact), frac: exact - Math.floor(exact) };
+    });
+    let left = g.cents - shares.reduce((t, x) => t + x.floor, 0);
+    for (const x of [...shares].sort((a, b) => b.frac - a.frac || a.i - b.i)) {
+      if (left <= 0) break;
+      x.floor += 1;
+      left -= 1;
+    }
+    for (const x of shares) cents[x.i] = (cents[x.i] ?? 0) + x.floor;
+    allocatedCents += g.cents;
+  }
+
+  let parkedCc = 0;
+  if (!w.market || w.market === "REECE") {
+    const g = w.grain === "week" ? "iso_week" : "month";
+    for (const r of rows) {
+      if (parked(r.market) && r.grain === g && r.period_start >= w.periodStart && r.period_start <= w.periodEnd
+          && norm(r.lp_sub_source) === "call center") parkedCc += n(r.invoice_cost);
+    }
+  }
+  return {
+    rows: rows.map((r, i) => ({ ...r, cc_allocated: (cents[i] ?? 0) / 100 })),
+    spread: { total: totalCents / 100, allocated: allocatedCents / 100, remaining: (totalCents - allocatedCents) / 100, parked: r2(parkedCc) },
+  };
+}
+/**
+ * Lead Cost's two lists (handoff 2026-10-23): sources with sales or cost
+ * first, everything else in a collapsed "Other sources" section. The
+ * "All lead sources" total still sums both.
+ */
+export function splitPrimaryRows<R extends { gross: number | null; total_cost: number; cc_allocated?: number }>(rows: R[]): { primary: R[]; other: R[] } {
+  const primary: R[] = [];
+  const other: R[] = [];
+  // A source's OWN cost decides, so the call-center toggle never moves a row between the lists.
+  for (const r of rows) ((r.gross ?? 0) > 0 || r.total_cost - (r.cc_allocated ?? 0) > 0.004 ? primary : other).push(r);
+  return { primary, other };
+}
+
+export type LeadCostShape = { view: CostView; other: OtherCosts; viewWithCc: CostView; cc: CallCenterSpread };
+
+/**
+ * Lead Cost for one market and window: lead sources only, plus what was left
+ * out. `viewWithCc` is the same table with the Call Center cost spread into
+ * the sources (allocateCallCenter); `view` is untouched by it.
+ */
 export function shapeLeadCostView(rows: (CostRowRaw & { even_split?: boolean | null })[], w: Window): LeadCostShape {
-  return { view: shapeCostView(leadOnlyRows(rows), w), other: otherCosts(rows, w) };
+  const lead = leadOnlyRows(rows);
+  const { rows: spreadRows, spread } = allocateCallCenter(rows, w);
+  const withCc = lead.map((r, i) => ({ ...r, cc_allocated: spreadRows[i]?.cc_allocated ?? 0 }));
+  return { view: shapeCostView(lead, w), other: otherCosts(rows, w), viewWithCc: shapeCostView(withCc, w), cc: spread };
 }
 
 /** The Lead Cost 12-month trend: lead-source cost only. */

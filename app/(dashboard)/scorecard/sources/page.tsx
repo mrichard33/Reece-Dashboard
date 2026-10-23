@@ -43,9 +43,9 @@ const SELLING_CAL = resolveSellingCalendar();
 export default async function ScorecardSourcesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; start?: string; end?: string; market?: string; grain?: string; tab?: string }>;
+  searchParams: Promise<{ period?: string; start?: string; end?: string; market?: string; grain?: string; tab?: string; cc?: string }>;
 }) {
-  const [user, { period, start, end, market, grain, tab }] = await Promise.all([requireUser(), searchParams]);
+  const [user, { period, start, end, market, grain, tab, cc }] = await Promise.all([requireUser(), searchParams]);
   const carry = new URLSearchParams();
   if (period) carry.set("period", period);
   if (start) carry.set("start", start);
@@ -114,6 +114,9 @@ export default async function ScorecardSourcesPage({
           needsMigration={leadCost?.needsMigration ?? false}
           error={leadCost?.error ?? (leadCost ? null : "the ledger did not answer")}
           other={leadCost?.other ?? null}
+          viewWithCc={leadCost?.viewWithCc ?? null}
+          cc={leadCost?.cc ?? null}
+          initialSpread={cc === "1"}
           spendHref={spendHref}
         />
         <Card>
