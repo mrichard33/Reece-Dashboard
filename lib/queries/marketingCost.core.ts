@@ -4,7 +4,9 @@
  * Reads rows of LP's `v_market_subsource_cost` (LP-MCP sql/158, 2026-10-12):
  * month and ISO-week grain × market × LP sub-source, with the funnel counts
  * (raw / set / issued / sat / sold, by lead-created date), Net / Working /
- * Gross $ from report 133, and the ledger's invoice + calculated cost.
+ * Gross $ (since 2026-10-23, LP-MCP 20261023120000: sales on leads CREATED in
+ * the period, as LP 136 counts them; Net / Working from each job's latest
+ * report 133 status), and the ledger's invoice + calculated cost.
  *
  * What these shape, in order of cost if wrong:
  *   - cost per ISSUED lead (never per raw lead — the old tab divided by raw),
@@ -37,6 +39,10 @@ export type CostRowRaw = {
   as_of_snapshot: string | null;
   recommended_market?: string | null;
   recommendation_reason?: string | null;
+  /** Issued leads a LightFire agent set (LP-MCP migration 20261023120000). Absent before it. */
+  cc_issued?: number | string | null;
+  /** Call Center cost spread onto this row by allocateCallCenter (dashboard only, never the ledger). */
+  cc_allocated?: number | null;
 };
 
 export type CostRow = {
@@ -59,6 +65,10 @@ export type CostRow = {
   cost_per_issued: number | null;
   mkt_pct: number | null;
   provisional: boolean;
+  /** Issued leads set by LightFire: the basis of the call-center spread. */
+  cc_issued: number;
+  /** Call Center cost inside total_cost when the spread is on (0 otherwise). */
+  cc_allocated: number;
 };
 
 export type HeldRow = {
@@ -118,10 +128,10 @@ function per(num: number | null, den: number): number | null {
   return Math.round((num / den) * 100) / 100;
 }
 
-type Agg = { campaign: string; raw: number; set: number; issued: number; demos: number; sold: number; gross: number; working: number; net: number; hasDollars: boolean; invoice_cost: number; calculated_cost: number; provisional: boolean };
+type Agg = { campaign: string; raw: number; set: number; issued: number; demos: number; sold: number; gross: number; working: number; net: number; hasDollars: boolean; invoice_cost: number; calculated_cost: number; provisional: boolean; cc_issued: number; cc_allocated: number };
 
 function emptyAgg(campaign: string): Agg {
-  return { campaign, raw: 0, set: 0, issued: 0, demos: 0, sold: 0, gross: 0, working: 0, net: 0, hasDollars: false, invoice_cost: 0, calculated_cost: 0, provisional: false };
+  return { campaign, raw: 0, set: 0, issued: 0, demos: 0, sold: 0, gross: 0, working: 0, net: 0, hasDollars: false, invoice_cost: 0, calculated_cost: 0, provisional: false, cc_issued: 0, cc_allocated: 0 };
 }
 function add(a: Agg, r: CostRowRaw) {
   a.raw += n(r.raw); a.set += n(r.set_count); a.issued += n(r.issued); a.demos += n(r.sat); a.sold += n(r.sold);
@@ -129,9 +139,11 @@ function add(a: Agg, r: CostRowRaw) {
   a.gross += n(r.gross); a.working += n(r.working); a.net += n(r.net);
   a.invoice_cost += n(r.invoice_cost); a.calculated_cost += n(r.calculated_cost);
   a.provisional = a.provisional || r.has_provisional === true;
+  a.cc_issued += n(r.cc_issued); a.cc_allocated += n(r.cc_allocated);
 }
 function finish(a: Agg): CostRow {
-  const total = Math.round((a.invoice_cost + a.calculated_cost) * 100) / 100;
+  const ccAllocated = Math.round(a.cc_allocated * 100) / 100;
+  const total = Math.round((a.invoice_cost + a.calculated_cost + a.cc_allocated) * 100) / 100;
   return {
     campaign: a.campaign, raw: a.raw, set: a.set, issued: a.issued, demos: a.demos, sold: a.sold,
     issue_pct: ratioPct(a.issued, a.set), demo_pct: ratioPct(a.demos, a.issued), std_pct: ratioPct(a.sold, a.demos),
@@ -141,6 +153,7 @@ function finish(a: Agg): CostRow {
     cost_per_issued: per(total, a.issued),
     mkt_pct: a.hasDollars && a.net > 0 ? Math.round((total / a.net) * 1000) / 10 : null,
     provisional: a.provisional,
+    cc_issued: a.cc_issued, cc_allocated: ccAllocated,
   };
 }
 

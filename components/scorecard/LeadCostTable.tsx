@@ -6,7 +6,7 @@ import { InfoPopover } from "@/components/help/InfoPopover";
 import { num, usd } from "@/lib/utils";
 import { pct } from "./format";
 import { na, type CostRow, type CostView } from "@/lib/queries/marketingCost.core";
-import { allMarketing, type OtherCosts } from "@/lib/queries/marketingSpend.core";
+import { allMarketing, splitPrimaryRows, type CallCenterSpread, type OtherCosts } from "@/lib/queries/marketingSpend.core";
 import { METRIC_LABELS } from "@/lib/scorecard/labels";
 
 /**
@@ -27,9 +27,18 @@ import { METRIC_LABELS } from "@/lib/scorecard/labels";
  * and an "All marketing" total, with its own Mkt % against the same target
  * (the user, 2026-10-19: "use both targets"): each source is judged on its
  * own cost, and the company on everything marketing costs.
+ *
+ * 2026-10-23 (handoff "Fix Sources & Lead Cost"):
+ *   - dollars are sales on leads CREATED in the period, as LP 136 counts them
+ *     (LP-MCP migration 20261023120000), so the default sort is Gross $;
+ *   - sources with no sales and no cost sit in a collapsed "Other sources"
+ *     section under the rest (the total still sums every row);
+ *   - the "+ Call Center" line always shows, $0 included, and the toggle
+ *     "Spread call center cost into sources" moves it onto the sources by
+ *     LightFire-set issued leads (allocateCallCenter; display only).
  */
 
-type SortKey = "total_cost" | "cost_per_issued" | "issued" | "net" | "raw" | "mkt_pct";
+type SortKey = "gross" | "total_cost" | "cost_per_issued" | "issued" | "net" | "raw" | "mkt_pct";
 
 function costTone(mktPct: number | null, target: number): string {
   if (mktPct == null) return "text-slate-400";
@@ -39,6 +48,11 @@ function costTone(mktPct: number | null, target: number): string {
 }
 const money2 = (v: number | null) => (v == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v));
 const cell = "py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300";
+const ccTag = "mr-1.5 rounded bg-slate-100 px-1 py-px align-middle font-sans text-[10px] font-normal text-slate-500 dark:bg-slate-800 dark:text-slate-400";
+const CC_NOTE = "LightFire Partners invoices only. In-house call center payroll not included yet.";
+const otherToggle = "flex min-h-8 w-full items-center rounded-lg border border-dashed border-slate-300 px-3.5 py-2 text-left text-[13px] font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300";
+/** Columns in the desktop table (Campaign + 17). */
+const COLS = 18;
 
 export function LeadCostTable({
   view,
@@ -47,6 +61,9 @@ export function LeadCostTable({
   error,
   other = null,
   spendHref = null,
+  viewWithCc = null,
+  cc = null,
+  initialSpread = false,
 }: {
   view: CostView | null;
   targetPct: number;
@@ -54,11 +71,32 @@ export function LeadCostTable({
   error: string | null;
   other?: OtherCosts | null;
   spendHref?: string | null;
+  viewWithCc?: CostView | null;
+  cc?: CallCenterSpread | null;
+  initialSpread?: boolean;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>("total_cost");
+  const [sortKey, setSortKey] = useState<SortKey>("gross");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
-  const rows = useMemo(() => view?.rows ?? [], [view]);
-  const all = view && rows.length > 0 ? allMarketing(view.totals, other) : null;
+  const [spread, setSpread] = useState(initialSpread);
+  const [showOther, setShowOther] = useState(false);
+  const spreading = spread && !!viewWithCc;
+  const active = spreading ? viewWithCc : view;
+  const rows = useMemo(() => active?.rows ?? [], [active]);
+  // With the spread on, the Call Center line keeps only what no source took.
+  const otherForAll: OtherCosts | null = spreading && cc && other ? { ...other, by: { ...other.by, call_center: cc.remaining } } : other;
+  const all = active && rows.length > 0 ? allMarketing(active.totals, otherForAll) : null;
+  const ccLine = otherForAll?.by.call_center ?? 0;
+  const ccNone = (other?.by.call_center ?? 0) === 0;
+
+  const onSpread = (on: boolean) => {
+    setSpread(on);
+    // Shareable: ?cc=1 opens the page with the spread on.
+    try {
+      const url = new URL(window.location.href);
+      if (on) url.searchParams.set("cc", "1"); else url.searchParams.delete("cc");
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch { /* the toggle still works without the URL */ }
+  };
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -69,6 +107,7 @@ export function LeadCostTable({
     });
     return copy;
   }, [rows, sortKey, dir]);
+  const { primary, other: quiet } = useMemo(() => splitPrimaryRows(sorted), [sorted]);
 
   const onSort = (k: SortKey) => {
     if (k === sortKey) setDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -92,13 +131,16 @@ export function LeadCostTable({
       <td className={cell}>{na(r.demo_pct, pct)}</td>
       <td className={cell}>{num(r.sold)}</td>
       <td className={cell}>{na(r.std_pct, pct)}</td>
-      <td className={`${cell} hidden xl:table-cell`}>{usd(r.gross)}</td>
-      <td className={`${cell} hidden xl:table-cell`}>{usd(r.working)}</td>
+      <td className={`${cell} hidden lg:table-cell`}>{usd(r.gross)}</td>
+      <td className={`${cell} hidden lg:table-cell`}>{usd(r.working)}</td>
       <td className={cell}>{usd(r.net)}</td>
       <td className={`${cell} hidden xl:table-cell`}>{na(r.nsli, usd)}</td>
       <td className={cell}>{money2(r.invoice_cost)}</td>
       <td className={cell}>{money2(r.calculated_cost)}</td>
-      <td className={`${cell} font-semibold`}>{money2(r.total_cost)}</td>
+      <td className={`${cell} font-semibold`}>
+        {r.cc_allocated > 0 ? <span className={ccTag} title={`Includes ${money2(r.cc_allocated)} of call center cost`}>incl. CC</span> : null}
+        {money2(r.total_cost)}
+      </td>
       <td className={`${cell} font-semibold`}>{na(r.cost_per_issued, money2)}</td>
       <td className={`${cell} ${costTone(r.mkt_pct, targetPct)}`}>{na(r.mkt_pct, pct)}</td>
     </tr>
@@ -106,12 +148,14 @@ export function LeadCostTable({
 
   // A cost-only row under the lead sources (call center, software, …) and the
   // "All marketing" total: only Net, Total Cost, Cost / Issued and Mkt % apply.
-  const renderExtra = (key: string, label: string, v: { net?: number | null; total: number; perIssued?: number | null; mkt?: number | null }, bold = false) => (
+  const renderExtra = (key: string, label: string, v: { net?: number | null; total: number; perIssued?: number | null; mkt?: number | null }, bold = false, muted: string | null = null) => (
     <tr key={key} className={`border-b border-slate-100 last:border-0 dark:border-slate-800/60 ${bold ? "border-t-2 border-t-slate-300 bg-slate-100 font-semibold dark:border-t-slate-600 dark:bg-slate-800/60" : ""}`}>
-      <td className={`sticky left-0 py-2 pr-3 text-left font-medium text-slate-700 dark:text-slate-300 ${bold ? "bg-slate-100 dark:bg-slate-800" : "bg-white pl-3 dark:bg-slate-900"}`}>{label}</td>
+      <td className={`sticky left-0 py-2 pr-3 text-left font-medium text-slate-700 dark:text-slate-300 ${bold ? "bg-slate-100 dark:bg-slate-800" : "bg-white pl-3 dark:bg-slate-900"}`}>
+        {label}{muted ? <span className="ml-1 font-normal text-slate-400"> {muted}</span> : null}
+      </td>
       {Array.from({ length: 8 }, (_, i) => <td key={i} className={cell} />)}
-      <td className={`${cell} hidden xl:table-cell`} />
-      <td className={`${cell} hidden xl:table-cell`} />
+      <td className={`${cell} hidden lg:table-cell`} />
+      <td className={`${cell} hidden lg:table-cell`} />
       <td className={cell}>{v.net === undefined ? "" : usd(v.net)}</td>
       <td className={`${cell} hidden xl:table-cell`} />
       <td className={cell} />
@@ -122,6 +166,42 @@ export function LeadCostTable({
     </tr>
   );
 
+  // Under "All lead sources": the Call Center line always (the handoff, 2026-10-23), then software / company-wide.
+  const extraLines = all ? all.lines.filter((l) => l.category !== "call_center") : [];
+  const ccNotes = [CC_NOTE];
+  if (spreading && cc && cc.allocated > 0) ccNotes.push(`${money2(cc.allocated)} spread into sources by LightFire-set issued appointments; the line shows the rest.`);
+  if (cc && cc.parked > 0) ccNotes.push(`+ ${money2(cc.parked)} disputed or held, not charged.`);
+
+  const renderCard = (r: CostRow) => {
+    const metrics: { label: string; value: string; tone?: string }[] = [
+      { label: "Issued", value: num(r.issued) },
+      { label: "Cost / Issued", value: na(r.cost_per_issued, money2) },
+      { label: r.cc_allocated > 0 ? "Total (incl. CC)" : "Total cost", value: money2(r.total_cost) },
+      { label: "Gross $", value: usd(r.gross) },
+      { label: "Net sales", value: usd(r.net) },
+      { label: "Mkt %", value: na(r.mkt_pct, pct), tone: costTone(r.mkt_pct, targetPct) },
+    ];
+    return (
+      <div key={r.campaign} className="rounded-lg border border-slate-200 px-3.5 py-3 dark:border-slate-800">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[13.5px] font-medium text-slate-700 dark:text-slate-200">
+            {r.campaign}{r.provisional ? " †" : ""}
+          </span>
+          <span className="shrink-0 font-mono text-[14px] font-semibold tabular text-slate-900 dark:text-slate-100">{usd(r.gross)}</span>
+        </div>
+        {/* mobile-ok: the phone card view — three short figures per row fit at 375px */}
+        <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
+          {metrics.map((m) => (
+            <div key={m.label}>
+              <div className="text-[9.5px] font-semibold uppercase tracking-wider text-slate-400">{m.label}</div>
+              <div className={`mt-0.5 font-mono text-[12.5px] tabular ${m.tone ?? "text-slate-700 dark:text-slate-200"}`}>{m.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -129,9 +209,8 @@ export function LeadCostTable({
           <h3 className="font-display text-base font-semibold text-navy-900 dark:text-white">Lead Cost</h3>
           <InfoPopover helpKey="scorecard.leadcost" />
           <span className="text-xs text-slate-400">
-            Cost ÷ issued leads · target ≤ {targetPct}% of net · Net = RTP&apos;d + completed jobs
-            {view?.as_of_snapshot ? ` · Net/Working as of ${view.as_of_snapshot}` : ""}
-            {view?.grain === "week" ? " · weekly (no Net/Working at week grain)" : ""}
+            Cost ÷ issued leads · target ≤ {targetPct}% of net · $ = sales on leads created in the period · Net = RTP&apos;d + completed jobs
+            {view?.as_of_snapshot ? ` · job status as of ${view.as_of_snapshot}` : ""}
           </span>
         </div>
       </CardHeader>
@@ -172,51 +251,51 @@ export function LeadCostTable({
           </div>
         )}
 
+        {view && rows.length > 0 && (
+          <label className="mb-3 inline-flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 accent-navy-700"
+              checked={spreading}
+              disabled={!viewWithCc}
+              onChange={(e) => onSpread(e.target.checked)}
+            />
+            Spread call center cost into sources
+            <span className="text-[11px] text-slate-400">(by issued appointments LightFire set)</span>
+          </label>
+        )}
+
         {/* Phone + tablet: stacked cards */}
         <div className="space-y-2 lg:hidden">
-          {sorted.map((r) => {
-            const metrics: { label: string; value: string; tone?: string }[] = [
-              { label: "Issued", value: num(r.issued) },
-              { label: "Cost / Issued", value: na(r.cost_per_issued, money2) },
-              { label: "Total cost", value: money2(r.total_cost) },
-              { label: "Net sales", value: usd(r.net) },
-              { label: METRIC_LABELS.demoToSale, value: na(r.std_pct, pct) },
-              { label: "Mkt %", value: na(r.mkt_pct, pct), tone: costTone(r.mkt_pct, targetPct) },
-            ];
-            return (
-              <div key={r.campaign} className="rounded-lg border border-slate-200 px-3.5 py-3 dark:border-slate-800">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-[13.5px] font-medium text-slate-700 dark:text-slate-200">
-                    {r.campaign}{r.provisional ? " †" : ""}
-                  </span>
-                  <span className="shrink-0 font-mono text-[14px] font-semibold tabular text-slate-900 dark:text-slate-100">{money2(r.total_cost)}</span>
-                </div>
-                {/* mobile-ok: the phone card view — three short figures per row fit at 375px */}
-                <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
-                  {metrics.map((m) => (
-                    <div key={m.label}>
-                      <div className="text-[9.5px] font-semibold uppercase tracking-wider text-slate-400">{m.label}</div>
-                      <div className={`mt-0.5 font-mono text-[12.5px] tabular ${m.tone ?? "text-slate-700 dark:text-slate-200"}`}>{m.value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {view && rows.length > 0 && (
+          {primary.map(renderCard)}
+          {quiet.length > 0 && (
+            <button type="button" onClick={() => setShowOther((v) => !v)} aria-expanded={showOther} className={otherToggle}>
+              {showOther ? "▾" : "▸"} Other sources ({quiet.length}) — no sales or cost this period
+            </button>
+          )}
+          {showOther && quiet.map(renderCard)}
+          {active && rows.length > 0 && (
             <div className="rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-3 text-[13px] dark:border-slate-700 dark:bg-slate-900/60">
               <div className="flex justify-between font-semibold text-slate-800 dark:text-slate-100">
-                <span>All lead sources</span><span className="font-mono tabular">{money2(view.totals.total_cost)}</span>
+                <span>All lead sources</span><span className="font-mono tabular">{money2(active.totals.total_cost)}</span>
               </div>
               <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
-                <span>Cost ÷ issued ({num(view.totals.issued)} issued)</span><span className="font-mono tabular">{na(view.totals.cost_per_issued, money2)}</span>
+                <span>Gross $</span><span className="font-mono tabular">{usd(active.totals.gross)}</span>
               </div>
               <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
-                <span>Mkt %</span><span className={`font-mono tabular ${costTone(view.totals.mkt_pct, targetPct)}`}>{na(view.totals.mkt_pct, pct)}</span>
+                <span>Cost ÷ issued ({num(active.totals.issued)} issued)</span><span className="font-mono tabular">{na(active.totals.cost_per_issued, money2)}</span>
               </div>
-              {all && all.lines.length > 0 && (
+              <div className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
+                <span>Mkt %</span><span className={`font-mono tabular ${costTone(active.totals.mkt_pct, targetPct)}`}>{na(active.totals.mkt_pct, pct)}</span>
+              </div>
+              {all && (
                 <>
-                  {all.lines.map((l) => (
+                  <div className="mt-1 flex justify-between gap-3 text-slate-600 dark:text-slate-300">
+                    <span>+ Call Center{ccNone ? <span className="text-slate-400"> — no invoice approved yet</span> : null}</span>
+                    <span className="font-mono tabular">{money2(ccLine)}</span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-slate-400">{ccNotes.join(" ")}</p>
+                  {extraLines.map((l) => (
                     <div key={l.category} className="mt-1 flex justify-between text-slate-600 dark:text-slate-300">
                       <span>+ {l.label}</span><span className="font-mono tabular">{money2(l.cost)}</span>
                     </div>
@@ -250,8 +329,8 @@ export function LeadCostTable({
                 <th className="py-2 pl-3 text-right font-medium">{METRIC_LABELS.demo}</th>
                 <th className="py-2 pl-3 text-right font-medium"># Sold</th>
                 <th className="py-2 pl-3 text-right font-medium" title={METRIC_LABELS.demoToSale}>STD %</th>
-                <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell">Gross $</th>
-                <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell">Working $</th>
+                <th className="hidden py-2 pl-3 text-right font-medium lg:table-cell" title="Sales on leads created in the period (as LP 136)">{sortable("gross", "Gross $")}</th>
+                <th className="hidden py-2 pl-3 text-right font-medium lg:table-cell">Working $</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("net", "Net Sales $")}</th>
                 <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell" title={METRIC_LABELS.netPerIssuedAppointment}>Net $ / Issued</th>
                 <th className="py-2 pl-3 text-right font-medium">Invoice Cost</th>
@@ -262,17 +341,33 @@ export function LeadCostTable({
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r) => renderRow(r))}
-              {view && rows.length > 0 && renderRow(view.totals, true)}
-              {all && all.lines.length > 0 && all.lines.map((l) => renderExtra(l.category, `+ ${l.label}`, { total: l.cost }))}
-              {all && all.lines.length > 0 && renderExtra("all", "All marketing", { net: all.net, total: all.total_cost, perIssued: all.cost_per_issued, mkt: all.mkt_pct }, true)}
+              {primary.map((r) => renderRow(r))}
+              {quiet.length > 0 && (
+                <tr className="border-b border-slate-100 dark:border-slate-800/60">
+                  <td colSpan={COLS} className="py-1.5">
+                    <button type="button" onClick={() => setShowOther((v) => !v)} aria-expanded={showOther} className="text-[12.5px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
+                      {showOther ? "▾" : "▸"} Other sources ({quiet.length}) — no sales or cost this period
+                    </button>
+                  </td>
+                </tr>
+              )}
+              {showOther && quiet.map((r) => renderRow(r))}
+              {active && rows.length > 0 && renderRow(active.totals, true)}
+              {all && renderExtra("call_center", "+ Call Center", { total: ccLine }, false, ccNone ? "— no invoice approved yet" : null)}
+              {all && (
+                <tr className="border-b border-slate-100 dark:border-slate-800/60">
+                  <td colSpan={COLS} className="pb-2 pl-6 text-left text-[11px] text-slate-400">{ccNotes.join(" ")}</td>
+                </tr>
+              )}
+              {all && extraLines.map((l) => renderExtra(l.category, `+ ${l.label}`, { total: l.cost }))}
+              {all && renderExtra("all", "All marketing", { net: all.net, total: all.total_cost, perIssued: all.cost_per_issued, mkt: all.mkt_pct }, true)}
             </tbody>
           </table>
         </div>
 
-        {all && (all.lines.length > 0 || all.parked > 0) && (
+        {all && (
           <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-            All marketing = lead sources + call center + software{all.lines.some((l) => l.category === "company_wide") ? " + company-wide" : ""}, judged against the same {targetPct}% target.
+            All marketing = lead sources + call center + software{all.lines.some((l) => l.category === "company_wide") ? " + company-wide" : ""}, judged against the same {targetPct}% target.{spreading ? " Call center cost is shown inside the sources it was spread to." : ""}
             {all.parked > 0 ? ` Held or disputed money (${money2(all.parked)}) is not included.` : ""}
             {spendHref ? <> <a href={spendHref} className="font-medium text-navy-700 underline-offset-2 hover:underline dark:text-slate-200">Every vendor and invoice: Marketing Spend →</a></> : null}
           </p>
