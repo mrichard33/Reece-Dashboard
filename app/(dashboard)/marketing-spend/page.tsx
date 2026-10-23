@@ -15,6 +15,7 @@ import { SpendTrend } from "@/components/marketing-spend/SpendTrend";
 import { HeldSpend } from "@/components/marketing-spend/HeldSpend";
 import { InvoicesPanel } from "@/components/marketing-spend/InvoicesPanel";
 import { MarketingTabs } from "@/components/marketing-spend/MarketingTabs";
+import { SourcesTab } from "@/components/marketing-spend/SourcesTab";
 import { getMarketingSpend, getMarketingSpendTrend, getRecentInvoices, getHeldExpenses, visibleInvoices, invoicesForViewer } from "@/lib/queries/marketingCost";
 import { resolvePeriod } from "@/lib/date/resolvePeriod";
 import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
@@ -32,17 +33,22 @@ const SELLING_CAL = resolveSellingCalendar();
  * to held spend with its recommendation and to the Invoices tab (both moved
  * off the scorecard: the user, "the scorecard page is primarily for sales").
  * Same access as the scorecard sources page; the Apply button is admin only.
+ *
+ * 2026-10-23: Sources & lead cost (the Lead Cost table, ranked by Gross $) is
+ * the first, default tab (the user: "should be under Marketing Spend as the
+ * main tab"); Spend is `?tab=spend`, Invoices `?tab=invoices`, and the old
+ * /scorecard/sources redirects here.
  */
 export default async function MarketingSpendPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; start?: string; end?: string; market?: string; grain?: string; tab?: string; rejected?: string }>;
+  searchParams: Promise<{ period?: string; start?: string; end?: string; market?: string; grain?: string; tab?: string; rejected?: string; cc?: string }>;
 }) {
-  const [user, { period, start, end, market, grain, tab, rejected }] = await Promise.all([requireUser(), searchParams]);
+  const [user, { period, start, end, market, grain, tab, rejected, cc }] = await Promise.all([requireUser(), searchParams]);
   const resolved = resolvePeriod(period, { start, end }, SELLING_CAL);
   const MARKET = market ? normalizeMarketCode(market) || "REECE" : "REECE";
   const GRAIN: "month" | "week" = grain === "week" ? "week" : "month";
-  const TAB = tab === "invoices" ? "invoices" : "spend";
+  const TAB: "sources" | "spend" | "invoices" = tab === "invoices" ? "invoices" : tab === "spend" ? "spend" : "sources";
   const SHOW_REJECTED = rejected === "1";
   const access = await getAccessContext().catch(() => null);
 
@@ -56,7 +62,7 @@ export default async function MarketingSpendPage({
 
   const href = (over: Record<string, string | null>) => {
     const p = new URLSearchParams();
-    const cur: Record<string, string | undefined> = { period, start, end, market, grain, tab: TAB === "invoices" ? "invoices" : undefined, rejected };
+    const cur: Record<string, string | undefined> = { period, start, end, market, grain, tab: TAB === "sources" ? undefined : TAB, rejected };
     for (const [k, v] of Object.entries({ ...cur, ...over })) if (v) p.set(k, v);
     const qs = p.toString();
     return `/marketing-spend${qs ? `?${qs}` : ""}` as Route;
@@ -76,8 +82,10 @@ export default async function MarketingSpendPage({
 
       <div className="space-y-4 p-4 sm:p-6">
         <SectionHeader
-          title="Marketing spend"
-          subtitle="Lead sources (commissions included), software, call center and held money, by vendor and market."
+          title={TAB === "sources" ? "Sources & lead cost" : "Marketing spend"}
+          subtitle={TAB === "sources"
+            ? "Where the leads come from: sales on each source's leads vs the cost of each issued lead."
+            : "Lead sources (commissions included), software, call center and held money, by vendor and market."}
           action={
             <div className="flex flex-wrap items-center gap-3">
               <MarketPicker />
@@ -96,7 +104,9 @@ export default async function MarketingSpendPage({
 
         <MarketingTabs active={TAB} carry={{ period, start, end, market, grain }} />
 
-        {TAB === "invoices" ? (
+        {TAB === "sources" ? (
+          <SourcesTab market={MARKET} resolved={resolved} grain={GRAIN} initialSpread={cc === "1"} spendHref={href({ tab: "spend", rejected: null })} />
+        ) : TAB === "invoices" ? (
           <InvoicesPanel
             docs={shownDocs}
             needsMigration={invoices?.needsMigration ?? false}

@@ -5,8 +5,9 @@ type Tab = "spend" | "sources" | "invoices";
 
 /**
  * One tab bar for the marketing pages (the user, 2026-10-19: "Simplifying this
- * navigation would make it easier"): Spend and Invoices live on
- * /marketing-spend, Sources & lead cost on /scorecard/sources. The market,
+ * navigation would make it easier"). Since 2026-10-23 all three live on
+ * /marketing-spend and Sources & lead cost is the first, default tab (the
+ * user: it "should be under Marketing Spend as the main tab"). The market,
  * period and grain carry across, so switching tabs keeps what you picked.
  */
 export function MarketingTabs({ active, carry }: { active: Tab; carry: Record<string, string | undefined> }) {
@@ -16,8 +17,8 @@ export function MarketingTabs({ active, carry }: { active: Tab; carry: Record<st
     return p.size ? `?${p.toString()}` : "";
   };
   const tabs: { key: Tab; label: string; href: Route }[] = [
-    { key: "spend", label: "Spend", href: `/marketing-spend${qs()}` as Route },
-    { key: "sources", label: "Sources & lead cost", href: `/scorecard/sources${qs()}` as Route },
+    { key: "sources", label: "Sources & lead cost", href: `/marketing-spend${qs()}` as Route },
+    { key: "spend", label: "Spend", href: `/marketing-spend${qs({ tab: "spend" })}` as Route },
     { key: "invoices", label: "Invoices", href: `/marketing-spend${qs({ tab: "invoices" })}` as Route },
   ];
   return (
