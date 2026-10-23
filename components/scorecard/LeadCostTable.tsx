@@ -14,8 +14,9 @@ import { METRIC_LABELS } from "@/lib/scorecard/labels";
  *
  * One row per LP sub-source for the selected market and window: Raw / Set /
  * Issue / % Issue / # Demo / % Demo / # Sold / STD % / Gross $ / Working $ /
- * Net Sales $ / Net per Issued Appointment / Invoice Cost / Calculated Cost /
- * Total Cost / Cost ÷ Issued leads / Mkt %. † = provisional (Lead Gurus feed,
+ * Net Sales $ / Net per Issued Appointment / Total Cost / Cost ÷ Issued leads /
+ * Mkt %. Total Cost is invoices + the Lead Gurus feed + commissions in ONE
+ * column (the user, 2026-10-23: three cost columns side by side confused). † = provisional (Lead Gurus feed,
  * no invoice yet, or the Canvass commission estimate). Calculated Cost is the
  * commissions, which count as lead-source cost (the user, 2026-10-19).
  *
@@ -45,8 +46,8 @@ function costTone(mktPct: number | null, target: number): string {
 const money2 = (v: number | null) => (v == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v));
 const cell = "py-2 pl-3 text-right font-mono tabular text-slate-700 dark:text-slate-300";
 const otherToggle = "flex min-h-8 w-full items-center rounded-lg border border-dashed border-slate-300 px-3.5 py-2 text-left text-[13px] font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300";
-/** Columns in the desktop table (Campaign + 17). */
-const COLS = 18;
+/** Columns in the desktop table (Campaign + 15). */
+const COLS = 16;
 
 export function LeadCostTable({
   view,
@@ -104,8 +105,6 @@ export function LeadCostTable({
       <td className={`${cell} hidden lg:table-cell`}>{usd(r.working)}</td>
       <td className={cell}>{usd(r.net)}</td>
       <td className={`${cell} hidden xl:table-cell`}>{na(r.nsli, usd)}</td>
-      <td className={cell}>{money2(r.invoice_cost)}</td>
-      <td className={cell}>{money2(r.calculated_cost)}</td>
       <td className={`${cell} font-semibold`}>{money2(r.total_cost)}</td>
       <td className={`${cell} font-semibold`}>{na(r.cost_per_issued, money2)}</td>
       <td className={`${cell} ${costTone(r.mkt_pct, targetPct)}`}>{na(r.mkt_pct, pct)}</td>
@@ -150,8 +149,8 @@ export function LeadCostTable({
           <h3 className="font-display text-base font-semibold text-navy-900 dark:text-white">Lead Cost</h3>
           <InfoPopover helpKey="scorecard.leadcost" />
           <span className="text-xs text-slate-400">
-            Cost ÷ issued leads · target ≤ {targetPct}% of net · $ = sales on leads created in the period · Net = RTP&apos;d + completed jobs
-            {view?.as_of_snapshot ? ` · job status as of ${view.as_of_snapshot}` : ""}
+            Mkt % = Total Cost ÷ Net · target ≤ {targetPct}% · as LP 136: Gross = sales on leads entered in the period, Working / Net = jobs contracted in the period (Net = released to production)
+            {view?.as_of_snapshot ? ` · LP data as of ${view.as_of_snapshot}` : ""}
           </span>
         </div>
       </CardHeader>
@@ -228,13 +227,11 @@ export function LeadCostTable({
                 <th className="py-2 pl-3 text-right font-medium">{METRIC_LABELS.demo}</th>
                 <th className="py-2 pl-3 text-right font-medium"># Sold</th>
                 <th className="py-2 pl-3 text-right font-medium" title={METRIC_LABELS.demoToSale}>STD %</th>
-                <th className="hidden py-2 pl-3 text-right font-medium lg:table-cell" title="Sales on leads created in the period (as LP 136)">{sortable("gross", "Gross $")}</th>
+                <th className="hidden py-2 pl-3 text-right font-medium lg:table-cell" title="Sales on leads entered in the period (as LP 136)">{sortable("gross", "Gross $")}</th>
                 <th className="hidden py-2 pl-3 text-right font-medium lg:table-cell">Working $</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("net", "Net Sales $")}</th>
                 <th className="hidden py-2 pl-3 text-right font-medium xl:table-cell" title={METRIC_LABELS.netPerIssuedAppointment}>Net $ / Issued</th>
-                <th className="py-2 pl-3 text-right font-medium">Invoice Cost</th>
-                <th className="py-2 pl-3 text-right font-medium" title="Commissions: Canvass 15% (estimate until canvasser payroll), MVP Marketing 15%, LeadPilotData 15% of net. Previous Customer and Customer Referral carry no cost">Calculated Cost</th>
-                <th className="py-2 pl-3 text-right font-medium">{sortable("total_cost", "Total Cost")}</th>
+                <th className="py-2 pl-3 text-right font-medium" title="Approved invoices + the Lead Gurus feed + commissions (Canvass 15% of net, an estimate until canvasser payroll; MVP Marketing 15%; LeadPilotData 15%)">{sortable("total_cost", "Total Cost")}</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("cost_per_issued", "Cost / Issued Lead")}</th>
                 <th className="py-2 pl-3 text-right font-medium">{sortable("mkt_pct", "Mkt %")}</th>
               </tr>
