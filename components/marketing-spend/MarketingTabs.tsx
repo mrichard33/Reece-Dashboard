@@ -7,8 +7,8 @@ type Tab = "spend" | "sources" | "invoices";
  * One tab bar for the marketing pages (the user, 2026-10-19: "Simplifying this
  * navigation would make it easier"). Since 2026-10-23 all three live on
  * /marketing-spend and Sources & lead cost is the first, default tab (the
- * user: it "should be under Marketing Spend as the main tab"). The market,
- * period and grain carry across, so switching tabs keeps what you picked.
+ * user: it "should be under Marketing Spend as the main tab"). The market and
+ * period carry across, so switching tabs keeps what you picked.
  */
 export function MarketingTabs({ active, carry }: { active: Tab; carry: Record<string, string | undefined> }) {
   const qs = (extra: Record<string, string> = {}) => {

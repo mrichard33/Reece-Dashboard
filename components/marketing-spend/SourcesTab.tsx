@@ -22,14 +22,10 @@ import { usDate } from "@/lib/utils";
 export async function SourcesTab({
   market,
   resolved,
-  grain,
-  initialSpread,
   spendHref,
 }: {
   market: string;
   resolved: ResolvedPeriod;
-  grain: "month" | "week";
-  initialSpread: boolean;
   spendHref: Route;
 }) {
   // Wrapped so a single failing fetch degrades to the empty state instead of
@@ -38,7 +34,7 @@ export async function SourcesTab({
   const [view, sources, leadCost, trend] = await Promise.all([
     getScorecardForPeriod("REECE", resolved).catch((err) => { console.error("[sources] view failed:", (err as Error)?.message ?? err); return null; }),
     getSourceScorecardForPeriod("REECE", resolved).catch((err) => { console.error("[sources] source scorecard failed:", (err as Error)?.message ?? err); return null; }),
-    getLeadCostForPeriod(market, resolved, grain).catch((err) => { console.error("[sources] lead cost failed:", (err as Error)?.message ?? err); return null; }),
+    getLeadCostForPeriod(market, resolved, "month").catch((err) => { console.error("[sources] lead cost failed:", (err as Error)?.message ?? err); return null; }),
     getMarketingCostTrend(market, resolved.periodEnd).catch(() => []),
   ]);
 
@@ -49,10 +45,6 @@ export async function SourcesTab({
         targetPct={leadCost?.target_pct ?? 15}
         needsMigration={leadCost?.needsMigration ?? false}
         error={leadCost?.error ?? (leadCost ? null : "the ledger did not answer")}
-        other={leadCost?.other ?? null}
-        viewWithCc={leadCost?.viewWithCc ?? null}
-        cc={leadCost?.cc ?? null}
-        initialSpread={initialSpread}
         spendHref={spendHref}
       />
       <Card>
