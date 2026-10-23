@@ -39,7 +39,7 @@ import { resolveSellingCalendar, todayET } from "@/lib/date/sellingDays";
 // Staleness wording now lives behind reportingClock's lagBadge(), so the page
 // has one source for "how far behind" instead of four inline call sites.
 import { freshnessChip } from "@/lib/scorecard/freshness";
-import { shouldShowCoverageBanner, monthsInRange } from "@/lib/scorecard/coverageBanner";
+import { shouldShowCoverageBanner, monthsInRange, isPeriodOpen } from "@/lib/scorecard/coverageBanner";
 import { normalizeMarketCode } from "@/lib/scorecard/markets";
 import { buildScorecardVM } from "@/lib/scorecard/viewModel";
 import { cohortPerDayActuals } from "@/lib/scorecard/paceTargets";
@@ -263,7 +263,11 @@ export default async function ScorecardPage({
   //   • the period INCLUDES TODAY — figures can still move, so how far the
   //     sources reach is live information; or
   //   • a constituent month is MISSING — a real hole, closed or not.
-  const periodIncludesToday = resolved.periodEnd >= todayET();
+  //
+  // "Includes today" means reaches the latest day we can have data for:
+  // resolvePeriod caps every "now" period at YESTERDAY, so comparing periodEnd
+  // with today made MTD / YTD / QTD / 3 months read as closed (2026-10-23).
+  const periodIncludesToday = isPeriodOpen(resolved.periodEnd, todayET());
 
   // Months in range with no report 137 cohort. `periodTotals.months` is what
   // actually fed the total, so the difference is precisely what is absent —

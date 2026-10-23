@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldShowCoverageBanner, monthsInRange } from "./coverageBanner";
+import { shouldShowCoverageBanner, monthsInRange, isPeriodOpen } from "./coverageBanner";
 
 const base = {
   periodIncludesToday: true,
@@ -82,5 +82,26 @@ describe("monthsInRange", () => {
 
   it("is bounded — a decade-wide range cannot spin", () => {
     expect(monthsInRange("2000-01-01", "2099-12-31").length).toBe(120);
+  });
+});
+
+describe("isPeriodOpen — a period capped at yesterday is still open", () => {
+  it("MTD on 10-23 ends 10-22 (yesterday): open", () => {
+    expect(isPeriodOpen("2026-10-22", "2026-10-23")).toBe(true);
+  });
+  it("a period ending today is open", () => {
+    expect(isPeriodOpen("2026-10-23", "2026-10-23")).toBe(true);
+  });
+  it("last month is closed", () => {
+    expect(isPeriodOpen("2026-09-30", "2026-10-23")).toBe(false);
+  });
+  it("on the 1st, a period ending yesterday (the 31st) is still open", () => {
+    expect(isPeriodOpen("2026-10-31", "2026-11-01")).toBe(true);
+  });
+  it("MTD on the 1st (periodEnd = the 1st, no completed days) is open", () => {
+    expect(isPeriodOpen("2026-11-01", "2026-11-01")).toBe(true);
+  });
+  it("Monday: a period ending Sunday is open", () => {
+    expect(isPeriodOpen("2026-10-25", "2026-10-26")).toBe(true);
   });
 });

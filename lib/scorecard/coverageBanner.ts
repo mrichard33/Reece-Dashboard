@@ -1,3 +1,5 @@
+import { previousCalendarDay } from "@/lib/date/sellingDays";
+
 /**
  * When the scorecard raises a PAGE-LEVEL coverage banner (Amendments D1, D2).
  *
@@ -36,6 +38,20 @@ export type CoverageBannerInput = {
   /** Months in range with no cohort at all. Named, so the banner can say which. */
   missingMonths: readonly string[];
 };
+
+/**
+ * Is the selected period still OPEN (its figures can still move)?
+ *
+ * resolvePeriod caps every "reaches now" period (MTD, QTD, YTD, 3 months, this
+ * week) at YESTERDAY, the latest day we can have data for. The page compared
+ * periodEnd with TODAY, so on 2026-10-23 an MTD ending 10-22 read as closed:
+ * the freshness chip said green "Actual" while the cutoff chip said a day
+ * behind, and the D2 banner hid a lagging source. A period that reaches
+ * yesterday (or today) is open; one that ended earlier is closed.
+ */
+export function isPeriodOpen(periodEnd: string, today: string): boolean {
+  return periodEnd >= previousCalendarDay(today);
+}
 
 export function shouldShowCoverageBanner(input: CoverageBannerInput): boolean {
   // A hole is a hole regardless of whether the period has closed.
